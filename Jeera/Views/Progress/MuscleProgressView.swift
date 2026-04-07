@@ -218,7 +218,7 @@ struct MuscleHistoryChart: View {
                             )
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [.accentColor, .accentColor.opacity(0.5)],
+                                    colors: [Color.accentColor, Color.accentColor.opacity(0.5)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
