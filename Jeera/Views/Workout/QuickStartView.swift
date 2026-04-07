@@ -29,7 +29,7 @@ struct QuickStartView: View {
                         title: "Empty Workout",
                         subtitle: "Start from scratch",
                         icon: "plus.circle.fill",
-                        color: .accentColor
+                        color: Color.accentColor
                     ) {
                         viewModel.startEmptyWorkout()
                     }
@@ -145,7 +145,7 @@ struct TemplateRow: View {
                 Spacer()
                 Image(systemName: "play.circle.fill")
                     .font(.title3)
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(Color.accentColor)
             }
             .glassCard(padding: 14)
         }

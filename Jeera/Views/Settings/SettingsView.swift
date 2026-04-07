@@ -131,7 +131,7 @@ struct ExerciseManagementView: View {
                         if let primary = exercise.primaryMuscle {
                             Text(primary.displayName)
                                 .font(.caption2)
-                                .foregroundStyle(.accentColor)
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 }
@@ -177,7 +177,7 @@ struct ExerciseDetailView: View {
                         Text(mapping.muscleGroup.displayName)
                         Spacer()
                         Text("\(mapping.coefficient, specifier: "%.1f")")
-                            .foregroundStyle(.accentColor)
+                            .foregroundStyle(Color.accentColor)
                     }
                 }
 

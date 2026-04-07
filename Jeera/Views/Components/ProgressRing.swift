@@ -4,7 +4,7 @@ struct ProgressRing: View {
     let progress: Double
     var lineWidth: CGFloat = 6
     var size: CGFloat = 48
-    var accentColor: Color = .accentColor
+    var accentColor: Color = Color.accentColor
 
     private var clampedProgress: Double {
         min(max(progress / 100, 0), 1)
@@ -31,7 +31,7 @@ struct ProgressRing: View {
 struct ProgressBar: View {
     let progress: Double
     var height: CGFloat = 8
-    var accentColor: Color = .accentColor
+    var accentColor: Color = Color.accentColor
 
     private var clampedProgress: Double {
         min(max(progress / 100, 0), 1)

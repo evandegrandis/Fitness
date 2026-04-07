@@ -96,11 +96,11 @@ struct ExerciseProgressRow: View {
                                 if last.bestWeight > 0 {
                                     Text("\(last.bestWeight.cleanWeight)x\(last.bestReps)")
                                         .font(.caption.weight(.semibold).monospacedDigit())
-                                        .foregroundStyle(.accentColor)
+                                        .foregroundStyle(Color.accentColor)
                                 } else {
                                     Text("BWx\(last.bestReps)")
                                         .font(.caption.weight(.semibold).monospacedDigit())
-                                        .foregroundStyle(.accentColor)
+                                        .foregroundStyle(Color.accentColor)
                                 }
                             }
                         }
@@ -127,7 +127,7 @@ struct ExerciseProgressRow: View {
                                     x: .value("Date", entry.date),
                                     y: .value("Weight", entry.bestWeight)
                                 )
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(ColorColor.accentColor)
                                 .lineStyle(StrokeStyle(lineWidth: 2))
                                 .interpolationMethod(.catmullRom)
 
@@ -135,14 +135,14 @@ struct ExerciseProgressRow: View {
                                     x: .value("Date", entry.date),
                                     y: .value("Weight", entry.bestWeight)
                                 )
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(ColorColor.accentColor)
                                 .symbolSize(20)
                             } else {
                                 LineMark(
                                     x: .value("Date", entry.date),
                                     y: .value("Reps", entry.bestReps)
                                 )
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(ColorColor.accentColor)
                                 .lineStyle(StrokeStyle(lineWidth: 2))
                                 .interpolationMethod(.catmullRom)
 
@@ -150,7 +150,7 @@ struct ExerciseProgressRow: View {
                                     x: .value("Date", entry.date),
                                     y: .value("Reps", entry.bestReps)
                                 )
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(ColorColor.accentColor)
                                 .symbolSize(20)
                             }
                         }

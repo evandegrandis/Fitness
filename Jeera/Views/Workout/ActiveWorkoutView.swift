@@ -40,7 +40,7 @@ struct ActiveWorkoutView: View {
                             Text("Add Exercise")
                                 .font(.subheadline.weight(.semibold))
                         }
-                        .foregroundStyle(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                         .frame(maxWidth: .infinity)
                         .glassCard(padding: 14)
                     }
@@ -154,7 +154,7 @@ struct UndoToast: View {
                 onUndo()
             }
             .font(.caption.weight(.bold))
-            .foregroundStyle(.accentColor)
+            .foregroundStyle(Color.accentColor)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

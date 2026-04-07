@@ -122,14 +122,14 @@ struct ExercisePickerRow: View {
                         if let primary = exercise.primaryMuscle {
                             Text(primary.displayName)
                                 .font(.caption2)
-                                .foregroundStyle(.accentColor.opacity(0.8))
+                                .foregroundStyle(Color.accentColor.opacity(0.8))
                         }
                     }
                 }
                 Spacer()
                 Image(systemName: "plus.circle")
                     .font(.body)
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(Color.accentColor)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
@@ -187,7 +187,7 @@ struct CreateExerciseView: View {
                             } label: {
                                 if let coeff = selectedMuscles[muscle] {
                                     Text("\(coeff, specifier: "%.1f")")
-                                        .foregroundStyle(.accentColor)
+                                        .foregroundStyle(Color.accentColor)
                                 } else {
                                     Text("--")
                                         .foregroundStyle(.tertiary)

@@ -64,12 +64,12 @@ struct RestTimerView: View {
         HStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
+                    .stroke(ColorColor.accentColor.opacity(0.2), lineWidth: 4)
 
                 Circle()
                     .trim(from: 0, to: timer.progress)
                     .stroke(
-                        timer.isOvertime ? Color.orange : Color.accentColor,
+                        timer.isOvertime ? Color.orange : ColorColor.accentColor,
                         style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
@@ -86,7 +86,7 @@ struct RestTimerView: View {
                     .foregroundStyle(.secondary)
                 Text(timer.isOvertime ? "Overtime" : "Resting")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(timer.isOvertime ? .orange : .accentColor)
+                    .foregroundStyle(timer.isOvertime ? .orange : Color.accentColor)
             }
 
             Spacer()

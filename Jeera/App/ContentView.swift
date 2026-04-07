@@ -21,7 +21,7 @@ struct ContentView: View {
                 }
                 .tag(1)
         }
-        .tint(.accentColor)
+        .tint(Color.accentColor)
         .onAppear {
             workoutVM.modelContext = modelContext
             workoutVM.loadActiveSession()

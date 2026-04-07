@@ -90,7 +90,7 @@ struct ExerciseCard: View {
                             .font(.caption2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(.accentColor.opacity(0.2), in: Capsule())
+                            .background(Color.accentColor.opacity(0.2), in: Capsule())
 
                         Text(ex.repTargetDisplay + " reps")
                             .font(.caption2)
@@ -109,7 +109,7 @@ struct ExerciseCard: View {
             if !loggedExercise.completedWorkSets.isEmpty {
                 Text("\(loggedExercise.completedWorkSets.count)")
                     .font(.title3.weight(.bold).monospacedDigit())
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(Color.accentColor)
             }
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -169,7 +169,7 @@ struct ExerciseCard: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(.accentColor, in: Capsule())
+                    .background(Color.accentColor, in: Capsule())
                 }
                 .buttonStyle(.plain)
 
@@ -238,7 +238,7 @@ struct ExerciseCard: View {
                                 .foregroundStyle(.secondary)
                             Text("+\(sets, specifier: "%.1f")")
                                 .font(.caption2.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(.accentColor)
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 }
@@ -263,7 +263,7 @@ struct SetRow: View {
                     .frame(width: 16)
             } else {
                 Circle()
-                    .fill(.accentColor)
+                    .fill(Color.accentColor)
                     .frame(width: 6, height: 6)
                     .frame(width: 16)
             }
@@ -346,7 +346,7 @@ struct AdjustSetSheet: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                                 .background(
-                                    setType == type ? Color.accentColor.opacity(0.3) : Color.clear,
+                                    setType == type ? ColorColor.accentColor.opacity(0.3) : Color.clear,
                                     in: Capsule()
                                 )
                                 .overlay {
@@ -364,7 +364,7 @@ struct AdjustSetSheet: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(.accentColor, in: RoundedRectangle(cornerRadius: 14))
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
 

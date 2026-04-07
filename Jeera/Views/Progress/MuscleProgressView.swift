@@ -98,7 +98,7 @@ struct MuscleGroupCard: View {
 
     private var progressColor: Color {
         if progress.percentage >= 100 { return .green }
-        if progress.percentage >= 70 { return .accentColor }
+        if progress.percentage >= 70 { return Color.accentColor }
         if progress.percentage >= 40 { return .orange }
         return .red
     }
@@ -218,7 +218,7 @@ struct MuscleHistoryChart: View {
                             )
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [Color.accentColor, Color.accentColor.opacity(0.5)],
+                                    colors: [ColorColor.accentColor, ColorColor.accentColor.opacity(0.5)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
