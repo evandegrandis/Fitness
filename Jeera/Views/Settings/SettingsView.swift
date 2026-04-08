@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -7,6 +8,15 @@ struct SettingsView: View {
     @Query private var settingsArray: [UserSettings]
     @Query private var goals: [MuscleGoal]
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
+
+    @State private var showExportShare = false
+    @State private var exportURL: URL?
+    @State private var showImportPicker = false
+    @State private var showImportConfirm = false
+    @State private var importData: Data?
+    @State private var alertMessage = ""
+    @State private var showAlert = false
+    @State private var lastExportDate: String = ""
 
     private var settings: UserSettings {
         if let existing = settingsArray.first { return existing }
@@ -19,6 +29,45 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // Backup section (prominent, at top)
+                Section {
+                    Button {
+                        exportData()
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Export Backup")
+                                    .foregroundStyle(.primary)
+                                Text("Save all data to Files")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Button {
+                        showImportPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.down")
+                                .foregroundStyle(.green)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Import Backup")
+                                    .foregroundStyle(.primary)
+                                Text("Restore from a backup file")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Backup & Restore")
+                } footer: {
+                    Text("Export before reinstalling the app. Your data will be erased when the free certificate expires (7 days).")
+                }
+
                 Section("Units") {
                     Toggle("Use Kilograms", isOn: Bindable(settings).usesKilograms)
 
@@ -70,9 +119,100 @@ struct SettingsView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showExportShare) {
+                if let url = exportURL {
+                    ShareSheet(activityItems: [url])
+                }
+            }
+            .fileImporter(
+                isPresented: $showImportPicker,
+                allowedContentTypes: [.json],
+                allowsMultipleSelection: false
+            ) { result in
+                handleImportFile(result)
+            }
+            .alert("Import Backup?", isPresented: $showImportConfirm) {
+                Button("Import", role: .destructive) {
+                    performImport()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will replace ALL current data with the backup. This cannot be undone.")
+            }
+            .alert(alertMessage, isPresented: $showAlert) {
+                Button("OK") {}
+            }
+        }
+    }
+
+    // MARK: - Export
+
+    private func exportData() {
+        do {
+            let jsonData = try DataExporter.exportAll(context: modelContext)
+            let fileName = DataExporter.defaultFileName()
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+            try jsonData.write(to: tempURL)
+            exportURL = tempURL
+            showExportShare = true
+        } catch {
+            alertMessage = "Export failed: \(error.localizedDescription)"
+            showAlert = true
+        }
+    }
+
+    // MARK: - Import
+
+    private func handleImportFile(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            guard url.startAccessingSecurityScopedResource() else {
+                alertMessage = "Cannot access file."
+                showAlert = true
+                return
+            }
+            defer { url.stopAccessingSecurityScopedResource() }
+
+            do {
+                importData = try Data(contentsOf: url)
+                showImportConfirm = true
+            } catch {
+                alertMessage = "Cannot read file: \(error.localizedDescription)"
+                showAlert = true
+            }
+        case .failure(let error):
+            alertMessage = "File picker error: \(error.localizedDescription)"
+            showAlert = true
+        }
+    }
+
+    private func performImport() {
+        guard let data = importData else { return }
+        do {
+            try DataExporter.importAll(data: data, context: modelContext)
+            alertMessage = "Backup restored successfully!"
+            showAlert = true
+        } catch {
+            alertMessage = "Import failed: \(error.localizedDescription)"
+            showAlert = true
         }
     }
 }
+
+// MARK: - Share Sheet (UIKit wrapper)
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Muscle Goal Row
 
 struct MuscleGoalRow: View {
     let muscle: MuscleGroup
@@ -114,6 +254,8 @@ struct MuscleGoalRow: View {
         }
     }
 }
+
+// MARK: - Exercise Management
 
 struct ExerciseManagementView: View {
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
@@ -182,6 +324,11 @@ struct ExerciseDetailView: View {
                 Stepper("Max: \(exercise.repTargetMax)", value: $exercise.repTargetMax, in: 1...50)
                 Stepper("Increment: \(exercise.smallestIncrement.cleanWeight)",
                         value: $exercise.smallestIncrement, in: 0.5...20, step: 0.5)
+            }
+
+            Section("Rest Timer") {
+                Stepper("Rest: \(exercise.suggestedRestSeconds)s",
+                        value: $exercise.suggestedRestSeconds, in: 30...600, step: 15)
             }
 
             Section("Muscle Mappings") {
