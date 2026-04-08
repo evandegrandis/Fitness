@@ -346,7 +346,7 @@ struct AdjustSetSheet: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                                 .background(
-                                    setType == type ? ColorColor.accentColor.opacity(0.3) : Color.clear,
+                                    setType == type ? Color.accentColor.opacity(0.3) : Color.clear,
                                     in: Capsule()
                                 )
                                 .overlay {
