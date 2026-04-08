@@ -64,12 +64,12 @@ struct RestTimerView: View {
         HStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .stroke(ColorColor.accentColor.opacity(0.2), lineWidth: 4)
+                    .stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
 
                 Circle()
                     .trim(from: 0, to: timer.progress)
                     .stroke(
-                        timer.isOvertime ? Color.orange : ColorColor.accentColor,
+                        timer.isOvertime ? Color.orange : Color.accentColor,
                         style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
