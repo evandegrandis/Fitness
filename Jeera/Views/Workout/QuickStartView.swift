@@ -16,6 +16,7 @@ struct QuickStartView: View {
         return progress
             .filter { $0.remaining > 1 && $0.goalSets > 0 }
             .sorted { $0.remaining > $1.remaining }
+            .map { ($0.muscleGroup, $0.remaining) }
     }
 
     private var recommendedTemplate: WorkoutTemplate? {
