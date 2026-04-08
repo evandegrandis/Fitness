@@ -8,15 +8,14 @@ struct ActiveWorkoutView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 14) {
                     // Workout Header
                     WorkoutHeaderView(session: viewModel.activeSession)
                         .padding(.horizontal)
 
                     // Exercise Cards
                     if let session = viewModel.activeSession {
-                        let exercises = session.orderedExercises
-                        ForEach(exercises) { loggedExercise in
+                        ForEach(session.orderedExercises) { loggedExercise in
                             ExerciseCard(
                                 loggedExercise: loggedExercise,
                                 viewModel: viewModel
@@ -29,7 +28,7 @@ struct ActiveWorkoutView: View {
                         }
                     }
 
-                    // Add Exercise Button
+                    // Add Exercise
                     Button {
                         viewModel.showExercisePicker = true
                         HapticManager.tap()
@@ -47,7 +46,7 @@ struct ActiveWorkoutView: View {
                     .buttonStyle(.plain)
                     .padding(.horizontal)
 
-                    // Finish Button
+                    // Finish
                     Button {
                         showFinishAlert = true
                     } label: {
@@ -76,9 +75,12 @@ struct ActiveWorkoutView: View {
                 .padding(.top, 8)
             }
 
-            // Rest Timer Overlay
+            // Rest Timer
             if viewModel.restTimer.isRunning {
-                RestTimerView(timer: viewModel.restTimer) {
+                RestTimerView(
+                    timer: viewModel.restTimer,
+                    suggestedSeconds: viewModel.currentRestSuggested
+                ) {
                     viewModel.restTimer.reset()
                 }
                 .padding(.bottom, 8)

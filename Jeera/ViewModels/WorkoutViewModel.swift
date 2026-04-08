@@ -9,6 +9,7 @@ class WorkoutViewModel {
     var showExercisePicker = false
     var showFinishConfirmation = false
     var restTimer = RestTimerModel()
+    var currentRestSuggested: Int = 120
     var undoAction: (() -> Void)?
     var undoMessage: String?
     var showUndo = false
@@ -113,21 +114,16 @@ class WorkoutViewModel {
     func removeExercise(_ loggedExercise: LoggedExercise) {
         guard let context = modelContext else { return }
         let exerciseName = loggedExercise.exercise?.name ?? "Exercise"
-        let sets = loggedExercise.sets
 
         activeSession?.loggedExercises.removeAll { $0.id == loggedExercise.id }
         context.delete(loggedExercise)
 
-        // Reindex
         for (i, ex) in (activeSession?.orderedExercises ?? []).enumerated() {
             ex.orderIndex = i
         }
 
         try? context.save()
-
-        showUndoMessage("Removed \(exerciseName)") {
-            // Undo not fully reversible after delete, but we show the feedback
-        }
+        showUndoMessage("Removed \(exerciseName)") { }
         HapticManager.deleteSet()
     }
 
@@ -142,26 +138,17 @@ class WorkoutViewModel {
         HapticManager.reorder()
     }
 
-    // MARK: - Set Logging
+    // MARK: - Superset Toggle
 
-    func logSet(for loggedExercise: LoggedExercise, suggestion: SetSuggestion) {
-        guard let context = modelContext else { return }
-        let set = LoggedSet(
-            weight: suggestion.weight,
-            reps: suggestion.reps,
-            setType: suggestion.setType,
-            setSlotIndex: loggedExercise.nextSetSlotIndex
-        )
-        set.loggedExercise = loggedExercise
-        context.insert(set)
-        loggedExercise.sets.append(set)
-        try? context.save()
-
-        HapticManager.logSet()
-        restTimer.start(seconds: defaultRestSeconds)
+    func toggleSuperset(_ loggedExercise: LoggedExercise) {
+        loggedExercise.isLinkedToNext.toggle()
+        try? modelContext?.save()
+        HapticManager.selection()
     }
 
-    func logCustomSet(for loggedExercise: LoggedExercise, weight: Double, reps: Int, setType: SetType) {
+    // MARK: - Set Logging
+
+    func logSet(for loggedExercise: LoggedExercise, weight: Double, reps: Int, setType: SetType = .work) {
         guard let context = modelContext else { return }
         let set = LoggedSet(
             weight: weight,
@@ -175,7 +162,17 @@ class WorkoutViewModel {
         try? context.save()
 
         HapticManager.logSet()
-        restTimer.start(seconds: defaultRestSeconds)
+
+        // Use exercise-specific rest time
+        let restSeconds = loggedExercise.exercise?.suggestedRestSeconds ?? defaultRestSeconds
+        currentRestSuggested = restSeconds
+
+        // If this exercise is linked to next (superset), don't start rest timer
+        if loggedExercise.isLinkedToNext {
+            // Don't start timer — move to next exercise in superset
+        } else {
+            restTimer.start(seconds: restSeconds)
+        }
     }
 
     func deleteSet(_ set: LoggedSet, from loggedExercise: LoggedExercise) {
@@ -187,7 +184,7 @@ class WorkoutViewModel {
         context.delete(set)
         try? context.save()
 
-        showUndoMessage("Deleted \(weight.cleanWeight)x\(reps)") { }
+        showUndoMessage("Deleted \(weight > 0 ? weight.cleanWeight : "BW")x\(reps)") { }
         HapticManager.deleteSet()
     }
 

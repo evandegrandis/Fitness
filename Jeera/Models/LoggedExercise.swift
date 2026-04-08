@@ -6,6 +6,7 @@ final class LoggedExercise {
     @Attribute(.unique) var id: UUID
     var orderIndex: Int
     var notes: String
+    var isLinkedToNext: Bool
 
     @Relationship var exercise: Exercise?
     @Relationship(deleteRule: .cascade) var sets: [LoggedSet]
@@ -15,12 +16,14 @@ final class LoggedExercise {
         id: UUID = UUID(),
         orderIndex: Int = 0,
         notes: String = "",
+        isLinkedToNext: Bool = false,
         exercise: Exercise? = nil,
         sets: [LoggedSet] = []
     ) {
         self.id = id
         self.orderIndex = orderIndex
         self.notes = notes
+        self.isLinkedToNext = isLinkedToNext
         self.exercise = exercise
         self.sets = sets
     }

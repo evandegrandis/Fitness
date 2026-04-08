@@ -3,21 +3,13 @@ import SwiftData
 
 struct SeedData {
     static func seed(context: ModelContext) {
-        // Settings
         let settings = UserSettings()
         context.insert(settings)
 
-        // Exercises
         let exercises = createExercises(context: context)
-
-        // Goals
         createGoals(context: context)
-
-        // Templates
         createTemplates(context: context, exercises: exercises)
-
-        // Sample History
-        createSampleHistory(context: context, exercises: exercises)
+        createRealHistory(context: context, exercises: exercises)
 
         try? context.save()
     }
@@ -34,6 +26,7 @@ struct SeedData {
             repMin: Int = 8,
             repMax: Int = 12,
             increment: Double = 2.5,
+            rest: Int = 120,
             favorite: Bool = false,
             muscles: [(MuscleGroup, Double)]
         ) {
@@ -44,103 +37,102 @@ struct SeedData {
                 repTargetMin: repMin,
                 repTargetMax: repMax,
                 smallestIncrement: increment,
-                isFavorite: favorite
+                isFavorite: favorite,
+                suggestedRestSeconds: rest
             )
             context.insert(ex)
-
             for (muscle, coeff) in muscles {
                 let m = MuscleMapping(muscleGroup: muscle, coefficient: coeff)
                 m.exercise = ex
                 context.insert(m)
                 ex.muscleMappings.append(m)
             }
-
             map[name] = ex
         }
 
         // Pull
-        make("Neutral-Grip Pull-Up", category: "Pull", mode: .bodyweight, repMin: 6, repMax: 12, favorite: true,
+        make("Tractions SN", category: "Pull", mode: .ramping, repMin: 5, repMax: 12, increment: 2.5, rest: 180, favorite: true,
              muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.3), (.forearms, 0.1)])
 
-        make("Weighted Neutral-Grip Pull-Up", category: "Pull", mode: .weightedBodyweight, repMin: 5, repMax: 8, increment: 2.5, favorite: true,
-             muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.3), (.forearms, 0.1)])
-
-        make("Close-Grip Pulldown", category: "Pull", mode: .straight, repMin: 8, repMax: 12,
+        make("Pulley serré", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
              muscles: [(.lats, 1.0), (.biceps, 0.3), (.forearms, 0.1)])
 
-        make("Wide Pulldown", category: "Pull", mode: .straight, repMin: 8, repMax: 12,
+        make("Pulley large", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
              muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.1)])
 
-        make("Cable Row", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 5,
+        make("Row uni", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
              muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
 
-        make("Chest-Supported Row", category: "Pull", mode: .topSetBackoff, repMin: 8, repMax: 10, increment: 2.5,
-             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3), (.reardelts, 0.1)])
-
         // Push
-        make("Chest Press", category: "Push", mode: .topSetBackoff, repMin: 6, repMax: 10, increment: 2.5, favorite: true,
-             muscles: [(.chest, 1.0), (.triceps, 0.3), (.frontdelts, 0.3)])
+        make("Chest Press", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
 
-        make("Shoulder Press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 2.5, favorite: true,
+        make("DC assisté", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+
+        make("Seated Pec", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180,
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+
+        make("Shoulder Press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
              muscles: [(.shoulders, 1.0), (.triceps, 0.3)])
 
-        make("HSPU", category: "Push", mode: .bodyweight, repMin: 3, repMax: 8,
+        make("HSPU", category: "Push", mode: .bodyweight, repMin: 5, repMax: 12, rest: 120,
              muscles: [(.shoulders, 1.0), (.triceps, 0.3)])
 
-        make("Machine Dips", category: "Push", mode: .straight, repMin: 8, repMax: 12, increment: 5,
-             muscles: [(.chest, 0.3), (.triceps, 1.0), (.frontdelts, 0.1)])
+        make("Pec Deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
+             muscles: [(.chest, 1.0), (.shoulders, 0.1)])
 
-        make("Pec Deck", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 5,
-             muscles: [(.chest, 1.0), (.frontdelts, 0.1)])
+        make("Machine Dips", category: "Push", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 90,
+             muscles: [(.chest, 0.3), (.triceps, 1.0), (.shoulders, 0.1)])
 
-        // Arms
-        make("Standing Curl", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1.0,
-             muscles: [(.biceps, 1.0), (.forearms, 0.3)])
-
-        make("Incline Curl", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1.0,
-             muscles: [(.biceps, 1.0), (.forearms, 0.1)])
-
-        make("Triceps Extension", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5,
+        make("Triceps Extension", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90,
              muscles: [(.triceps, 1.0)])
 
-        make("Wrist Curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1.0,
+        // Arms
+        make("Curl debout", category: "Arms", mode: .ramping, repMin: 6, repMax: 10, increment: 1, rest: 90, favorite: true,
+             muscles: [(.biceps, 1.0), (.forearms, 0.3)])
+
+        make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1, rest: 90,
+             muscles: [(.biceps, 1.0), (.forearms, 0.1)])
+
+        make("Élévations latérales", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 90,
+             muscles: [(.shoulders, 1.0)])
+
+        make("Wrist Curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1, rest: 60,
              muscles: [(.forearms, 1.0)])
 
-        // Shoulders
-        make("Lateral Raise", category: "Arms", mode: .straight, repMin: 12, repMax: 18, increment: 1.0,
-             muscles: [(.sidedelts, 1.0)])
-
         // Legs
-        make("Leg Extension", category: "Legs", mode: .ramping, repMin: 10, repMax: 15, increment: 5,
+        make("Leg Extension", category: "Legs", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 120, favorite: true,
              muscles: [(.quads, 1.0)])
 
-        make("Leg Curl", category: "Legs", mode: .straight, repMin: 10, repMax: 15, increment: 5,
+        make("Leg Curl", category: "Legs", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 120,
              muscles: [(.hamstrings, 1.0)])
 
         // Core
-        make("Decline Crunch Weighted", category: "Core", mode: .straight, repMin: 12, repMax: 20, increment: 2.5, favorite: true,
+        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90, favorite: true,
              muscles: [(.abs, 1.0)])
 
         return map
     }
 
-    // MARK: - Goals
+    // MARK: - Goals (user's actual goals)
 
     static func createGoals(context: ModelContext) {
         let goals: [(MuscleGroup, Double)] = [
-            (.chest, 12),
-            (.shoulders, 10),
-            (.sidedelts, 8),
-            (.frontdelts, 6),
-            (.reardelts, 6),
-            (.triceps, 10),
-            (.biceps, 10),
-            (.forearms, 6),
-            (.lats, 12),
-            (.upperback, 10),
-            (.quads, 10),
-            (.hamstrings, 8),
-            (.abs, 8),
+            // 18 sets/week
+            (.shoulders, 18),
+            (.biceps, 18),
+            (.chest, 18),
+            (.abs, 18),
+            // 15 sets/week
+            (.triceps, 15),
+            (.upperback, 15),
+            (.lats, 15),
+            // 9 sets/week
+            (.quads, 9),
+            (.hamstrings, 9),
+            (.obliques, 9),
+            (.forearms, 9),
         ]
 
         for (muscle, sets) in goals {
@@ -149,7 +141,7 @@ struct SeedData {
         }
     }
 
-    // MARK: - Templates
+    // MARK: - Templates (matching user's actual workout patterns)
 
     static func createTemplates(context: ModelContext, exercises: [String: Exercise]) {
         func template(_ name: String, _ names: [String]) {
@@ -164,289 +156,143 @@ struct SeedData {
             }
         }
 
-        template("Upper Pull", [
-            "Weighted Neutral-Grip Pull-Up",
-            "Close-Grip Pulldown",
-            "Cable Row",
-            "Standing Curl",
-            "Incline Curl",
-            "Wrist Curl"
-        ])
-
-        template("Upper Push", [
+        template("Full Body A", [
+            "Tractions SN",
+            "Crunch déclinés",
+            "HSPU",
             "Chest Press",
+            "Leg Extension",
             "Shoulder Press",
-            "Machine Dips",
+            "Curl debout",
             "Pec Deck",
-            "Lateral Raise",
-            "Triceps Extension"
+            "Pulley serré"
         ])
 
-        template("Legs + Core", [
+        template("Full Body B", [
+            "Tractions SN",
+            "Crunch déclinés",
+            "DC assisté",
+            "Shoulder Press",
             "Leg Extension",
-            "Leg Curl",
-            "Decline Crunch Weighted"
+            "Curl incliné",
+            "Élévations latérales",
+            "Pulley serré"
         ])
     }
 
-    // MARK: - Sample History
+    // MARK: - Real Workout History
 
-    static func createSampleHistory(context: ModelContext, exercises: [String: Exercise]) {
-        let calendar = Calendar.current
-        let now = Date()
+    static func createRealHistory(context: ModelContext, exercises: [String: Exercise]) {
+        let cal = Calendar.current
+        let year = cal.component(.year, from: Date())
 
-        // Generate 4 weeks of messy history
-        for weekOffset in 1...4 {
-            guard let weekBase = calendar.date(byAdding: .weekOfYear, value: -weekOffset, to: now) else { continue }
+        func date(_ month: Int, _ day: Int) -> Date {
+            cal.date(from: DateComponents(year: year, month: month, day: day, hour: 18, minute: 0)) ?? Date()
+        }
 
-            // Session 1: Upper Pull day
-            if let day1 = calendar.date(byAdding: .day, value: 0, to: weekBase) {
-                let session = WorkoutSession(
-                    date: day1,
-                    startTime: day1,
-                    endTime: calendar.date(byAdding: .hour, value: 1, to: day1),
-                    isActive: false
-                )
-                context.insert(session)
+        func session(_ d: Date, duration: Int, _ exerciseData: [(String, [(Double, Int)])]) {
+            let s = WorkoutSession(
+                date: d,
+                startTime: d,
+                endTime: cal.date(byAdding: .minute, value: duration, to: d),
+                isActive: false
+            )
+            context.insert(s)
 
-                // Pull-ups with messy performance
-                if let ex = exercises["Neutral-Grip Pull-Up"] {
-                    let logged = LoggedExercise(orderIndex: 0, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
+            for (i, (name, sets)) in exerciseData.enumerated() {
+                guard let ex = exercises[name] else { continue }
+                let logged = LoggedExercise(orderIndex: i, exercise: ex)
+                logged.session = s
+                context.insert(logged)
+                s.loggedExercises.append(logged)
 
-                    let reps = [12 - weekOffset, 10 - weekOffset, max(6, 8 - weekOffset)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: 0, reps: r, setType: .work, timestamp: day1, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
+                for (j, (weight, reps)) in sets.enumerated() {
+                    let set = LoggedSet(weight: weight, reps: reps, setType: .work, timestamp: d, setSlotIndex: j)
+                    set.loggedExercise = logged
+                    context.insert(set)
+                    logged.sets.append(set)
                 }
 
-                // Weighted pull-ups: top set + backoff
-                if let ex = exercises["Weighted Neutral-Grip Pull-Up"] {
-                    let logged = LoggedExercise(orderIndex: 1, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let topWeight = 15.0 + Double(4 - weekOffset) * 2.5
-                    let sets: [(Double, Int, SetType)] = [
-                        (topWeight, 6, .topSet),
-                        (topWeight - 5, 8, .backoff),
-                        (topWeight - 5, max(5, 7 - weekOffset % 2), .backoff),
-                    ]
-                    for (i, (w, r, t)) in sets.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: t, timestamp: day1, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Close grip pulldown
-                if let ex = exercises["Close-Grip Pulldown"] {
-                    let logged = LoggedExercise(orderIndex: 2, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 55.0 + Double(4 - weekOffset) * 2.5
-                    let reps = [12, 10, max(7, 9 - weekOffset % 3)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day1, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Curls
-                if let ex = exercises["Standing Curl"] {
-                    let logged = LoggedExercise(orderIndex: 3, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 12.0 + Double(4 - weekOffset)
-                    let reps = [12, 10, max(6, 8 - weekOffset % 2)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day1, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-            }
-
-            // Session 2: Upper Push day
-            if let day2 = calendar.date(byAdding: .day, value: 2, to: weekBase) {
-                let session = WorkoutSession(
-                    date: day2,
-                    startTime: day2,
-                    endTime: calendar.date(byAdding: .minute, value: 75, to: day2),
-                    isActive: false
-                )
-                context.insert(session)
-
-                // Chest Press: top set + backoff with messy perf
-                if let ex = exercises["Chest Press"] {
-                    let logged = LoggedExercise(orderIndex: 0, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let topWeight = 80.0 + Double(4 - weekOffset) * 2.5
-                    let sets: [(Double, Int, SetType)] = [
-                        (topWeight, max(5, 7 - weekOffset % 2), .topSet),
-                        (topWeight - 10, 8, .backoff),
-                        (topWeight - 10, max(5, 7 - weekOffset), .backoff),
-                    ]
-                    for (i, (w, r, t)) in sets.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: t, timestamp: day2, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Shoulder Press: straight sets with fatigue
-                if let ex = exercises["Shoulder Press"] {
-                    let logged = LoggedExercise(orderIndex: 1, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 40.0 + Double(4 - weekOffset) * 2.5
-                    let reps = [10, max(6, 8 - weekOffset % 2), max(5, 7 - weekOffset)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day2, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Pec Deck: fatigue-driven rep decline
-                if let ex = exercises["Pec Deck"] {
-                    let logged = LoggedExercise(orderIndex: 2, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 50.0 + Double(4 - weekOffset) * 5
-                    let reps = [15, 12, max(8, 10 - weekOffset)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day2, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Lateral Raises
-                if let ex = exercises["Lateral Raise"] {
-                    let logged = LoggedExercise(orderIndex: 3, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 8.0 + Double(4 - weekOffset)
-                    let reps = [15, 14, max(10, 12 - weekOffset)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day2, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Triceps
-                if let ex = exercises["Triceps Extension"] {
-                    let logged = LoggedExercise(orderIndex: 4, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 25.0 + Double(4 - weekOffset) * 2.5
-                    let reps = [15, 12, max(8, 10 - weekOffset)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day2, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-            }
-
-            // Session 3: Legs + Core (shorter, sometimes incomplete)
-            if let day3 = calendar.date(byAdding: .day, value: 4, to: weekBase) {
-                let session = WorkoutSession(
-                    date: day3,
-                    startTime: day3,
-                    endTime: calendar.date(byAdding: .minute, value: weekOffset == 2 ? 30 : 55, to: day3),
-                    isActive: false
-                )
-                context.insert(session)
-
-                // Leg Extension: ramping
-                if let ex = exercises["Leg Extension"] {
-                    let logged = LoggedExercise(orderIndex: 0, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let baseWeight = 40.0 + Double(4 - weekOffset) * 5
-                    let sets: [(Double, Int)] = [
-                        (baseWeight, 15),
-                        (baseWeight + 10, 12),
-                        (baseWeight + 20, max(8, 10 - weekOffset)),
-                    ]
-                    for (i, (w, r)) in sets.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day3, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Leg Curl
-                if let ex = exercises["Leg Curl"] {
-                    let logged = LoggedExercise(orderIndex: 1, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 35.0 + Double(4 - weekOffset) * 5
-                    // Week 2 is incomplete session - only 2 sets
-                    let repsList: [Int] = weekOffset == 2 ? [12, 10] : [15, 12, max(8, 10 - weekOffset)]
-                    for (i, r) in repsList.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day3, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
-
-                // Crunches
-                if let ex = exercises["Decline Crunch Weighted"] {
-                    let logged = LoggedExercise(orderIndex: 2, exercise: ex)
-                    logged.session = session
-                    context.insert(logged)
-                    session.loggedExercises.append(logged)
-
-                    let w = 10.0 + Double(4 - weekOffset) * 2.5
-                    let reps = [20, 18, max(12, 15 - weekOffset)]
-                    for (i, r) in reps.enumerated() {
-                        let s = LoggedSet(weight: w, reps: r, setType: .work, timestamp: day3, setSlotIndex: i)
-                        s.loggedExercise = logged
-                        context.insert(s)
-                        logged.sets.append(s)
-                    }
-                }
+                ex.lastUsed = d
             }
         }
+
+        // April 7
+        session(date(4, 7), duration: 75, [
+            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch déclinés",      [(40, 10), (40, 10)]),
+            ("HSPU",                 [(0, 10)]),
+            ("DC assisté",           [(80, 10), (100, 9), (120, 3)]),
+            ("Leg Extension",        [(85, 10)]),
+            ("Curl debout",          [(18, 9), (20, 5), (18, 5)]),
+            ("Shoulder Press",       [(80, 10), (80, 10)]),
+            ("Pec Deck",             [(80, 4), (70, 6)]),
+            ("Pulley serré",         [(50, 5), (50, 5)]),
+        ])
+
+        // April 3
+        session(date(4, 3), duration: 50, [
+            ("Tractions SN",         [(0, 10), (0, 10), (0, 10)]),
+            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
+            ("DC assisté",           [(80, 10), (100, 8), (90, 6)]),
+            ("Shoulder Press",       [(80, 8)]),
+        ])
+
+        // April 1
+        session(date(4, 1), duration: 80, [
+            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
+            ("HSPU",                 [(0, 10)]),
+            ("Chest Press",          [(100, 10), (120, 6), (100, 6)]),
+            ("Leg Extension",        [(85, 10)]),
+            ("Pulley serré",         [(45, 10), (50, 8)]),
+            ("Curl debout",          [(20, 4), (18, 4)]),
+            ("Shoulder Press",       [(80, 10), (80, 8), (80, 4)]),
+            ("Pec Deck",             [(85, 4), (75, 4)]),
+        ])
+
+        // March 30
+        session(date(3, 30), duration: 85, [
+            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
+            ("HSPU",                 [(0, 10)]),
+            ("Leg Curl",             [(65, 10), (75, 10), (75, 10)]),
+            ("Leg Extension",        [(85, 10), (100, 10), (100, 8)]),
+            ("Chest Press",          [(100, 10), (120, 8), (100, 6)]),
+            ("Pulley serré",         [(45, 8), (45, 7)]),
+            ("Pulley large",         [(45, 6)]),
+            ("Curl debout",          [(20, 6), (18, 5)]),
+        ])
+
+        // March 25
+        session(date(3, 25), duration: 70, [
+            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
+            ("Leg Extension",        [(85, 10), (100, 10), (100, 6)]),
+            ("Curl incliné",         [(14, 10), (14, 4)]),
+            ("Élévations latérales", [(14, 4)]),
+            ("Pec Deck",             [(75, 10), (80, 4)]),
+            ("Chest Press",          [(125, 6), (100, 8)]),
+        ])
+
+        // March 23
+        session(date(3, 23), duration: 65, [
+            ("Tractions SN",         [(0, 10), (15, 5), (0, 8)]),
+            ("Leg Extension",        [(85, 10), (100, 8)]),
+            ("Seated Pec",           [(100, 10), (130, 6), (130, 4)]),
+            ("Shoulder Press",       [(80, 10), (85, 5), (80, 4)]),
+            ("Curl debout",          [(18, 8), (18, 8)]),
+        ])
+
+        // March 20
+        session(date(3, 20), duration: 75, [
+            ("Tractions SN",         [(0, 10), (0, 10), (0, 10)]),
+            ("Seated Pec",           [(100, 10), (120, 6), (120, 5), (100, 5)]),
+            ("Élévations latérales", [(12, 10)]),
+            ("Row uni",              [(90, 6), (80, 10)]),
+            ("Pec Deck",             [(60, 10), (70, 8), (75, 5)]),
+            ("Shoulder Press",       [(80, 4), (70, 10)]),
+            ("Curl incliné",         [(14, 9), (14, 6)]),
+        ])
     }
 }

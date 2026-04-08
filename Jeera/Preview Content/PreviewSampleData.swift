@@ -30,15 +30,16 @@ extension Exercise {
         Exercise(
             name: "Chest Press",
             category: "Push",
-            setPatternMode: .topSetBackoff,
+            setPatternMode: .ramping,
             repTargetMin: 6,
             repTargetMax: 10,
-            smallestIncrement: 2.5,
+            smallestIncrement: 5,
             isFavorite: true,
+            suggestedRestSeconds: 180,
             muscleMappings: [
                 MuscleMapping(muscleGroup: .chest, coefficient: 1.0),
                 MuscleMapping(muscleGroup: .triceps, coefficient: 0.3),
-                MuscleMapping(muscleGroup: .frontdelts, coefficient: 0.3),
+                MuscleMapping(muscleGroup: .shoulders, coefficient: 0.3),
             ]
         )
     }

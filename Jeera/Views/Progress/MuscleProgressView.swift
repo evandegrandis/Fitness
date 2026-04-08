@@ -15,40 +15,42 @@ struct MuscleProgressView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
-                // Week Header
+            VStack(spacing: 12) {
                 WeekHeaderView()
                     .padding(.horizontal)
 
-                // Muscle Cards
                 ForEach(progress) { item in
-                    MuscleGroupCard(
-                        progress: item,
-                        isSelected: selectedMuscle == item.muscleGroup
-                    )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3)) {
-                            if selectedMuscle == item.muscleGroup {
-                                selectedMuscle = nil
-                            } else {
-                                selectedMuscle = item.muscleGroup
-                                HapticManager.selection()
+                    VStack(spacing: 8) {
+                        MuscleGroupCard(
+                            progress: item,
+                            isSelected: selectedMuscle == item.muscleGroup
+                        )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3)) {
+                                if selectedMuscle == item.muscleGroup {
+                                    selectedMuscle = nil
+                                } else {
+                                    selectedMuscle = item.muscleGroup
+                                    HapticManager.selection()
+                                }
                             }
+                        }
+
+                        // Chart inline right below the tapped card
+                        if selectedMuscle == item.muscleGroup {
+                            MuscleHistoryChart(
+                                muscleGroup: item.muscleGroup,
+                                sessions: sessions,
+                                goals: goals,
+                                showAbsolute: $showAbsolute
+                            )
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                                removal: .opacity
+                            ))
                         }
                     }
                     .padding(.horizontal)
-                }
-
-                // Historical Chart for selected muscle
-                if let selected = selectedMuscle {
-                    MuscleHistoryChart(
-                        muscleGroup: selected,
-                        sessions: sessions,
-                        goals: goals,
-                        showAbsolute: $showAbsolute
-                    )
-                    .padding(.horizontal)
-                    .transition(.scale(scale: 0.95).combined(with: .opacity))
                 }
 
                 if progress.isEmpty {
@@ -59,10 +61,9 @@ struct MuscleProgressView: View {
                         Text("No data yet")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("Complete workouts to see your muscle group progress.")
+                        Text("Complete workouts to see progress.")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
                     }
                     .padding(.top, 60)
                 }
@@ -108,8 +109,13 @@ struct MuscleGroupCard: View {
             VStack(spacing: 10) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(progress.muscleGroup.displayName)
-                            .font(.subheadline.weight(.semibold))
+                        HStack(spacing: 6) {
+                            Text(progress.muscleGroup.displayName)
+                                .font(.subheadline.weight(.semibold))
+                            Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
 
                         HStack(spacing: 4) {
                             Text("\(progress.effectiveSets, specifier: "%.1f")")
@@ -143,7 +149,6 @@ struct MuscleGroupCard: View {
                                 .foregroundStyle(.green)
                         }
 
-                        // Delta vs previous week
                         if progress.delta != 0 {
                             HStack(spacing: 2) {
                                 Image(systemName: progress.delta > 0 ? "arrow.up.right" : "arrow.down.right")
@@ -184,17 +189,17 @@ struct MuscleHistoryChart: View {
     }
 
     var body: some View {
-        GlassCard(cornerRadius: 16) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("\(muscleGroup.displayName) History")
-                        .font(.subheadline.weight(.semibold))
+                    Text("History")
+                        .font(.caption.weight(.semibold))
                     Spacer()
                     Button {
                         showAbsolute.toggle()
                     } label: {
                         Text(showAbsolute ? "Sets" : "%")
-                            .font(.caption.weight(.medium))
+                            .font(.caption2.weight(.medium))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(.ultraThinMaterial, in: Capsule())
@@ -206,7 +211,7 @@ struct MuscleHistoryChart: View {
                     Text("No history yet")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .frame(height: 150)
+                        .frame(height: 120)
                         .frame(maxWidth: .infinity)
                 } else {
                     Chart {
@@ -230,11 +235,6 @@ struct MuscleHistoryChart: View {
                             RuleMark(y: .value("Goal", goalValue))
                                 .foregroundStyle(.green.opacity(0.6))
                                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                .annotation(position: .trailing, alignment: .leading) {
-                                    Text("Goal")
-                                        .font(.caption2)
-                                        .foregroundStyle(.green)
-                                }
                         }
 
                         if !showAbsolute {
@@ -243,7 +243,7 @@ struct MuscleHistoryChart: View {
                                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                         }
                     }
-                    .frame(height: 180)
+                    .frame(height: 150)
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .weekOfYear)) { value in
                             AxisValueLabel {
@@ -255,7 +255,7 @@ struct MuscleHistoryChart: View {
                         }
                     }
                     .chartYAxis {
-                        AxisMarks { value in
+                        AxisMarks { _ in
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                                 .foregroundStyle(.white.opacity(0.1))
                             AxisValueLabel()

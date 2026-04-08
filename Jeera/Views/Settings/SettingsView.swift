@@ -78,14 +78,10 @@ struct MuscleGoalRow: View {
     let muscle: MuscleGroup
     let goals: [MuscleGoal]
     let modelContext: ModelContext
+    @State private var resolvedGoal: MuscleGoal?
 
-    private var goal: MuscleGoal {
-        if let existing = goals.first(where: { $0.muscleGroup == muscle }) {
-            return existing
-        }
-        let new = MuscleGoal(muscleGroup: muscle, weeklyGoalSets: 0)
-        modelContext.insert(new)
-        return new
+    private var goalSets: Double {
+        resolvedGoal?.weeklyGoalSets ?? goals.first(where: { $0.muscleGroup == muscle })?.weeklyGoalSets ?? 0
     }
 
     var body: some View {
@@ -93,11 +89,28 @@ struct MuscleGoalRow: View {
             Text(muscle.displayName)
                 .font(.subheadline)
             Spacer()
-            Text("\(goal.weeklyGoalSets, specifier: "%.0f") sets")
+            Text("\(goalSets, specifier: "%.0f") sets")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Stepper("", value: Bindable(goal).weeklyGoalSets, in: 0...40, step: 1)
-                .labelsHidden()
+            if let goal = resolvedGoal {
+                Stepper("", value: Bindable(goal).weeklyGoalSets, in: 0...40, step: 1)
+                    .labelsHidden()
+            } else {
+                Stepper("", value: .constant(0.0), in: 0...40, step: 1)
+                    .labelsHidden()
+            }
+        }
+        .onAppear {
+            if resolvedGoal == nil {
+                if let existing = goals.first(where: { $0.muscleGroup == muscle }) {
+                    resolvedGoal = existing
+                } else {
+                    let new = MuscleGoal(muscleGroup: muscle, weeklyGoalSets: 0)
+                    modelContext.insert(new)
+                    try? modelContext.save()
+                    resolvedGoal = new
+                }
+            }
         }
     }
 }

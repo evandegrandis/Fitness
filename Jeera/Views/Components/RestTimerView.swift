@@ -6,6 +6,7 @@ class RestTimerModel {
     var isRunning = false
     var elapsed: TimeInterval = 0
     var targetSeconds: Int = 120
+    var isComplete = false
     private var timer: AnyCancellable?
     private var startDate: Date?
 
@@ -36,11 +37,16 @@ class RestTimerModel {
         startDate = Date()
         elapsed = 0
         isRunning = true
+        isComplete = false
         timer = Timer.publish(every: 0.1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self, let start = self.startDate else { return }
                 self.elapsed = Date().timeIntervalSince(start)
+                if self.elapsed >= Double(self.targetSeconds) && !self.isComplete {
+                    self.isComplete = true
+                    HapticManager.notification(.success)
+                }
             }
     }
 
@@ -53,15 +59,18 @@ class RestTimerModel {
     func reset() {
         stop()
         elapsed = 0
+        isComplete = false
     }
 }
 
 struct RestTimerView: View {
     @Bindable var timer: RestTimerModel
-    var onDismiss: () -> Void
+    var suggestedSeconds: Int = 120
+    var onReady: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
+            // Timer ring
             ZStack {
                 Circle()
                     .stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
@@ -69,45 +78,57 @@ struct RestTimerView: View {
                 Circle()
                     .trim(from: 0, to: timer.progress)
                     .stroke(
-                        timer.isOvertime ? Color.orange : Color.accentColor,
+                        timer.isComplete ? Color.green : Color.accentColor,
                         style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
 
                 Text(timer.remainingFormatted)
-                    .font(.caption.weight(.bold).monospacedDigit())
-                    .foregroundStyle(timer.isOvertime ? .orange : .primary)
+                    .font(.caption2.weight(.bold).monospacedDigit())
+                    .foregroundStyle(timer.isComplete ? .green : .primary)
             }
-            .frame(width: 48, height: 48)
+            .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Rest Timer")
+                Text(timer.isComplete ? "Rest complete" : "Resting")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(timer.isComplete ? .green : Color.accentColor)
+                Text(suggestedSeconds >= 150 ? "Big exercise · \(suggestedSeconds)s" : "Small exercise · \(suggestedSeconds)s")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(timer.isOvertime ? "Overtime" : "Resting")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(timer.isOvertime ? .orange : Color.accentColor)
             }
 
             Spacer()
 
+            // Ready / Skip button
             Button {
                 timer.reset()
-                onDismiss()
+                onReady()
+                HapticManager.impact(.medium)
             } label: {
-                Text("Skip")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.ultraThinMaterial, in: Capsule())
+                Text(timer.isComplete ? "GO" : "Skip")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(timer.isComplete ? .white : .primary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(
+                        timer.isComplete ? Color.green : Color.clear,
+                        in: Capsule()
+                    )
+                    .overlay {
+                        if !timer.isComplete {
+                            Capsule().stroke(.white.opacity(0.2), lineWidth: 0.5)
+                        }
+                    }
             }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.2), radius: 8, y: -2)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: -2)
         }
         .padding(.horizontal)
     }

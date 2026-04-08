@@ -99,7 +99,7 @@ struct EffectiveSetsEngine {
         let currentTotals = weeklyTotals(sessions: sessions, weekStart: weekStart, weekEnd: weekEnd)
         let prevTotals = weeklyTotals(sessions: sessions, weekStart: prevWeekStart, weekEnd: weekStart)
 
-        let goalMap = Dictionary(uniqueKeysWithValues: goals.map { ($0.muscleGroup, $0.weeklyGoalSets) })
+        let goalMap = Dictionary(goals.map { ($0.muscleGroup, $0.weeklyGoalSets) }, uniquingKeysWith: { _, last in last })
 
         return MuscleGroup.allCases.compactMap { muscle in
             let goal = goalMap[muscle] ?? 0
@@ -128,7 +128,7 @@ struct EffectiveSetsEngine {
         let calendar = Calendar.current
         let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: referenceDate)?.start ?? referenceDate
 
-        let goalMap = Dictionary(uniqueKeysWithValues: goals.map { ($0.muscleGroup, $0.weeklyGoalSets) })
+        let goalMap = Dictionary(goals.map { ($0.muscleGroup, $0.weeklyGoalSets) }, uniquingKeysWith: { _, last in last })
 
         var result: [WeeklyMuscleData] = []
 

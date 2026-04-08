@@ -13,6 +13,7 @@ final class Exercise {
     var isFavorite: Bool
     var createdByUser: Bool
     var sortOrder: Int
+    var suggestedRestSeconds: Int
 
     @Relationship(deleteRule: .cascade) var muscleMappings: [MuscleMapping]
 
@@ -29,6 +30,7 @@ final class Exercise {
         isFavorite: Bool = false,
         createdByUser: Bool = false,
         sortOrder: Int = 0,
+        suggestedRestSeconds: Int = 120,
         muscleMappings: [MuscleMapping] = []
     ) {
         self.id = id
@@ -41,8 +43,11 @@ final class Exercise {
         self.isFavorite = isFavorite
         self.createdByUser = createdByUser
         self.sortOrder = sortOrder
+        self.suggestedRestSeconds = suggestedRestSeconds
         self.muscleMappings = muscleMappings
     }
+
+    var isBigExercise: Bool { suggestedRestSeconds >= 150 }
 
     var repTargetDisplay: String {
         if repTargetMin == repTargetMax {
