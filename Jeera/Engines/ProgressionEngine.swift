@@ -357,4 +357,87 @@ struct ProgressionEngine {
             explanation: "Repeat: \(last.weight.cleanWeight)x\(last.reps)"
         )
     }
+
+    // MARK: - Estimated 1RM (Epley formula)
+
+    /// Returns estimated 1RM from weight and reps. Only meaningful for reps <= 15.
+    static func estimated1RM(weight: Double, reps: Int) -> Double? {
+        guard weight > 0, reps > 0, reps <= 15 else { return nil }
+        if reps == 1 { return weight }
+        return weight * (1.0 + Double(reps) / 30.0)
+    }
+
+    /// Best estimated 1RM from a set of completed work sets
+    static func bestE1RM(from sets: [LoggedSet]) -> (e1rm: Double, weight: Double, reps: Int)? {
+        let candidates = sets.filter { $0.completed && $0.weight > 0 && $0.reps > 0 && $0.reps <= 15 }
+        var best: (e1rm: Double, weight: Double, reps: Int)?
+        for set in candidates {
+            if let e1rm = estimated1RM(weight: set.weight, reps: set.reps) {
+                if best == nil || e1rm > best!.e1rm {
+                    best = (e1rm, set.weight, set.reps)
+                }
+            }
+        }
+        return best
+    }
+
+    // MARK: - Achievement Detection
+
+    struct Achievement {
+        let title: String
+        let detail: String
+    }
+
+    /// Detect if the just-logged set represents a meaningful milestone
+    static func detectAchievement(
+        exercise: Exercise,
+        justLogged: LoggedSet,
+        previousBestSets: [LoggedSet]
+    ) -> Achievement? {
+        guard justLogged.weight > 0, justLogged.completed else { return nil }
+
+        let prevBestE1RM = bestE1RM(from: previousBestSets)
+
+        // Check new validated best weight (at or above rep minimum)
+        if justLogged.reps >= exercise.repTargetMin {
+            let prevValidated = previousBestSets
+                .filter { $0.completed && $0.reps >= exercise.repTargetMin && $0.weight > 0 }
+                .max(by: { $0.weight < $1.weight })
+
+            if let prev = prevValidated, justLogged.weight > prev.weight {
+                return Achievement(
+                    title: "Nouveau record",
+                    detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps) validé"
+                )
+            }
+
+            // First time at this weight with valid reps
+            if prevValidated == nil && justLogged.weight > 0 {
+                // Not a meaningful achievement if no history
+            }
+        }
+
+        // Check new e1RM PR
+        if let newE1RM = estimated1RM(weight: justLogged.weight, reps: justLogged.reps),
+           let oldBest = prevBestE1RM,
+           newE1RM > oldBest.e1rm * 1.02 { // >2% improvement
+            return Achievement(
+                title: "Nouveau 1RM estimé",
+                detail: "\(Int(newE1RM))kg (via \(justLogged.weight.cleanWeight)x\(justLogged.reps))"
+            )
+        }
+
+        // Check rep PR at same weight
+        let sameWeightSets = previousBestSets.filter { $0.weight == justLogged.weight && $0.completed }
+        if let bestReps = sameWeightSets.map(\.reps).max(),
+           justLogged.reps > bestReps,
+           justLogged.reps >= exercise.repTargetMin {
+            return Achievement(
+                title: "Record de reps",
+                detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps) (avant: x\(bestReps))"
+            )
+        }
+
+        return nil
+    }
 }

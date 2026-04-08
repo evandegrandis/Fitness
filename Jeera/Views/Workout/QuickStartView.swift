@@ -10,10 +10,22 @@ struct QuickStartView: View {
     ) private var recentSessions: [WorkoutSession]
     @Query(sort: \WorkoutTemplate.sortOrder) private var templates: [WorkoutTemplate]
     @Query private var goals: [MuscleGoal]
+    @Query private var settingsArray: [UserSettings]
+
+    @State private var showNewTemplate = false
+    @State private var newTemplateName = ""
+    @State private var templateToRename: WorkoutTemplate?
+    @State private var renameText = ""
+    @State private var templateToDelete: WorkoutTemplate?
+
+    private var settings: UserSettings? { settingsArray.first }
+
+    private var weekProgress: [MuscleGroupProgress] {
+        EffectiveSetsEngine.currentWeekProgress(sessions: recentSessions, goals: goals)
+    }
 
     private var muscleGaps: [(MuscleGroup, Double)] {
-        let progress = EffectiveSetsEngine.currentWeekProgress(sessions: recentSessions, goals: goals)
-        return progress
+        weekProgress
             .filter { $0.remaining > 1 && $0.goalSets > 0 }
             .sorted { $0.remaining > $1.remaining }
             .map { ($0.muscleGroup, $0.remaining) }
@@ -23,7 +35,6 @@ struct QuickStartView: View {
         guard !muscleGaps.isEmpty else { return templates.first }
         let topGaps = Set(muscleGaps.prefix(5).map(\.0))
 
-        // Score templates by how well they address current gaps
         return templates.max(by: { a, b in
             templateGapScore(a, gaps: topGaps) < templateGapScore(b, gaps: topGaps)
         })
@@ -37,16 +48,25 @@ struct QuickStartView: View {
         }
     }
 
+    private var greeting: String {
+        Date.frenchGreeting(for: settings?.userName ?? "Evan")
+    }
+
+    private var statusLine: String {
+        EffectiveSetsEngine.weeklyStatusLine(progress: weekProgress, sessions: recentSessions)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Header
+                // Header - personalized greeting
                 VStack(spacing: 4) {
-                    Text("Jeera")
-                        .font(.title.weight(.bold))
-                    Text(Date().relativeDay)
+                    Text(greeting)
+                        .font(.title2.weight(.bold))
+                    Text(statusLine)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.top, 12)
 
@@ -58,11 +78,10 @@ struct QuickStartView: View {
 
                 // Quick Actions
                 VStack(spacing: 10) {
-                    // Recommended template (if identified)
                     if let recommended = recommendedTemplate {
                         QuickStartButton(
                             title: recommended.name,
-                            subtitle: "Recommended - covers your biggest gaps",
+                            subtitle: "Recommandé — couvre tes plus gros déficits",
                             icon: "star.circle.fill",
                             color: .orange
                         ) {
@@ -71,8 +90,8 @@ struct QuickStartView: View {
                     }
 
                     QuickStartButton(
-                        title: "Empty Workout",
-                        subtitle: "Start from scratch",
+                        title: "Séance vide",
+                        subtitle: "Partir de zéro",
                         icon: "plus.circle.fill",
                         color: Color.accentColor
                     ) {
@@ -81,7 +100,7 @@ struct QuickStartView: View {
 
                     if !recentSessions.isEmpty {
                         QuickStartButton(
-                            title: "Repeat Last",
+                            title: "Répéter la dernière",
                             subtitle: lastWorkoutSubtitle,
                             icon: "arrow.counterclockwise.circle.fill",
                             color: .blue
@@ -93,16 +112,50 @@ struct QuickStartView: View {
                 .padding(.horizontal)
 
                 // Templates
-                if !templates.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
                         Text("Templates")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal)
+                        Spacer()
+                        Button {
+                            newTemplateName = ""
+                            showNewTemplate = true
+                        } label: {
+                            Image(systemName: "plus.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .padding(.horizontal)
 
-                        ForEach(templates) { template in
-                            TemplateRow(template: template) {
-                                viewModel.startFromTemplate(template)
+                    if templates.isEmpty {
+                        Text("Aucun template")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal)
+                    }
+
+                    ForEach(templates) { template in
+                        TemplateRow(template: template) {
+                            viewModel.startFromTemplate(template)
+                        }
+                        .contextMenu {
+                            Button {
+                                renameText = template.name
+                                templateToRename = template
+                            } label: {
+                                Label("Renommer", systemImage: "pencil")
+                            }
+                            Button {
+                                duplicateTemplate(template)
+                            } label: {
+                                Label("Dupliquer", systemImage: "doc.on.doc")
+                            }
+                            Button(role: .destructive) {
+                                templateToDelete = template
+                            } label: {
+                                Label("Supprimer", systemImage: "trash")
                             }
                         }
                         .padding(.horizontal)
@@ -112,7 +165,7 @@ struct QuickStartView: View {
                 // Recent Workouts
                 if !recentSessions.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Recent")
+                        Text("Récent")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal)
@@ -132,6 +185,59 @@ struct QuickStartView: View {
                 Spacer(minLength: 80)
             }
         }
+        .alert("Nouveau template", isPresented: $showNewTemplate) {
+            TextField("Nom", text: $newTemplateName)
+            Button("Créer") {
+                createEmptyTemplate(name: newTemplateName)
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+        .alert("Renommer", isPresented: Binding(
+            get: { templateToRename != nil },
+            set: { if !$0 { templateToRename = nil } }
+        )) {
+            TextField("Nom", text: $renameText)
+            Button("OK") {
+                templateToRename?.name = renameText
+                try? viewModel.modelContext?.save()
+                templateToRename = nil
+            }
+            Button("Annuler", role: .cancel) { templateToRename = nil }
+        }
+        .alert("Supprimer ce template ?", isPresented: Binding(
+            get: { templateToDelete != nil },
+            set: { if !$0 { templateToDelete = nil } }
+        )) {
+            Button("Supprimer", role: .destructive) {
+                if let t = templateToDelete {
+                    viewModel.modelContext?.delete(t)
+                    try? viewModel.modelContext?.save()
+                }
+                templateToDelete = nil
+            }
+            Button("Annuler", role: .cancel) { templateToDelete = nil }
+        }
+    }
+
+    // MARK: - Template CRUD
+
+    private func createEmptyTemplate(name: String) {
+        guard let context = viewModel.modelContext, !name.isEmpty else { return }
+        let template = WorkoutTemplate(name: name)
+        context.insert(template)
+        try? context.save()
+    }
+
+    private func duplicateTemplate(_ template: WorkoutTemplate) {
+        guard let context = viewModel.modelContext else { return }
+        let copy = WorkoutTemplate(name: "\(template.name) (copie)")
+        context.insert(copy)
+        for te in template.orderedExercises {
+            let newTE = TemplateExercise(orderIndex: te.orderIndex, exercise: te.exercise, targetSets: te.targetSets)
+            context.insert(newTE)
+            copy.templateExercises.append(newTE)
+        }
+        try? context.save()
     }
 
     // MARK: - Muscle Gap Section
@@ -140,12 +246,9 @@ struct QuickStartView: View {
         GlassCard(padding: 12, cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("This Week")
+                    Text("Cette semaine")
                         .font(.caption.weight(.semibold))
                     Spacer()
-                    Text(paceStatus)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(paceColor)
                 }
 
                 // Gap chips
@@ -173,34 +276,12 @@ struct QuickStartView: View {
         }
     }
 
-    private var paceStatus: String {
-        let dayOfWeek = Calendar.current.component(.weekday, from: Date())
-        let dayIndex = dayOfWeek == 1 ? 7 : dayOfWeek - 1 // Mon=1...Sun=7
-        let weekProgress = Double(dayIndex) / 7.0
-
-        let totalGoal = goals.reduce(0.0) { $0 + $1.weeklyGoalSets }
-        guard totalGoal > 0 else { return "No goals set" }
-
-        let totalAchieved = muscleGaps.isEmpty ? totalGoal : totalGoal - muscleGaps.reduce(0.0) { $0 + $1.1 }
-        let achievedPct = totalAchieved / totalGoal
-
-        if achievedPct >= weekProgress + 0.1 { return "Ahead of pace" }
-        if achievedPct >= weekProgress - 0.15 { return "On track" }
-        return "Behind pace"
-    }
-
-    private var paceColor: Color {
-        if paceStatus == "Ahead of pace" { return .green }
-        if paceStatus == "On track" { return .blue }
-        return .orange
-    }
-
     private var lastWorkoutSubtitle: String {
         guard let last = recentSessions.first else { return "" }
         let exercises = last.orderedExercises.compactMap { $0.exercise?.name }
         let preview = exercises.prefix(2).joined(separator: ", ")
         let more = exercises.count > 2 ? " +\(exercises.count - 2)" : ""
-        return "\(last.date.relativeDay) - \(preview)\(more)"
+        return "\(last.date.relativeDay) — \(preview)\(more)"
     }
 }
 

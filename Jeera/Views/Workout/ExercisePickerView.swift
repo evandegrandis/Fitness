@@ -33,11 +33,11 @@ struct ExercisePickerView: View {
 
     private var groupedExercises: [(String, [Exercise])] {
         let grouped = Dictionary(grouping: filteredExercises) { exercise -> String in
-            if exercise.isFavorite { return "Favorites" }
-            if exercise.lastUsed != nil { return "Recent" }
-            return exercise.category.isEmpty ? "Other" : exercise.category
+            if exercise.isFavorite { return "Favoris" }
+            if exercise.lastUsed != nil { return "Récent" }
+            return exercise.category.isEmpty ? "Autre" : exercise.category
         }
-        let order = ["Favorites", "Recent", "Push", "Pull", "Legs", "Core", "Arms", "Other"]
+        let order = ["Favoris", "Récent", "Push", "Pull", "Legs", "Core", "Arms", "Autre"]
         return order.compactMap { key in
             guard let exercises = grouped[key], !exercises.isEmpty else { return nil }
             return (key, exercises)
@@ -72,13 +72,13 @@ struct ExercisePickerView: View {
                     }
                     .padding(.top, 8)
                 }
-                .searchable(text: $searchText, prompt: "Search exercises")
+                .searchable(text: $searchText, prompt: "Rechercher")
             }
-            .navigationTitle("Add Exercise")
+            .navigationTitle("Ajouter un exercice")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Annuler") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -156,9 +156,9 @@ struct CreateExerciseView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Exercise") {
-                    TextField("Name", text: $name)
-                    Picker("Category", selection: $category) {
+                Section("Exercice") {
+                    TextField("Nom", text: $name)
+                    Picker("Catégorie", selection: $category) {
                         ForEach(categories, id: \.self) { Text($0) }
                     }
                     Picker("Pattern", selection: $setPatternMode) {
@@ -168,10 +168,10 @@ struct CreateExerciseView: View {
                     }
                 }
 
-                Section("Rep Target") {
-                    Stepper("Min: \(repMin)", value: $repMin, in: 1...50)
-                    Stepper("Max: \(repMax)", value: $repMax, in: 1...50)
-                    Stepper("Increment: \(increment.cleanWeight) kg", value: $increment, in: 0.5...10, step: 0.5)
+                Section("Reps") {
+                    Stepper("Min : \(repMin)", value: $repMin, in: 1...50)
+                    Stepper("Max : \(repMax)", value: $repMax, in: 1...50)
+                    Stepper("Incrément : \(increment.cleanWeight) kg", value: $increment, in: 0.5...10, step: 0.5)
                 }
 
                 Section("Muscles") {
@@ -180,10 +180,10 @@ struct CreateExerciseView: View {
                             Text(muscle.displayName)
                             Spacer()
                             Menu {
-                                Button("Primary (1.0)") { selectedMuscles[muscle] = 1.0 }
-                                Button("Strong Secondary (0.3)") { selectedMuscles[muscle] = 0.3 }
-                                Button("Light Secondary (0.1)") { selectedMuscles[muscle] = 0.1 }
-                                Button("None") { selectedMuscles.removeValue(forKey: muscle) }
+                                Button("Principal (1.0)") { selectedMuscles[muscle] = 1.0 }
+                                Button("Secondaire fort (0.3)") { selectedMuscles[muscle] = 0.3 }
+                                Button("Secondaire léger (0.1)") { selectedMuscles[muscle] = 0.1 }
+                                Button("Aucun") { selectedMuscles.removeValue(forKey: muscle) }
                             } label: {
                                 if let coeff = selectedMuscles[muscle] {
                                     Text("\(coeff, specifier: "%.1f")")
@@ -197,14 +197,14 @@ struct CreateExerciseView: View {
                     }
                 }
             }
-            .navigationTitle("New Exercise")
+            .navigationTitle("Nouvel exercice")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Annuler") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Create") {
+                    Button("Créer") {
                         createExercise()
                     }
                     .disabled(name.isEmpty)

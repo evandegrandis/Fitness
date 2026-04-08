@@ -14,6 +14,8 @@ final class Exercise {
     var createdByUser: Bool
     var sortOrder: Int
     var suggestedRestSeconds: Int
+    var machineSetting: String
+    var setupNotes: String
 
     @Relationship(deleteRule: .cascade) var muscleMappings: [MuscleMapping]
 
@@ -31,6 +33,8 @@ final class Exercise {
         createdByUser: Bool = false,
         sortOrder: Int = 0,
         suggestedRestSeconds: Int = 120,
+        machineSetting: String = "",
+        setupNotes: String = "",
         muscleMappings: [MuscleMapping] = []
     ) {
         self.id = id
@@ -44,6 +48,8 @@ final class Exercise {
         self.createdByUser = createdByUser
         self.sortOrder = sortOrder
         self.suggestedRestSeconds = suggestedRestSeconds
+        self.machineSetting = machineSetting
+        self.setupNotes = setupNotes
         self.muscleMappings = muscleMappings
     }
 

@@ -26,6 +26,8 @@ struct ExerciseData: Codable {
     let sortOrder: Int
     let suggestedRestSeconds: Int
     let lastUsed: Date?
+    let machineSetting: String?
+    let setupNotes: String?
     let muscleMappings: [MuscleMappingData]
 }
 
@@ -45,6 +47,8 @@ struct SettingsData: Codable {
     let defaultRestTimerSeconds: Int
     let defaultRepTargetMin: Int
     let defaultRepTargetMax: Int
+    let userName: String?
+    let supersetRestSeconds: Int?
 }
 
 struct SessionData: Codable {
@@ -119,6 +123,8 @@ struct DataExporter {
                     sortOrder: ex.sortOrder,
                     suggestedRestSeconds: ex.suggestedRestSeconds,
                     lastUsed: ex.lastUsed,
+                    machineSetting: ex.machineSetting,
+                    setupNotes: ex.setupNotes,
                     muscleMappings: ex.muscleMappings.map { m in
                         MuscleMappingData(muscleGroup: m.muscleGroup.rawValue, coefficient: m.coefficient)
                     }
@@ -133,7 +139,9 @@ struct DataExporter {
                     defaultSmallestIncrement: s.defaultSmallestIncrement,
                     defaultRestTimerSeconds: s.defaultRestTimerSeconds,
                     defaultRepTargetMin: s.defaultRepTargetMin,
-                    defaultRepTargetMax: s.defaultRepTargetMax
+                    defaultRepTargetMax: s.defaultRepTargetMax,
+                    userName: s.userName,
+                    supersetRestSeconds: s.supersetRestSeconds
                 )
             },
             sessions: sessions.map { session in
@@ -212,7 +220,9 @@ struct DataExporter {
                 isFavorite: exData.isFavorite,
                 createdByUser: exData.createdByUser,
                 sortOrder: exData.sortOrder,
-                suggestedRestSeconds: exData.suggestedRestSeconds
+                suggestedRestSeconds: exData.suggestedRestSeconds,
+                machineSetting: exData.machineSetting ?? "",
+                setupNotes: exData.setupNotes ?? ""
             )
             ex.lastUsed = exData.lastUsed
             context.insert(ex)
@@ -245,7 +255,9 @@ struct DataExporter {
                 defaultSmallestIncrement: sData.defaultSmallestIncrement,
                 defaultRestTimerSeconds: sData.defaultRestTimerSeconds,
                 defaultRepTargetMin: sData.defaultRepTargetMin,
-                defaultRepTargetMax: sData.defaultRepTargetMax
+                defaultRepTargetMax: sData.defaultRepTargetMax,
+                userName: sData.userName ?? "Evan",
+                supersetRestSeconds: sData.supersetRestSeconds ?? 180
             )
             context.insert(settings)
         } else {

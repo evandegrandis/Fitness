@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import Combine
 
 @Observable
 class WorkoutViewModel {
@@ -13,8 +14,41 @@ class WorkoutViewModel {
     var undoAction: (() -> Void)?
     var undoMessage: String?
     var showUndo = false
+    var currentAchievement: ProgressionEngine.Achievement?
+    var showAchievement = false
 
     var defaultRestSeconds: Int = 120
+    var supersetRestSeconds: Int = 180
+
+    // Live workout timer
+    var workoutElapsed: TimeInterval = 0
+    private var workoutTimer: AnyCancellable?
+
+    var workoutElapsedFormatted: String {
+        let mins = Int(workoutElapsed) / 60
+        let secs = Int(workoutElapsed) % 60
+        if mins < 60 {
+            return String(format: "%d:%02d", mins, secs)
+        }
+        return String(format: "%d:%02d:%02d", mins / 60, mins % 60, secs)
+    }
+
+    func startWorkoutTimer() {
+        guard let session = activeSession else { return }
+        workoutTimer?.cancel()
+        workoutTimer = Timer.publish(every: 1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.workoutElapsed = Date().timeIntervalSince(session.startTime)
+            }
+        workoutElapsed = Date().timeIntervalSince(session.startTime)
+    }
+
+    func stopWorkoutTimer() {
+        workoutTimer?.cancel()
+        workoutTimer = nil
+    }
 
     // MARK: - Session Management
 
@@ -25,6 +59,9 @@ class WorkoutViewModel {
             sortBy: [SortDescriptor(\.startTime, order: .reverse)]
         )
         activeSession = try? context.fetch(descriptor).first
+        if activeSession != nil {
+            startWorkoutTimer()
+        }
     }
 
     func startEmptyWorkout() {
@@ -33,6 +70,7 @@ class WorkoutViewModel {
         context.insert(session)
         try? context.save()
         activeSession = session
+        startWorkoutTimer()
         HapticManager.impact(.heavy)
     }
 
@@ -51,6 +89,7 @@ class WorkoutViewModel {
 
         try? context.save()
         activeSession = session
+        startWorkoutTimer()
         HapticManager.impact(.heavy)
     }
 
@@ -75,6 +114,7 @@ class WorkoutViewModel {
 
         try? context.save()
         activeSession = session
+        startWorkoutTimer()
         HapticManager.impact(.heavy)
     }
 
@@ -84,6 +124,7 @@ class WorkoutViewModel {
         session.endTime = Date()
         try? modelContext?.save()
         restTimer.reset()
+        stopWorkoutTimer()
         activeSession = nil
         HapticManager.notification(.success)
     }
@@ -93,6 +134,7 @@ class WorkoutViewModel {
         context.delete(session)
         try? context.save()
         restTimer.reset()
+        stopWorkoutTimer()
         activeSession = nil
     }
 
@@ -146,6 +188,20 @@ class WorkoutViewModel {
         HapticManager.selection()
     }
 
+    // MARK: - Duplicate Exercise
+
+    func duplicateExercise(_ loggedExercise: LoggedExercise) {
+        guard let session = activeSession, let context = modelContext,
+              let exercise = loggedExercise.exercise else { return }
+        let orderIndex = session.loggedExercises.count
+        let newLogged = LoggedExercise(orderIndex: orderIndex, exercise: exercise)
+        newLogged.session = session
+        context.insert(newLogged)
+        session.loggedExercises.append(newLogged)
+        try? context.save()
+        HapticManager.impact(.medium)
+    }
+
     // MARK: - Set Logging
 
     func logSet(for loggedExercise: LoggedExercise, weight: Double, reps: Int, setType: SetType = .work) {
@@ -163,14 +219,53 @@ class WorkoutViewModel {
 
         HapticManager.logSet()
 
-        // Use exercise-specific rest time
-        let restSeconds = loggedExercise.exercise?.suggestedRestSeconds ?? defaultRestSeconds
-        currentRestSuggested = restSeconds
-
-        // If this exercise is linked to next (superset), don't start rest timer
-        if !loggedExercise.isLinkedToNext {
-            restTimer.start(seconds: restSeconds)
+        // Achievement detection
+        if let exercise = loggedExercise.exercise {
+            let (previousSets, _) = fetchRecentSets(for: exercise, maxSessions: 3)
+            if let achievement = ProgressionEngine.detectAchievement(
+                exercise: exercise,
+                justLogged: set,
+                previousBestSets: previousSets
+            ) {
+                currentAchievement = achievement
+                showAchievement = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                    self?.showAchievement = false
+                }
+            }
         }
+
+        // Superset rest logic: if linked to next, don't start timer.
+        // If this is the last exercise in a superset chain, use supersetRestSeconds.
+        if loggedExercise.isLinkedToNext {
+            // In superset chain, skip rest
+        } else {
+            // Check if this exercise is the end of a superset block
+            let isEndOfSupersetBlock = isLastInSupersetBlock(loggedExercise)
+            if isEndOfSupersetBlock {
+                currentRestSuggested = supersetRestSeconds
+                restTimer.start(seconds: supersetRestSeconds)
+            } else {
+                let restSeconds = loggedExercise.exercise?.suggestedRestSeconds ?? defaultRestSeconds
+                currentRestSuggested = restSeconds
+                restTimer.start(seconds: restSeconds)
+            }
+        }
+    }
+
+    /// Check if this exercise is the last in a superset block (i.e., a previous exercise links to it)
+    private func isLastInSupersetBlock(_ loggedExercise: LoggedExercise) -> Bool {
+        guard let session = activeSession else { return false }
+        let exercises = session.orderedExercises
+        guard let index = exercises.firstIndex(where: { $0.id == loggedExercise.id }), index > 0 else { return false }
+        return exercises[index - 1].isLinkedToNext
+    }
+
+    func editSet(_ set: LoggedSet, weight: Double, reps: Int) {
+        set.weight = weight
+        set.reps = reps
+        try? modelContext?.save()
+        HapticManager.selection()
     }
 
     func deleteSet(_ set: LoggedSet, from loggedExercise: LoggedExercise) {

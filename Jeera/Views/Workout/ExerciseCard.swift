@@ -13,6 +13,9 @@ struct ExerciseCard: View {
     @State private var weightText = ""
     @State private var repsText = ""
     @State private var editingSet: LoggedSet?
+    @State private var showEditSetAlert = false
+    @State private var editSetWeight = ""
+    @State private var editSetReps = ""
 
     private var exercise: Exercise? { loggedExercise.exercise }
 
@@ -85,17 +88,22 @@ struct ExerciseCard: View {
                 viewModel.toggleSuperset(loggedExercise)
             } label: {
                 Label(
-                    loggedExercise.isLinkedToNext ? "Unlink Superset" : "Link as Superset",
+                    loggedExercise.isLinkedToNext ? "Délier superset" : "Lier en superset",
                     systemImage: loggedExercise.isLinkedToNext ? "link.badge.plus" : "link"
                 )
+            }
+            Button {
+                viewModel.duplicateExercise(loggedExercise)
+            } label: {
+                Label("Dupliquer", systemImage: "doc.on.doc")
             }
             Button(role: .destructive) {
                 withAnimation { viewModel.removeExercise(loggedExercise) }
             } label: {
-                Label("Remove Exercise", systemImage: "trash")
+                Label("Supprimer", systemImage: "trash")
             }
         }
-        .alert("Weight (kg)", isPresented: $showWeightEntry) {
+        .alert("Poids (kg)", isPresented: $showWeightEntry) {
             TextField("0", text: $weightText)
                 .keyboardType(.decimalPad)
             Button("OK") {
@@ -103,7 +111,7 @@ struct ExerciseCard: View {
                     editWeight = val
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Annuler", role: .cancel) {}
         }
         .alert("Reps", isPresented: $showRepsEntry) {
             TextField("0", text: $repsText)
@@ -113,7 +121,22 @@ struct ExerciseCard: View {
                     editReps = max(1, val)
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Annuler", role: .cancel) {}
+        }
+        .alert("Modifier le set", isPresented: $showEditSetAlert) {
+            TextField("Poids", text: $editSetWeight)
+                .keyboardType(.decimalPad)
+            TextField("Reps", text: $editSetReps)
+                .keyboardType(.numberPad)
+            Button("OK") {
+                if let set = editingSet,
+                   let w = Double(editSetWeight.replacingOccurrences(of: ",", with: ".")),
+                   let r = Int(editSetReps) {
+                    viewModel.editSet(set, weight: w, reps: max(1, r))
+                }
+                editingSet = nil
+            }
+            Button("Annuler", role: .cancel) { editingSet = nil }
         }
     }
 
@@ -141,6 +164,11 @@ struct ExerciseCard: View {
                         Text(ex.repTargetDisplay + "r")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                        if !ex.machineSetting.isEmpty {
+                            Text(ex.machineSetting)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
             }
@@ -168,10 +196,11 @@ struct ExerciseCard: View {
         VStack(spacing: 0) {
             ForEach(loggedExercise.orderedSets) { set in
                 CompactSetRow(set: set) {
-                    // Tap to edit
+                    // Tap to edit logged set
                     editingSet = set
-                    editWeight = set.weight
-                    editReps = set.reps
+                    editSetWeight = set.weight > 0 ? set.weight.cleanWeight : "0"
+                    editSetReps = "\(set.reps)"
+                    showEditSetAlert = true
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
@@ -179,7 +208,7 @@ struct ExerciseCard: View {
                             viewModel.deleteSet(set, from: loggedExercise)
                         }
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label("Supprimer", systemImage: "trash")
                     }
                 }
             }
@@ -273,10 +302,10 @@ struct ExerciseCard: View {
 
                 Spacer()
 
-                // LOG button
+                // LOG button (passes setType from suggestion)
                 Button {
                     withAnimation(.spring(response: 0.3)) {
-                        viewModel.logSet(for: loggedExercise, weight: editWeight, reps: editReps)
+                        viewModel.logSet(for: loggedExercise, weight: editWeight, reps: editReps, setType: suggestion.setType)
                     }
                 } label: {
                     Text("LOG")
@@ -289,7 +318,7 @@ struct ExerciseCard: View {
                 .buttonStyle(.plain)
             }
 
-            // Quick actions row (compact)
+            // Quick actions row
             HStack(spacing: 6) {
                 if let lastSet = loggedExercise.lastCompletedSet {
                     Button {
@@ -320,7 +349,7 @@ struct ExerciseCard: View {
                     HStack(spacing: 2) {
                         Image(systemName: "sparkles")
                             .font(.system(size: 8))
-                        Text("Suggested")
+                        Text("Suggéré")
                             .font(.caption2.weight(.medium))
                     }
                     .foregroundStyle(.secondary)
@@ -331,16 +360,25 @@ struct ExerciseCard: View {
                 .buttonStyle(.plain)
 
                 Spacer()
+            }
 
-                // Live impact (inline, super compact)
-                if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
-                    let impact = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
-                    let top = impact.sorted(by: { $0.value > $1.value }).prefix(2)
-                    HStack(spacing: 4) {
-                        ForEach(Array(top), id: \.key) { muscle, sets in
-                            Text("\(muscle.displayName) +\(sets, specifier: "%.1f")")
-                                .font(.system(size: 9).weight(.medium).monospacedDigit())
-                                .foregroundStyle(.tertiary)
+            // Scrollable muscle impact strip (all muscles)
+            if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
+                let impact = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
+                let sorted = impact.sorted(by: { $0.value > $1.value })
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(sorted, id: \.key) { muscle, sets in
+                            HStack(spacing: 2) {
+                                Text(muscle.displayName)
+                                    .font(.system(size: 9).weight(.medium))
+                                Text("+\(sets, specifier: "%.1f")")
+                                    .font(.system(size: 9).weight(.bold).monospacedDigit())
+                                    .foregroundStyle(sets >= 1 ? Color.accentColor : .tertiary)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.white.opacity(0.04), in: Capsule())
                         }
                     }
                 }

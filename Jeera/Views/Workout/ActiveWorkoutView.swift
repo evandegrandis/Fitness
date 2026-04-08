@@ -11,9 +11,13 @@ struct ActiveWorkoutView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(spacing: 12) {
-                    // Workout Header (compact)
-                    WorkoutHeaderView(session: viewModel.activeSession)
-                        .padding(.horizontal)
+                    // Workout Header with live timer
+                    WorkoutHeaderView(
+                        session: viewModel.activeSession,
+                        elapsedFormatted: viewModel.workoutElapsedFormatted,
+                        totalSets: viewModel.activeSession?.totalWorkSets ?? 0
+                    )
+                    .padding(.horizontal)
 
                     // Muscle deficit banner (what you still need this week)
                     if let session = viewModel.activeSession {
@@ -96,15 +100,23 @@ struct ActiveWorkoutView: View {
                 .padding(.bottom, viewModel.restTimer.isRunning ? 80 : 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            // Achievement overlay
+            if viewModel.showAchievement, let achievement = viewModel.currentAchievement {
+                AchievementOverlayView(achievement: achievement)
+                    .transition(.scale.combined(with: .opacity))
+                    .zIndex(100)
+            }
         }
         .animation(.spring(response: 0.3), value: viewModel.restTimer.isRunning)
         .animation(.spring(response: 0.3), value: viewModel.showUndo)
+        .animation(.spring(response: 0.4), value: viewModel.showAchievement)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showFinishAlert = true
                 } label: {
-                    Text("Finish")
+                    Text("Terminer")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.green)
                 }
@@ -115,17 +127,17 @@ struct ActiveWorkoutView: View {
                 viewModel.addExercise(exercise)
             }
         }
-        .alert("Finish Workout?", isPresented: $showFinishAlert) {
-            Button("Finish", role: .none) {
+        .alert("Terminer la séance ?", isPresented: $showFinishAlert) {
+            Button("Terminer", role: .none) {
                 viewModel.finishWorkout()
             }
-            Button("Discard", role: .destructive) {
+            Button("Supprimer", role: .destructive) {
                 viewModel.discardWorkout()
             }
-            Button("Cancel", role: .cancel) { }
+            Button("Annuler", role: .cancel) { }
         } message: {
             if let session = viewModel.activeSession {
-                Text("\(session.totalWorkSets) sets logged \u{2022} \(session.durationFormatted)")
+                Text("\(session.totalWorkSets) sets \u{2022} \(viewModel.workoutElapsedFormatted)")
             }
         }
     }
@@ -165,24 +177,24 @@ struct ExerciseDropDelegate: DropDelegate {
     }
 }
 
-// MARK: - Workout Header (compact)
+// MARK: - Workout Header (compact, live timer)
 
 struct WorkoutHeaderView: View {
     let session: WorkoutSession?
+    var elapsedFormatted: String = "--"
+    var totalSets: Int = 0
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Workout")
+                Text("Séance")
                     .font(.title3.weight(.bold))
-                if let session {
-                    HStack(spacing: 10) {
-                        Label(session.durationFormatted, systemImage: "clock")
-                        Label("\(session.totalWorkSets) sets", systemImage: "checkmark.circle")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Label(elapsedFormatted, systemImage: "clock")
+                    Label("\(totalSets) sets", systemImage: "checkmark.circle")
                 }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
             Spacer()
         }
@@ -226,7 +238,7 @@ struct WeeklyGapBanner: View {
 
                 Spacer()
 
-                Text("left this week")
+                Text("restant")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

@@ -18,10 +18,10 @@ struct HistoryTabView: View {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.largeTitle)
                             .foregroundStyle(.tertiary)
-                        Text("No workouts yet")
+                        Text("Pas encore de séance")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("Your completed workouts will appear here.")
+                        Text("Tes séances terminées apparaîtront ici.")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
@@ -43,7 +43,7 @@ struct HistoryTabView: View {
                     }
                 }
             }
-            .navigationTitle("History")
+            .navigationTitle("Historique")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -75,7 +75,7 @@ struct HistoryRow: View {
                 HStack(spacing: 10) {
                     Label("\(session.totalWorkSets) sets", systemImage: "checkmark.circle")
                     Label(session.durationFormatted, systemImage: "clock")
-                    Label("\(session.orderedExercises.count) exercises", systemImage: "dumbbell")
+                    Label("\(session.orderedExercises.count) exos", systemImage: "dumbbell")
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)

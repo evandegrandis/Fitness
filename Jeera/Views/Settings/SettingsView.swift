@@ -38,9 +38,9 @@ struct SettingsView: View {
                             Image(systemName: "square.and.arrow.up")
                                 .foregroundStyle(.blue)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Export Backup")
+                                Text("Exporter")
                                     .foregroundStyle(.primary)
-                                Text("Save all data to Files")
+                                Text("Sauvegarder dans Fichiers")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -54,25 +54,35 @@ struct SettingsView: View {
                             Image(systemName: "square.and.arrow.down")
                                 .foregroundStyle(.green)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Import Backup")
+                                Text("Importer")
                                     .foregroundStyle(.primary)
-                                Text("Restore from a backup file")
+                                Text("Restaurer depuis un backup")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
                 } header: {
-                    Text("Backup & Restore")
+                    Text("Sauvegarde")
                 } footer: {
-                    Text("Export before reinstalling the app. Your data will be erased when the free certificate expires (7 days).")
+                    Text("Exporte avant de réinstaller l'app. Les données sont effacées quand le certificat gratuit expire (7 jours).")
                 }
 
-                Section("Units") {
-                    Toggle("Use Kilograms", isOn: Bindable(settings).usesKilograms)
+                Section("Profil") {
+                    HStack {
+                        Text("Prénom")
+                        Spacer()
+                        TextField("Nom", text: Bindable(settings).userName)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Unités") {
+                    Toggle("Kilogrammes", isOn: Bindable(settings).usesKilograms)
 
                     HStack {
-                        Text("Default Increment")
+                        Text("Incrément par défaut")
                         Spacer()
                         Text("\(settings.defaultSmallestIncrement.cleanWeight) \(settings.unitLabel)")
                             .foregroundStyle(.secondary)
@@ -81,39 +91,43 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Rest Timer") {
-                    Stepper("Default: \(settings.defaultRestTimerSeconds)s",
+                Section("Repos") {
+                    Stepper("Par défaut : \(settings.defaultRestTimerSeconds)s",
                             value: Bindable(settings).defaultRestTimerSeconds,
                             in: 30...600,
                             step: 15)
+                    Stepper("Superset : \(settings.supersetRestSeconds)s",
+                            value: Bindable(settings).supersetRestSeconds,
+                            in: 60...600,
+                            step: 15)
                 }
 
-                Section("Default Rep Target") {
-                    Stepper("Min: \(settings.defaultRepTargetMin)",
+                Section("Reps par défaut") {
+                    Stepper("Min : \(settings.defaultRepTargetMin)",
                             value: Bindable(settings).defaultRepTargetMin,
                             in: 1...50)
-                    Stepper("Max: \(settings.defaultRepTargetMax)",
+                    Stepper("Max : \(settings.defaultRepTargetMax)",
                             value: Bindable(settings).defaultRepTargetMax,
                             in: 1...50)
                 }
 
-                Section("Weekly Set Goals") {
+                Section("Objectifs hebdo (sets)") {
                     ForEach(MuscleGroup.allCases) { muscle in
                         MuscleGoalRow(muscle: muscle, goals: goals, modelContext: modelContext)
                     }
                 }
 
-                Section("Exercises") {
-                    NavigationLink("Manage Exercises (\(exercises.count))") {
+                Section("Exercices") {
+                    NavigationLink("Gérer les exercices (\(exercises.count))") {
                         ExerciseManagementView()
                     }
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle("Réglages")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
+                    Button("OK") {
                         try? modelContext.save()
                         dismiss()
                     }
@@ -131,13 +145,13 @@ struct SettingsView: View {
             ) { result in
                 handleImportFile(result)
             }
-            .alert("Import Backup?", isPresented: $showImportConfirm) {
-                Button("Import", role: .destructive) {
+            .alert("Importer le backup ?", isPresented: $showImportConfirm) {
+                Button("Importer", role: .destructive) {
                     performImport()
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("Annuler", role: .cancel) {}
             } message: {
-                Text("This will replace ALL current data with the backup. This cannot be undone.")
+                Text("Toutes les données actuelles seront remplacées. Cette action est irréversible.")
             }
             .alert(alertMessage, isPresented: $showAlert) {
                 Button("OK") {}
@@ -191,7 +205,7 @@ struct SettingsView: View {
         guard let data = importData else { return }
         do {
             try DataExporter.importAll(data: data, context: modelContext)
-            alertMessage = "Backup restored successfully!"
+            alertMessage = "Backup restauré avec succès !"
             showAlert = true
         } catch {
             alertMessage = "Import failed: \(error.localizedDescription)"
@@ -298,7 +312,7 @@ struct ExerciseManagementView: View {
                 try? modelContext.save()
             }
         }
-        .navigationTitle("Exercises")
+        .navigationTitle("Exercices")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -309,9 +323,9 @@ struct ExerciseDetailView: View {
 
     var body: some View {
         Form {
-            Section("Details") {
-                TextField("Name", text: $exercise.name)
-                Toggle("Favorite", isOn: $exercise.isFavorite)
+            Section("Détails") {
+                TextField("Nom", text: $exercise.name)
+                Toggle("Favori", isOn: $exercise.isFavorite)
                 Picker("Pattern", selection: $exercise.setPatternMode) {
                     ForEach(SetPatternMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -319,19 +333,24 @@ struct ExerciseDetailView: View {
                 }
             }
 
-            Section("Rep Target") {
-                Stepper("Min: \(exercise.repTargetMin)", value: $exercise.repTargetMin, in: 1...50)
-                Stepper("Max: \(exercise.repTargetMax)", value: $exercise.repTargetMax, in: 1...50)
-                Stepper("Increment: \(exercise.smallestIncrement.cleanWeight)",
+            Section("Machine") {
+                TextField("Réglage (ex: r4-5)", text: $exercise.machineSetting)
+                TextField("Notes setup", text: $exercise.setupNotes)
+            }
+
+            Section("Reps") {
+                Stepper("Min : \(exercise.repTargetMin)", value: $exercise.repTargetMin, in: 1...50)
+                Stepper("Max : \(exercise.repTargetMax)", value: $exercise.repTargetMax, in: 1...50)
+                Stepper("Incrément : \(exercise.smallestIncrement.cleanWeight)",
                         value: $exercise.smallestIncrement, in: 0.5...20, step: 0.5)
             }
 
-            Section("Rest Timer") {
-                Stepper("Rest: \(exercise.suggestedRestSeconds)s",
+            Section("Repos") {
+                Stepper("Repos : \(exercise.suggestedRestSeconds)s",
                         value: $exercise.suggestedRestSeconds, in: 30...600, step: 15)
             }
 
-            Section("Muscle Mappings") {
+            Section("Muscles") {
                 ForEach(exercise.muscleMappings) { mapping in
                     HStack {
                         Text(mapping.muscleGroup.displayName)
@@ -341,7 +360,7 @@ struct ExerciseDetailView: View {
                     }
                 }
 
-                Button("Add Muscle") {
+                Button("Ajouter un muscle") {
                     let mapping = MuscleMapping(muscleGroup: .chest, coefficient: 0.3)
                     mapping.exercise = exercise
                     modelContext.insert(mapping)

@@ -66,10 +66,10 @@ struct MuscleProgressView: View {
                         Image(systemName: "chart.bar.doc.horizontal")
                             .font(.largeTitle)
                             .foregroundStyle(.tertiary)
-                        Text("No data yet")
+                        Text("Pas encore de données")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("Complete workouts to see progress.")
+                        Text("Fais des séances pour voir ta progression.")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
@@ -94,62 +94,43 @@ struct WeekHeaderView: View {
 
         HStack {
             VStack(alignment: .leading, spacing: 1) {
-                Text("This Week")
+                Text("Cette semaine")
                     .font(.subheadline.weight(.semibold))
-                Text("\(weekStart.shortDate) - \(weekEnd.shortDate)")
+                Text("\(weekStart.shortDate) — \(weekEnd.shortDate)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text("Day \(Int(pace * 7))/7")
+            Text("Jour \(Int(pace * 7))/7")
                 .font(.caption2.weight(.medium).monospacedDigit())
                 .foregroundStyle(.tertiary)
         }
     }
 }
 
-// MARK: - Muscle Group Card (with pacing)
+// MARK: - Muscle Group Card (with smart pacing from engine)
 
 struct MuscleGroupCard: View {
     let progress: MuscleGroupProgress
     var weekPace: Double = 0
     var isSelected: Bool = false
 
-    private enum PaceStatus {
-        case complete, aheadOfPace, onTrack, slightlyBehind, behind
-    }
-
-    private var paceStatus: PaceStatus {
-        guard progress.goalSets > 0 else { return .onTrack }
-        if progress.effectiveSets >= progress.goalSets { return .complete }
-
-        let expectedPct = weekPace * 100
-        let actualPct = progress.percentage
-
-        if actualPct >= expectedPct + 15 { return .aheadOfPace }
-        if actualPct >= expectedPct - 15 { return .onTrack }
-        if actualPct >= expectedPct - 35 { return .slightlyBehind }
-        return .behind
+    private var pace: PaceStatus {
+        EffectiveSetsEngine.paceStatus(for: progress)
     }
 
     private var statusColor: Color {
-        switch paceStatus {
-        case .complete: return .green
-        case .aheadOfPace: return .green
-        case .onTrack: return .blue
-        case .slightlyBehind: return .orange
-        case .behind: return .red
+        switch pace.color {
+        case "green": return .green
+        case "blue": return .blue
+        case "orange": return .orange
+        case "red": return .red
+        default: return .secondary
         }
     }
 
     private var statusText: String {
-        switch paceStatus {
-        case .complete: return "Done"
-        case .aheadOfPace: return "Ahead"
-        case .onTrack: return "On track"
-        case .slightlyBehind: return "Slightly behind"
-        case .behind: return "Behind"
-        }
+        pace.frenchLabel
     }
 
     var body: some View {
@@ -239,7 +220,7 @@ struct MuscleHistoryChart: View {
         GlassCard(padding: 12, cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Weekly History")
+                    Text("Historique")
                         .font(.caption.weight(.semibold))
                     Spacer()
                     Button {
@@ -255,7 +236,7 @@ struct MuscleHistoryChart: View {
                 }
 
                 if historyData.isEmpty {
-                    Text("No history yet")
+                    Text("Pas encore d'historique")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(height: 100)

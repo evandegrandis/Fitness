@@ -46,7 +46,7 @@ struct ExerciseProgressView: View {
                         Image(systemName: "dumbbell")
                             .font(.largeTitle)
                             .foregroundStyle(.tertiary)
-                        Text("No exercise history yet")
+                        Text("Pas encore d'historique")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -101,6 +101,16 @@ struct ExerciseProgressRow: View {
         history.max(by: { $0.validatedWeight < $1.validatedWeight })
     }
 
+    // Best e1RM across all history
+    private var bestEstimated1RM: Double? {
+        let allSets = sessions.flatMap { session in
+            session.loggedExercises
+                .filter { $0.exercise?.id == exercise.id }
+                .flatMap { $0.completedWorkSets }
+        }
+        return ProgressionEngine.bestE1RM(from: allSets)?.e1rm
+    }
+
     // Trend: compare last 2 sessions
     private var trend: Trend {
         guard history.count >= 2 else { return .neutral }
@@ -130,6 +140,12 @@ struct ExerciseProgressRow: View {
                                 Text("Best: BWx\(best.validatedReps)")
                                     .font(.caption2.weight(.medium).monospacedDigit())
                                     .foregroundStyle(Color.accentColor)
+                            }
+
+                            if let e1rm = bestEstimated1RM, exercise.setPatternMode != .bodyweight {
+                                Text("e1RM \(Int(e1rm))kg")
+                                    .font(.caption2.weight(.medium).monospacedDigit())
+                                    .foregroundStyle(.orange)
                             }
 
                             trendBadge

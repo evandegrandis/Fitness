@@ -13,7 +13,7 @@ struct ProgressTabView: View {
                     // Segmented Picker
                     Picker("Layer", selection: $selectedLayer) {
                         Text("Muscles").tag(0)
-                        Text("Exercises").tag(1)
+                        Text("Exercices").tag(1)
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
@@ -29,7 +29,7 @@ struct ProgressTabView: View {
                     .tabViewStyle(.page(indexDisplayMode: .never))
                 }
             }
-            .navigationTitle("Progress")
+            .navigationTitle("Progrès")
             .navigationBarTitleDisplayMode(.inline)
         }
     }

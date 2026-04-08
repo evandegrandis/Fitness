@@ -28,6 +28,8 @@ struct SeedData {
             increment: Double = 2.5,
             rest: Int = 120,
             favorite: Bool = false,
+            machine: String = "",
+            notes: String = "",
             muscles: [(MuscleGroup, Double)]
         ) {
             let ex = Exercise(
@@ -38,7 +40,9 @@ struct SeedData {
                 repTargetMax: repMax,
                 smallestIncrement: increment,
                 isFavorite: favorite,
-                suggestedRestSeconds: rest
+                suggestedRestSeconds: rest,
+                machineSetting: machine,
+                setupNotes: notes
             )
             context.insert(ex)
             for (muscle, coeff) in muscles {
@@ -50,85 +54,111 @@ struct SeedData {
             map[name] = ex
         }
 
-        // Pull
+        // ========== PULL ==========
         make("Tractions SN", category: "Pull", mode: .ramping, repMin: 5, repMax: 12, increment: 2.5, rest: 180, favorite: true,
              muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.3), (.forearms, 0.1)])
+
+        make("Traction pronation large", category: "Pull", mode: .bodyweight, repMin: 5, repMax: 12, rest: 180,
+             muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.3)])
 
         make("Pulley serré", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
              muscles: [(.lats, 1.0), (.biceps, 0.3), (.forearms, 0.1)])
 
-        make("Pulley large", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
-             muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.1)])
+        make("Tirage horizontal large", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
+             machine: "r7-6",
+             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
+
+        make("Isolateral row", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
+             machine: "r5",
+             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
 
         make("Row uni", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
              muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
 
-        // Push
-        make("Chest Press", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+        make("Tirage vertical muscle up", category: "Pull", mode: .ramping, repMin: 6, repMax: 12, increment: 5, rest: 120,
+             muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.1)])
+
+        // ========== PUSH - CHEST ==========
+        make("DC assisté", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
              muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
 
-        make("DC assisté", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+        make("Chest Press", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
              muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
 
         make("Seated Pec", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180,
              muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
 
+        make("Développé incliné haltères", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 2, rest: 180,
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+
+        make("Pec Deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
+             machine: "r4",
+             muscles: [(.chest, 1.0), (.shoulders, 0.1)])
+
+        // ========== PUSH - SHOULDERS ==========
         make("Shoulder Press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
              muscles: [(.shoulders, 1.0), (.triceps, 0.3)])
 
         make("HSPU", category: "Push", mode: .bodyweight, repMin: 5, repMax: 12, rest: 120,
              muscles: [(.shoulders, 1.0), (.triceps, 0.3)])
 
-        make("Pec Deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
-             muscles: [(.chest, 1.0), (.shoulders, 0.1)])
+        make("Élévations latérales", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 90,
+             muscles: [(.shoulders, 1.0)])
 
-        make("Machine Dips", category: "Push", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 90,
-             muscles: [(.chest, 0.3), (.triceps, 1.0), (.shoulders, 0.1)])
+        // ========== PUSH - TRICEPS ==========
+        make("Dips machine", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
+             muscles: [(.triceps, 1.0), (.chest, 0.3), (.shoulders, 0.1)])
 
-        make("Triceps Extension", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90,
+        make("Extension triceps poulie", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90,
+             machine: "r16",
              muscles: [(.triceps, 1.0)])
 
-        // Arms
+        make("Extension triceps haltère", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2, rest: 90,
+             muscles: [(.triceps, 1.0)])
+
+        // ========== ARMS ==========
         make("Curl debout", category: "Arms", mode: .ramping, repMin: 6, repMax: 10, increment: 1, rest: 90, favorite: true,
              muscles: [(.biceps, 1.0), (.forearms, 0.3)])
 
         make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1, rest: 90,
              muscles: [(.biceps, 1.0), (.forearms, 0.1)])
 
-        make("Élévations latérales", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 90,
-             muscles: [(.shoulders, 1.0)])
+        make("Curl marteau poulie", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 90,
+             muscles: [(.biceps, 1.0), (.forearms, 0.3)])
 
         make("Wrist Curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1, rest: 60,
              muscles: [(.forearms, 1.0)])
 
-        // Legs
+        // ========== LEGS ==========
         make("Leg Extension", category: "Legs", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 120, favorite: true,
+             machine: "r3-5",
              muscles: [(.quads, 1.0)])
 
         make("Leg Curl", category: "Legs", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 120,
+             machine: "r4-5",
              muscles: [(.hamstrings, 1.0)])
 
-        // Core
+        // ========== CORE ==========
         make("Crunch déclinés", category: "Core", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90, favorite: true,
              muscles: [(.abs, 1.0)])
+
+        make("Relevé de jambes chaise romaine", category: "Core", mode: .bodyweight, repMin: 8, repMax: 15, rest: 90,
+             muscles: [(.abs, 1.0), (.obliques, 0.3)])
 
         return map
     }
 
-    // MARK: - Goals (user's actual goals)
+    // MARK: - Goals
 
     static func createGoals(context: ModelContext) {
         let goals: [(MuscleGroup, Double)] = [
-            // 18 sets/week
             (.shoulders, 18),
             (.biceps, 18),
             (.chest, 18),
             (.abs, 18),
-            // 15 sets/week
             (.triceps, 15),
             (.upperback, 15),
             (.lats, 15),
-            // 9 sets/week
             (.quads, 9),
             (.hamstrings, 9),
             (.obliques, 9),
@@ -141,7 +171,7 @@ struct SeedData {
         }
     }
 
-    // MARK: - Templates (matching user's actual workout patterns)
+    // MARK: - Templates
 
     static func createTemplates(context: ModelContext, exercises: [String: Exercise]) {
         func template(_ name: String, _ names: [String]) {
@@ -156,26 +186,15 @@ struct SeedData {
             }
         }
 
-        template("Full Body A", [
+        template("Full Body", [
             "Tractions SN",
             "Crunch déclinés",
             "HSPU",
-            "Chest Press",
+            "DC assisté",
             "Leg Extension",
             "Shoulder Press",
             "Curl debout",
             "Pec Deck",
-            "Pulley serré"
-        ])
-
-        template("Full Body B", [
-            "Tractions SN",
-            "Crunch déclinés",
-            "DC assisté",
-            "Shoulder Press",
-            "Leg Extension",
-            "Curl incliné",
-            "Élévations latérales",
             "Pulley serré"
         ])
     }
@@ -260,7 +279,7 @@ struct SeedData {
             ("Leg Extension",        [(85, 10), (100, 10), (100, 8)]),
             ("Chest Press",          [(100, 10), (120, 8), (100, 6)]),
             ("Pulley serré",         [(45, 8), (45, 7)]),
-            ("Pulley large",         [(45, 6)]),
+            ("Tirage horizontal large", [(45, 6)]),
             ("Curl debout",          [(20, 6), (18, 5)]),
         ])
 

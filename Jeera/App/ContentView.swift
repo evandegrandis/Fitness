@@ -11,19 +11,19 @@ struct ContentView: View {
         TabView(selection: $selectedTab) {
             WorkoutTabView(viewModel: workoutVM)
                 .tabItem {
-                    Label("Workout", systemImage: "figure.strengthtraining.traditional")
+                    Label("Séance", systemImage: "figure.strengthtraining.traditional")
                 }
                 .tag(0)
 
             ProgressTabView()
                 .tabItem {
-                    Label("Progress", systemImage: "chart.bar.fill")
+                    Label("Progrès", systemImage: "chart.bar.fill")
                 }
                 .tag(1)
 
             HistoryTabView()
                 .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
+                    Label("Historique", systemImage: "clock.arrow.circlepath")
                 }
                 .tag(2)
         }
@@ -33,10 +33,11 @@ struct ContentView: View {
             workoutVM.loadActiveSession()
             seedIfNeeded()
 
-            // Load rest timer default
+            // Load settings defaults
             let descriptor = FetchDescriptor<UserSettings>()
             if let settings = try? modelContext.fetch(descriptor).first {
                 workoutVM.defaultRestSeconds = settings.defaultRestTimerSeconds
+                workoutVM.supersetRestSeconds = settings.supersetRestSeconds
             }
         }
     }
