@@ -8,6 +8,11 @@ struct ExerciseCard: View {
     @State private var editWeight: Double = 0
     @State private var editReps: Int = 0
     @State private var hasLoadedSuggestion = false
+    @State private var showWeightEntry = false
+    @State private var showRepsEntry = false
+    @State private var weightText = ""
+    @State private var repsText = ""
+    @State private var editingSet: LoggedSet?
 
     private var exercise: Exercise? { loggedExercise.exercise }
 
@@ -17,13 +22,13 @@ struct ExerciseCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GlassCard(padding: 0, cornerRadius: 20) {
+            GlassCard(padding: 0, cornerRadius: 18) {
                 VStack(spacing: 0) {
-                    // Header
+                    // Header (compact)
                     cardHeader
-                        .padding(.horizontal, 16)
-                        .padding(.top, 14)
-                        .padding(.bottom, isExpanded ? 8 : 14)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 12)
+                        .padding(.bottom, isExpanded ? 6 : 12)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -33,24 +38,17 @@ struct ExerciseCard: View {
                         }
 
                     if isExpanded {
-                        Divider().background(.white.opacity(0.1))
+                        Divider().background(.white.opacity(0.08))
 
-                        // Logged sets with swipe-to-delete
+                        // Logged sets (compact rows)
                         if !loggedExercise.orderedSets.isEmpty {
                             setsSection
                         }
 
                         // Inline editing area
                         inlineEditSection
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-
-                        // Live muscle impact (compact)
-                        if !loggedExercise.completedWorkSets.isEmpty {
-                            liveImpactSection
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 12)
-                        }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
                     }
                 }
             }
@@ -60,13 +58,13 @@ struct ExerciseCard: View {
                 HStack {
                     Rectangle()
                         .fill(Color.accentColor.opacity(0.4))
-                        .frame(width: 2, height: 20)
+                        .frame(width: 2, height: 16)
                     Text("superset")
                         .font(.caption2)
                         .foregroundStyle(Color.accentColor.opacity(0.6))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 32)
+                .padding(.leading, 30)
             }
         }
         .onAppear {
@@ -97,16 +95,36 @@ struct ExerciseCard: View {
                 Label("Remove Exercise", systemImage: "trash")
             }
         }
+        .alert("Weight (kg)", isPresented: $showWeightEntry) {
+            TextField("0", text: $weightText)
+                .keyboardType(.decimalPad)
+            Button("OK") {
+                if let val = Double(weightText.replacingOccurrences(of: ",", with: ".")) {
+                    editWeight = val
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Reps", isPresented: $showRepsEntry) {
+            TextField("0", text: $repsText)
+                .keyboardType(.numberPad)
+            Button("OK") {
+                if let val = Int(repsText) {
+                    editReps = max(1, val)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     // MARK: - Header
 
     private var cardHeader: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
                     Text(exercise?.name ?? "Unknown")
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     if loggedExercise.isLinkedToNext {
                         Image(systemName: "link")
@@ -115,28 +133,27 @@ struct ExerciseCard: View {
                     }
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if let ex = exercise {
-                        Text(ex.repTargetDisplay + " reps")
+                        Text(ex.setPatternMode.shortName)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                        Text(ex.repTargetDisplay + "r")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-
-                        Text("·")
-                            .foregroundStyle(.tertiary)
-
-                        Text(ex.isBigExercise ? "\(ex.suggestedRestSeconds)s rest" : "\(ex.suggestedRestSeconds)s rest")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
                     }
                 }
             }
 
             Spacer()
 
+            // Completed count badge
             if !loggedExercise.completedWorkSets.isEmpty {
                 Text("\(loggedExercise.completedWorkSets.count)")
-                    .font(.title3.weight(.bold).monospacedDigit())
+                    .font(.callout.weight(.bold).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
+                    .frame(width: 26, height: 26)
+                    .background(Color.accentColor.opacity(0.15), in: Circle())
             }
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -145,54 +162,69 @@ struct ExerciseCard: View {
         }
     }
 
-    // MARK: - Sets List
+    // MARK: - Sets List (compact)
 
     private var setsSection: some View {
         VStack(spacing: 0) {
             ForEach(loggedExercise.orderedSets) { set in
-                SetRow(set: set)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            withAnimation(.spring(response: 0.3)) {
-                                viewModel.deleteSet(set, from: loggedExercise)
-                            }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                CompactSetRow(set: set) {
+                    // Tap to edit
+                    editingSet = set
+                    editWeight = set.weight
+                    editReps = set.reps
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        withAnimation(.spring(response: 0.3)) {
+                            viewModel.deleteSet(set, from: loggedExercise)
                         }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
                     }
+                }
             }
         }
     }
 
-    // MARK: - Inline Edit (replaces old suggestion + sheet)
+    // MARK: - Inline Edit Section
 
     private var inlineEditSection: some View {
-        VStack(spacing: 10) {
-            // Explanation
+        VStack(spacing: 8) {
+            // Suggestion explanation
             Text(suggestion.explanation)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .lineLimit(2)
 
-            HStack(spacing: 8) {
-                // Weight controls
+            HStack(spacing: 6) {
+                // Weight controls (tap number for direct entry)
                 if exercise?.setPatternMode != .bodyweight {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 3) {
                         Button {
                             editWeight = max(0, editWeight - (exercise?.smallestIncrement ?? 2.5))
                             HapticManager.tap()
                         } label: {
                             Image(systemName: "minus")
                                 .font(.caption.weight(.bold))
-                                .frame(width: 36, height: 36)
+                                .frame(width: 32, height: 32)
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .buttonStyle(.plain)
 
-                        Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
-                            .font(.title3.weight(.bold).monospacedDigit())
-                            .frame(minWidth: 44)
+                        // Tappable weight value
+                        Button {
+                            weightText = editWeight > 0 ? editWeight.cleanWeight : ""
+                            showWeightEntry = true
+                        } label: {
+                            Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
+                                .font(.title3.weight(.bold).monospacedDigit())
+                                .frame(minWidth: 40)
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 6)
+                                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
 
                         Button {
                             editWeight += exercise?.smallestIncrement ?? 2.5
@@ -200,42 +232,41 @@ struct ExerciseCard: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.caption.weight(.bold))
-                                .frame(width: 36, height: 36)
+                                .frame(width: 32, height: 32)
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                         .buttonStyle(.plain)
                     }
 
                     Text("x")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
 
-                // Reps controls
-                HStack(spacing: 4) {
+                // Reps controls (tap number for direct entry)
+                HStack(spacing: 3) {
                     Button {
                         editReps = max(1, editReps - 1)
                         HapticManager.tap()
                     } label: {
                         Image(systemName: "minus")
                             .font(.caption.weight(.bold))
-                            .frame(width: 36, height: 36)
+                            .frame(width: 32, height: 32)
                             .background(.ultraThinMaterial, in: Circle())
                     }
                     .buttonStyle(.plain)
 
-                    Text("\(editReps)")
-                        .font(.title3.weight(.bold).monospacedDigit())
-                        .frame(minWidth: 28)
-
+                    // Tappable reps value
                     Button {
-                        editReps += 1
-                        HapticManager.tap()
+                        repsText = "\(editReps)"
+                        showRepsEntry = true
                     } label: {
-                        Image(systemName: "plus")
-                            .font(.caption.weight(.bold))
-                            .frame(width: 36, height: 36)
-                            .background(.ultraThinMaterial, in: Circle())
+                        Text("\(editReps)")
+                            .font(.title3.weight(.bold).monospacedDigit())
+                            .frame(minWidth: 28)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 6)
+                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -251,130 +282,141 @@ struct ExerciseCard: View {
                     Text("LOG")
                         .font(.subheadline.weight(.heavy))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
             }
 
-            // Quick actions row
-            HStack(spacing: 8) {
-                // Repeat last
+            // Quick actions row (compact)
+            HStack(spacing: 6) {
                 if let lastSet = loggedExercise.lastCompletedSet {
                     Button {
                         editWeight = lastSet.weight
                         editReps = lastSet.reps
                         HapticManager.selection()
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 2) {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.caption2)
+                                .font(.system(size: 8))
                             Text(lastSet.weight > 0 ? "\(lastSet.weight.cleanWeight)x\(lastSet.reps)" : "BWx\(lastSet.reps)")
                                 .font(.caption2.weight(.semibold).monospacedDigit())
                         }
                         .foregroundStyle(.primary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
                         .background(.ultraThinMaterial, in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
 
-                // Reset to suggestion
                 Button {
                     let s = suggestion
                     editWeight = s.weight
                     editReps = s.reps
                     HapticManager.selection()
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 2) {
                         Image(systemName: "sparkles")
-                            .font(.caption2)
+                            .font(.system(size: 8))
                         Text("Suggested")
                             .font(.caption2.weight(.medium))
                     }
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
                     .background(.ultraThinMaterial, in: Capsule())
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
-            }
-        }
-    }
 
-    // MARK: - Live Impact
-
-    private var liveImpactSection: some View {
-        let impact = exercise.map {
-            EffectiveSetsEngine.liveImpact(exercise: $0, completedSets: loggedExercise.completedWorkSets.count)
-        } ?? [:]
-
-        return Group {
-            if !impact.isEmpty {
-                HStack(spacing: 10) {
-                    ForEach(impact.sorted(by: { $0.value > $1.value }), id: \.key) { muscle, sets in
-                        HStack(spacing: 2) {
-                            Text(muscle.displayName)
-                                .font(.caption2)
+                // Live impact (inline, super compact)
+                if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
+                    let impact = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
+                    let top = impact.sorted(by: { $0.value > $1.value }).prefix(2)
+                    HStack(spacing: 4) {
+                        ForEach(Array(top), id: \.key) { muscle, sets in
+                            Text("\(muscle.displayName) +\(sets, specifier: "%.1f")")
+                                .font(.system(size: 9).weight(.medium).monospacedDigit())
                                 .foregroundStyle(.tertiary)
-                            Text("+\(sets, specifier: "%.1f")")
-                                .font(.caption2.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(Color.accentColor)
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 }
 
-// MARK: - Set Row
+// MARK: - Compact Set Row
 
-struct SetRow: View {
+struct CompactSetRow: View {
     let set: LoggedSet
+    var onTap: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(Color.accentColor)
-                .frame(width: 5, height: 5)
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                // Set type indicator
+                setTypeLabel
+                    .frame(width: 18, alignment: .center)
 
-            Text("#\(set.setSlotIndex + 1)")
-                .font(.caption.weight(.medium).monospacedDigit())
-                .foregroundStyle(.tertiary)
-                .frame(width: 24, alignment: .leading)
+                Text("#\(set.setSlotIndex + 1)")
+                    .font(.caption2.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 18, alignment: .leading)
 
-            if set.weight > 0 {
-                Text(set.weight.cleanWeight)
-                    .font(.subheadline.weight(.bold).monospacedDigit())
-                Text("x")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text("\(set.reps)")
-                    .font(.subheadline.weight(.bold).monospacedDigit())
-            } else {
-                Text("BW")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("x")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text("\(set.reps)")
-                    .font(.subheadline.weight(.bold).monospacedDigit())
+                if set.weight > 0 {
+                    Text(set.weight.cleanWeight)
+                        .font(.caption.weight(.bold).monospacedDigit())
+                    Text("x")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                    Text("\(set.reps)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                } else {
+                    Text("BW")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text("x")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                    Text("\(set.reps)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                }
+
+                Spacer()
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9).weight(.bold))
+                    .foregroundStyle(.green.opacity(0.7))
             }
-
-            Spacer()
-
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.green)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 7)
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var setTypeLabel: some View {
+        switch set.setType {
+        case .topSet:
+            Text("T")
+                .font(.system(size: 9).weight(.bold))
+                .foregroundStyle(.orange)
+        case .backoff:
+            Text("B")
+                .font(.system(size: 9).weight(.bold))
+                .foregroundStyle(.blue)
+        case .warmup:
+            Text("W")
+                .font(.system(size: 9).weight(.bold))
+                .foregroundStyle(.yellow)
+        case .work:
+            Circle()
+                .fill(Color.accentColor.opacity(0.5))
+                .frame(width: 4, height: 4)
+        }
     }
 }

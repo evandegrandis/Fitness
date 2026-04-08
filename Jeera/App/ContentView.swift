@@ -20,6 +20,12 @@ struct ContentView: View {
                     Label("Progress", systemImage: "chart.bar.fill")
                 }
                 .tag(1)
+
+            HistoryTabView()
+                .tabItem {
+                    Label("History", systemImage: "clock.arrow.circlepath")
+                }
+                .tag(2)
         }
         .tint(Color.accentColor)
         .onAppear {

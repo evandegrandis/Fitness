@@ -168,9 +168,7 @@ class WorkoutViewModel {
         currentRestSuggested = restSeconds
 
         // If this exercise is linked to next (superset), don't start rest timer
-        if loggedExercise.isLinkedToNext {
-            // Don't start timer — move to next exercise in superset
-        } else {
+        if !loggedExercise.isLinkedToNext {
             restTimer.start(seconds: restSeconds)
         }
     }
@@ -188,43 +186,52 @@ class WorkoutViewModel {
         HapticManager.deleteSet()
     }
 
-    // MARK: - Suggestion
+    // MARK: - Suggestion (multi-session context)
 
     func suggestion(for loggedExercise: LoggedExercise) -> SetSuggestion {
         guard let exercise = loggedExercise.exercise else {
             return SetSuggestion(weight: 20, reps: 10, setType: .work, explanation: "No exercise data")
         }
 
-        let previousSets = fetchPreviousSets(for: exercise)
+        let (primarySets, recentHistory) = fetchRecentSets(for: exercise, maxSessions: 3)
         let currentSetIndex = loggedExercise.completedWorkSets.count
 
         return ProgressionEngine.suggest(
             for: exercise,
-            previousSets: previousSets,
-            currentSetIndex: currentSetIndex
+            previousSets: primarySets,
+            currentSetIndex: currentSetIndex,
+            recentHistory: recentHistory
         )
     }
 
-    func fetchPreviousSets(for exercise: Exercise) -> [LoggedSet] {
-        guard let context = modelContext else { return [] }
+    /// Fetch last N sessions for this exercise. Returns (mostRecent, [olderSessions]).
+    func fetchRecentSets(for exercise: Exercise, maxSessions: Int = 3) -> ([LoggedSet], [[LoggedSet]]) {
+        guard let context = modelContext else { return ([], []) }
 
-        let exerciseId = exercise.id
         let descriptor = FetchDescriptor<WorkoutSession>(
             predicate: #Predicate { !$0.isActive },
             sortBy: [SortDescriptor(\.startTime, order: .reverse)]
         )
 
-        guard let sessions = try? context.fetch(descriptor) else { return [] }
+        guard let sessions = try? context.fetch(descriptor) else { return ([], []) }
+
+        let exerciseId = exercise.id
+        var found: [[LoggedSet]] = []
 
         for session in sessions {
             for logged in session.loggedExercises {
                 if logged.exercise?.id == exerciseId {
-                    return logged.workSets
+                    found.append(logged.workSets)
+                    if found.count >= maxSessions { break }
                 }
             }
+            if found.count >= maxSessions { break }
         }
 
-        return []
+        guard !found.isEmpty else { return ([], []) }
+        let primary = found[0]
+        let history = Array(found.dropFirst())
+        return (primary, history)
     }
 
     // MARK: - Undo

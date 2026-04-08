@@ -4,16 +4,24 @@ import SwiftData
 struct ActiveWorkoutView: View {
     @Bindable var viewModel: WorkoutViewModel
     @State private var showFinishAlert = false
+    @State private var showExercisePicker = false
+    @State private var draggedExercise: LoggedExercise?
 
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(spacing: 14) {
-                    // Workout Header
+                VStack(spacing: 12) {
+                    // Workout Header (compact)
                     WorkoutHeaderView(session: viewModel.activeSession)
                         .padding(.horizontal)
 
-                    // Exercise Cards
+                    // Muscle deficit banner (what you still need this week)
+                    if let session = viewModel.activeSession {
+                        WeeklyGapBanner(session: session)
+                            .padding(.horizontal)
+                    }
+
+                    // Exercise Cards with drag reorder
                     if let session = viewModel.activeSession {
                         ForEach(session.orderedExercises) { loggedExercise in
                             ExerciseCard(
@@ -22,57 +30,49 @@ struct ActiveWorkoutView: View {
                             )
                             .padding(.horizontal)
                             .transition(.asymmetric(
-                                insertion: .scale(scale: 0.9).combined(with: .opacity),
-                                removal: .slide.combined(with: .opacity)
+                                insertion: .scale(scale: 0.95).combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                            .onDrag {
+                                draggedExercise = loggedExercise
+                                return NSItemProvider(object: loggedExercise.id.uuidString as NSString)
+                            }
+                            .onDrop(of: [.text], delegate: ExerciseDropDelegate(
+                                item: loggedExercise,
+                                viewModel: viewModel,
+                                draggedItem: $draggedExercise
                             ))
                         }
                     }
 
-                    // Add Exercise
+                    // Spacer for floating button clearance
+                    Spacer(minLength: 140)
+                }
+                .padding(.top, 4)
+            }
+
+            // Floating Add Exercise button
+            VStack(spacing: 0) {
+                Spacer()
+
+                HStack {
+                    Spacer()
+
                     Button {
-                        viewModel.showExercisePicker = true
+                        showExercisePicker = true
                         HapticManager.tap()
                     } label: {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title3)
-                            Text("Add Exercise")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundStyle(Color.accentColor)
-                        .frame(maxWidth: .infinity)
-                        .glassCard(padding: 14)
+                        Image(systemName: "plus")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .background(Color.accentColor, in: Circle())
+                            .shadow(color: Color.accentColor.opacity(0.4), radius: 12, y: 4)
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal)
-
-                    // Finish
-                    Button {
-                        showFinishAlert = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("Finish Workout")
-                                .font(.subheadline.weight(.semibold))
-                        }
-                        .foregroundStyle(.green)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(.green.opacity(0.15))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .stroke(.green.opacity(0.3), lineWidth: 0.5)
-                                }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal)
-
-                    Spacer(minLength: 120)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, viewModel.restTimer.isRunning ? 90 : 12)
                 }
-                .padding(.top, 8)
             }
 
             // Rest Timer
@@ -99,10 +99,20 @@ struct ActiveWorkoutView: View {
         }
         .animation(.spring(response: 0.3), value: viewModel.restTimer.isRunning)
         .animation(.spring(response: 0.3), value: viewModel.showUndo)
-        .sheet(isPresented: $viewModel.showExercisePicker) {
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showFinishAlert = true
+                } label: {
+                    Text("Finish")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+                }
+            }
+        }
+        .sheet(isPresented: $showExercisePicker) {
             ExercisePickerView { exercise in
                 viewModel.addExercise(exercise)
-                viewModel.showExercisePicker = false
             }
         }
         .alert("Finish Workout?", isPresented: $showFinishAlert) {
@@ -121,20 +131,56 @@ struct ActiveWorkoutView: View {
     }
 }
 
+// MARK: - Drag & Drop Delegate
+
+struct ExerciseDropDelegate: DropDelegate {
+    let item: LoggedExercise
+    let viewModel: WorkoutViewModel
+    @Binding var draggedItem: LoggedExercise?
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedItem = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged = draggedItem,
+              dragged.id != item.id,
+              let session = viewModel.activeSession else { return }
+
+        let exercises = session.orderedExercises
+        guard let fromIndex = exercises.firstIndex(where: { $0.id == dragged.id }),
+              let toIndex = exercises.firstIndex(where: { $0.id == item.id }) else { return }
+
+        withAnimation(.spring(response: 0.3)) {
+            viewModel.moveExercise(
+                from: IndexSet(integer: fromIndex),
+                to: toIndex > fromIndex ? toIndex + 1 : toIndex
+            )
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+
+// MARK: - Workout Header (compact)
+
 struct WorkoutHeaderView: View {
     let session: WorkoutSession?
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Active Workout")
-                    .font(.title2.weight(.bold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Workout")
+                    .font(.title3.weight(.bold))
                 if let session {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         Label(session.durationFormatted, systemImage: "clock")
                         Label("\(session.totalWorkSets) sets", systemImage: "checkmark.circle")
                     }
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                 }
             }
@@ -142,6 +188,63 @@ struct WorkoutHeaderView: View {
         }
     }
 }
+
+// MARK: - Weekly Gap Banner
+
+struct WeeklyGapBanner: View {
+    let session: WorkoutSession
+    @Query private var allSessions: [WorkoutSession]
+    @Query private var goals: [MuscleGoal]
+
+    private var gaps: [(MuscleGroup, Double)] {
+        let progress = EffectiveSetsEngine.currentWeekProgress(sessions: allSessions, goals: goals)
+        return progress
+            .filter { $0.remaining > 1 && $0.goalSets > 0 }
+            .sorted { $0.remaining > $1.remaining }
+            .prefix(4)
+            .map { ($0.muscleGroup, $0.remaining) }
+    }
+
+    var body: some View {
+        if !gaps.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "target")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+
+                HStack(spacing: 6) {
+                    ForEach(gaps, id: \.0) { muscle, remaining in
+                        HStack(spacing: 2) {
+                            Text(muscle.displayName)
+                                .font(.caption2.weight(.medium))
+                            Text("\(Int(remaining))")
+                                .font(.caption2.weight(.bold).monospacedDigit())
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Text("left this week")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.orange.opacity(0.08))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(.orange.opacity(0.15), lineWidth: 0.5)
+                    }
+            }
+        }
+    }
+}
+
+// MARK: - Undo Toast
 
 struct UndoToast: View {
     let message: String

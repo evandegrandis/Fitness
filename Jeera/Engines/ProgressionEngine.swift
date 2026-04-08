@@ -15,28 +15,57 @@ struct ProgressionEngine {
         for exercise: Exercise,
         previousSets: [LoggedSet],
         currentSetIndex: Int,
+        recentHistory: [[LoggedSet]] = [],
         smallestIncrement: Double? = nil
     ) -> SetSuggestion {
         let increment = smallestIncrement ?? exercise.smallestIncrement
 
+        // Use best of recent sessions if available (guards against one bad session)
+        let bestSets = bestRecentSets(primary: previousSets, history: recentHistory, exercise: exercise)
+
         switch exercise.setPatternMode {
         case .straight:
-            return suggestStraight(exercise: exercise, previousSets: previousSets, currentSetIndex: currentSetIndex, increment: increment)
+            return suggestStraight(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
         case .topSetBackoff:
-            return suggestTopSetBackoff(exercise: exercise, previousSets: previousSets, currentSetIndex: currentSetIndex, increment: increment)
+            return suggestTopSetBackoff(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
         case .ramping:
-            return suggestSlotBased(exercise: exercise, previousSets: previousSets, currentSetIndex: currentSetIndex, increment: increment)
+            return suggestSlotBased(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
         case .bodyweight:
-            return suggestBodyweight(exercise: exercise, previousSets: previousSets, currentSetIndex: currentSetIndex)
+            return suggestBodyweight(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex)
         case .weightedBodyweight:
-            return suggestSlotBased(exercise: exercise, previousSets: previousSets, currentSetIndex: currentSetIndex, increment: increment)
+            return suggestSlotBased(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
         case .assistedBodyweight:
-            return suggestAssistedBodyweight(exercise: exercise, previousSets: previousSets, currentSetIndex: currentSetIndex, increment: increment)
+            return suggestAssistedBodyweight(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
         }
     }
 
-    // MARK: - Slot-Based (default for ramping, weightedBodyweight, and most exercises)
-    // Compares set N of current session with set N of previous session independently
+    // MARK: - Best Recent Sets
+
+    /// Compare primary (last session) with recent history. If the last session was significantly
+    /// worse than a recent session, use the better one to avoid regressing from a bad day.
+    static func bestRecentSets(primary: [LoggedSet], history: [[LoggedSet]], exercise: Exercise) -> [LoggedSet] {
+        guard !history.isEmpty else { return primary }
+
+        let primaryScore = sessionScore(primary, exercise: exercise)
+
+        for past in history {
+            let pastScore = sessionScore(past, exercise: exercise)
+            if pastScore > primaryScore * 1.15 {
+                // Past session was significantly better — use it instead
+                return past
+            }
+        }
+
+        return primary
+    }
+
+    /// Score a session's sets for comparison (higher = better)
+    private static func sessionScore(_ sets: [LoggedSet], exercise: Exercise) -> Double {
+        let workSets = sets.filter { $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff) }
+        return workSets.reduce(0.0) { $0 + $1.weight * Double($1.reps) }
+    }
+
+    // MARK: - Slot-Based (ramping, weightedBodyweight)
 
     static func suggestSlotBased(
         exercise: Exercise,
@@ -52,58 +81,54 @@ struct ProgressionEngine {
                 weight: 20,
                 reps: exercise.repTargetMax,
                 setType: .work,
-                explanation: "No previous data. Start with a comfortable weight."
+                explanation: "First time. Start with a comfortable weight."
             )
         }
 
-        // If we have data for this exact slot
         if currentSetIndex < workSets.count {
-            let prevSlot = workSets[currentSetIndex]
-            let prevWeight = prevSlot.weight
-            let prevReps = prevSlot.reps
+            let prev = workSets[currentSetIndex]
+            let prevW = prev.weight
+            let prevR = prev.reps
 
-            if prevReps >= exercise.repTargetMax {
-                // Hit target → suggest weight increase
-                let newWeight = prevWeight + increment
+            if prevR >= exercise.repTargetMax {
+                let newWeight = prevW + increment
                 return SetSuggestion(
                     weight: newWeight,
                     reps: exercise.repTargetMin,
                     setType: .work,
-                    explanation: "Set \(currentSetIndex + 1): +\(increment.cleanWeight)kg (last \(prevWeight.cleanWeight)x\(prevReps), hit target)."
+                    explanation: "Set \(currentSetIndex + 1): last \(prevW.cleanWeight)x\(prevR) hit \(exercise.repTargetMax) \u{2192} try \(newWeight.cleanWeight)kg."
                 )
-            } else if prevReps >= exercise.repTargetMin {
-                // In range → same weight, push reps
+            } else if prevR >= exercise.repTargetMin {
+                let target = min(prevR + 1, exercise.repTargetMax)
                 return SetSuggestion(
-                    weight: prevWeight,
-                    reps: min(prevReps + 1, exercise.repTargetMax),
+                    weight: prevW,
+                    reps: target,
                     setType: .work,
-                    explanation: "Set \(currentSetIndex + 1): keep \(prevWeight.cleanWeight)kg, push reps (last \(prevReps))."
+                    explanation: "Set \(currentSetIndex + 1): last \(prevW.cleanWeight)x\(prevR), push to x\(target). +weight at \(exercise.repTargetMax)r."
                 )
             } else {
-                // Below range → same weight, target min
                 return SetSuggestion(
-                    weight: prevWeight,
+                    weight: prevW,
                     reps: exercise.repTargetMin,
                     setType: .work,
-                    explanation: "Set \(currentSetIndex + 1): keep \(prevWeight.cleanWeight)kg (last \(prevReps), below target)."
+                    explanation: "Set \(currentSetIndex + 1): last \(prevW.cleanWeight)x\(prevR) (below \(exercise.repTargetMin)). Stay and build reps."
                 )
             }
         }
 
-        // Beyond previous set count → suggest based on last set of previous session
         if let last = workSets.last {
             return SetSuggestion(
                 weight: last.weight,
                 reps: last.reps,
                 setType: .work,
-                explanation: "Extra set. Match previous last: \(last.weight.cleanWeight)x\(last.reps)."
+                explanation: "Extra set. Match last: \(last.weight.cleanWeight)x\(last.reps)."
             )
         }
 
-        return SetSuggestion(weight: 20, reps: exercise.repTargetMax, setType: .work, explanation: "No previous data.")
+        return SetSuggestion(weight: 20, reps: exercise.repTargetMax, setType: .work, explanation: "No data.")
     }
 
-    // MARK: - Straight Sets (same weight all sets)
+    // MARK: - Straight Sets
 
     static func suggestStraight(
         exercise: Exercise,
@@ -118,14 +143,14 @@ struct ProgressionEngine {
                 weight: 20,
                 reps: exercise.repTargetMax,
                 setType: .work,
-                explanation: "No previous data. Start with a comfortable weight."
+                explanation: "First time. Start with a comfortable weight."
             )
         }
 
         let allHitTarget = workSets.allSatisfy { $0.reps >= exercise.repTargetMax }
         let someBelow = workSets.contains { $0.reps < exercise.repTargetMin }
         let lastWeight = workSets.first?.weight ?? 20
-        let repsStr = workSets.map { "\($0.reps)" }.joined(separator: " / ")
+        let repsStr = workSets.map { "\($0.reps)" }.joined(separator: "/")
 
         if allHitTarget {
             let newWeight = lastWeight + increment
@@ -133,21 +158,21 @@ struct ProgressionEngine {
                 weight: newWeight,
                 reps: exercise.repTargetMin,
                 setType: .work,
-                explanation: "+\(increment.cleanWeight)kg → \(newWeight.cleanWeight)kg (last \(repsStr), all at target)."
+                explanation: "Last: \(lastWeight.cleanWeight)x\(repsStr) all at \(exercise.repTargetMax) \u{2192} +\(increment.cleanWeight)kg to \(newWeight.cleanWeight)."
             )
         } else if someBelow {
             return SetSuggestion(
                 weight: lastWeight,
                 reps: exercise.repTargetMin,
                 setType: .work,
-                explanation: "Keep \(lastWeight.cleanWeight)kg (last \(repsStr), some below \(exercise.repTargetMin))."
+                explanation: "Last: \(lastWeight.cleanWeight)x\(repsStr). Some below \(exercise.repTargetMin) \u{2192} stay and build."
             )
         } else {
             return SetSuggestion(
                 weight: lastWeight,
                 reps: exercise.repTargetMax,
                 setType: .work,
-                explanation: "Keep \(lastWeight.cleanWeight)kg, push for \(exercise.repTargetMax) (last \(repsStr))."
+                explanation: "Last: \(lastWeight.cleanWeight)x\(repsStr). Push for \(exercise.repTargetMax) all sets \u{2192} then +weight."
             )
         }
     }
@@ -168,7 +193,7 @@ struct ProgressionEngine {
                 weight: 20,
                 reps: exercise.repTargetMin,
                 setType: setType,
-                explanation: "No previous data."
+                explanation: "First time. Start with a comfortable weight."
             )
         }
 
@@ -183,14 +208,14 @@ struct ProgressionEngine {
                         weight: newWeight,
                         reps: exercise.repTargetMin,
                         setType: .topSet,
-                        explanation: "Top set +\(increment.cleanWeight)kg (last \(lastTop.weight.cleanWeight)x\(lastTop.reps))."
+                        explanation: "Top set: last \(lastTop.weight.cleanWeight)x\(lastTop.reps) hit \(exercise.repTargetMax) \u{2192} +\(increment.cleanWeight)kg."
                     )
                 } else {
                     return SetSuggestion(
                         weight: lastTop.weight,
                         reps: exercise.repTargetMax,
                         setType: .topSet,
-                        explanation: "Top set: keep \(lastTop.weight.cleanWeight)kg (last x\(lastTop.reps))."
+                        explanation: "Top set: last \(lastTop.weight.cleanWeight)x\(lastTop.reps). Push to \(exercise.repTargetMax) \u{2192} then +weight."
                     )
                 }
             } else if let firstWork = workSets.first {
@@ -204,21 +229,21 @@ struct ProgressionEngine {
         } else {
             let backoffIndex = currentSetIndex - 1
             if backoffIndex < backoffs.count {
-                let lastBackoff = backoffs[backoffIndex]
-                if lastBackoff.reps >= exercise.repTargetMax {
-                    let newWeight = lastBackoff.weight + increment
+                let prev = backoffs[backoffIndex]
+                if prev.reps >= exercise.repTargetMax {
+                    let newWeight = prev.weight + increment
                     return SetSuggestion(
                         weight: newWeight,
                         reps: exercise.repTargetMin,
                         setType: .backoff,
-                        explanation: "Backoff \(currentSetIndex) +\(increment.cleanWeight)kg (last \(lastBackoff.weight.cleanWeight)x\(lastBackoff.reps))."
+                        explanation: "Backoff \(currentSetIndex): last \(prev.weight.cleanWeight)x\(prev.reps) hit target \u{2192} +\(increment.cleanWeight)kg."
                     )
                 } else {
                     return SetSuggestion(
-                        weight: lastBackoff.weight,
+                        weight: prev.weight,
                         reps: exercise.repTargetMax,
                         setType: .backoff,
-                        explanation: "Backoff: keep \(lastBackoff.weight.cleanWeight)kg (last x\(lastBackoff.reps))."
+                        explanation: "Backoff \(currentSetIndex): last \(prev.weight.cleanWeight)x\(prev.reps). Push reps."
                     )
                 }
             } else if let lastBackoff = backoffs.last {
@@ -226,12 +251,12 @@ struct ProgressionEngine {
                     weight: lastBackoff.weight,
                     reps: exercise.repTargetMin,
                     setType: .backoff,
-                    explanation: "Additional backoff at \(lastBackoff.weight.cleanWeight)kg."
+                    explanation: "Extra backoff at \(lastBackoff.weight.cleanWeight)kg."
                 )
             }
         }
 
-        return SetSuggestion(weight: 20, reps: exercise.repTargetMin, setType: currentSetIndex == 0 ? .topSet : .backoff, explanation: "No matching previous data.")
+        return SetSuggestion(weight: 20, reps: exercise.repTargetMin, setType: currentSetIndex == 0 ? .topSet : .backoff, explanation: "No matching data.")
     }
 
     // MARK: - Bodyweight
@@ -248,26 +273,26 @@ struct ProgressionEngine {
                 weight: 0,
                 reps: exercise.repTargetMin,
                 setType: .work,
-                explanation: "No previous data. Start with \(exercise.repTargetMin) reps."
+                explanation: "First time. Start with \(exercise.repTargetMin) reps."
             )
         }
 
         if currentSetIndex < workSets.count {
-            let prevSlot = workSets[currentSetIndex]
-            if prevSlot.reps >= exercise.repTargetMax {
+            let prev = workSets[currentSetIndex]
+            if prev.reps >= exercise.repTargetMax {
                 return SetSuggestion(
                     weight: 0,
                     reps: exercise.repTargetMax,
                     setType: .work,
-                    explanation: "At max reps (\(exercise.repTargetMax)). Consider adding weight."
+                    explanation: "Last BWx\(prev.reps) at max. Consider adding weight."
                 )
             }
-            let targetReps = min(prevSlot.reps + 1, exercise.repTargetMax)
+            let target = min(prev.reps + 1, exercise.repTargetMax)
             return SetSuggestion(
                 weight: 0,
-                reps: targetReps,
+                reps: target,
                 setType: .work,
-                explanation: "Target \(targetReps) reps (last BWx\(prevSlot.reps))."
+                explanation: "Last BWx\(prev.reps) \u{2192} target x\(target)."
             )
         }
 
@@ -295,13 +320,13 @@ struct ProgressionEngine {
                 weight: 20,
                 reps: exercise.repTargetMin,
                 setType: .work,
-                explanation: "No previous data. Start with moderate assistance."
+                explanation: "First time. Start with moderate assistance."
             )
         }
 
         let allHitTarget = workSets.allSatisfy { $0.reps >= exercise.repTargetMax }
         let lastWeight = workSets.first?.weight ?? 20
-        let repsStr = workSets.map { "\($0.reps)" }.joined(separator: " / ")
+        let repsStr = workSets.map { "\($0.reps)" }.joined(separator: "/")
 
         if allHitTarget {
             let newWeight = max(0, lastWeight - increment)
@@ -309,14 +334,14 @@ struct ProgressionEngine {
                 weight: newWeight,
                 reps: exercise.repTargetMin,
                 setType: .work,
-                explanation: "Reduce assistance −\(increment.cleanWeight)kg (last \(repsStr), all at target)."
+                explanation: "Last \(lastWeight.cleanWeight)kgx\(repsStr) all at target \u{2192} reduce to \(newWeight.cleanWeight)kg assistance."
             )
         } else {
             return SetSuggestion(
                 weight: lastWeight,
                 reps: exercise.repTargetMax,
                 setType: .work,
-                explanation: "Keep assistance at \(lastWeight.cleanWeight)kg (last \(repsStr))."
+                explanation: "Last \(lastWeight.cleanWeight)kgx\(repsStr). Keep assistance, push reps."
             )
         }
     }
