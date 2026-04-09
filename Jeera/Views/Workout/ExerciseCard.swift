@@ -237,7 +237,7 @@ struct ExerciseCard: View {
                             Image(systemName: "minus")
                                 .font(.caption.weight(.bold))
                                 .frame(width: 32, height: 32)
-                                .background(.ultraThinMaterial, in: Circle())
+                                .background(Color.white.opacity(0.12), in: Circle())
                         }
                         .buttonStyle(.plain)
 
@@ -251,7 +251,7 @@ struct ExerciseCard: View {
                                 .frame(minWidth: 40)
                                 .padding(.vertical, 4)
                                 .padding(.horizontal, 6)
-                                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                                .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
 
@@ -262,7 +262,7 @@ struct ExerciseCard: View {
                             Image(systemName: "plus")
                                 .font(.caption.weight(.bold))
                                 .frame(width: 32, height: 32)
-                                .background(.ultraThinMaterial, in: Circle())
+                                .background(Color.white.opacity(0.12), in: Circle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -281,7 +281,7 @@ struct ExerciseCard: View {
                         Image(systemName: "minus")
                             .font(.caption.weight(.bold))
                             .frame(width: 32, height: 32)
-                            .background(.ultraThinMaterial, in: Circle())
+                            .background(Color.white.opacity(0.12), in: Circle())
                     }
                     .buttonStyle(.plain)
 
@@ -295,7 +295,7 @@ struct ExerciseCard: View {
                             .frame(minWidth: 28)
                             .padding(.vertical, 4)
                             .padding(.horizontal, 6)
-                            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                            .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
                 }
@@ -335,7 +335,7 @@ struct ExerciseCard: View {
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color.white.opacity(0.10), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -355,7 +355,7 @@ struct ExerciseCard: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(Color.white.opacity(0.10), in: Capsule())
                 }
                 .buttonStyle(.plain)
 
@@ -378,7 +378,7 @@ struct ExerciseCard: View {
                             }
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.04), in: Capsule())
+                            .background(Color.white.opacity(0.08), in: Capsule())
                         }
                     }
                 }

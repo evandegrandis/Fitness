@@ -269,7 +269,7 @@ struct QuickStartView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
                     }
                 }
             }

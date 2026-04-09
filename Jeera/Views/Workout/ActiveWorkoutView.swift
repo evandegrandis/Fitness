@@ -246,10 +246,10 @@ struct WeeklyGapBanner: View {
             .padding(.vertical, 8)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.orange.opacity(0.08))
+                    .fill(.orange.opacity(0.10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(.orange.opacity(0.15), lineWidth: 0.5)
+                            .stroke(.orange.opacity(0.25), lineWidth: 0.5)
                     }
             }
         }
@@ -277,8 +277,8 @@ struct UndoToast: View {
         .padding(.vertical, 10)
         .background {
             Capsule()
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 8)
+                .fill(.thinMaterial)
+                .shadow(color: .black.opacity(0.25), radius: 10)
         }
         .padding(.horizontal, 32)
     }
