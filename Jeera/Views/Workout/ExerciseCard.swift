@@ -374,7 +374,7 @@ struct ExerciseCard: View {
                                     .font(.system(size: 9).weight(.medium))
                                 Text("+\(sets, specifier: "%.1f")")
                                     .font(.system(size: 9).weight(.bold).monospacedDigit())
-                                    .foregroundStyle(sets >= 1 ? Color.accentColor : .tertiary)
+                                    .foregroundStyle(sets >= 1 ? Color.accentColor : Color.secondary.opacity(0.4))
                             }
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
