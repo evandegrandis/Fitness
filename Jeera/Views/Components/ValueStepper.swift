@@ -24,7 +24,7 @@ struct ValueStepper: View {
                 Image(systemName: "minus")
                     .font(.title3.weight(.semibold))
                     .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.white.opacity(0.12), in: Circle())
             }
 
             Text(value.cleanWeight)
@@ -45,7 +45,7 @@ struct ValueStepper: View {
                 Image(systemName: "plus")
                     .font(.title3.weight(.semibold))
                     .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.white.opacity(0.12), in: Circle())
             }
         }
         .foregroundStyle(.primary)
@@ -73,7 +73,7 @@ struct RepStepper: View {
                 Image(systemName: "minus")
                     .font(.title3.weight(.semibold))
                     .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.white.opacity(0.12), in: Circle())
             }
 
             Text("\(value)")
@@ -92,7 +92,7 @@ struct RepStepper: View {
                 Image(systemName: "plus")
                     .font(.title3.weight(.semibold))
                     .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .background(Color.white.opacity(0.12), in: Circle())
             }
         }
         .foregroundStyle(.primary)

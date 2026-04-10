@@ -10,7 +10,7 @@ struct ActiveWorkoutView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 14) {
                     // Workout Header with live timer
                     WorkoutHeaderView(
                         session: viewModel.activeSession,
@@ -277,8 +277,11 @@ struct UndoToast: View {
         .padding(.vertical, 10)
         .background {
             Capsule()
-                .fill(.thinMaterial)
-                .shadow(color: .black.opacity(0.25), radius: 10)
+                .fill(.ultraThinMaterial)
+        }
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.12), lineWidth: 0.5)
         }
         .padding(.horizontal, 32)
     }

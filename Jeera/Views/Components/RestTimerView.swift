@@ -127,8 +127,11 @@ struct RestTimerView: View {
         .padding(.vertical, 12)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.thinMaterial)
-                .shadow(color: .black.opacity(0.25), radius: 12, y: -2)
+                .fill(.ultraThinMaterial)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.12), lineWidth: 0.5)
         }
         .padding(.horizontal)
     }

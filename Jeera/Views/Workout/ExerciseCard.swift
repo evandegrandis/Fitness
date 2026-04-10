@@ -16,11 +16,12 @@ struct ExerciseCard: View {
     @State private var showEditSetAlert = false
     @State private var editSetWeight = ""
     @State private var editSetReps = ""
+    @State private var cachedSuggestion = SetSuggestion(weight: 0, reps: 10, setType: .work, explanation: "")
 
     private var exercise: Exercise? { loggedExercise.exercise }
 
-    private var suggestion: SetSuggestion {
-        viewModel.suggestion(for: loggedExercise)
+    private func refreshSuggestion() {
+        cachedSuggestion = viewModel.suggestion(for: loggedExercise)
     }
 
     var body: some View {
@@ -72,16 +73,16 @@ struct ExerciseCard: View {
         }
         .onAppear {
             if !hasLoadedSuggestion {
-                let s = suggestion
-                editWeight = s.weight
-                editReps = s.reps
+                refreshSuggestion()
+                editWeight = cachedSuggestion.weight
+                editReps = cachedSuggestion.reps
                 hasLoadedSuggestion = true
             }
         }
         .onChange(of: loggedExercise.sets.count) {
-            let s = suggestion
-            editWeight = s.weight
-            editReps = s.reps
+            refreshSuggestion()
+            editWeight = cachedSuggestion.weight
+            editReps = cachedSuggestion.reps
         }
         .contextMenu {
             Button {
@@ -220,7 +221,7 @@ struct ExerciseCard: View {
     private var inlineEditSection: some View {
         VStack(spacing: 8) {
             // Suggestion explanation
-            Text(suggestion.explanation)
+            Text(cachedSuggestion.explanation)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -298,6 +299,17 @@ struct ExerciseCard: View {
                             .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        editReps += 1
+                        HapticManager.tap()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 32, height: 32)
+                            .background(Color.white.opacity(0.12), in: Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 Spacer()
@@ -305,7 +317,7 @@ struct ExerciseCard: View {
                 // LOG button (passes setType from suggestion)
                 Button {
                     withAnimation(.spring(response: 0.3)) {
-                        viewModel.logSet(for: loggedExercise, weight: editWeight, reps: editReps, setType: suggestion.setType)
+                        viewModel.logSet(for: loggedExercise, weight: editWeight, reps: editReps, setType: cachedSuggestion.setType)
                     }
                 } label: {
                     Text("LOG")
@@ -341,9 +353,9 @@ struct ExerciseCard: View {
                 }
 
                 Button {
-                    let s = suggestion
-                    editWeight = s.weight
-                    editReps = s.reps
+                    refreshSuggestion()
+                    editWeight = cachedSuggestion.weight
+                    editReps = cachedSuggestion.reps
                     HapticManager.selection()
                 } label: {
                     HStack(spacing: 2) {

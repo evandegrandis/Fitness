@@ -58,9 +58,9 @@ struct QuickStartView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 24) {
                 // Header - personalized greeting
-                VStack(spacing: 4) {
+                VStack(spacing: 6) {
                     Text(greeting)
                         .font(.title2.weight(.bold))
                     Text(statusLine)

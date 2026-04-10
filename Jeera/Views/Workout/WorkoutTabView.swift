@@ -37,28 +37,14 @@ struct WorkoutTabView: View {
 
 struct BackgroundGradient: View {
     var body: some View {
-        ZStack {
-            // Warmer, lighter dark base
-            LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.10, blue: 0.16),
-                    Color(red: 0.06, green: 0.06, blue: 0.10)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            // Subtle blue/purple ambient glow at top
-            RadialGradient(
-                colors: [
-                    Color(red: 0.15, green: 0.12, blue: 0.30).opacity(0.4),
-                    .clear
-                ],
-                center: .topLeading,
-                startRadius: 20,
-                endRadius: 400
-            )
-        }
+        LinearGradient(
+            colors: [
+                Color(red: 0.12, green: 0.12, blue: 0.16),
+                Color(red: 0.08, green: 0.08, blue: 0.11)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
         .ignoresSafeArea()
     }
 }
