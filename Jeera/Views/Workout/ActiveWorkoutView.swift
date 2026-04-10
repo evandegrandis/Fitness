@@ -10,8 +10,7 @@ struct ActiveWorkoutView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(spacing: 14) {
-                    // Workout Header with live timer
+                VStack(spacing: 16) {
                     WorkoutHeaderView(
                         session: viewModel.activeSession,
                         elapsedFormatted: viewModel.workoutElapsedFormatted,
@@ -19,13 +18,11 @@ struct ActiveWorkoutView: View {
                     )
                     .padding(.horizontal)
 
-                    // Muscle deficit banner (what you still need this week)
                     if let session = viewModel.activeSession {
                         WeeklyGapBanner(session: session)
                             .padding(.horizontal)
                     }
 
-                    // Exercise Cards with drag reorder
                     if let session = viewModel.activeSession {
                         ForEach(session.orderedExercises) { loggedExercise in
                             ExerciseCard(
@@ -49,34 +46,32 @@ struct ActiveWorkoutView: View {
                         }
                     }
 
-                    // Spacer for floating button clearance
-                    Spacer(minLength: 140)
-                }
-                .padding(.top, 4)
-            }
-
-            // Floating Add Exercise button
-            VStack(spacing: 0) {
-                Spacer()
-
-                HStack {
-                    Spacer()
-
+                    // Inline Add Exercise button
                     Button {
                         showExercisePicker = true
                         HapticManager.tap()
                     } label: {
-                        Image(systemName: "plus")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 56, height: 56)
-                            .background(Color.accentColor, in: Circle())
-                            .shadow(color: Color.accentColor.opacity(0.4), radius: 12, y: 4)
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.body)
+                                .foregroundStyle(Color.accentColor)
+                            Text("Ajouter un exercice")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.accentColor.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                        }
                     }
                     .buttonStyle(.plain)
-                    .padding(.trailing, 20)
-                    .padding(.bottom, viewModel.restTimer.isRunning ? 90 : 12)
+                    .padding(.horizontal)
+
+                    Spacer(minLength: viewModel.restTimer.isRunning ? 100 : 40)
                 }
+                .padding(.top, 4)
             }
 
             // Rest Timer
@@ -177,7 +172,7 @@ struct ExerciseDropDelegate: DropDelegate {
     }
 }
 
-// MARK: - Workout Header (compact, live timer)
+// MARK: - Workout Header
 
 struct WorkoutHeaderView: View {
     let session: WorkoutSession?
@@ -186,14 +181,14 @@ struct WorkoutHeaderView: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Séance")
                     .font(.title3.weight(.bold))
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     Label(elapsedFormatted, systemImage: "clock")
                     Label("\(totalSets) sets", systemImage: "checkmark.circle")
                 }
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             }
             Spacer()
@@ -242,14 +237,14 @@ struct WeeklyGapBanner: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.orange.opacity(0.10))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.orange.opacity(0.08))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(.orange.opacity(0.25), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(.orange.opacity(0.20), lineWidth: 0.5)
                     }
             }
         }
@@ -277,7 +272,7 @@ struct UndoToast: View {
         .padding(.vertical, 10)
         .background {
             Capsule()
-                .fill(.ultraThinMaterial)
+                .fill(Color(red: 0.14, green: 0.15, blue: 0.22).opacity(0.98))
         }
         .overlay {
             Capsule()

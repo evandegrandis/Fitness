@@ -26,13 +26,12 @@ struct ExerciseCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GlassCard(padding: 0, cornerRadius: 18) {
+            GlassCard(padding: 0, cornerRadius: 16) {
                 VStack(spacing: 0) {
-                    // Header (compact)
                     cardHeader
-                        .padding(.horizontal, 14)
-                        .padding(.top, 12)
-                        .padding(.bottom, isExpanded ? 6 : 12)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 14)
+                        .padding(.bottom, isExpanded ? 8 : 14)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -42,22 +41,19 @@ struct ExerciseCard: View {
                         }
 
                     if isExpanded {
-                        Divider().background(.white.opacity(0.08))
+                        Divider().background(.white.opacity(0.06))
 
-                        // Logged sets (compact rows)
                         if !loggedExercise.orderedSets.isEmpty {
                             setsSection
                         }
 
-                        // Inline editing area
                         inlineEditSection
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
                     }
                 }
             }
 
-            // Superset link indicator
             if loggedExercise.isLinkedToNext {
                 HStack {
                     Rectangle()
@@ -144,11 +140,11 @@ struct ExerciseCard: View {
     // MARK: - Header
 
     private var cardHeader: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
                     Text(exercise?.name ?? "Unknown")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.callout.weight(.semibold))
                         .lineLimit(1)
                     if loggedExercise.isLinkedToNext {
                         Image(systemName: "link")
@@ -157,7 +153,7 @@ struct ExerciseCard: View {
                     }
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     if let ex = exercise {
                         Text(ex.setPatternMode.shortName)
                             .font(.caption2)
@@ -176,13 +172,12 @@ struct ExerciseCard: View {
 
             Spacer()
 
-            // Completed count badge
             if !loggedExercise.completedWorkSets.isEmpty {
                 Text("\(loggedExercise.completedWorkSets.count)")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
-                    .frame(width: 26, height: 26)
-                    .background(Color.accentColor.opacity(0.15), in: Circle())
+                    .frame(width: 28, height: 28)
+                    .background(Color.accentColor.opacity(0.12), in: Circle())
             }
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -191,13 +186,12 @@ struct ExerciseCard: View {
         }
     }
 
-    // MARK: - Sets List (compact)
+    // MARK: - Sets List
 
     private var setsSection: some View {
         VStack(spacing: 0) {
             ForEach(loggedExercise.orderedSets) { set in
                 CompactSetRow(set: set) {
-                    // Tap to edit logged set
                     editingSet = set
                     editSetWeight = set.weight > 0 ? set.weight.cleanWeight : "0"
                     editSetReps = "\(set.reps)"
@@ -219,40 +213,32 @@ struct ExerciseCard: View {
     // MARK: - Inline Edit Section
 
     private var inlineEditSection: some View {
-        VStack(spacing: 8) {
-            // Suggestion explanation
-            Text(cachedSuggestion.explanation)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(2)
-
-            HStack(spacing: 6) {
-                // Weight controls (tap number for direct entry)
+        VStack(spacing: 10) {
+            // Input row: [- weight +] x [- reps +] [LOG]
+            HStack(spacing: 8) {
                 if exercise?.setPatternMode != .bodyweight {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Button {
                             editWeight = max(0, editWeight - (exercise?.smallestIncrement ?? 2.5))
                             HapticManager.tap()
                         } label: {
                             Image(systemName: "minus")
-                                .font(.caption.weight(.bold))
-                                .frame(width: 32, height: 32)
-                                .background(Color.white.opacity(0.12), in: Circle())
+                                .font(.system(size: 11, weight: .bold))
+                                .frame(width: 28, height: 28)
+                                .background(Color.white.opacity(0.10), in: Circle())
                         }
                         .buttonStyle(.plain)
 
-                        // Tappable weight value
                         Button {
                             weightText = editWeight > 0 ? editWeight.cleanWeight : ""
                             showWeightEntry = true
                         } label: {
                             Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
                                 .font(.title3.weight(.bold).monospacedDigit())
-                                .frame(minWidth: 40)
+                                .frame(minWidth: 54)
                                 .padding(.vertical, 4)
-                                .padding(.horizontal, 6)
-                                .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                                .padding(.horizontal, 4)
+                                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
 
@@ -261,42 +247,40 @@ struct ExerciseCard: View {
                             HapticManager.tap()
                         } label: {
                             Image(systemName: "plus")
-                                .font(.caption.weight(.bold))
-                                .frame(width: 32, height: 32)
-                                .background(Color.white.opacity(0.12), in: Circle())
+                                .font(.system(size: 11, weight: .bold))
+                                .frame(width: 28, height: 28)
+                                .background(Color.white.opacity(0.10), in: Circle())
                         }
                         .buttonStyle(.plain)
                     }
 
                     Text("x")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
 
-                // Reps controls (tap number for direct entry)
-                HStack(spacing: 3) {
+                HStack(spacing: 4) {
                     Button {
                         editReps = max(1, editReps - 1)
                         HapticManager.tap()
                     } label: {
                         Image(systemName: "minus")
-                            .font(.caption.weight(.bold))
-                            .frame(width: 32, height: 32)
-                            .background(Color.white.opacity(0.12), in: Circle())
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.10), in: Circle())
                     }
                     .buttonStyle(.plain)
 
-                    // Tappable reps value
                     Button {
                         repsText = "\(editReps)"
                         showRepsEntry = true
                     } label: {
                         Text("\(editReps)")
                             .font(.title3.weight(.bold).monospacedDigit())
-                            .frame(minWidth: 28)
+                            .frame(minWidth: 32)
                             .padding(.vertical, 4)
-                            .padding(.horizontal, 6)
-                            .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                            .padding(.horizontal, 4)
+                            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
 
@@ -305,92 +289,86 @@ struct ExerciseCard: View {
                         HapticManager.tap()
                     } label: {
                         Image(systemName: "plus")
-                            .font(.caption.weight(.bold))
-                            .frame(width: 32, height: 32)
-                            .background(Color.white.opacity(0.12), in: Circle())
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.10), in: Circle())
                     }
                     .buttonStyle(.plain)
                 }
 
                 Spacer()
 
-                // LOG button (passes setType from suggestion)
                 Button {
                     withAnimation(.spring(response: 0.3)) {
                         viewModel.logSet(for: loggedExercise, weight: editWeight, reps: editReps, setType: cachedSuggestion.setType)
                     }
                 } label: {
                     Text("LOG")
-                        .font(.subheadline.weight(.heavy))
+                        .font(.footnote.weight(.heavy))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.accentColor, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
 
-            // Quick actions row
-            HStack(spacing: 6) {
-                if let lastSet = loggedExercise.lastCompletedSet {
+            // Combined quick actions + muscle impact strip
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if let lastSet = loggedExercise.lastCompletedSet {
+                        Button {
+                            editWeight = lastSet.weight
+                            editReps = lastSet.reps
+                            HapticManager.selection()
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 9))
+                                Text(lastSet.weight > 0 ? "\(lastSet.weight.cleanWeight)x\(lastSet.reps)" : "BWx\(lastSet.reps)")
+                                    .font(.caption2.weight(.semibold).monospacedDigit())
+                            }
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.08), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button {
-                        editWeight = lastSet.weight
-                        editReps = lastSet.reps
+                        refreshSuggestion()
+                        editWeight = cachedSuggestion.weight
+                        editReps = cachedSuggestion.reps
                         HapticManager.selection()
                     } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 8))
-                            Text(lastSet.weight > 0 ? "\(lastSet.weight.cleanWeight)x\(lastSet.reps)" : "BWx\(lastSet.reps)")
-                                .font(.caption2.weight(.semibold).monospacedDigit())
+                        HStack(spacing: 3) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 9))
+                            Text("Suggéré")
+                                .font(.caption2.weight(.medium))
                         }
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 8)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.10), in: Capsule())
+                        .background(Color.white.opacity(0.08), in: Capsule())
                     }
                     .buttonStyle(.plain)
-                }
 
-                Button {
-                    refreshSuggestion()
-                    editWeight = cachedSuggestion.weight
-                    editReps = cachedSuggestion.reps
-                    HapticManager.selection()
-                } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 8))
-                        Text("Suggéré")
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.white.opacity(0.10), in: Capsule())
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-            }
-
-            // Scrollable muscle impact strip (all muscles)
-            if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
-                let impact = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
-                let sorted = impact.sorted(by: { $0.value > $1.value })
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
+                        let impact = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
+                        let sorted = impact.sorted(by: { $0.value > $1.value })
                         ForEach(sorted, id: \.key) { muscle, sets in
-                            HStack(spacing: 2) {
+                            HStack(spacing: 3) {
                                 Text(muscle.displayName)
-                                    .font(.system(size: 9).weight(.medium))
+                                    .font(.caption2.weight(.medium))
                                 Text("+\(sets, specifier: "%.1f")")
-                                    .font(.system(size: 9).weight(.bold).monospacedDigit())
-                                    .foregroundStyle(sets >= 1 ? Color.accentColor : Color.secondary.opacity(0.4))
+                                    .font(.caption2.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(sets >= 1 ? Color.accentColor : .secondary)
                             }
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.08), in: Capsule())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.06), in: Capsule())
                         }
                     }
                 }
@@ -408,7 +386,6 @@ struct CompactSetRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 8) {
-                // Set type indicator
                 setTypeLabel
                     .frame(width: 18, alignment: .center)
 
@@ -442,8 +419,8 @@ struct CompactSetRow: View {
                     .font(.system(size: 9).weight(.bold))
                     .foregroundStyle(.green.opacity(0.7))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
     }

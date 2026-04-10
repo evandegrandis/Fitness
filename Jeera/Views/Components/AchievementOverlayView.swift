@@ -21,10 +21,10 @@ struct AchievementOverlayView: View {
         .padding(.horizontal, 28)
         .padding(.vertical, 20)
         .background {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(.ultraThinMaterial)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(red: 0.14, green: 0.15, blue: 0.22).opacity(0.98))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(
                             LinearGradient(
                                 colors: [.yellow.opacity(0.5), .orange.opacity(0.3)],
@@ -34,7 +34,7 @@ struct AchievementOverlayView: View {
                             lineWidth: 1
                         )
                 }
-                .shadow(color: .yellow.opacity(0.2), radius: 20)
+                .shadow(color: .yellow.opacity(0.15), radius: 16)
         }
         .scaleEffect(scale)
         .opacity(opacity)

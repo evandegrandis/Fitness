@@ -243,7 +243,7 @@ struct QuickStartView: View {
     // MARK: - Muscle Gap Section
 
     private var muscleGapSection: some View {
-        GlassCard(padding: 12, cornerRadius: 14) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Cette semaine")
@@ -328,7 +328,7 @@ struct HistoryExerciseCard: View {
     let loggedExercise: LoggedExercise
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 14) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(loggedExercise.exercise?.name ?? "Unknown")
@@ -426,7 +426,7 @@ struct TemplateRow: View {
                     .font(.body)
                     .foregroundStyle(Color.accentColor)
             }
-            .glassCard(padding: 12)
+            .glassCard(padding: 14)
         }
         .buttonStyle(.plain)
     }
@@ -452,6 +452,6 @@ struct RecentWorkoutRow: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
-        .glassCard(padding: 10)
+        .glassCard(padding: 14)
     }
 }

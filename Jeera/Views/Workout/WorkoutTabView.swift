@@ -39,8 +39,8 @@ struct BackgroundGradient: View {
     var body: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.12, green: 0.12, blue: 0.16),
-                Color(red: 0.08, green: 0.08, blue: 0.11)
+                Color(red: 0.11, green: 0.12, blue: 0.18),
+                Color(red: 0.08, green: 0.09, blue: 0.13)
             ],
             startPoint: .top,
             endPoint: .bottom

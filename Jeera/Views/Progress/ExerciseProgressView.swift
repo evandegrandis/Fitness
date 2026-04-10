@@ -123,7 +123,7 @@ struct ExerciseProgressRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 14) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(spacing: 8) {
                 // Header
                 HStack {

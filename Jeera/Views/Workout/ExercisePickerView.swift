@@ -66,7 +66,7 @@ struct ExercisePickerView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 20)
                                     .padding(.vertical, 6)
-                                    .background(.thinMaterial)
+                                    .background(Color(red: 0.11, green: 0.12, blue: 0.18).opacity(0.95))
                             }
                         }
                     }

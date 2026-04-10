@@ -70,16 +70,15 @@ struct RestTimerView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            // Timer ring
             ZStack {
                 Circle()
-                    .stroke(Color.accentColor.opacity(0.2), lineWidth: 4)
+                    .stroke(Color.accentColor.opacity(0.15), lineWidth: 3)
 
                 Circle()
                     .trim(from: 0, to: timer.progress)
                     .stroke(
                         timer.isComplete ? Color.green : Color.accentColor,
-                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
 
@@ -87,7 +86,7 @@ struct RestTimerView: View {
                     .font(.caption2.weight(.bold).monospacedDigit())
                     .foregroundStyle(timer.isComplete ? .green : .primary)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(timer.isComplete ? "Rest complete" : "Resting")
@@ -100,7 +99,6 @@ struct RestTimerView: View {
 
             Spacer()
 
-            // Ready / Skip button
             Button {
                 timer.reset()
                 onReady()
@@ -112,12 +110,12 @@ struct RestTimerView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .background(
-                        timer.isComplete ? Color.green : Color.clear,
+                        timer.isComplete ? Color.green : Color.white.opacity(0.10),
                         in: Capsule()
                     )
                     .overlay {
                         if !timer.isComplete {
-                            Capsule().stroke(.white.opacity(0.2), lineWidth: 0.5)
+                            Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5)
                         }
                     }
             }
@@ -127,11 +125,11 @@ struct RestTimerView: View {
         .padding(.vertical, 12)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(Color(red: 0.12, green: 0.13, blue: 0.19).opacity(0.98))
         }
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 0.5)
+                .stroke(.white.opacity(0.10), lineWidth: 0.5)
         }
         .padding(.horizontal)
     }

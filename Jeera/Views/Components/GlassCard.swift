@@ -3,11 +3,11 @@ import SwiftUI
 struct GlassCard<Content: View>: View {
     let content: Content
     var padding: CGFloat = 16
-    var cornerRadius: CGFloat = 20
+    var cornerRadius: CGFloat = 16
 
     init(
         padding: CGFloat = 16,
-        cornerRadius: CGFloat = 20,
+        cornerRadius: CGFloat = 16,
         @ViewBuilder content: () -> Content
     ) {
         self.content = content()
@@ -20,17 +20,24 @@ struct GlassCard<Content: View>: View {
             .padding(padding)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(Color.white.opacity(0.08))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.12), lineWidth: 0.5)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.18), .white.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
             }
     }
 }
 
 struct GlassCardModifier: ViewModifier {
-    var cornerRadius: CGFloat = 20
+    var cornerRadius: CGFloat = 16
     var padding: CGFloat = 16
 
     func body(content: Content) -> some View {
@@ -38,17 +45,24 @@ struct GlassCardModifier: ViewModifier {
             .padding(padding)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(Color.white.opacity(0.08))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.12), lineWidth: 0.5)
+                    .stroke(
+                        LinearGradient(
+                            colors: [.white.opacity(0.18), .white.opacity(0.04)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.5
+                    )
             }
     }
 }
 
 extension View {
-    func glassCard(cornerRadius: CGFloat = 20, padding: CGFloat = 16) -> some View {
+    func glassCard(cornerRadius: CGFloat = 16, padding: CGFloat = 16) -> some View {
         modifier(GlassCardModifier(cornerRadius: cornerRadius, padding: padding))
     }
 }

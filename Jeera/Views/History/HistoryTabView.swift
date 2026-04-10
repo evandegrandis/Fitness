@@ -61,7 +61,7 @@ struct HistoryRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 14) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(session.date.relativeDay)

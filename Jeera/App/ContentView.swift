@@ -28,7 +28,15 @@ struct ContentView: View {
                 .tag(2)
         }
         .tint(Color.accentColor)
+        .toolbarBackground(.hidden, for: .tabBar)
         .onAppear {
+            // Tab bar appearance
+            let tabAppearance = UITabBarAppearance()
+            tabAppearance.configureWithTransparentBackground()
+            tabAppearance.backgroundColor = UIColor(red: 0.09, green: 0.10, blue: 0.14, alpha: 0.92)
+            UITabBar.appearance().standardAppearance = tabAppearance
+            UITabBar.appearance().scrollEdgeAppearance = tabAppearance
+
             workoutVM.modelContext = modelContext
             workoutVM.loadActiveSession()
             seedIfNeeded()

@@ -134,7 +134,7 @@ struct MuscleGroupCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 14) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(spacing: 8) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -192,7 +192,7 @@ struct MuscleGroupCard: View {
         }
         .overlay {
             if isSelected {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(statusColor.opacity(0.4), lineWidth: 1)
             }
         }
@@ -217,7 +217,7 @@ struct MuscleHistoryChart: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 14) {
+        GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Historique")
@@ -230,7 +230,7 @@ struct MuscleHistoryChart: View {
                             .font(.caption2.weight(.medium))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
-                            .background(.ultraThinMaterial, in: Capsule())
+                            .background(Color.white.opacity(0.10), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
