@@ -70,11 +70,8 @@ struct QuickStartView: View {
                 }
                 .padding(.top, 12)
 
-                // Muscle gaps summary
-                if !muscleGaps.isEmpty {
-                    muscleGapSection
-                        .padding(.horizontal)
-                }
+                // Weekly priority strip — horizontally scrolling chip row, live counts.
+                WeeklyPrioritySection()
 
                 // Quick Actions
                 VStack(spacing: 10) {
@@ -238,42 +235,6 @@ struct QuickStartView: View {
             copy.templateExercises.append(newTE)
         }
         try? context.save()
-    }
-
-    // MARK: - Muscle Gap Section
-
-    private var muscleGapSection: some View {
-        GlassCard(padding: 14, cornerRadius: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Cette semaine")
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                }
-
-                // Gap chips
-                let displayGaps = muscleGaps.prefix(6)
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 6) {
-                    ForEach(Array(displayGaps), id: \.0) { muscle, remaining in
-                        HStack(spacing: 3) {
-                            Text(muscle.displayName)
-                                .font(.caption2)
-                                .lineLimit(1)
-                            Text("\(Int(remaining))")
-                                .font(.caption2.weight(.bold).monospacedDigit())
-                                .foregroundStyle(remaining > 10 ? .red : .orange)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                    }
-                }
-            }
-        }
     }
 
     private var lastWorkoutSubtitle: String {

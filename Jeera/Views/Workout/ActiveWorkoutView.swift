@@ -5,48 +5,55 @@ struct ActiveWorkoutView: View {
     @Bindable var viewModel: WorkoutViewModel
     @State private var showFinishAlert = false
     @State private var showExercisePicker = false
-    @State private var draggedExercise: LoggedExercise?
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(spacing: 16) {
+            // A List (not a ScrollView) so that .swipeActions inside each
+            // ExerciseCard actually fires. The list style + transparent row
+            // backgrounds make it look like an airy scroll view.
+            List {
+                Section {
                     WorkoutHeaderView(
                         session: viewModel.activeSession,
                         elapsedFormatted: viewModel.workoutElapsedFormatted,
                         totalSets: viewModel.activeSession?.totalWorkSets ?? 0
                     )
-                    .padding(.horizontal)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
 
                     if let session = viewModel.activeSession {
-                        WeeklyGapBanner(session: session)
-                            .padding(.horizontal)
+                        WeeklyPrioritySection(liveSession: session)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     }
+                }
 
-                    if let session = viewModel.activeSession {
+                if let session = viewModel.activeSession {
+                    Section {
                         ForEach(session.orderedExercises) { loggedExercise in
                             ExerciseCard(
                                 loggedExercise: loggedExercise,
                                 viewModel: viewModel
                             )
-                            .padding(.horizontal)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                             .transition(.asymmetric(
                                 insertion: .scale(scale: 0.95).combined(with: .opacity),
                                 removal: .opacity
                             ))
-                            .onDrag {
-                                draggedExercise = loggedExercise
-                                return NSItemProvider(object: loggedExercise.id.uuidString as NSString)
+                        }
+                        .onMove { from, to in
+                            withAnimation(.spring(response: 0.3)) {
+                                viewModel.moveExercise(from: from, to: to)
                             }
-                            .onDrop(of: [.text], delegate: ExerciseDropDelegate(
-                                item: loggedExercise,
-                                viewModel: viewModel,
-                                draggedItem: $draggedExercise
-                            ))
                         }
                     }
+                }
 
-                    // Inline Add Exercise button
+                Section {
                     Button {
                         showExercisePicker = true
                         HapticManager.tap()
@@ -62,17 +69,25 @@ struct ActiveWorkoutView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(Color.accentColor.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(Color.accentColor.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
                         }
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal)
-
-                    Spacer(minLength: viewModel.restTimer.isRunning ? 100 : 40)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
-                .padding(.top, 4)
+
+                // Bottom breathing room so the rest timer / toast don't collide.
+                Color.clear
+                    .frame(height: viewModel.restTimer.isRunning ? 100 : 40)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
 
             // Rest Timer
             if viewModel.restTimer.isRunning {
@@ -138,40 +153,6 @@ struct ActiveWorkoutView: View {
     }
 }
 
-// MARK: - Drag & Drop Delegate
-
-struct ExerciseDropDelegate: DropDelegate {
-    let item: LoggedExercise
-    let viewModel: WorkoutViewModel
-    @Binding var draggedItem: LoggedExercise?
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggedItem = nil
-        return true
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let dragged = draggedItem,
-              dragged.id != item.id,
-              let session = viewModel.activeSession else { return }
-
-        let exercises = session.orderedExercises
-        guard let fromIndex = exercises.firstIndex(where: { $0.id == dragged.id }),
-              let toIndex = exercises.firstIndex(where: { $0.id == item.id }) else { return }
-
-        withAnimation(.spring(response: 0.3)) {
-            viewModel.moveExercise(
-                from: IndexSet(integer: fromIndex),
-                to: toIndex > fromIndex ? toIndex + 1 : toIndex
-            )
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-}
-
 // MARK: - Workout Header
 
 struct WorkoutHeaderView: View {
@@ -192,61 +173,6 @@ struct WorkoutHeaderView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
-        }
-    }
-}
-
-// MARK: - Weekly Gap Banner
-
-struct WeeklyGapBanner: View {
-    let session: WorkoutSession
-    @Query private var allSessions: [WorkoutSession]
-    @Query private var goals: [MuscleGoal]
-
-    private var gaps: [(MuscleGroup, Double)] {
-        let progress = EffectiveSetsEngine.currentWeekProgress(sessions: allSessions, goals: goals)
-        return progress
-            .filter { $0.remaining > 1 && $0.goalSets > 0 }
-            .sorted { $0.remaining > $1.remaining }
-            .prefix(4)
-            .map { ($0.muscleGroup, $0.remaining) }
-    }
-
-    var body: some View {
-        if !gaps.isEmpty {
-            HStack(spacing: 8) {
-                Image(systemName: "target")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-
-                HStack(spacing: 6) {
-                    ForEach(gaps, id: \.0) { muscle, remaining in
-                        HStack(spacing: 2) {
-                            Text(muscle.displayName)
-                                .font(.caption2.weight(.medium))
-                            Text("\(Int(remaining))")
-                                .font(.caption2.weight(.bold).monospacedDigit())
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                Text("restant")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(.orange.opacity(0.08))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(.orange.opacity(0.20), lineWidth: 0.5)
-                    }
-            }
         }
     }
 }

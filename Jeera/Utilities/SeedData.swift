@@ -54,8 +54,11 @@ struct SeedData {
             map[name] = ex
         }
 
-        // ========== PULL ==========
+        // ========== PULL / BACK ==========
         make("Tractions SN", category: "Pull", mode: .ramping, repMin: 5, repMax: 12, increment: 2.5, rest: 180, favorite: true,
+             muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.3), (.forearms, 0.1)])
+
+        make("Tractions neutres lestées", category: "Pull", mode: .ramping, repMin: 6, repMax: 12, increment: 2.5, rest: 180,
              muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.3), (.forearms, 0.1)])
 
         make("Traction pronation large", category: "Pull", mode: .bodyweight, repMin: 5, repMax: 12, rest: 180,
@@ -66,11 +69,11 @@ struct SeedData {
 
         make("Tirage horizontal large", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
              machine: "r7-6",
-             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
+             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3), (.reardelts, 0.1)])
 
         make("Isolateral row", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
              machine: "r5",
-             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
+             muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3), (.reardelts, 0.1)])
 
         make("Row uni", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
              muscles: [(.upperback, 1.0), (.lats, 0.3), (.biceps, 0.3)])
@@ -78,71 +81,71 @@ struct SeedData {
         make("Tirage vertical muscle up", category: "Pull", mode: .ramping, repMin: 6, repMax: 12, increment: 5, rest: 120,
              muscles: [(.lats, 1.0), (.upperback, 0.3), (.biceps, 0.1)])
 
-        // ========== PUSH - CHEST ==========
-        make("DC assisté", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
-             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+        // ========== CHEST ==========
+        make("Développé couché machine", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.frontdelts, 0.3)])
 
-        make("Chest Press", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
-             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+        make("Développé assis machine", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.frontdelts, 0.3)])
 
         make("Seated Pec", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180,
-             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+             muscles: [(.chest, 1.0), (.triceps, 0.3), (.frontdelts, 0.3)])
 
         make("Développé incliné haltères", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 2, rest: 180,
-             muscles: [(.chest, 1.0), (.triceps, 0.3), (.shoulders, 0.3)])
+             muscles: [(.chest, 1.0), (.frontdelts, 0.3), (.triceps, 0.3)])
 
-        make("Pec Deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
+        make("Pec deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
              machine: "r4",
-             muscles: [(.chest, 1.0), (.shoulders, 0.1)])
+             muscles: [(.chest, 1.0), (.frontdelts, 0.1)])
 
-        // ========== PUSH - SHOULDERS ==========
-        make("Shoulder Press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
-             muscles: [(.shoulders, 1.0), (.triceps, 0.3)])
+        // ========== SHOULDERS (split delts) ==========
+        make("Shoulder press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+             muscles: [(.frontdelts, 1.0), (.sidedelts, 0.3), (.triceps, 0.3)])
 
         make("HSPU", category: "Push", mode: .bodyweight, repMin: 5, repMax: 12, rest: 120,
-             muscles: [(.shoulders, 1.0), (.triceps, 0.3)])
+             muscles: [(.frontdelts, 1.0), (.sidedelts, 0.3), (.triceps, 0.3)])
 
-        make("Élévations latérales", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 90,
-             muscles: [(.shoulders, 1.0)])
+        make("Lateral raises", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 75,
+             muscles: [(.sidedelts, 1.0)])
 
-        // ========== PUSH - TRICEPS ==========
+        // ========== TRICEPS ==========
         make("Dips machine", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
-             muscles: [(.triceps, 1.0), (.chest, 0.3), (.shoulders, 0.1)])
+             muscles: [(.triceps, 1.0), (.chest, 0.3), (.frontdelts, 0.1)])
 
-        make("Extension triceps poulie", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90,
+        make("Extension triceps poulie", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75,
              machine: "r16",
              muscles: [(.triceps, 1.0)])
 
-        make("Extension triceps haltère", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2, rest: 90,
+        make("Extension triceps haltère", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2, rest: 75,
              muscles: [(.triceps, 1.0)])
 
-        // ========== ARMS ==========
-        make("Curl debout", category: "Arms", mode: .ramping, repMin: 6, repMax: 10, increment: 1, rest: 90, favorite: true,
+        // ========== BICEPS / FOREARMS ==========
+        make("Curl debout", category: "Arms", mode: .ramping, repMin: 6, repMax: 10, increment: 1, rest: 75, favorite: true,
              muscles: [(.biceps, 1.0), (.forearms, 0.3)])
 
-        make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1, rest: 90,
+        make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1, rest: 75,
              muscles: [(.biceps, 1.0), (.forearms, 0.1)])
 
-        make("Curl marteau poulie", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 90,
+        make("Curl marteau poulie", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 75,
              muscles: [(.biceps, 1.0), (.forearms, 0.3)])
 
-        make("Wrist Curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1, rest: 60,
+        make("Wrist curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1, rest: 60,
              muscles: [(.forearms, 1.0)])
 
         // ========== LEGS ==========
-        make("Leg Extension", category: "Legs", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 120, favorite: true,
+        make("Leg extension", category: "Legs", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 120, favorite: true,
              machine: "r3-5",
              muscles: [(.quads, 1.0)])
 
-        make("Leg Curl", category: "Legs", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 120,
+        make("Leg curl", category: "Legs", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 120,
              machine: "r4-5",
-             muscles: [(.hamstrings, 1.0)])
+             muscles: [(.hamstrings, 1.0), (.glutes, 0.1)])
 
         // ========== CORE ==========
-        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 90, favorite: true,
+        make("Crunch lesté", category: "Core", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75, favorite: true,
              muscles: [(.abs, 1.0)])
 
-        make("Relevé de jambes chaise romaine", category: "Core", mode: .bodyweight, repMin: 8, repMax: 15, rest: 90,
+        make("Relevé de jambes chaise romaine", category: "Core", mode: .bodyweight, repMin: 8, repMax: 15, rest: 75,
              muscles: [(.abs, 1.0), (.obliques, 0.3)])
 
         return map
@@ -152,17 +155,20 @@ struct SeedData {
 
     static func createGoals(context: ModelContext) {
         let goals: [(MuscleGroup, Double)] = [
-            (.shoulders, 18),
-            (.biceps, 18),
             (.chest, 18),
-            (.abs, 18),
+            (.biceps, 18),
             (.triceps, 15),
-            (.upperback, 15),
-            (.lats, 15),
-            (.quads, 9),
-            (.hamstrings, 9),
+            (.sidedelts, 14),
+            (.frontdelts, 10),
+            (.reardelts, 10),
+            (.upperback, 16),
+            (.lats, 16),
+            (.abs, 18),
             (.obliques, 9),
             (.forearms, 9),
+            (.quads, 9),
+            (.hamstrings, 9),
+            (.glutes, 6),
         ]
 
         for (muscle, sets) in goals {
@@ -188,13 +194,13 @@ struct SeedData {
 
         template("Full Body", [
             "Tractions SN",
-            "Crunch déclinés",
+            "Crunch lesté",
             "HSPU",
-            "DC assisté",
-            "Leg Extension",
-            "Shoulder Press",
+            "Développé couché machine",
+            "Leg extension",
+            "Shoulder press",
             "Curl debout",
-            "Pec Deck",
+            "Pec deck",
             "Pulley serré"
         ])
     }
@@ -238,80 +244,80 @@ struct SeedData {
 
         // April 7
         session(date(4, 7), duration: 75, [
-            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch déclinés",      [(40, 10), (40, 10)]),
-            ("HSPU",                 [(0, 10)]),
-            ("DC assisté",           [(80, 10), (100, 9), (120, 3)]),
-            ("Leg Extension",        [(85, 10)]),
-            ("Curl debout",          [(18, 9), (20, 5), (18, 5)]),
-            ("Shoulder Press",       [(80, 10), (80, 10)]),
-            ("Pec Deck",             [(80, 4), (70, 6)]),
-            ("Pulley serré",         [(50, 5), (50, 5)]),
+            ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch lesté",                [(40, 10), (40, 10)]),
+            ("HSPU",                        [(0, 10)]),
+            ("Développé couché machine",    [(80, 10), (100, 9), (120, 3)]),
+            ("Leg extension",               [(85, 10)]),
+            ("Curl debout",                 [(18, 9), (20, 5), (18, 5)]),
+            ("Shoulder press",              [(80, 10), (80, 10)]),
+            ("Pec deck",                    [(80, 4), (70, 6)]),
+            ("Pulley serré",                [(50, 5), (50, 5)]),
         ])
 
         // April 3
         session(date(4, 3), duration: 50, [
-            ("Tractions SN",         [(0, 10), (0, 10), (0, 10)]),
-            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
-            ("DC assisté",           [(80, 10), (100, 8), (90, 6)]),
-            ("Shoulder Press",       [(80, 8)]),
+            ("Tractions SN",                [(0, 10), (0, 10), (0, 10)]),
+            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Développé couché machine",    [(80, 10), (100, 8), (90, 6)]),
+            ("Shoulder press",              [(80, 8)]),
         ])
 
         // April 1
         session(date(4, 1), duration: 80, [
-            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
-            ("HSPU",                 [(0, 10)]),
-            ("Chest Press",          [(100, 10), (120, 6), (100, 6)]),
-            ("Leg Extension",        [(85, 10)]),
-            ("Pulley serré",         [(45, 10), (50, 8)]),
-            ("Curl debout",          [(20, 4), (18, 4)]),
-            ("Shoulder Press",       [(80, 10), (80, 8), (80, 4)]),
-            ("Pec Deck",             [(85, 4), (75, 4)]),
+            ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("HSPU",                        [(0, 10)]),
+            ("Développé couché machine",    [(100, 10), (120, 6), (100, 6)]),
+            ("Leg extension",               [(85, 10)]),
+            ("Pulley serré",                [(45, 10), (50, 8)]),
+            ("Curl debout",                 [(20, 4), (18, 4)]),
+            ("Shoulder press",              [(80, 10), (80, 8), (80, 4)]),
+            ("Pec deck",                    [(85, 4), (75, 4)]),
         ])
 
         // March 30
         session(date(3, 30), duration: 85, [
-            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
-            ("HSPU",                 [(0, 10)]),
-            ("Leg Curl",             [(65, 10), (75, 10), (75, 10)]),
-            ("Leg Extension",        [(85, 10), (100, 10), (100, 8)]),
-            ("Chest Press",          [(100, 10), (120, 8), (100, 6)]),
-            ("Pulley serré",         [(45, 8), (45, 7)]),
-            ("Tirage horizontal large", [(45, 6)]),
-            ("Curl debout",          [(20, 6), (18, 5)]),
+            ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("HSPU",                        [(0, 10)]),
+            ("Leg curl",                    [(65, 10), (75, 10), (75, 10)]),
+            ("Leg extension",               [(85, 10), (100, 10), (100, 8)]),
+            ("Développé couché machine",    [(100, 10), (120, 8), (100, 6)]),
+            ("Pulley serré",                [(45, 8), (45, 7)]),
+            ("Tirage horizontal large",     [(45, 6)]),
+            ("Curl debout",                 [(20, 6), (18, 5)]),
         ])
 
         // March 25
         session(date(3, 25), duration: 70, [
-            ("Tractions SN",         [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch déclinés",      [(40, 10), (40, 10), (40, 10)]),
-            ("Leg Extension",        [(85, 10), (100, 10), (100, 6)]),
-            ("Curl incliné",         [(14, 10), (14, 4)]),
-            ("Élévations latérales", [(14, 4)]),
-            ("Pec Deck",             [(75, 10), (80, 4)]),
-            ("Chest Press",          [(125, 6), (100, 8)]),
+            ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
+            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Leg extension",               [(85, 10), (100, 10), (100, 6)]),
+            ("Curl incliné",                [(14, 10), (14, 4)]),
+            ("Lateral raises",              [(14, 4)]),
+            ("Pec deck",                    [(75, 10), (80, 4)]),
+            ("Développé couché machine",    [(125, 6), (100, 8)]),
         ])
 
         // March 23
         session(date(3, 23), duration: 65, [
-            ("Tractions SN",         [(0, 10), (15, 5), (0, 8)]),
-            ("Leg Extension",        [(85, 10), (100, 8)]),
-            ("Seated Pec",           [(100, 10), (130, 6), (130, 4)]),
-            ("Shoulder Press",       [(80, 10), (85, 5), (80, 4)]),
-            ("Curl debout",          [(18, 8), (18, 8)]),
+            ("Tractions SN",                [(0, 10), (15, 5), (0, 8)]),
+            ("Leg extension",               [(85, 10), (100, 8)]),
+            ("Seated Pec",                  [(100, 10), (130, 6), (130, 4)]),
+            ("Shoulder press",              [(80, 10), (85, 5), (80, 4)]),
+            ("Curl debout",                 [(18, 8), (18, 8)]),
         ])
 
         // March 20
         session(date(3, 20), duration: 75, [
-            ("Tractions SN",         [(0, 10), (0, 10), (0, 10)]),
-            ("Seated Pec",           [(100, 10), (120, 6), (120, 5), (100, 5)]),
-            ("Élévations latérales", [(12, 10)]),
-            ("Row uni",              [(90, 6), (80, 10)]),
-            ("Pec Deck",             [(60, 10), (70, 8), (75, 5)]),
-            ("Shoulder Press",       [(80, 4), (70, 10)]),
-            ("Curl incliné",         [(14, 9), (14, 6)]),
+            ("Tractions SN",                [(0, 10), (0, 10), (0, 10)]),
+            ("Seated Pec",                  [(100, 10), (120, 6), (120, 5), (100, 5)]),
+            ("Lateral raises",              [(12, 10)]),
+            ("Row uni",                     [(90, 6), (80, 10)]),
+            ("Pec deck",                    [(60, 10), (70, 8), (75, 5)]),
+            ("Shoulder press",              [(80, 4), (70, 10)]),
+            ("Curl incliné",                [(14, 9), (14, 6)]),
         ])
     }
 }

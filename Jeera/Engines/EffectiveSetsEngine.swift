@@ -90,10 +90,15 @@ struct EffectiveSetsEngine {
 
     // MARK: - Calculate weekly totals
 
+    /// Total effective sets for every muscle group in the given week.
+    /// If `liveSession` is provided (the currently active workout), its in-progress
+    /// completed sets are counted live so the weekly priority strip decreases the moment
+    /// a set is validated — not after the workout is saved.
     static func weeklyTotals(
         sessions: [WorkoutSession],
         weekStart: Date,
-        weekEnd: Date
+        weekEnd: Date,
+        liveSession: WorkoutSession? = nil
     ) -> [MuscleGroup: Double] {
         let sessionsInWeek = sessions.filter { session in
             !session.isActive && session.date >= weekStart && session.date < weekEnd
@@ -110,6 +115,16 @@ struct EffectiveSetsEngine {
             }
         }
 
+        // Live overlay — only count if the active session's date falls inside this week.
+        if let live = liveSession, live.date >= weekStart, live.date < weekEnd {
+            for loggedEx in live.loggedExercises {
+                let sets = effectiveSets(for: loggedEx)
+                for (muscle, value) in sets {
+                    totals[muscle, default: 0] += value
+                }
+            }
+        }
+
         return totals
     }
 
@@ -118,14 +133,20 @@ struct EffectiveSetsEngine {
     static func currentWeekProgress(
         sessions: [WorkoutSession],
         goals: [MuscleGoal],
-        referenceDate: Date = Date()
+        referenceDate: Date = Date(),
+        liveSession: WorkoutSession? = nil
     ) -> [MuscleGroupProgress] {
         let weekStart = referenceDate.startOfWeek
         let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? referenceDate
 
         let prevWeekStart = Calendar.current.date(byAdding: .day, value: -7, to: weekStart) ?? weekStart
 
-        let currentTotals = weeklyTotals(sessions: sessions, weekStart: weekStart, weekEnd: weekEnd)
+        let currentTotals = weeklyTotals(
+            sessions: sessions,
+            weekStart: weekStart,
+            weekEnd: weekEnd,
+            liveSession: liveSession
+        )
         let prevTotals = weeklyTotals(sessions: sessions, weekStart: prevWeekStart, weekEnd: weekStart)
 
         let goalMap = Dictionary(goals.map { ($0.muscleGroup, $0.weeklyGoalSets) }, uniquingKeysWith: { _, last in last })

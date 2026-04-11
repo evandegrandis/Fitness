@@ -7,16 +7,29 @@ struct ExercisePickerView: View {
     @Query(sort: \Exercise.name) private var allExercises: [Exercise]
     @State private var searchText = ""
     @State private var showCreateExercise = false
+    @State private var onlyMatchingMuscle: Bool
+
+    /// When provided, the picker opens pre-filtered to exercises that share this
+    /// primary muscle (swipe-left → Remplacer flow). A toggle lets the user widen.
+    let filterMuscle: MuscleGroup?
 
     let onSelect: (Exercise) -> Void
 
+    init(filterMuscle: MuscleGroup? = nil, onSelect: @escaping (Exercise) -> Void) {
+        self.filterMuscle = filterMuscle
+        self.onSelect = onSelect
+        _onlyMatchingMuscle = State(initialValue: filterMuscle != nil)
+    }
+
     private var filteredExercises: [Exercise] {
-        if searchText.isEmpty {
-            return sortedExercises
+        var result = sortedExercises
+        if onlyMatchingMuscle, let muscle = filterMuscle {
+            result = result.filter { $0.primaryMuscle == muscle }
         }
-        return sortedExercises.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
+        if !searchText.isEmpty {
+            result = result.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         }
+        return result
     }
 
     private var sortedExercises: [Exercise] {
@@ -51,6 +64,17 @@ struct ExercisePickerView: View {
 
                 ScrollView {
                     LazyVStack(spacing: 4, pinnedViews: .sectionHeaders) {
+                        if filterMuscle != nil {
+                            Toggle(isOn: $onlyMatchingMuscle.animation()) {
+                                Text("Même groupe musculaire")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tint(Color.accentColor)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 6)
+                        }
+
                         ForEach(groupedExercises, id: \.0) { section, exercises in
                             Section {
                                 ForEach(exercises) { exercise in
@@ -66,7 +90,7 @@ struct ExercisePickerView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 20)
                                     .padding(.vertical, 6)
-                                    .background(Color(red: 0.11, green: 0.12, blue: 0.18).opacity(0.95))
+                                    .background(Color(red: 0.10, green: 0.11, blue: 0.16).opacity(0.95))
                             }
                         }
                     }

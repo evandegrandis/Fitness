@@ -8,33 +8,33 @@ struct HistoryTabView: View {
         order: .reverse
     ) private var sessions: [WorkoutSession]
 
+    @Query private var goals: [MuscleGoal]
+
+    /// Sessions grouped into ISO weeks (Mon-Sun Europe/Paris). The dictionary key
+    /// is the Monday of that week; groups are sorted newest-first.
+    private var weeklyGroups: [(weekStart: Date, sessions: [WorkoutSession])] {
+        let buckets = Dictionary(grouping: sessions) { $0.date.startOfWeek }
+        return buckets
+            .map { (weekStart: $0.key, sessions: $0.value) }
+            .sorted { $0.weekStart > $1.weekStart }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 BackgroundGradient()
 
                 if sessions.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.largeTitle)
-                            .foregroundStyle(.tertiary)
-                        Text("Pas encore de séance")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text("Tes séances terminées apparaîtront ici.")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
+                    emptyState
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 10) {
-                            ForEach(sessions) { session in
-                                NavigationLink {
-                                    WorkoutDetailView(session: session)
-                                } label: {
-                                    HistoryRow(session: session)
-                                }
-                                .buttonStyle(.plain)
+                        LazyVStack(spacing: 18) {
+                            ForEach(weeklyGroups, id: \.weekStart) { group in
+                                WeeklyHistorySection(
+                                    weekStart: group.weekStart,
+                                    sessions: group.sessions,
+                                    goals: goals
+                                )
                             }
                         }
                         .padding(.horizontal)
@@ -47,7 +47,85 @@ struct HistoryTabView: View {
             .navigationBarTitleDisplayMode(.inline)
         }
     }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.largeTitle)
+                .foregroundStyle(.tertiary)
+            Text("Pas encore de séance")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("Tes séances terminées apparaîtront ici.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
 }
+
+// MARK: - Weekly Section
+
+struct WeeklyHistorySection: View {
+    let weekStart: Date
+    let sessions: [WorkoutSession]
+    let goals: [MuscleGoal]
+
+    private var weekLabel: String {
+        if Calendar.current.isDate(weekStart, equalTo: Date(), toGranularity: .weekOfYear) {
+            return "Cette semaine"
+        }
+        let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? weekStart
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        formatter.locale = Locale(identifier: "fr_FR")
+        return "\(formatter.string(from: weekStart)) – \(formatter.string(from: weekEnd))"
+    }
+
+    /// Number of weekly goals that were met in this week.
+    private var goalSummary: (met: Int, total: Int) {
+        let total = goals.filter { $0.weeklyGoalSets > 0 }.count
+        guard total > 0 else { return (0, 0) }
+
+        let progress = EffectiveSetsEngine.currentWeekProgress(
+            sessions: sessions,
+            goals: goals,
+            referenceDate: weekStart
+        )
+        let met = progress.filter { $0.isComplete }.count
+        return (met, total)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(weekLabel)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                let summary = goalSummary
+                if summary.total > 0 {
+                    Text("\(summary.met) / \(summary.total) objectifs")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(summary.met == summary.total ? .green : .secondary)
+                }
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 10) {
+                ForEach(sessions) { session in
+                    NavigationLink {
+                        WorkoutDetailView(session: session)
+                    } label: {
+                        HistoryRow(session: session)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Row
 
 struct HistoryRow: View {
     let session: WorkoutSession
@@ -61,7 +139,7 @@ struct HistoryRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 16) {
+        GlassCard(padding: 14, cornerRadius: 22) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(session.date.relativeDay)

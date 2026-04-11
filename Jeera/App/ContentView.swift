@@ -30,10 +30,24 @@ struct ContentView: View {
         .tint(Color.accentColor)
         .toolbarBackground(.hidden, for: .tabBar)
         .onAppear {
-            // Tab bar appearance
+            // Tab bar appearance — transparent with a subtle top border so it
+            // feels lifted from the content, not a heavy slab. The gradient
+            // BackgroundGradient shows through for a more ambient look.
             let tabAppearance = UITabBarAppearance()
             tabAppearance.configureWithTransparentBackground()
-            tabAppearance.backgroundColor = UIColor(red: 0.09, green: 0.10, blue: 0.14, alpha: 0.92)
+            tabAppearance.backgroundColor = UIColor(red: 0.10, green: 0.11, blue: 0.17, alpha: 0.72)
+            tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
+
+            let itemAppearance = UITabBarItemAppearance()
+            itemAppearance.normal.iconColor = UIColor.white.withAlphaComponent(0.45)
+            itemAppearance.normal.titleTextAttributes = [
+                .foregroundColor: UIColor.white.withAlphaComponent(0.45),
+                .font: UIFont.systemFont(ofSize: 10, weight: .medium)
+            ]
+            tabAppearance.stackedLayoutAppearance = itemAppearance
+            tabAppearance.inlineLayoutAppearance = itemAppearance
+            tabAppearance.compactInlineLayoutAppearance = itemAppearance
+
             UITabBar.appearance().standardAppearance = tabAppearance
             UITabBar.appearance().scrollEdgeAppearance = tabAppearance
 

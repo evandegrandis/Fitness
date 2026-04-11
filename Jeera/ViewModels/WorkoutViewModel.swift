@@ -20,6 +20,37 @@ class WorkoutViewModel {
     var defaultRestSeconds: Int = 120
     var supersetRestSeconds: Int = 180
 
+    /// Per-exercise record cache, keyed by Exercise.id. Built on demand when an
+    /// ExerciseCard asks for records, invalidated when a set is logged/edited/deleted
+    /// or when an exercise is added/replaced.
+    private var recordsCache: [UUID: ExerciseRecords] = [:]
+
+    /// Transient "just hit a record" markers, keyed by LoggedSet.id. Set when
+    /// a set is logged; UI reads this to display the star + micro-celebration.
+    var justHitRecord: [UUID: RecordKind] = [:]
+
+    /// Pre-computed records for `exercise`, built from its recent finished-session
+    /// history. Does NOT include sets from the currently active session.
+    /// We look at the last 20 sessions for this exercise — any record set farther
+    /// back than that is ancient enough to not care about.
+    func records(for exercise: Exercise) -> ExerciseRecords {
+        if let cached = recordsCache[exercise.id] { return cached }
+        let (primary, history) = fetchRecentSets(for: exercise, maxSessions: 20)
+        let all = history.flatMap { $0 } + primary
+        let records = RecordsEngine.buildRecords(for: exercise, historicalSets: all)
+        recordsCache[exercise.id] = records
+        return records
+    }
+
+    func invalidateRecords(for exercise: Exercise?) {
+        guard let exercise else { return }
+        recordsCache.removeValue(forKey: exercise.id)
+    }
+
+    /// Superset linking — "armed" state for the double-tap-to-link interaction.
+    /// When non-nil, the next double-tap on another exercise header will link them.
+    var armedSupersetExerciseID: UUID?
+
     // Live workout timer
     var workoutElapsed: TimeInterval = 0
     private var workoutTimer: AnyCancellable?
@@ -142,13 +173,28 @@ class WorkoutViewModel {
 
     func addExercise(_ exercise: Exercise) {
         guard let session = activeSession, let context = modelContext else { return }
-        let orderIndex = session.loggedExercises.count
+        let orderIndex = (session.loggedExercises.map(\.orderIndex).max() ?? -1) + 1
         let logged = LoggedExercise(orderIndex: orderIndex, exercise: exercise)
         logged.session = session
         context.insert(logged)
         session.loggedExercises.append(logged)
 
         exercise.lastUsed = Date()
+        try? context.save()
+        HapticManager.impact(.medium)
+    }
+
+    /// Replace one exercise instance with another, preserving the exact position.
+    /// Called from the swipe-left "Remplacer" action.
+    func replaceExercise(_ loggedExercise: LoggedExercise, with newExercise: Exercise) {
+        guard let context = modelContext else { return }
+        // Clear any in-progress sets for the old instance — replacing means starting fresh.
+        for set in loggedExercise.sets {
+            context.delete(set)
+        }
+        loggedExercise.sets.removeAll()
+        loggedExercise.exercise = newExercise
+        newExercise.lastUsed = Date()
         try? context.save()
         HapticManager.impact(.medium)
     }
@@ -180,7 +226,7 @@ class WorkoutViewModel {
         HapticManager.reorder()
     }
 
-    // MARK: - Superset Toggle
+    // MARK: - Superset
 
     func toggleSuperset(_ loggedExercise: LoggedExercise) {
         loggedExercise.isLinkedToNext.toggle()
@@ -188,13 +234,84 @@ class WorkoutViewModel {
         HapticManager.selection()
     }
 
+    /// Double-tap flow:
+    ///  - Double-tapping an already-linked exercise unlinks it.
+    ///  - Double-tapping an unlinked exercise while nothing is armed arms it.
+    ///  - Double-tapping a second exercise while one is armed links them (armed -> target)
+    ///    as a superset by setting the armed exercise's `isLinkedToNext = true` and
+    ///    reordering the target to sit immediately after the armed one.
+    func handleSupersetDoubleTap(_ loggedExercise: LoggedExercise) {
+        guard let session = activeSession else { return }
+
+        // Unlink an already-linked exercise.
+        if loggedExercise.isLinkedToNext {
+            loggedExercise.isLinkedToNext = false
+            armedSupersetExerciseID = nil
+            try? modelContext?.save()
+            HapticManager.selection()
+            return
+        }
+
+        // Nothing armed — arm this exercise.
+        guard let armedID = armedSupersetExerciseID else {
+            armedSupersetExerciseID = loggedExercise.id
+            HapticManager.selection()
+            return
+        }
+
+        // Tapping the same armed exercise again cancels arming.
+        if armedID == loggedExercise.id {
+            armedSupersetExerciseID = nil
+            HapticManager.selection()
+            return
+        }
+
+        // Link: armed -> this. Move `loggedExercise` to sit right after the armed one.
+        guard let armed = session.loggedExercises.first(where: { $0.id == armedID }) else {
+            armedSupersetExerciseID = nil
+            return
+        }
+
+        var ordered = session.orderedExercises
+        guard let fromIdx = ordered.firstIndex(where: { $0.id == loggedExercise.id }),
+              let armedIdx = ordered.firstIndex(where: { $0.id == armed.id }) else {
+            armedSupersetExerciseID = nil
+            return
+        }
+
+        let moving = ordered.remove(at: fromIdx)
+        let insertAt = armedIdx < fromIdx ? armedIdx + 1 : armedIdx
+        ordered.insert(moving, at: insertAt)
+
+        for (i, ex) in ordered.enumerated() {
+            ex.orderIndex = i
+        }
+        armed.isLinkedToNext = true
+        armedSupersetExerciseID = nil
+        try? modelContext?.save()
+        HapticManager.impact(.medium)
+    }
+
     // MARK: - Duplicate Exercise
 
+    /// Duplicate an exercise instance and insert it directly below the original.
+    /// All following exercises shift down by one slot so ordering stays explicit.
     func duplicateExercise(_ loggedExercise: LoggedExercise) {
         guard let session = activeSession, let context = modelContext,
               let exercise = loggedExercise.exercise else { return }
-        let orderIndex = session.loggedExercises.count
-        let newLogged = LoggedExercise(orderIndex: orderIndex, exercise: exercise)
+
+        let ordered = session.orderedExercises
+        guard let idx = ordered.firstIndex(where: { $0.id == loggedExercise.id }) else { return }
+
+        // Shift every exercise after the source down by one.
+        for (i, ex) in ordered.enumerated() where i > idx {
+            ex.orderIndex = i + 1
+        }
+
+        let newLogged = LoggedExercise(
+            orderIndex: loggedExercise.orderIndex + 1,
+            exercise: exercise
+        )
         newLogged.session = session
         context.insert(newLogged)
         session.loggedExercises.append(newLogged)
@@ -206,6 +323,10 @@ class WorkoutViewModel {
 
     func logSet(for loggedExercise: LoggedExercise, weight: Double, reps: Int, setType: SetType = .work) {
         guard let context = modelContext else { return }
+
+        // Snapshot records BEFORE inserting so we can classify the new set fairly.
+        let priorRecords = loggedExercise.exercise.map { records(for: $0) } ?? .empty
+
         let set = LoggedSet(
             weight: weight,
             reps: reps,
@@ -219,7 +340,33 @@ class WorkoutViewModel {
 
         HapticManager.logSet()
 
-        // Achievement detection
+        // Record classification — lightweight, uses the cached prior records.
+        if let exercise = loggedExercise.exercise,
+           let kind = RecordsEngine.classify(set: set, exercise: exercise, priorRecords: priorRecords) {
+            justHitRecord[set.id] = kind
+            // Bump the cache: treat this new set as part of history for future sets in the same session.
+            let updatedHeaviest: Double
+            let updatedReps: Int
+            if kind == .heaviestWeight || weight > priorRecords.heaviestValidated {
+                updatedHeaviest = weight
+                updatedReps = reps
+            } else {
+                updatedHeaviest = priorRecords.heaviestValidated
+                updatedReps = priorRecords.repsAtHeaviestValidated
+            }
+            var newBestByWeight = priorRecords.bestRepsByWeight
+            if reps > (newBestByWeight[weight] ?? 0) {
+                newBestByWeight[weight] = reps
+            }
+            recordsCache[exercise.id] = ExerciseRecords(
+                heaviestValidated: updatedHeaviest,
+                repsAtHeaviestValidated: updatedReps,
+                bestRepsByWeight: newBestByWeight,
+                isEmpty: false
+            )
+        }
+
+        // Achievement overlay — same detection logic kept for the full-screen celebration.
         if let exercise = loggedExercise.exercise {
             let (previousSets, _) = fetchRecentSets(for: exercise, maxSessions: 3)
             if let achievement = ProgressionEngine.detectAchievement(
@@ -229,7 +376,7 @@ class WorkoutViewModel {
             ) {
                 currentAchievement = achievement
                 showAchievement = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
                     self?.showAchievement = false
                 }
             }
@@ -265,6 +412,9 @@ class WorkoutViewModel {
         set.weight = weight
         set.reps = reps
         try? modelContext?.save()
+        // Editing can invalidate what counts as a record for this exercise.
+        invalidateRecords(for: set.loggedExercise?.exercise)
+        justHitRecord.removeValue(forKey: set.id)
         HapticManager.selection()
     }
 
@@ -274,10 +424,12 @@ class WorkoutViewModel {
         let reps = set.reps
 
         loggedExercise.sets.removeAll { $0.id == set.id }
+        justHitRecord.removeValue(forKey: set.id)
         context.delete(set)
         try? context.save()
+        invalidateRecords(for: loggedExercise.exercise)
 
-        showUndoMessage("Deleted \(weight > 0 ? weight.cleanWeight : "BW")x\(reps)") { }
+        showUndoMessage("Set supprimé — \(weight > 0 ? weight.cleanWeight : "BW")x\(reps)") { }
         HapticManager.deleteSet()
     }
 

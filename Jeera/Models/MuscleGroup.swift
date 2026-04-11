@@ -1,50 +1,72 @@
 import Foundation
 
+/// Canonical muscle taxonomy. No duplicated "shoulders" bucket — delts are always
+/// split into side / front / rear. This is the single source of truth used across
+/// weekly goals, exercise mappings, history, and progress.
 enum MuscleGroup: String, Codable, CaseIterable, Identifiable, Comparable {
     case chest
-    case shoulders
+    case upperback = "upper_back"
+    case lats
+    case biceps
+    case triceps
     case sidedelts = "side_delts"
     case frontdelts = "front_delts"
     case reardelts = "rear_delts"
-    case triceps
-    case biceps
+    case abs
+    case obliques
     case forearms
-    case lats
-    case upperback = "upper_back"
     case quads
     case hamstrings
     case glutes
     case calves
-    case abs
-    case obliques
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .chest: return "Chest"
-        case .shoulders: return "Shoulders"
-        case .sidedelts: return "Side Delts"
-        case .frontdelts: return "Front Delts"
-        case .reardelts: return "Rear Delts"
-        case .triceps: return "Triceps"
+        case .chest: return "Pectoraux"
+        case .upperback: return "Dos haut"
+        case .lats: return "Grand dorsal"
         case .biceps: return "Biceps"
-        case .forearms: return "Forearms"
-        case .lats: return "Lats"
-        case .upperback: return "Upper Back"
-        case .quads: return "Quads"
-        case .hamstrings: return "Hamstrings"
-        case .glutes: return "Glutes"
-        case .calves: return "Calves"
-        case .abs: return "Abs"
+        case .triceps: return "Triceps"
+        case .sidedelts: return "Deltoïde latéral"
+        case .frontdelts: return "Deltoïde antérieur"
+        case .reardelts: return "Deltoïde postérieur"
+        case .abs: return "Abdos"
         case .obliques: return "Obliques"
+        case .forearms: return "Avant-bras"
+        case .quads: return "Quadriceps"
+        case .hamstrings: return "Ischios"
+        case .glutes: return "Fessiers"
+        case .calves: return "Mollets"
+        }
+    }
+
+    /// Short label used in compact chips where space is very tight.
+    var shortName: String {
+        switch self {
+        case .chest: return "Pecs"
+        case .upperback: return "Dos haut"
+        case .lats: return "Dorsaux"
+        case .biceps: return "Biceps"
+        case .triceps: return "Triceps"
+        case .sidedelts: return "Delt lat"
+        case .frontdelts: return "Delt ant"
+        case .reardelts: return "Delt post"
+        case .abs: return "Abdos"
+        case .obliques: return "Obliques"
+        case .forearms: return "Av-bras"
+        case .quads: return "Quads"
+        case .hamstrings: return "Ischios"
+        case .glutes: return "Fessiers"
+        case .calves: return "Mollets"
         }
     }
 
     var icon: String {
         switch self {
         case .chest: return "figure.strengthtraining.traditional"
-        case .shoulders, .sidedelts, .frontdelts, .reardelts: return "figure.arms.open"
+        case .sidedelts, .frontdelts, .reardelts: return "figure.arms.open"
         case .triceps: return "figure.boxing"
         case .biceps: return "figure.strengthtraining.functional"
         case .forearms: return "hand.raised.fill"

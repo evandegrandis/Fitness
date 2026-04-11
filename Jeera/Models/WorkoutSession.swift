@@ -33,8 +33,14 @@ final class WorkoutSession {
         self.loggedExercises = loggedExercises
     }
 
+    /// Ordered strictly by the stable `orderIndex`, with a UUID tiebreaker so two
+    /// exercises with the same index never flicker around each other between renders.
+    /// Logging sets or changing completion state must NEVER affect this order.
     var orderedExercises: [LoggedExercise] {
-        loggedExercises.sorted { $0.orderIndex < $1.orderIndex }
+        loggedExercises.sorted { a, b in
+            if a.orderIndex != b.orderIndex { return a.orderIndex < b.orderIndex }
+            return a.id.uuidString < b.id.uuidString
+        }
     }
 
     var duration: TimeInterval? {
