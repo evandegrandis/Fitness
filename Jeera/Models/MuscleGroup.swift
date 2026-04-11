@@ -79,4 +79,27 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable, Comparable {
     static func < (lhs: MuscleGroup, rhs: MuscleGroup) -> Bool {
         lhs.displayName < rhs.displayName
     }
+
+    // MARK: - Legacy migration
+
+    /// Maps old raw values (pre-delt-split schema) to current cases so that
+    /// SwiftData can decode persisted records without crashing.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if let match = MuscleGroup(rawValue: raw) {
+            self = match
+            return
+        }
+        // Legacy mappings
+        switch raw {
+        case "shoulders":           self = .sidedelts
+        case "back":                self = .upperback
+        case "legs":                self = .quads
+        case "core":                self = .abs
+        case "delts", "delt":       self = .sidedelts
+        case "rear_delt", "rear_delts_old": self = .reardelts
+        default:                    self = .chest   // safe fallback — never crash
+        }
+    }
 }
