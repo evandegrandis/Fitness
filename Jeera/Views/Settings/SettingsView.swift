@@ -112,8 +112,8 @@ struct SettingsView: View {
                 }
 
                 Section("Objectifs hebdo (sets)") {
-                    ForEach(MuscleGroup.allCases) { muscle in
-                        MuscleGoalRow(muscle: muscle, goals: goals, modelContext: modelContext)
+                    ForEach(MuscleParent.allCases) { parent in
+                        ParentGoalRow(parent: parent, goals: goals, modelContext: modelContext)
                     }
                 }
 
@@ -226,21 +226,21 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-// MARK: - Muscle Goal Row
+// MARK: - Parent Goal Row
 
-struct MuscleGoalRow: View {
-    let muscle: MuscleGroup
+struct ParentGoalRow: View {
+    let parent: MuscleParent
     let goals: [MuscleGoal]
     let modelContext: ModelContext
     @State private var resolvedGoal: MuscleGoal?
 
     private var goalSets: Double {
-        resolvedGoal?.weeklyGoalSets ?? goals.first(where: { $0.muscleGroup == muscle })?.weeklyGoalSets ?? 0
+        resolvedGoal?.weeklyGoalSets ?? goals.first(where: { $0.parent == parent })?.weeklyGoalSets ?? 0
     }
 
     var body: some View {
         HStack {
-            Text(muscle.displayName)
+            Text(parent.displayName)
                 .font(.subheadline)
             Spacer()
             Text("\(goalSets, specifier: "%.0f") sets")
@@ -256,10 +256,10 @@ struct MuscleGoalRow: View {
         }
         .onAppear {
             if resolvedGoal == nil {
-                if let existing = goals.first(where: { $0.muscleGroup == muscle }) {
+                if let existing = goals.first(where: { $0.parent == parent }) {
                     resolvedGoal = existing
                 } else {
-                    let new = MuscleGoal(muscleGroup: muscle, weeklyGoalSets: 0)
+                    let new = MuscleGoal(parent: parent, weeklyGoalSets: 0)
                     modelContext.insert(new)
                     try? modelContext.save()
                     resolvedGoal = new
@@ -361,7 +361,7 @@ struct ExerciseDetailView: View {
                 }
 
                 Button("Ajouter un muscle") {
-                    let mapping = MuscleMapping(muscleGroup: .chest, coefficient: 0.3)
+                    let mapping = MuscleMapping(muscleGroup: .pectStern, coefficient: 0.3)
                     mapping.exercise = exercise
                     modelContext.insert(mapping)
                     exercise.muscleMappings.append(mapping)

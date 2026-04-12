@@ -1,332 +1,293 @@
 import Foundation
 import SwiftData
 
-struct MuscleGroupProgress: Identifiable {
-    let muscleGroup: MuscleGroup
-    let effectiveSets: Double
-    let goalSets: Double
-    let previousWeekSets: Double
+// MARK: - Progress aggregate for a parent group
 
-    var id: String { muscleGroup.rawValue }
-
-    var percentage: Double {
-        guard goalSets > 0 else { return 0 }
-        return min((effectiveSets / goalSets) * 100, 999)
-    }
-
-    var remaining: Double {
-        max(0, goalSets - effectiveSets)
-    }
-
-    var delta: Double {
-        effectiveSets - previousWeekSets
-    }
-
-    var isComplete: Bool {
-        effectiveSets >= goalSets && goalSets > 0
-    }
-}
-
-struct WeeklyMuscleData: Identifiable {
-    let weekStart: Date
-    let muscleGroup: MuscleGroup
+/// Progress for a single parent muscle group computed from a defined window
+/// (rolling 7 days or a calendar week). Aggregates all leaf muscles via
+/// `Exercise.aggregateCoefficient(for:)` so we never double count a chest-press
+/// set toward "Pectoraux".
+struct ParentMuscleProgress: Identifiable {
+    let parent: MuscleParent
     let effectiveSets: Double
     let goalSets: Double
 
-    var id: String { "\(muscleGroup.rawValue)-\(weekStart.timeIntervalSince1970)" }
+    var id: String { parent.rawValue }
 
-    var percentage: Double {
+    var coverage: Double {
         guard goalSets > 0 else { return 0 }
-        return (effectiveSets / goalSets) * 100
+        return min(effectiveSets / goalSets, 1.0)
+    }
+
+    var percentDisplay: Int { Int((coverage * 100).rounded()) }
+
+    var remaining: Double { max(0, goalSets - effectiveSets) }
+
+    var status: CoverageStatus {
+        if goalSets == 0 { return .covered }
+        let c = effectiveSets / goalSets
+        if c >= 1.0 { return .covered }
+        if c >= 0.7 { return .onTrack }
+        if c >= 0.4 { return .toStrengthen }
+        return .priority
     }
 }
 
-// MARK: - Smart Pacing Status
+/// Calm, competence-supporting coverage labels. No failure framing.
+enum CoverageStatus {
+    case covered
+    case onTrack
+    case toStrengthen
+    case priority
 
-enum PaceStatus: String {
-    case complete       // Goal met
-    case wellOnTrack    // Clearly ahead
-    case onTrack        // Normal for this point in week
-    case toPrioritize   // Slightly low, worth focusing
-    case low            // Meaningfully behind
-
-    var frenchLabel: String {
+    var label: String {
         switch self {
-        case .complete: return "Couvert"
-        case .wellOnTrack: return "Bien avancé"
-        case .onTrack: return "Dans les clous"
-        case .toPrioritize: return "À prioriser"
-        case .low: return "Encore bas"
+        case .covered:       return "Couvert"
+        case .onTrack:       return "En bonne voie"
+        case .toStrengthen:  return "À renforcer"
+        case .priority:      return "Prioritaire"
         }
     }
 
-    var color: String {
+    var accent: String {
         switch self {
-        case .complete: return "green"
-        case .wellOnTrack: return "green"
-        case .onTrack: return "blue"
-        case .toPrioritize: return "orange"
-        case .low: return "red"
+        case .covered:       return "green"
+        case .onTrack:       return "blue"
+        case .toStrengthen:  return "orange"
+        case .priority:      return "red"
         }
     }
 }
 
+// MARK: - Engine
+
+/// Single source of truth for effective-sets aggregation.
+///
+/// Two windows are supported:
+/// - Rolling 7 days → the primary guidance loop (home, priority chips, status).
+/// - Calendar week → only used for history browsing, never for decision-making.
 struct EffectiveSetsEngine {
 
-    // MARK: - Calculate effective sets for a single logged exercise
+    // MARK: - Effective sets for a single logged exercise (by leaf)
 
-    static func effectiveSets(for loggedExercise: LoggedExercise) -> [MuscleGroup: Double] {
+    static func leafSets(for loggedExercise: LoggedExercise) -> [MuscleGroup: Double] {
         guard let exercise = loggedExercise.exercise else { return [:] }
-
-        let completedWorkSets = loggedExercise.completedWorkSets.count
+        let completed = Double(loggedExercise.completedWorkSets.count)
+        guard completed > 0 else { return [:] }
         var result: [MuscleGroup: Double] = [:]
-
         for mapping in exercise.muscleMappings {
-            result[mapping.muscleGroup] = Double(completedWorkSets) * mapping.coefficient
+            result[mapping.muscleGroup, default: 0] += completed * mapping.coefficient
         }
-
         return result
     }
 
-    // MARK: - Calculate weekly totals
+    /// Effective sets aggregated up to the parent level. Each logged
+    /// exercise contributes `max(coefficient)` of its leaves per parent so
+    /// it never double-counts within the same parent bucket.
+    static func parentSets(for loggedExercise: LoggedExercise) -> [MuscleParent: Double] {
+        guard let exercise = loggedExercise.exercise else { return [:] }
+        let completed = Double(loggedExercise.completedWorkSets.count)
+        guard completed > 0 else { return [:] }
+        var result: [MuscleParent: Double] = [:]
+        for parent in MuscleParent.allCases {
+            let coeff = exercise.aggregateCoefficient(for: parent)
+            if coeff > 0 {
+                result[parent] = completed * coeff
+            }
+        }
+        return result
+    }
 
-    /// Total effective sets for every muscle group in the given week.
-    /// If `liveSession` is provided (the currently active workout), its in-progress
-    /// completed sets are counted live so the weekly priority strip decreases the moment
-    /// a set is validated — not after the workout is saved.
-    static func weeklyTotals(
+    // MARK: - Totals
+
+    /// Total effective parent-level sets for sessions that fall strictly inside
+    /// [`windowStart`, `windowEnd`). If `liveSession` is provided and its date
+    /// falls in range, its in-progress completed sets are counted live.
+    static func parentTotals(
         sessions: [WorkoutSession],
-        weekStart: Date,
-        weekEnd: Date,
+        windowStart: Date,
+        windowEnd: Date,
         liveSession: WorkoutSession? = nil
-    ) -> [MuscleGroup: Double] {
-        let sessionsInWeek = sessions.filter { session in
-            !session.isActive && session.date >= weekStart && session.date < weekEnd
+    ) -> [MuscleParent: Double] {
+        let inRange = sessions.filter { s in
+            !s.isActive && s.date >= windowStart && s.date < windowEnd
         }
 
-        var totals: [MuscleGroup: Double] = [:]
-
-        for session in sessionsInWeek {
-            for loggedEx in session.loggedExercises {
-                let sets = effectiveSets(for: loggedEx)
-                for (muscle, value) in sets {
-                    totals[muscle, default: 0] += value
+        var totals: [MuscleParent: Double] = [:]
+        for s in inRange {
+            for logged in s.loggedExercises {
+                for (p, v) in parentSets(for: logged) {
+                    totals[p, default: 0] += v
                 }
             }
         }
-
-        // Live overlay — only count if the active session's date falls inside this week.
-        if let live = liveSession, live.date >= weekStart, live.date < weekEnd {
-            for loggedEx in live.loggedExercises {
-                let sets = effectiveSets(for: loggedEx)
-                for (muscle, value) in sets {
-                    totals[muscle, default: 0] += value
+        if let live = liveSession, live.date >= windowStart, live.date < windowEnd {
+            for logged in live.loggedExercises {
+                for (p, v) in parentSets(for: logged) {
+                    totals[p, default: 0] += v
                 }
             }
         }
-
         return totals
     }
 
-    // MARK: - Build progress report
+    // MARK: - Rolling 7-day progress (PRIMARY guidance loop)
 
-    static func currentWeekProgress(
+    /// Parent-level coverage over the last 7 days ending at `referenceDate`.
+    /// This is the canonical "what should I do today?" model.
+    static func rolling7DayProgress(
         sessions: [WorkoutSession],
         goals: [MuscleGoal],
         referenceDate: Date = Date(),
         liveSession: WorkoutSession? = nil
-    ) -> [MuscleGroupProgress] {
-        let weekStart = referenceDate.startOfWeek
-        let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? referenceDate
+    ) -> [ParentMuscleProgress] {
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: referenceDate.startOfDay) ?? referenceDate
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: end) ?? referenceDate
 
-        let prevWeekStart = Calendar.current.date(byAdding: .day, value: -7, to: weekStart) ?? weekStart
-
-        let currentTotals = weeklyTotals(
+        let totals = parentTotals(
             sessions: sessions,
-            weekStart: weekStart,
-            weekEnd: weekEnd,
+            windowStart: start,
+            windowEnd: end,
             liveSession: liveSession
         )
-        let prevTotals = weeklyTotals(sessions: sessions, weekStart: prevWeekStart, weekEnd: weekStart)
 
-        let goalMap = Dictionary(goals.map { ($0.muscleGroup, $0.weeklyGoalSets) }, uniquingKeysWith: { _, last in last })
+        let goalMap: [MuscleParent: Double] = Dictionary(
+            goals.map { ($0.parent, $0.weeklyGoalSets) },
+            uniquingKeysWith: { _, last in last }
+        )
 
-        return MuscleGroup.allCases.compactMap { muscle in
-            let goal = goalMap[muscle] ?? 0
-            let current = currentTotals[muscle] ?? 0
-            let previous = prevTotals[muscle] ?? 0
-
+        return MuscleParent.allCases.compactMap { parent in
+            let goal = goalMap[parent] ?? 0
+            let current = totals[parent] ?? 0
             guard goal > 0 || current > 0 else { return nil }
-
-            return MuscleGroupProgress(
-                muscleGroup: muscle,
-                effectiveSets: current,
-                goalSets: goal,
-                previousWeekSets: previous
-            )
+            return ParentMuscleProgress(parent: parent, effectiveSets: current, goalSets: goal)
         }
     }
 
-    // MARK: - Smart Pacing
-
-    /// Compute pace status considering day of week and typical 3x/week training pattern
-    static func paceStatus(for progress: MuscleGroupProgress) -> PaceStatus {
-        guard progress.goalSets > 0 else { return .onTrack }
-        if progress.effectiveSets >= progress.goalSets { return .complete }
-
-        let dayIndex = Date().isoDayOfWeek // Mon=1 ... Sun=7
-
-        // Expected pace for a 3x/week lifter:
-        // Mon (day 1): ~0% expected (haven't trained yet)
-        // Tue-Wed: ~33% (after 1 session)
-        // Thu-Fri: ~66% (after 2 sessions)
-        // Sat-Sun: ~100% (after 3 sessions)
-        let expectedPace: Double
-        switch dayIndex {
-        case 1: expectedPace = 0     // Monday: fresh week
-        case 2: expectedPace = 0.15  // Tuesday
-        case 3: expectedPace = 0.33  // Wednesday
-        case 4: expectedPace = 0.45  // Thursday
-        case 5: expectedPace = 0.60  // Friday
-        case 6: expectedPace = 0.80  // Saturday
-        case 7: expectedPace = 0.90  // Sunday
-        default: expectedPace = 0.5
-        }
-
-        let actualPace = progress.effectiveSets / progress.goalSets
-
-        if actualPace >= expectedPace + 0.15 { return .wellOnTrack }
-        if actualPace >= expectedPace - 0.10 { return .onTrack }
-        if actualPace >= expectedPace - 0.30 { return .toPrioritize }
-        return .low
-    }
-
-    // MARK: - Weekly Status Line (French, contextual)
-
-    static func weeklyStatusLine(
-        progress: [MuscleGroupProgress],
-        sessions: [WorkoutSession]
-    ) -> String {
-        let dayIndex = Date().isoDayOfWeek
-        let weekStart = Date().startOfWeek
-        let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? Date()
-
-        let sessionsThisWeek = sessions.filter { !$0.isActive && $0.date >= weekStart && $0.date < weekEnd }.count
-
-        // Remaining useful sessions estimate (user trains ~3x/week)
-        let remainingSessions = max(0, 3 - sessionsThisWeek)
-
-        let withGoals = progress.filter { $0.goalSets > 0 }
-        let behind = withGoals.filter { paceStatus(for: $0) == .toPrioritize || paceStatus(for: $0) == .low }
-        let complete = withGoals.filter { $0.isComplete }
-
-        // Early week (Mon-Wed): be encouraging
-        if dayIndex <= 3 {
-            if sessionsThisWeek == 0 {
-                return "\(remainingSessions) séances utiles cette semaine"
-            }
-            if behind.isEmpty {
-                return "Bon début de semaine — \(remainingSessions) séances restantes"
-            }
-            let names = behind.prefix(2).map { $0.muscleGroup.displayName }.joined(separator: " et ")
-            return "\(names) à prioriser — \(remainingSessions) séances restantes"
-        }
-
-        // Mid week (Thu-Fri)
-        if dayIndex <= 5 {
-            if complete.count == withGoals.count {
-                return "Tous les objectifs atteints cette semaine"
-            }
-            if behind.isEmpty {
-                return "Volume dans les clous — \(remainingSessions) séance\(remainingSessions > 1 ? "s" : "") restante\(remainingSessions > 1 ? "s" : "")"
-            }
-            let names = behind.prefix(3).map { $0.muscleGroup.displayName }.joined(separator: ", ")
-            return "Focus \(names)"
-        }
-
-        // Late week (Sat-Sun)
-        if complete.count == withGoals.count {
-            return "Semaine complète — tous les objectifs atteints"
-        }
-        if behind.count <= 2 {
-            let names = behind.map { $0.muscleGroup.displayName }.joined(separator: " et ")
-            return "\(names) encore un peu bas pour cette semaine"
-        }
-        return "\(remainingSessions) séance\(remainingSessions > 1 ? "s" : "") pour finir la semaine"
-    }
-
-    // MARK: - Muscles to prioritize (for recommendations)
-
-    static func musclesToPrioritize(
-        progress: [MuscleGroupProgress],
-        recentSession: WorkoutSession?
-    ) -> [MuscleGroup] {
-        // Muscles with goals that are behind
-        let behind = progress
-            .filter { $0.goalSets > 0 && !$0.isComplete }
-            .sorted { $0.remaining > $1.remaining }
-            .map(\.muscleGroup)
-
-        // Remove muscles heavily trained in most recent session (recovery)
-        guard let recent = recentSession else { return behind }
-        let recentMuscles = Set(recent.loggedExercises.compactMap { $0.exercise?.primaryMuscle })
-
-        // Only filter if recent session was today or yesterday
-        let isRecent = Calendar.current.isDateInToday(recent.date) || Calendar.current.isDateInYesterday(recent.date)
-        if isRecent {
-            let filtered = behind.filter { !recentMuscles.contains($0) }
-            return filtered.isEmpty ? behind : filtered
-        }
-
-        return behind
-    }
-
-    // MARK: - Historical weekly data
-
-    static func weeklyHistory(
+    /// Weighted global coverage score over rolling 7 days.
+    /// Weighted average of per-parent coverage (capped at 1.0) across all
+    /// parents with a non-zero goal. 0..1.
+    static func rolling7DayGlobalCoverage(
         sessions: [WorkoutSession],
         goals: [MuscleGoal],
-        weeks: Int = 8,
-        referenceDate: Date = Date()
-    ) -> [WeeklyMuscleData] {
-        let currentWeekStart = referenceDate.startOfWeek
-
-        let goalMap = Dictionary(goals.map { ($0.muscleGroup, $0.weeklyGoalSets) }, uniquingKeysWith: { _, last in last })
-
-        var result: [WeeklyMuscleData] = []
-
-        for weekOffset in (0..<weeks).reversed() {
-            guard let weekStart = Calendar.current.date(byAdding: .day, value: -weekOffset * 7, to: currentWeekStart) else { continue }
-            let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
-
-            let totals = weeklyTotals(sessions: sessions, weekStart: weekStart, weekEnd: weekEnd)
-
-            for muscle in MuscleGroup.allCases {
-                let goal = goalMap[muscle] ?? 0
-                let sets = totals[muscle] ?? 0
-                if goal > 0 || sets > 0 {
-                    result.append(WeeklyMuscleData(
-                        weekStart: weekStart,
-                        muscleGroup: muscle,
-                        effectiveSets: sets,
-                        goalSets: goal
-                    ))
-                }
-            }
+        referenceDate: Date = Date(),
+        liveSession: WorkoutSession? = nil
+    ) -> Double {
+        let progress = rolling7DayProgress(
+            sessions: sessions,
+            goals: goals,
+            referenceDate: referenceDate,
+            liveSession: liveSession
+        )
+        let withGoals = progress.filter { $0.goalSets > 0 }
+        guard !withGoals.isEmpty else { return 0 }
+        let totalGoal = withGoals.reduce(0) { $0 + $1.goalSets }
+        guard totalGoal > 0 else { return 0 }
+        let weighted = withGoals.reduce(0.0) { acc, p in
+            acc + min(p.effectiveSets, p.goalSets)
         }
-
-        return result
+        return weighted / totalGoal
     }
 
-    // MARK: - Live impact for a single exercise
+    // MARK: - Calendar-week aggregates (history browsing only)
 
-    static func liveImpact(
+    /// Coverage for a calendar week (Mon–Sun). Used purely for history
+    /// section headers — never to drive decisions.
+    static func coverageForWeek(
+        sessions: [WorkoutSession],
+        goals: [MuscleGoal],
+        weekStart: Date
+    ) -> Double {
+        let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+        let totals = parentTotals(sessions: sessions, windowStart: weekStart, windowEnd: weekEnd)
+        let goalMap: [MuscleParent: Double] = Dictionary(
+            goals.map { ($0.parent, $0.weeklyGoalSets) },
+            uniquingKeysWith: { _, last in last }
+        )
+        let goalParents = goalMap.filter { $0.value > 0 }
+        guard !goalParents.isEmpty else { return 0 }
+        let totalGoal = goalParents.values.reduce(0, +)
+        let weighted = goalParents.reduce(0.0) { acc, kv in
+            acc + min(totals[kv.key] ?? 0, kv.value)
+        }
+        return weighted / totalGoal
+    }
+
+    /// Number of parents with non-zero work in this calendar week.
+    static func parentsWorkedInWeek(
+        sessions: [WorkoutSession],
+        weekStart: Date
+    ) -> Int {
+        let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+        let totals = parentTotals(sessions: sessions, windowStart: weekStart, windowEnd: weekEnd)
+        return totals.filter { $0.value > 0 }.count
+    }
+
+    // MARK: - Status line (rolling 7-day framing)
+
+    static func rollingStatusLine(
+        progress: [ParentMuscleProgress],
+        sessions: [WorkoutSession],
+        referenceDate: Date = Date()
+    ) -> String {
+        let withGoals = progress.filter { $0.goalSets > 0 }
+        guard !withGoals.isEmpty else { return "Pas encore d'objectifs configurés" }
+
+        let totalGoal = withGoals.reduce(0) { $0 + $1.goalSets }
+        let covered = withGoals.reduce(0.0) { $0 + min($1.effectiveSets, $1.goalSets) }
+        let pct = Int(((covered / totalGoal) * 100).rounded())
+
+        let priorities = withGoals
+            .filter { $0.status == .priority || $0.status == .toStrengthen }
+            .sorted { $0.remaining > $1.remaining }
+
+        if priorities.isEmpty {
+            return "Couverture \(pct)% sur 7 jours — tu es dans ta zone"
+        }
+        let names = priorities.prefix(2).map { $0.parent.displayName.lowercased() }.joined(separator: " et ")
+        if pct >= 70 {
+            return "Couverture \(pct)% — focus \(names)"
+        }
+        return "Couverture \(pct)% sur 7 jours — \(names) à renforcer"
+    }
+
+    // MARK: - Priority muscles (for chip strip & recommendation)
+
+    /// Parent muscle priority for the rolling 7-day window, ordered by how
+    /// many sets are still missing. Muscles with goals that are fully covered
+    /// are excluded.
+    static func rollingPriorities(
+        sessions: [WorkoutSession],
+        goals: [MuscleGoal],
+        referenceDate: Date = Date(),
+        liveSession: WorkoutSession? = nil
+    ) -> [(MuscleParent, Double)] {
+        let progress = rolling7DayProgress(
+            sessions: sessions,
+            goals: goals,
+            referenceDate: referenceDate,
+            liveSession: liveSession
+        )
+        return progress
+            .filter { $0.goalSets > 0 && $0.remaining >= 0.5 }
+            .sorted { $0.remaining > $1.remaining }
+            .map { ($0.parent, $0.remaining) }
+    }
+
+    // MARK: - Live impact
+
+    /// Parent-level live impact of a single exercise given its completed sets
+    /// count. Used by the active workout card's chip strip to show "+1 Pecs".
+    static func liveParentImpact(
         exercise: Exercise,
         completedSets: Int
-    ) -> [MuscleGroup: Double] {
-        var result: [MuscleGroup: Double] = [:]
-        for mapping in exercise.muscleMappings {
-            result[mapping.muscleGroup] = Double(completedSets) * mapping.coefficient
+    ) -> [MuscleParent: Double] {
+        var result: [MuscleParent: Double] = [:]
+        for parent in MuscleParent.allCases {
+            let c = exercise.aggregateCoefficient(for: parent)
+            if c > 0 {
+                result[parent] = Double(completedSets) * c
+            }
         }
         return result
     }

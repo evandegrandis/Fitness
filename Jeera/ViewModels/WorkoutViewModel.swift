@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 import Combine
+import UserNotifications
 
 @Observable
 class WorkoutViewModel {
@@ -234,13 +235,14 @@ class WorkoutViewModel {
         HapticManager.selection()
     }
 
-    /// Double-tap flow:
-    ///  - Double-tapping an already-linked exercise unlinks it.
-    ///  - Double-tapping an unlinked exercise while nothing is armed arms it.
-    ///  - Double-tapping a second exercise while one is armed links them (armed -> target)
-    ///    as a superset by setting the armed exercise's `isLinkedToNext = true` and
-    ///    reordering the target to sit immediately after the armed one.
-    func handleSupersetDoubleTap(_ loggedExercise: LoggedExercise) {
+    /// Right-swipe "Lier en superset" / "Retirer du superset" flow.
+    ///
+    /// - If already linked: unlink (set `isLinkedToNext = false`).
+    /// - If nothing is armed: arm this exercise — UI shows "Superset prêt :
+    ///   choisis le 2e exo" feedback.
+    /// - If another exercise is already armed: link the armed exercise to this
+    ///   one (move this exercise right after the armed, set armed.isLinkedToNext).
+    func handleSupersetLink(_ loggedExercise: LoggedExercise) {
         guard let session = activeSession else { return }
 
         // Unlink an already-linked exercise.
@@ -259,14 +261,14 @@ class WorkoutViewModel {
             return
         }
 
-        // Tapping the same armed exercise again cancels arming.
+        // Swiping the same armed exercise again cancels arming.
         if armedID == loggedExercise.id {
             armedSupersetExerciseID = nil
             HapticManager.selection()
             return
         }
 
-        // Link: armed -> this. Move `loggedExercise` to sit right after the armed one.
+        // Link: armed → this. Move `loggedExercise` to sit right after the armed one.
         guard let armed = session.loggedExercises.first(where: { $0.id == armedID }) else {
             armedSupersetExerciseID = nil
             return
@@ -290,6 +292,11 @@ class WorkoutViewModel {
         armedSupersetExerciseID = nil
         try? modelContext?.save()
         HapticManager.impact(.medium)
+    }
+
+    /// Legacy compatibility — routes to new swipe-based handler.
+    func handleSupersetDoubleTap(_ loggedExercise: LoggedExercise) {
+        handleSupersetLink(loggedExercise)
     }
 
     // MARK: - Duplicate Exercise
@@ -389,15 +396,19 @@ class WorkoutViewModel {
         } else {
             // Check if this exercise is the end of a superset block
             let isEndOfSupersetBlock = isLastInSupersetBlock(loggedExercise)
+            let restSeconds: Int
             if isEndOfSupersetBlock {
-                currentRestSuggested = supersetRestSeconds
-                restTimer.start(seconds: supersetRestSeconds)
+                restSeconds = supersetRestSeconds
             } else {
-                let restSeconds = loggedExercise.exercise?.suggestedRestSeconds ?? defaultRestSeconds
-                currentRestSuggested = restSeconds
-                restTimer.start(seconds: restSeconds)
+                restSeconds = loggedExercise.exercise?.suggestedRestSeconds ?? defaultRestSeconds
             }
+            currentRestSuggested = restSeconds
+            restTimer.start(seconds: restSeconds)
+            scheduleRestTimerNotification(seconds: restSeconds)
         }
+
+        // Reorder after validate: move this exercise card to after the last-logged one.
+        applyReorderAfterValidate(loggedExercise)
     }
 
     /// Check if this exercise is the last in a superset block (i.e., a previous exercise links to it)
@@ -406,6 +417,73 @@ class WorkoutViewModel {
         let exercises = session.orderedExercises
         guard let index = exercises.firstIndex(where: { $0.id == loggedExercise.id }), index > 0 else { return false }
         return exercises[index - 1].isLinkedToNext
+    }
+
+    // MARK: - Reorder After Validate
+
+    /// After validating a set, move this exercise card to immediately after the
+    /// last exercise that has logged work (excluding itself). If the exercise is
+    /// inside a superset block, do nothing — keep the block intact.
+    private func applyReorderAfterValidate(_ loggedExercise: LoggedExercise) {
+        guard let session = activeSession else { return }
+        let ordered = session.orderedExercises
+
+        // Don't reorder if inside a superset block.
+        if loggedExercise.isLinkedToNext { return }
+        if let idx = ordered.firstIndex(where: { $0.id == loggedExercise.id }), idx > 0 {
+            if ordered[idx - 1].isLinkedToNext { return }
+        }
+
+        // Find the anchor: last exercise (other than this one) that has at least one completed set.
+        guard let anchorIdx = ordered.lastIndex(where: {
+            $0.id != loggedExercise.id && !$0.completedWorkSets.isEmpty
+        }) else { return }
+
+        guard let myIdx = ordered.firstIndex(where: { $0.id == loggedExercise.id }) else { return }
+
+        // Already in position or ahead of anchor — no move needed.
+        if myIdx <= anchorIdx + 1 { return }
+
+        // Walk past any superset chain attached to the anchor.
+        var insertAfter = anchorIdx
+        while insertAfter < ordered.count - 1 && ordered[insertAfter].isLinkedToNext {
+            insertAfter += 1
+        }
+
+        // If we're already right after the chain, nothing to do.
+        if myIdx == insertAfter + 1 { return }
+
+        // Perform the move.
+        var mutable = ordered
+        let moving = mutable.remove(at: myIdx)
+        let newInsert = insertAfter < myIdx ? insertAfter + 1 : insertAfter
+        mutable.insert(moving, at: newInsert)
+
+        for (i, ex) in mutable.enumerated() {
+            ex.orderIndex = i
+        }
+        try? modelContext?.save()
+    }
+
+    // MARK: - Rest Timer Notification (T-3)
+
+    /// Schedule a local notification 3 seconds before the rest timer ends.
+    /// This wakes the lock screen so the user can see the timer finishing.
+    private func scheduleRestTimerNotification(seconds: Int) {
+        let fireIn = max(0, seconds - 3)
+        let center = UNUserNotificationCenter.current()
+        center.removeDeliveredNotifications(withIdentifiers: ["jeera_rest_timer"])
+        center.removePendingNotificationRequests(withIdentifiers: ["jeera_rest_timer"])
+
+        let content = UNMutableNotificationContent()
+        content.title = "Repos terminé"
+        content.body = "C'est reparti 💪"
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: Double(max(1, fireIn)), repeats: false)
+        let request = UNNotificationRequest(identifier: "jeera_rest_timer", content: content, trigger: trigger)
+        center.add(request, withCompletionHandler: nil)
     }
 
     func editSet(_ set: LoggedSet, weight: Double, reps: Int) {

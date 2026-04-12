@@ -3,54 +3,62 @@ import SwiftData
 import Charts
 
 struct MuscleProgressView: View {
-    @Query private var sessions: [WorkoutSession]
+    @Query(
+        filter: #Predicate<WorkoutSession> { !$0.isActive },
+        sort: \WorkoutSession.startTime,
+        order: .reverse
+    ) private var sessions: [WorkoutSession]
     @Query private var goals: [MuscleGoal]
-    @State private var selectedMuscle: MuscleGroup?
-    @State private var showAbsolute = true
+    @State private var selectedParent: MuscleParent?
 
-    private var progress: [MuscleGroupProgress] {
-        EffectiveSetsEngine.currentWeekProgress(sessions: sessions, goals: goals)
+    private var progress: [ParentMuscleProgress] {
+        EffectiveSetsEngine.rolling7DayProgress(sessions: sessions, goals: goals)
             .filter { $0.goalSets > 0 || $0.effectiveSets > 0 }
             .sorted { $0.goalSets > $1.goalSets }
     }
 
-    // Day-of-week pacing (Mon=1, Sun=7)
-    private var weekPace: Double {
-        let dayOfWeek = Calendar.current.component(.weekday, from: Date())
-        let dayIndex = dayOfWeek == 1 ? 7 : dayOfWeek - 1
-        return Double(dayIndex) / 7.0
+    private var globalCoverage: Double {
+        EffectiveSetsEngine.rolling7DayGlobalCoverage(sessions: sessions, goals: goals)
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
-                WeekHeaderView(pace: weekPace)
-                    .padding(.horizontal)
+                // Rolling 7-day header
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("7 derniers jours")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Couverture globale \(Int((globalCoverage * 100).rounded()))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal)
 
                 ForEach(progress) { item in
                     VStack(spacing: 6) {
-                        MuscleGroupCard(
+                        ParentMuscleCard(
                             progress: item,
-                            weekPace: weekPace,
-                            isSelected: selectedMuscle == item.muscleGroup
+                            isSelected: selectedParent == item.parent
                         )
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3)) {
-                                if selectedMuscle == item.muscleGroup {
-                                    selectedMuscle = nil
+                                if selectedParent == item.parent {
+                                    selectedParent = nil
                                 } else {
-                                    selectedMuscle = item.muscleGroup
+                                    selectedParent = item.parent
                                     HapticManager.selection()
                                 }
                             }
                         }
 
-                        if selectedMuscle == item.muscleGroup {
-                            MuscleHistoryChart(
-                                muscleGroup: item.muscleGroup,
+                        if selectedParent == item.parent {
+                            ParentHistoryChart(
+                                parent: item.parent,
                                 sessions: sessions,
-                                goals: goals,
-                                showAbsolute: $showAbsolute
+                                goals: goals
                             )
                             .transition(.asymmetric(
                                 insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
@@ -83,54 +91,19 @@ struct MuscleProgressView: View {
     }
 }
 
-// MARK: - Week Header
+// MARK: - Parent Muscle Card
 
-struct WeekHeaderView: View {
-    var pace: Double = 0
-
-    var body: some View {
-        let weekStart = Date().startOfWeek
-        let weekEnd = Calendar.current.date(byAdding: .day, value: 6, to: weekStart) ?? Date()
-
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Cette semaine")
-                    .font(.subheadline.weight(.semibold))
-                Text("\(weekStart.shortDate) — \(weekEnd.shortDate)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text("Jour \(Int(pace * 7))/7")
-                .font(.caption2.weight(.medium).monospacedDigit())
-                .foregroundStyle(.tertiary)
-        }
-    }
-}
-
-// MARK: - Muscle Group Card (with smart pacing from engine)
-
-struct MuscleGroupCard: View {
-    let progress: MuscleGroupProgress
-    var weekPace: Double = 0
+struct ParentMuscleCard: View {
+    let progress: ParentMuscleProgress
     var isSelected: Bool = false
 
-    private var pace: PaceStatus {
-        EffectiveSetsEngine.paceStatus(for: progress)
-    }
-
     private var statusColor: Color {
-        switch pace.color {
-        case "green": return .green
-        case "blue": return .blue
-        case "orange": return .orange
-        case "red": return .red
-        default: return .secondary
+        switch progress.status {
+        case .covered:       return .green
+        case .onTrack:       return .blue
+        case .toStrengthen:  return .orange
+        case .priority:      return .red
         }
-    }
-
-    private var statusText: String {
-        pace.frenchLabel
     }
 
     var body: some View {
@@ -139,7 +112,7 @@ struct MuscleGroupCard: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 5) {
-                            Text(progress.muscleGroup.displayName)
+                            Text(progress.parent.displayName)
                                 .font(.subheadline.weight(.semibold))
                             Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 8))
@@ -147,10 +120,10 @@ struct MuscleGroupCard: View {
                         }
 
                         HStack(spacing: 3) {
-                            Text("\(Int(progress.effectiveSets))")
+                            Text("\(Int(progress.effectiveSets.rounded()))")
                                 .font(.title3.weight(.bold).monospacedDigit())
                                 .foregroundStyle(statusColor)
-                            Text("/ \(Int(progress.goalSets))")
+                            Text("/ \(Int(progress.goalSets.rounded()))")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
@@ -159,8 +132,7 @@ struct MuscleGroupCard: View {
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 2) {
-                        // Pace status badge
-                        Text(statusText)
+                        Text(progress.status.label)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(statusColor)
                             .padding(.horizontal, 6)
@@ -168,26 +140,19 @@ struct MuscleGroupCard: View {
                             .background(statusColor.opacity(0.12), in: Capsule())
 
                         if progress.remaining > 0 {
-                            Text("\(Int(ceil(progress.remaining))) left")
+                            Text("\(Int(ceil(progress.remaining))) restants")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
 
-                // Progress bar with pace marker
-                ZStack(alignment: .leading) {
-                    ProgressBar(progress: progress.percentage, height: 5, accentColor: statusColor)
-
-                    // Pace marker line
-                    GeometryReader { geo in
-                        Rectangle()
-                            .fill(.white.opacity(0.3))
-                            .frame(width: 1, height: 9)
-                            .offset(x: geo.size.width * min(weekPace, 1), y: -2)
-                    }
-                    .frame(height: 5)
-                }
+                // Progress bar
+                ProgressBar(
+                    progress: Double(progress.percentDisplay),
+                    height: 5,
+                    accentColor: statusColor
+                )
             }
         }
         .overlay {
@@ -199,43 +164,42 @@ struct MuscleGroupCard: View {
     }
 }
 
-// MARK: - History Chart
+// MARK: - Parent History Chart (calendar-week bars for history browsing)
 
-struct MuscleHistoryChart: View {
-    let muscleGroup: MuscleGroup
+struct ParentHistoryChart: View {
+    let parent: MuscleParent
     let sessions: [WorkoutSession]
     let goals: [MuscleGoal]
-    @Binding var showAbsolute: Bool
-
-    private var historyData: [WeeklyMuscleData] {
-        EffectiveSetsEngine.weeklyHistory(sessions: sessions, goals: goals)
-            .filter { $0.muscleGroup == muscleGroup }
-    }
 
     private var goalValue: Double {
-        goals.first(where: { $0.muscleGroup == muscleGroup })?.weeklyGoalSets ?? 0
+        goals.first(where: { $0.parent == parent })?.weeklyGoalSets ?? 0
+    }
+
+    private var weeklyData: [(weekStart: Date, sets: Double)] {
+        // Last 8 weeks of calendar data.
+        let calendar = Calendar.current
+        let today = Date()
+        var data: [(Date, Double)] = []
+        for weekOffset in (0..<8).reversed() {
+            guard let weekStart = calendar.date(byAdding: .weekOfYear, value: -weekOffset, to: today.startOfWeek) else { continue }
+            let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+            let totals = EffectiveSetsEngine.parentTotals(
+                sessions: sessions,
+                windowStart: weekStart,
+                windowEnd: weekEnd
+            )
+            data.append((weekStart, totals[parent] ?? 0))
+        }
+        return data
     }
 
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Historique")
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                    Button {
-                        showAbsolute.toggle()
-                    } label: {
-                        Text(showAbsolute ? "Sets" : "%")
-                            .font(.caption2.weight(.medium))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.10), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
+                Text("Historique (8 semaines)")
+                    .font(.caption.weight(.semibold))
 
-                if historyData.isEmpty {
+                if weeklyData.allSatisfy({ $0.sets == 0 }) {
                     Text("Pas encore d'historique")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -243,11 +207,10 @@ struct MuscleHistoryChart: View {
                         .frame(maxWidth: .infinity)
                 } else {
                     Chart {
-                        ForEach(historyData) { data in
+                        ForEach(weeklyData, id: \.weekStart) { item in
                             BarMark(
-                                x: .value("Week", data.weekStart, unit: .weekOfYear),
-                                y: .value(showAbsolute ? "Sets" : "%",
-                                         showAbsolute ? data.effectiveSets : data.percentage)
+                                x: .value("Week", item.weekStart, unit: .weekOfYear),
+                                y: .value("Sets", item.sets)
                             )
                             .foregroundStyle(
                                 LinearGradient(
@@ -259,14 +222,8 @@ struct MuscleHistoryChart: View {
                             .cornerRadius(3)
                         }
 
-                        if showAbsolute && goalValue > 0 {
+                        if goalValue > 0 {
                             RuleMark(y: .value("Goal", goalValue))
-                                .foregroundStyle(.green.opacity(0.5))
-                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        }
-
-                        if !showAbsolute {
-                            RuleMark(y: .value("100%", 100))
                                 .foregroundStyle(.green.opacity(0.5))
                                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                         }

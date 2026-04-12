@@ -20,31 +20,28 @@ struct QuickStartView: View {
 
     private var settings: UserSettings? { settingsArray.first }
 
-    private var weekProgress: [MuscleGroupProgress] {
-        EffectiveSetsEngine.currentWeekProgress(sessions: recentSessions, goals: goals)
+    private var rollingProgress: [ParentMuscleProgress] {
+        EffectiveSetsEngine.rolling7DayProgress(sessions: recentSessions, goals: goals)
     }
 
-    private var muscleGaps: [(MuscleGroup, Double)] {
-        weekProgress
-            .filter { $0.remaining > 1 && $0.goalSets > 0 }
-            .sorted { $0.remaining > $1.remaining }
-            .map { ($0.muscleGroup, $0.remaining) }
+    private var muscleGaps: [(MuscleParent, Double)] {
+        EffectiveSetsEngine.rollingPriorities(sessions: recentSessions, goals: goals)
     }
 
     private var recommendedTemplate: WorkoutTemplate? {
         guard !muscleGaps.isEmpty else { return templates.first }
-        let topGaps = Set(muscleGaps.prefix(5).map(\.0))
+        let topGapParents = Set(muscleGaps.prefix(5).map(\.0))
 
         return templates.max(by: { a, b in
-            templateGapScore(a, gaps: topGaps) < templateGapScore(b, gaps: topGaps)
+            templateGapScore(a, gaps: topGapParents) < templateGapScore(b, gaps: topGapParents)
         })
     }
 
-    private func templateGapScore(_ template: WorkoutTemplate, gaps: Set<MuscleGroup>) -> Int {
+    private func templateGapScore(_ template: WorkoutTemplate, gaps: Set<MuscleParent>) -> Int {
         template.templateExercises.reduce(0) { score, te in
             guard let ex = te.exercise else { return score }
-            let muscles = Set(ex.muscleMappings.filter { $0.coefficient >= 0.3 }.map(\.muscleGroup))
-            return score + muscles.intersection(gaps).count
+            let parents = Set(ex.muscleMappings.filter { $0.coefficient >= 0.3 }.map { $0.muscleGroup.parent })
+            return score + parents.intersection(gaps).count
         }
     }
 
@@ -53,7 +50,7 @@ struct QuickStartView: View {
     }
 
     private var statusLine: String {
-        EffectiveSetsEngine.weeklyStatusLine(progress: weekProgress, sessions: recentSessions)
+        EffectiveSetsEngine.rollingStatusLine(progress: rollingProgress, sessions: recentSessions)
     }
 
     var body: some View {

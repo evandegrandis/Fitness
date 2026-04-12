@@ -25,22 +25,22 @@ struct EffectiveSetsEngineTests {
         return logged
     }
 
-    // MARK: - Effective Sets Calculation
+    // MARK: - Leaf-Level Effective Sets
 
-    @Test("Single exercise effective sets")
-    func singleExercise() {
+    @Test("Single exercise leaf effective sets")
+    func singleExerciseLeaf() {
         let ex = makeExercise(name: "Chest Press", muscles: [
-            (.chest, 1.0),
-            (.triceps, 0.3),
-            (.frontdelts, 0.3),
+            (.pectStern, 1.0),
+            (.tricepsLat, 0.3),
+            (.deltAnt, 0.3),
         ])
         let logged = makeLoggedExercise(exercise: ex, completedSets: 3)
 
-        let result = EffectiveSetsEngine.effectiveSets(for: logged)
+        let result = EffectiveSetsEngine.leafSets(for: logged)
 
-        #expect(result[.chest] == 3.0)
-        #expect(result[.triceps]! == 0.9, "3 * 0.3 = 0.9")
-        #expect(result[.frontdelts]! == 0.9)
+        #expect(result[.pectStern] == 3.0)
+        #expect(result[.tricepsLat]! == 0.9, "3 * 0.3 = 0.9")
+        #expect(result[.deltAnt]! == 0.9)
     }
 
     @Test("Primary muscle gets full attribution")
@@ -48,7 +48,7 @@ struct EffectiveSetsEngineTests {
         let ex = makeExercise(name: "Leg Extension", muscles: [(.quads, 1.0)])
         let logged = makeLoggedExercise(exercise: ex, completedSets: 4)
 
-        let result = EffectiveSetsEngine.effectiveSets(for: logged)
+        let result = EffectiveSetsEngine.leafSets(for: logged)
         #expect(result[.quads] == 4.0)
         #expect(result[.hamstrings] == nil)
     }
@@ -56,134 +56,158 @@ struct EffectiveSetsEngineTests {
     @Test("Secondary muscles get fractional attribution")
     func secondaryMuscles() {
         let ex = makeExercise(name: "Pull-Up", muscles: [
-            (.lats, 1.0),
-            (.upperback, 0.3),
-            (.biceps, 0.3),
+            (.grandDorsal, 1.0),
+            (.dosHaut, 0.3),
+            (.bicepsCourt, 0.3),
             (.forearms, 0.1),
         ])
         let logged = makeLoggedExercise(exercise: ex, completedSets: 3)
 
-        let result = EffectiveSetsEngine.effectiveSets(for: logged)
+        let result = EffectiveSetsEngine.leafSets(for: logged)
 
-        #expect(result[.lats] == 3.0)
-        #expect(result[.upperback]! == 0.9)
-        #expect(result[.biceps]! == 0.9)
+        #expect(result[.grandDorsal] == 3.0)
+        #expect(result[.dosHaut]! == 0.9)
+        #expect(result[.bicepsCourt]! == 0.9)
         #expect(abs(result[.forearms]! - 0.3) < 0.001)
     }
 
-    @Test("Zero sets returns zeros")
+    @Test("Zero sets returns empty")
     func zeroSets() {
-        let ex = makeExercise(name: "Curl", muscles: [(.biceps, 1.0)])
+        let ex = makeExercise(name: "Curl", muscles: [(.bicepsCourt, 1.0)])
         let logged = makeLoggedExercise(exercise: ex, completedSets: 0)
 
-        let result = EffectiveSetsEngine.effectiveSets(for: logged)
-        #expect(result[.biceps] == 0)
+        let result = EffectiveSetsEngine.leafSets(for: logged)
+        #expect(result.isEmpty)
     }
 
-    // MARK: - Weekly Progress
+    // MARK: - Parent-Level Effective Sets
 
-    @Test("Weekly progress percentage calculation")
-    func weeklyPercentage() {
-        let progress = MuscleGroupProgress(
-            muscleGroup: .chest,
+    @Test("Parent sets aggregation uses max coefficient per parent")
+    func parentSetsAggregation() {
+        // Chest Press maps to pectStern (1.0) and pectClav (0.5) — both under Pectoraux parent.
+        // The engine should use max(1.0, 0.5) = 1.0 for Pectoraux.
+        let ex = makeExercise(name: "Chest Press", muscles: [
+            (.pectStern, 1.0),
+            (.pectClav, 0.5),
+            (.tricepsLat, 0.3),
+        ])
+        let logged = makeLoggedExercise(exercise: ex, completedSets: 3)
+
+        let result = EffectiveSetsEngine.parentSets(for: logged)
+
+        #expect(result[.pectoraux] == 3.0) // 3 * max(1.0, 0.5)
+        #expect(result[.triceps] == 0.9)   // 3 * 0.3
+    }
+
+    // MARK: - ParentMuscleProgress
+
+    @Test("ParentMuscleProgress coverage calculation")
+    func coverageCalculation() {
+        let progress = ParentMuscleProgress(
+            parent: .pectoraux,
             effectiveSets: 9,
-            goalSets: 12,
-            previousWeekSets: 6
+            goalSets: 12
         )
 
-        #expect(progress.percentage == 75)
+        #expect(progress.coverage == 0.75)
+        #expect(progress.percentDisplay == 75)
         #expect(progress.remaining == 3)
-        #expect(progress.delta == 3)
-        #expect(!progress.isComplete)
+        #expect(progress.status == .onTrack)
     }
 
-    @Test("Complete when at goal")
-    func completeAtGoal() {
-        let progress = MuscleGroupProgress(
-            muscleGroup: .chest,
+    @Test("Covered when at goal")
+    func coveredAtGoal() {
+        let progress = ParentMuscleProgress(
+            parent: .pectoraux,
             effectiveSets: 12,
-            goalSets: 12,
-            previousWeekSets: 10
+            goalSets: 12
         )
 
-        #expect(progress.percentage == 100)
+        #expect(progress.coverage == 1.0)
         #expect(progress.remaining == 0)
-        #expect(progress.isComplete)
+        #expect(progress.status == .covered)
     }
 
-    @Test("Over goal caps display but shows completion")
-    func overGoal() {
-        let progress = MuscleGroupProgress(
-            muscleGroup: .chest,
+    @Test("Over goal caps coverage at 1.0")
+    func overGoalCaps() {
+        let progress = ParentMuscleProgress(
+            parent: .pectoraux,
             effectiveSets: 15,
-            goalSets: 12,
-            previousWeekSets: 10
+            goalSets: 12
         )
 
-        #expect(progress.percentage == 125)
+        #expect(progress.coverage == 1.0)
         #expect(progress.remaining == 0)
-        #expect(progress.isComplete)
+        #expect(progress.status == .covered)
     }
 
-    @Test("Zero goal returns zero percentage")
+    @Test("Zero goal returns zero coverage")
     func zeroGoal() {
-        let progress = MuscleGroupProgress(
-            muscleGroup: .chest,
+        let progress = ParentMuscleProgress(
+            parent: .pectoraux,
             effectiveSets: 5,
-            goalSets: 0,
-            previousWeekSets: 3
+            goalSets: 0
         )
 
-        #expect(progress.percentage == 0)
+        #expect(progress.coverage == 0)
     }
 
-    @Test("Delta calculation")
-    func deltaCalculation() {
-        let progress = MuscleGroupProgress(
-            muscleGroup: .biceps,
-            effectiveSets: 8,
-            goalSets: 10,
-            previousWeekSets: 10
+    @Test("Priority status when very low coverage")
+    func priorityStatus() {
+        let progress = ParentMuscleProgress(
+            parent: .biceps,
+            effectiveSets: 2,
+            goalSets: 12
         )
 
-        #expect(progress.delta == -2)
+        #expect(progress.status == .priority)
     }
 
-    // MARK: - Live Impact
+    @Test("To strengthen status for moderate coverage")
+    func toStrengthenStatus() {
+        let progress = ParentMuscleProgress(
+            parent: .biceps,
+            effectiveSets: 6,
+            goalSets: 12
+        )
 
-    @Test("Live impact calculation")
-    func liveImpact() {
+        #expect(progress.status == .toStrengthen)
+    }
+
+    // MARK: - Live Parent Impact
+
+    @Test("Live parent impact calculation")
+    func liveParentImpact() {
         let ex = makeExercise(name: "Row", muscles: [
-            (.upperback, 1.0),
-            (.lats, 0.3),
-            (.biceps, 0.3),
+            (.dosHaut, 1.0),
+            (.grandDorsal, 0.3),
+            (.bicepsCourt, 0.3),
         ])
 
-        let result = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: 3)
+        let result = EffectiveSetsEngine.liveParentImpact(exercise: ex, completedSets: 3)
 
-        #expect(result[.upperback] == 3.0)
-        #expect(result[.lats]! == 0.9)
-        #expect(result[.biceps]! == 0.9)
+        #expect(result[.dosHaut] == 3.0)
+        #expect(result[.grandDorsal] == 0.9)
+        #expect(result[.biceps] == 0.9)
     }
 
     // MARK: - Multiple Exercises Aggregation
 
-    @Test("Aggregated effective sets from multiple exercises")
+    @Test("Aggregated leaf sets from multiple exercises")
     func multiExerciseAggregation() {
-        // Simulating chest press + pec deck in one session
-        let chestPress = makeExercise(name: "Chest Press", muscles: [(.chest, 1.0), (.triceps, 0.3)])
-        let pecDeck = makeExercise(name: "Pec Deck", muscles: [(.chest, 1.0)])
+        let chestPress = makeExercise(name: "Chest Press", muscles: [(.pectStern, 1.0), (.tricepsLat, 0.3)])
+        let pecDeck = makeExercise(name: "Pec Deck", muscles: [(.pectStern, 1.0)])
 
         let logged1 = makeLoggedExercise(exercise: chestPress, completedSets: 3)
         let logged2 = makeLoggedExercise(exercise: pecDeck, completedSets: 3)
 
-        let sets1 = EffectiveSetsEngine.effectiveSets(for: logged1)
-        let sets2 = EffectiveSetsEngine.effectiveSets(for: logged2)
+        let sets1 = EffectiveSetsEngine.leafSets(for: logged1)
+        let sets2 = EffectiveSetsEngine.leafSets(for: logged2)
 
-        let totalChest = (sets1[.chest] ?? 0) + (sets2[.chest] ?? 0)
-        let totalTriceps = (sets1[.triceps] ?? 0) + (sets2[.triceps] ?? 0)
+        let totalPectStern = (sets1[.pectStern] ?? 0) + (sets2[.pectStern] ?? 0)
+        let totalTriceps = (sets1[.tricepsLat] ?? 0) + (sets2[.tricepsLat] ?? 0)
 
-        #expect(totalChest == 6.0) // 3 + 3
+        #expect(totalPectStern == 6.0) // 3 + 3
         #expect(totalTriceps == 0.9) // 0.9 + 0
     }
 }

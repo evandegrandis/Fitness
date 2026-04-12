@@ -228,8 +228,14 @@ struct DataExporter {
             context.insert(ex)
 
             for mData in exData.muscleMappings {
-                if let mg = MuscleGroup(rawValue: mData.muscleGroup) {
-                    let mapping = MuscleMapping(muscleGroup: mg, coefficient: mData.coefficient)
+                let mg: MuscleGroup?
+                if let direct = MuscleGroup(rawValue: mData.muscleGroup) {
+                    mg = direct
+                } else {
+                    mg = MuscleGroup.legacyMapping[mData.muscleGroup]
+                }
+                if let muscle = mg {
+                    let mapping = MuscleMapping(muscleGroup: muscle, coefficient: mData.coefficient)
                     mapping.exercise = ex
                     context.insert(mapping)
                     ex.muscleMappings.append(mapping)
@@ -240,10 +246,21 @@ struct DataExporter {
             exerciseByName[exData.name] = ex
         }
 
-        // 2. Import goals
+        // 2. Import goals (parent-level)
         for gData in backup.goals {
-            if let mg = MuscleGroup(rawValue: gData.muscleGroup) {
-                let goal = MuscleGoal(muscleGroup: mg, weeklyGoalSets: gData.weeklyGoalSets)
+            // Try direct parent match first, then leaf → parent migration
+            let parent: MuscleParent?
+            if let direct = MuscleParent(rawValue: gData.muscleGroup) {
+                parent = direct
+            } else if let leaf = MuscleGroup(rawValue: gData.muscleGroup) {
+                parent = leaf.parent
+            } else if let legacy = MuscleGroup.legacyMapping[gData.muscleGroup] {
+                parent = legacy.parent
+            } else {
+                parent = nil
+            }
+            if let p = parent {
+                let goal = MuscleGoal(parent: p, weeklyGoalSets: gData.weeklyGoalSets)
                 context.insert(goal)
             }
         }

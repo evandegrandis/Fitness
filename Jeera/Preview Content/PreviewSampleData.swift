@@ -36,10 +36,12 @@ extension Exercise {
             smallestIncrement: 5,
             isFavorite: true,
             suggestedRestSeconds: 180,
+            benchmarkLow: 70,
+            benchmarkHigh: 140,
             muscleMappings: [
-                MuscleMapping(muscleGroup: .chest, coefficient: 1.0),
-                MuscleMapping(muscleGroup: .triceps, coefficient: 0.3),
-                MuscleMapping(muscleGroup: .frontdelts, coefficient: 0.3),
+                MuscleMapping(muscleGroup: .pectStern, coefficient: 1.0),
+                MuscleMapping(muscleGroup: .tricepsLat, coefficient: 0.3),
+                MuscleMapping(muscleGroup: .deltAnt, coefficient: 0.3),
             ]
         )
     }

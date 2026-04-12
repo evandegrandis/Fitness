@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -61,6 +62,9 @@ struct ContentView: View {
                 workoutVM.defaultRestSeconds = settings.defaultRestTimerSeconds
                 workoutVM.supersetRestSeconds = settings.supersetRestSeconds
             }
+
+            // Request notification permission for rest timer T-3 wake.
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         }
     }
 

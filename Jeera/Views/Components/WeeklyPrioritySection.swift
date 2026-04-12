@@ -1,14 +1,11 @@
 import SwiftUI
 import SwiftData
 
-/// Titled horizontally-scrolling strip of weekly priority chips.
+/// Titled horizontally-scrolling strip of rolling 7-day priority chips.
 ///
-/// Showcases muscles where remaining > 0 in descending order of how much work is
-/// left. Numbers update live during an active workout because the caller passes
-/// the `liveSession` down into `EffectiveSetsEngine.currentWeekProgress`.
-///
-/// No "restant" caption on the right — the number next to each muscle IS the
-/// remaining count, which is unambiguous in the titled block.
+/// Showcases parent muscles where remaining > 0 in descending order of how much
+/// work is left. Numbers update live during an active workout because the caller
+/// passes the `liveSession` into `EffectiveSetsEngine.rollingPriorities`.
 struct WeeklyPrioritySection: View {
     @Query(
         filter: #Predicate<WorkoutSession> { !$0.isActive },
@@ -17,23 +14,20 @@ struct WeeklyPrioritySection: View {
     ) private var finishedSessions: [WorkoutSession]
     @Query private var goals: [MuscleGoal]
 
-    /// Currently active session (if any) — added live to the weekly totals so
+    /// Currently active session (if any) — added live to the rolling totals so
     /// chips decrease the moment a set is validated.
     var liveSession: WorkoutSession?
 
-    /// Optional headline override. Defaults to "À prioriser cette semaine".
-    var title: String = "À prioriser cette semaine"
+    /// Optional headline override. Defaults to "À prioriser (7 jours)".
+    var title: String = "À prioriser (7 jours)"
 
-    private var chips: [(MuscleGroup, Int)] {
-        let progress = EffectiveSetsEngine.currentWeekProgress(
+    private var chips: [(MuscleParent, Int)] {
+        EffectiveSetsEngine.rollingPriorities(
             sessions: finishedSessions,
             goals: goals,
             liveSession: liveSession
         )
-        return progress
-            .filter { $0.goalSets > 0 && $0.remaining >= 1 }
-            .sorted { $0.remaining > $1.remaining }
-            .map { ($0.muscleGroup, Int($0.remaining.rounded())) }
+        .map { ($0.0, Int($0.1.rounded())) }
     }
 
     var body: some View {
@@ -46,9 +40,9 @@ struct WeeklyPrioritySection: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(chips, id: \.0) { muscle, remaining in
+                        ForEach(chips, id: \.0) { parent, remaining in
                             PriorityChip(
-                                label: muscle.shortName,
+                                label: parent.shortName,
                                 remaining: remaining
                             )
                         }

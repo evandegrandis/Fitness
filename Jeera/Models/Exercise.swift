@@ -17,6 +17,13 @@ final class Exercise {
     var machineSetting: String
     var setupNotes: String
 
+    /// Reference lower-bound load for the benchmark band on progress charts.
+    /// Framed as "average score of a ~25-year-old man training for 1 year".
+    /// Optional — only exercises with meaningful benchmarks expose a band.
+    var benchmarkLow: Double?
+    /// Reference upper bound — "what is naturally achievable on this exercise".
+    var benchmarkHigh: Double?
+
     @Relationship(deleteRule: .cascade) var muscleMappings: [MuscleMapping]
 
     var lastUsed: Date?
@@ -35,6 +42,8 @@ final class Exercise {
         suggestedRestSeconds: Int = 120,
         machineSetting: String = "",
         setupNotes: String = "",
+        benchmarkLow: Double? = nil,
+        benchmarkHigh: Double? = nil,
         muscleMappings: [MuscleMapping] = []
     ) {
         self.id = id
@@ -50,6 +59,8 @@ final class Exercise {
         self.suggestedRestSeconds = suggestedRestSeconds
         self.machineSetting = machineSetting
         self.setupNotes = setupNotes
+        self.benchmarkLow = benchmarkLow
+        self.benchmarkHigh = benchmarkHigh
         self.muscleMappings = muscleMappings
     }
 
@@ -62,11 +73,25 @@ final class Exercise {
         return "\(repTargetMin)-\(repTargetMax)"
     }
 
+    /// Primary leaf muscle (highest-coefficient mapping).
     var primaryMuscle: MuscleGroup? {
         muscleMappings.max(by: { $0.coefficient < $1.coefficient })?.muscleGroup
     }
 
+    /// Parent-level primary muscle, used for filtering / suggestions.
+    var primaryParent: MuscleParent? { primaryMuscle?.parent }
+
     func mappings(for muscleGroup: MuscleGroup) -> Double {
         muscleMappings.first(where: { $0.muscleGroup == muscleGroup })?.coefficient ?? 0
+    }
+
+    /// Aggregate coefficient for a parent group (sum of all leaves that belong
+    /// to the same parent). Used by the rolling coverage engine so a
+    /// chest-press set counts toward the "Pectoraux" parent just once.
+    func aggregateCoefficient(for parent: MuscleParent) -> Double {
+        muscleMappings
+            .filter { $0.muscleGroup.parent == parent }
+            .map(\.coefficient)
+            .max() ?? 0
     }
 }

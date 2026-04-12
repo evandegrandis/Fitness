@@ -36,9 +36,6 @@ struct ExerciseCard: View {
                         .padding(.top, 14)
                         .padding(.bottom, isExpanded ? 10 : 14)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            viewModel.handleSupersetDoubleTap(loggedExercise)
-                        }
                         .onTapGesture {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 isExpanded.toggle()
@@ -68,27 +65,25 @@ struct ExerciseCard: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: isArmed)
-            // Swipe-left: replace / delete. Swipe-right: duplicate.
+            // Trailing swipe = delete exercise only.
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 Button(role: .destructive) {
                     withAnimation { viewModel.removeExercise(loggedExercise) }
                 } label: {
                     Label("Supprimer", systemImage: "trash")
                 }
-                Button {
-                    showReplacePicker = true
-                } label: {
-                    Label("Remplacer", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .tint(.orange)
             }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            // Leading swipe = superset link / unlink.
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 Button {
-                    withAnimation { viewModel.duplicateExercise(loggedExercise) }
+                    withAnimation { viewModel.handleSupersetLink(loggedExercise) }
                 } label: {
-                    Label("Dupliquer", systemImage: "doc.on.doc")
+                    Label(
+                        loggedExercise.isLinkedToNext ? "Retirer du superset" : "Lier en superset",
+                        systemImage: loggedExercise.isLinkedToNext ? "link.badge.plus" : "link"
+                    )
                 }
-                .tint(.blue)
+                .tint(loggedExercise.isLinkedToNext ? .red : .blue)
             }
 
             if loggedExercise.isLinkedToNext {
@@ -120,12 +115,9 @@ struct ExerciseCard: View {
         }
         .contextMenu {
             Button {
-                viewModel.handleSupersetDoubleTap(loggedExercise)
+                showReplacePicker = true
             } label: {
-                Label(
-                    loggedExercise.isLinkedToNext ? "Délier superset" : (isArmed ? "Annuler superset" : "Armer superset"),
-                    systemImage: loggedExercise.isLinkedToNext ? "link.badge.plus" : "link"
-                )
+                Label("Remplacer", systemImage: "arrow.triangle.2.circlepath")
             }
             Button {
                 viewModel.duplicateExercise(loggedExercise)
@@ -133,9 +125,12 @@ struct ExerciseCard: View {
                 Label("Dupliquer", systemImage: "doc.on.doc")
             }
             Button {
-                showReplacePicker = true
+                withAnimation { viewModel.handleSupersetLink(loggedExercise) }
             } label: {
-                Label("Remplacer", systemImage: "arrow.triangle.2.circlepath")
+                Label(
+                    loggedExercise.isLinkedToNext ? "Retirer du superset" : "Lier en superset",
+                    systemImage: loggedExercise.isLinkedToNext ? "link.badge.plus" : "link"
+                )
             }
             Button(role: .destructive) {
                 withAnimation { viewModel.removeExercise(loggedExercise) }
@@ -326,11 +321,11 @@ struct ExerciseCard: View {
                     .buttonStyle(.plain)
 
                     if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
-                        let impact = EffectiveSetsEngine.liveImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
+                        let impact = EffectiveSetsEngine.liveParentImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
                         let sorted = impact.sorted(by: { $0.value > $1.value })
-                        ForEach(sorted, id: \.key) { muscle, sets in
+                        ForEach(sorted, id: \.key) { parent, sets in
                             HStack(spacing: 3) {
-                                Text(muscle.shortName)
+                                Text(parent.shortName)
                                     .font(.caption2.weight(.medium))
                                 Text("+\(sets, specifier: "%.1f")")
                                     .font(.caption2.weight(.bold).monospacedDigit())
@@ -429,6 +424,7 @@ struct ExerciseCard: View {
                 .font(.footnote.weight(.heavy))
                 .foregroundStyle(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 9)

@@ -81,18 +81,17 @@ struct WeeklyHistorySection: View {
         return "\(formatter.string(from: weekStart)) – \(formatter.string(from: weekEnd))"
     }
 
-    /// Number of weekly goals that were met in this week.
-    private var goalSummary: (met: Int, total: Int) {
-        let total = goals.filter { $0.weeklyGoalSets > 0 }.count
-        guard total > 0 else { return (0, 0) }
-
-        let progress = EffectiveSetsEngine.currentWeekProgress(
+    /// Coverage % and groups worked for this calendar week.
+    private var coveragePct: Int {
+        Int((EffectiveSetsEngine.coverageForWeek(
             sessions: sessions,
             goals: goals,
-            referenceDate: weekStart
-        )
-        let met = progress.filter { $0.isComplete }.count
-        return (met, total)
+            weekStart: weekStart
+        ) * 100).rounded())
+    }
+
+    private var parentsWorked: Int {
+        EffectiveSetsEngine.parentsWorkedInWeek(sessions: sessions, weekStart: weekStart)
     }
 
     var body: some View {
@@ -102,11 +101,12 @@ struct WeeklyHistorySection: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Spacer()
-                let summary = goalSummary
-                if summary.total > 0 {
-                    Text("\(summary.met) / \(summary.total) objectifs")
+                let pct = coveragePct
+                let groups = parentsWorked
+                if pct > 0 || groups > 0 {
+                    Text("Couverture \(pct)% · \(groups) groupes")
                         .font(.caption2.weight(.medium))
-                        .foregroundStyle(summary.met == summary.total ? .green : .secondary)
+                        .foregroundStyle(pct >= 80 ? .green : .secondary)
                 }
             }
             .padding(.horizontal, 4)
