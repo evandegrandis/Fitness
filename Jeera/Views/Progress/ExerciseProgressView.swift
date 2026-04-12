@@ -205,8 +205,12 @@ struct ExerciseProgressRow: View {
             }
         }
 
-        // Tight y-axis domain (not starting at 0)
-        let values = chartData.filter(\.2).map(\.1)
+        // Tight y-axis domain (not starting at 0), include benchmark range if present
+        var values = chartData.filter(\.2).map(\.1)
+        if !isBodyweight {
+            if let low = exercise.benchmarkLow { values.append(low) }
+            if let high = exercise.benchmarkHigh { values.append(high) }
+        }
         let minVal = values.min() ?? 0
         let maxVal = values.max() ?? 100
         let padding = max((maxVal - minVal) * 0.15, isBodyweight ? 2 : 5)
@@ -242,6 +246,21 @@ struct ExerciseProgressRow: View {
                 .foregroundStyle(.orange.opacity(0.5))
                 .symbolSize(16)
                 .symbol(.circle)
+            }
+
+            // Benchmark band (shaded area between low and high reference values)
+            if !isBodyweight, let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
+                RuleMark(y: .value("Bench Low", low))
+                    .foregroundStyle(.green.opacity(0.25))
+                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                RuleMark(y: .value("Bench High", high))
+                    .foregroundStyle(.green.opacity(0.25))
+                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                RectangleMark(
+                    yStart: .value("Low", low),
+                    yEnd: .value("High", high)
+                )
+                .foregroundStyle(.green.opacity(0.06))
             }
         }
         .chartYScale(domain: yMin...yMax)
