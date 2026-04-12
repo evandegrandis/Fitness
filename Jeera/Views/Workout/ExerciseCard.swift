@@ -55,6 +55,7 @@ struct ExerciseCard: View {
                             .padding(.vertical, 12)
                     }
                 }
+                .frame(maxWidth: .infinity)
             }
             .overlay {
                 // Armed-for-superset highlight ring.
@@ -176,6 +177,14 @@ struct ExerciseCard: View {
                 }
                 editingSet = nil
             }
+            Button("Supprimer", role: .destructive) {
+                if let set = editingSet {
+                    withAnimation(.spring(response: 0.3)) {
+                        viewModel.deleteSet(set, from: loggedExercise)
+                    }
+                }
+                editingSet = nil
+            }
             Button("Annuler", role: .cancel) { editingSet = nil }
         }
     }
@@ -245,15 +254,6 @@ struct ExerciseCard: View {
                     editSetWeight = set.weight > 0 ? set.weight.cleanWeight : "0"
                     editSetReps = "\(set.reps)"
                     showEditSetAlert = true
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        withAnimation(.spring(response: 0.3)) {
-                            viewModel.deleteSet(set, from: loggedExercise)
-                        }
-                    } label: {
-                        Label("Supprimer", systemImage: "trash")
-                    }
                 }
             }
         }

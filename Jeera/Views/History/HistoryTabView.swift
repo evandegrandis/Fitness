@@ -33,6 +33,7 @@ struct HistoryTabView: View {
                                 WeeklyHistorySection(
                                     weekStart: group.weekStart,
                                     sessions: group.sessions,
+                                    allSessions: sessions,
                                     goals: goals
                                 )
                             }
@@ -68,6 +69,7 @@ struct HistoryTabView: View {
 struct WeeklyHistorySection: View {
     let weekStart: Date
     let sessions: [WorkoutSession]
+    var allSessions: [WorkoutSession] = []
     let goals: [MuscleGoal]
 
     private var weekLabel: String {
@@ -116,7 +118,7 @@ struct WeeklyHistorySection: View {
                     NavigationLink {
                         WorkoutDetailView(session: session)
                     } label: {
-                        HistoryRow(session: session)
+                        HistoryRow(session: session, allSessions: allSessions)
                     }
                     .buttonStyle(.plain)
                 }
@@ -129,6 +131,8 @@ struct WeeklyHistorySection: View {
 
 struct HistoryRow: View {
     let session: WorkoutSession
+    /// All finished sessions, needed to detect which sets were records at the time.
+    var allSessions: [WorkoutSession] = []
 
     private var exerciseNames: String {
         let names = session.orderedExercises.compactMap { $0.exercise?.name }
@@ -138,12 +142,44 @@ struct HistoryRow: View {
         return names.prefix(3).joined(separator: ", ") + " +\(names.count - 3)"
     }
 
+    /// Count how many record sets this session contains.
+    private var recordCount: Int {
+        guard !allSessions.isEmpty else { return 0 }
+        var count = 0
+        for logged in session.loggedExercises {
+            guard let exercise = logged.exercise else { continue }
+            // Gather all historical sets for this exercise up to and including this session.
+            let allSets = allSessions
+                .filter { $0.date <= session.date }
+                .flatMap { s in s.loggedExercises.filter { $0.exercise?.id == exercise.id } }
+                .flatMap(\.completedWorkSets)
+            for set in logged.completedWorkSets {
+                if RecordsEngine.isRecordSet(set, among: allSets, exercise: exercise) {
+                    count += 1
+                }
+            }
+        }
+        return count
+    }
+
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 22) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(session.date.relativeDay)
                         .font(.subheadline.weight(.semibold))
+                    if recordCount > 0 {
+                        HStack(spacing: 2) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.yellow)
+                            if recordCount > 1 {
+                                Text("×\(recordCount)")
+                                    .font(.system(size: 9).weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.yellow)
+                            }
+                        }
+                    }
                     Spacer()
                     Text(session.date.shortTime)
                         .font(.caption2)

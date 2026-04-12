@@ -156,25 +156,8 @@ struct QuickStartView: View {
                     }
                 }
 
-                // Recent Workouts
-                if !recentSessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Récent")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal)
-
-                        ForEach(recentSessions.prefix(5)) { session in
-                            NavigationLink {
-                                WorkoutDetailView(session: session)
-                            } label: {
-                                RecentWorkoutRow(session: session)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.horizontal)
-                    }
-                }
+                // Recent Achievements (records)
+                AchievementsSection(sessions: recentSessions)
 
                 Spacer(minLength: 80)
             }
@@ -247,6 +230,11 @@ struct QuickStartView: View {
 
 struct WorkoutDetailView: View {
     let session: WorkoutSession
+    @Query(
+        filter: #Predicate<WorkoutSession> { !$0.isActive },
+        sort: \WorkoutSession.startTime,
+        order: .reverse
+    ) private var allSessions: [WorkoutSession]
 
     var body: some View {
         ScrollView {
@@ -269,8 +257,12 @@ struct WorkoutDetailView: View {
 
                 // Exercises
                 ForEach(session.orderedExercises) { loggedExercise in
-                    HistoryExerciseCard(loggedExercise: loggedExercise)
-                        .padding(.horizontal)
+                    HistoryExerciseCard(
+                        loggedExercise: loggedExercise,
+                        allSessions: allSessions,
+                        sessionDate: session.date
+                    )
+                    .padding(.horizontal)
                 }
 
                 Spacer(minLength: 40)
@@ -284,6 +276,22 @@ struct WorkoutDetailView: View {
 
 struct HistoryExerciseCard: View {
     let loggedExercise: LoggedExercise
+    var allSessions: [WorkoutSession] = []
+    var sessionDate: Date = Date()
+
+    /// All historical sets for this exercise up to and including this session.
+    private var allHistoricalSets: [LoggedSet] {
+        guard let exercise = loggedExercise.exercise else { return [] }
+        return allSessions
+            .filter { $0.date <= sessionDate }
+            .flatMap { s in s.loggedExercises.filter { $0.exercise?.id == exercise.id } }
+            .flatMap(\.completedWorkSets)
+    }
+
+    private func isRecord(_ set: LoggedSet) -> Bool {
+        guard let exercise = loggedExercise.exercise else { return false }
+        return RecordsEngine.isRecordSet(set, among: allHistoricalSets, exercise: exercise)
+    }
 
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 16) {
@@ -316,6 +324,12 @@ struct HistoryExerciseCard: View {
                             Text(set.setType.shortLabel)
                                 .font(.system(size: 9).weight(.bold))
                                 .foregroundStyle(set.setType == .topSet ? .orange : .blue)
+                        }
+
+                        if isRecord(set) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.yellow)
                         }
 
                         Spacer()
@@ -411,5 +425,73 @@ struct RecentWorkoutRow: View {
                 .foregroundStyle(.tertiary)
         }
         .glassCard(padding: 14)
+    }
+}
+
+// MARK: - Achievements Section (Home Bottom)
+
+struct AchievementsSection: View {
+    let sessions: [WorkoutSession]
+    @Query(sort: \Exercise.name) private var exercises: [Exercise]
+
+    private var achievements: [Achievement] {
+        AchievementsEngine.recentAchievements(
+            sessions: sessions,
+            exercises: exercises,
+            maxSessions: 10
+        )
+    }
+
+    var body: some View {
+        if !achievements.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Records récents")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+
+                ForEach(achievements.prefix(6)) { achievement in
+                    AchievementRow(achievement: achievement)
+                        .padding(.horizontal)
+                }
+            }
+        }
+    }
+}
+
+struct AchievementRow: View {
+    let achievement: Achievement
+
+    var body: some View {
+        GlassCard(padding: 12, cornerRadius: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "star.fill")
+                    .font(.caption)
+                    .foregroundStyle(.yellow)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(achievement.exerciseName)
+                        .font(.caption.weight(.semibold))
+                    Text(recordDescription)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(achievement.date.relativeDay)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private var recordDescription: String {
+        switch achievement.kind {
+        case .heaviestWeight:
+            return "Nouveau record : \(achievement.weight.cleanWeight) kg x \(achievement.reps)"
+        case .repsAtWeight:
+            return "\(achievement.reps) reps @ \(achievement.weight.cleanWeight) kg — record"
+        }
     }
 }
