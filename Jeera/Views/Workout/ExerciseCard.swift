@@ -57,6 +57,7 @@ struct ExerciseCard: View {
                 }
                 .frame(maxWidth: .infinity)
             }
+            .frame(maxWidth: .infinity)
             .overlay {
                 // Armed-for-superset highlight ring.
                 if isArmed {
@@ -66,26 +67,6 @@ struct ExerciseCard: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: isArmed)
-            // Trailing swipe = delete exercise only.
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button(role: .destructive) {
-                    withAnimation { viewModel.removeExercise(loggedExercise) }
-                } label: {
-                    Label("Supprimer", systemImage: "trash")
-                }
-            }
-            // Leading swipe = superset link / unlink.
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                Button {
-                    withAnimation { viewModel.handleSupersetLink(loggedExercise) }
-                } label: {
-                    Label(
-                        loggedExercise.isLinkedToNext ? "Retirer du superset" : "Lier en superset",
-                        systemImage: loggedExercise.isLinkedToNext ? "link.badge.plus" : "link"
-                    )
-                }
-                .tint(loggedExercise.isLinkedToNext ? .red : .blue)
-            }
 
             if loggedExercise.isLinkedToNext {
                 HStack(spacing: 6) {
@@ -100,6 +81,26 @@ struct ExerciseCard: View {
                 .padding(.leading, 30)
                 .padding(.top, 2)
             }
+        }
+        .frame(maxWidth: .infinity)
+        // Swipe actions on the outermost level — this IS the List row content.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                withAnimation { viewModel.removeExercise(loggedExercise) }
+            } label: {
+                Label("Supprimer", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                withAnimation { viewModel.handleSupersetLink(loggedExercise) }
+            } label: {
+                Label(
+                    loggedExercise.isLinkedToNext ? "Retirer du superset" : "Lier en superset",
+                    systemImage: loggedExercise.isLinkedToNext ? "link.badge.plus" : "link"
+                )
+            }
+            .tint(loggedExercise.isLinkedToNext ? .red : .blue)
         }
         .onAppear {
             if !hasLoadedSuggestion {
