@@ -40,10 +40,7 @@ struct ActiveWorkoutView: View {
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.95).combined(with: .opacity),
-                                removal: .opacity
-                            ))
+                            .transition(.opacity)
                         }
                         .onMove { from, to in
                             withAnimation(.spring(response: 0.3)) {

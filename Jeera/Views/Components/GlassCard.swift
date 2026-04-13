@@ -21,6 +21,7 @@ struct GlassCard<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
+            .frame(maxWidth: .infinity)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(
@@ -55,6 +56,7 @@ struct GlassCardModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(padding)
+            .frame(maxWidth: .infinity)
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(

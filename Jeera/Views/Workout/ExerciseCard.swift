@@ -5,7 +5,6 @@ struct ExerciseCard: View {
     @Bindable var loggedExercise: LoggedExercise
     @Bindable var viewModel: WorkoutViewModel
 
-    @State private var isExpanded = true
     @State private var editWeight: Double = 0
     @State private var editReps: Int = 0
     @State private var hasLoadedSuggestion = false
@@ -32,33 +31,22 @@ struct ExerciseCard: View {
             GlassCard(padding: 0, cornerRadius: 26) {
                 VStack(spacing: 0) {
                     cardHeader
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-                        .padding(.bottom, isExpanded ? 10 : 14)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                isExpanded.toggle()
-                                HapticManager.tap()
-                            }
-                        }
+                        .padding(.horizontal, 14)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
 
-                    if isExpanded {
-                        Divider().background(.white.opacity(0.06))
+                    Divider().background(.white.opacity(0.06))
 
-                        if !loggedExercise.orderedSets.isEmpty {
-                            setsSection
-                        }
-
-                        inlineEditSection
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                    if !loggedExercise.orderedSets.isEmpty {
+                        setsSection
                     }
+
+                    inlineEditSection
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
                 }
-                .frame(maxWidth: .infinity)
             }
             .overlay {
-                // Armed-for-superset highlight ring.
                 if isArmed {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .stroke(Color.accentColor.opacity(0.7), lineWidth: 1.5)
@@ -82,7 +70,6 @@ struct ExerciseCard: View {
                 .padding(.top, 2)
             }
         }
-        // Swipe actions on the outermost level — this IS the List row content.
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 withAnimation { viewModel.removeExercise(loggedExercise) }
@@ -189,14 +176,14 @@ struct ExerciseCard: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header (with Valider button)
 
     private var cardHeader: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
                     Text(exercise?.name ?? "Unknown")
-                        .font(.callout.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     if loggedExercise.isLinkedToNext {
                         Image(systemName: "link")
@@ -205,7 +192,7 @@ struct ExerciseCard: View {
                     }
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if let ex = exercise {
                         Text(ex.setPatternMode.shortName)
                             .font(.caption2)
@@ -217,27 +204,22 @@ struct ExerciseCard: View {
                             Text(ex.machineSetting)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.orange)
-                                .padding(.horizontal, 6)
+                                .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
                                 .background(Color.orange.opacity(0.12), in: Capsule())
                         }
                     }
+                    if !loggedExercise.completedWorkSets.isEmpty {
+                        Text("\(loggedExercise.completedWorkSets.count) sets")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            if !loggedExercise.completedWorkSets.isEmpty {
-                Text("\(loggedExercise.completedWorkSets.count)")
-                    .font(.callout.weight(.bold).monospacedDigit())
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 28, height: 28)
-                    .background(Color.accentColor.opacity(0.12), in: Circle())
-            }
-
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            validerButton
         }
     }
 
@@ -259,28 +241,26 @@ struct ExerciseCard: View {
         }
     }
 
-    // MARK: - Inline Edit Section
+    // MARK: - Inline Edit Section (steppers only, no Valider)
 
     private var inlineEditSection: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
                     Text("×")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
 
                 repsStepper
 
-                Spacer()
-
-                validerButton
+                Spacer(minLength: 0)
             }
 
-            // Combined quick actions + muscle impact strip.
+            // Quick actions + muscle impact strip.
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if let lastSet = loggedExercise.lastCompletedSet {
                         Button {
                             editWeight = lastSet.weight
@@ -294,8 +274,8 @@ struct ExerciseCard: View {
                                     .font(.caption2.weight(.semibold).monospacedDigit())
                             }
                             .foregroundStyle(.primary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
                             .background(Color.white.opacity(0.08), in: Capsule())
                         }
                         .buttonStyle(.plain)
@@ -314,8 +294,8 @@ struct ExerciseCard: View {
                                 .font(.caption2.weight(.medium))
                         }
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
                         .background(Color.white.opacity(0.08), in: Capsule())
                     }
                     .buttonStyle(.plain)
@@ -331,8 +311,8 @@ struct ExerciseCard: View {
                                     .font(.caption2.weight(.bold).monospacedDigit())
                                     .foregroundStyle(sets >= 1 ? Color.accentColor : .secondary)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
                             .background(Color.white.opacity(0.06), in: Capsule())
                         }
                     }
@@ -344,7 +324,7 @@ struct ExerciseCard: View {
     // MARK: - Stepper subviews
 
     private var weightStepper: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             stepperButton(systemImage: "minus") {
                 editWeight = max(0, editWeight - (exercise?.smallestIncrement ?? 2.5))
                 HapticManager.tap()
@@ -355,13 +335,12 @@ struct ExerciseCard: View {
                 showWeightEntry = true
             } label: {
                 Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
-                    .font(.title3.weight(.bold).monospacedDigit())
+                    .font(.callout.weight(.bold).monospacedDigit())
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .frame(minWidth: 58)
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 6)
-                    .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    .frame(minWidth: 40)
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 4)
+                    .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
 
@@ -373,7 +352,7 @@ struct ExerciseCard: View {
     }
 
     private var repsStepper: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             stepperButton(systemImage: "minus") {
                 editReps = max(1, editReps - 1)
                 HapticManager.tap()
@@ -384,11 +363,11 @@ struct ExerciseCard: View {
                 showRepsEntry = true
             } label: {
                 Text("\(editReps)")
-                    .font(.title3.weight(.bold).monospacedDigit())
-                    .frame(minWidth: 34)
-                    .padding(.vertical, 4)
-                    .padding(.horizontal, 6)
-                    .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    .font(.callout.weight(.bold).monospacedDigit())
+                    .frame(minWidth: 28)
+                    .padding(.vertical, 3)
+                    .padding(.horizontal, 4)
+                    .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
 
@@ -402,8 +381,8 @@ struct ExerciseCard: View {
     private func stepperButton(systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: 30, height: 30)
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: 26, height: 26)
                 .background(Color.white.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)
@@ -421,13 +400,10 @@ struct ExerciseCard: View {
             }
         } label: {
             Text("Valider")
-                .font(.footnote.weight(.heavy))
+                .font(.caption.weight(.heavy))
                 .foregroundStyle(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 9)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
                 .background(Color.accentColor, in: Capsule())
         }
         .buttonStyle(.plain)
@@ -483,8 +459,8 @@ struct CompactSetRow: View {
                     .font(.system(size: 9).weight(.bold))
                     .foregroundStyle(.green.opacity(0.7))
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
     }
