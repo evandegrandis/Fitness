@@ -433,28 +433,30 @@ struct RecentWorkoutRow: View {
 struct AchievementsSection: View {
     let sessions: [WorkoutSession]
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
-
-    private var achievements: [Achievement] {
-        AchievementsEngine.recentAchievements(
-            sessions: sessions,
-            exercises: exercises,
-            maxSessions: 10
-        )
-    }
+    @State private var achievements: [Achievement] = []
 
     var body: some View {
-        if !achievements.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Records récents")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-
-                ForEach(achievements.prefix(6)) { achievement in
-                    AchievementRow(achievement: achievement)
+        Group {
+            if !achievements.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Records récents")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
                         .padding(.horizontal)
+
+                    ForEach(achievements.prefix(6)) { achievement in
+                        AchievementRow(achievement: achievement)
+                            .padding(.horizontal)
+                    }
                 }
             }
+        }
+        .task(id: sessions.count) {
+            achievements = AchievementsEngine.recentAchievements(
+                sessions: sessions,
+                exercises: exercises,
+                maxSessions: 10
+            )
         }
     }
 }

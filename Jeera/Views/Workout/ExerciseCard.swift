@@ -55,6 +55,7 @@ struct ExerciseCard: View {
                             .padding(.vertical, 12)
                     }
                 }
+                .frame(maxWidth: .infinity)
             }
             .overlay {
                 // Armed-for-superset highlight ring.
@@ -64,6 +65,7 @@ struct ExerciseCard: View {
                         .transition(.opacity)
                 }
             }
+            .padding(.horizontal, 16)
             .animation(.easeInOut(duration: 0.2), value: isArmed)
 
             if loggedExercise.isLinkedToNext {
@@ -80,7 +82,6 @@ struct ExerciseCard: View {
                 .padding(.top, 2)
             }
         }
-        .padding(.horizontal, 16)
         // Swipe actions on the outermost level — this IS the List row content.
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
