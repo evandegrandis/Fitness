@@ -81,14 +81,21 @@ struct ExerciseProgressRow: View {
             }
 
             let bestValidated = validatedSets.max(by: { $0.weight < $1.weight })
-            let heaviestAttempt = workSets.max(by: { $0.weight < $1.weight })
+
+            // Session effort metric that doesn't punish "heavier for fewer reps":
+            //   - weighted: best Epley e1RM across all work sets (weight × reps capped at 15)
+            //   - bodyweight: best reps across all BW sets
+            // This fixes the flat-curve bug when a session trades reps for load
+            // (e.g. 40x10 → 50x9 → 55x8 is progress, not regression).
+            let bestE1RM = ProgressionEngine.bestE1RM(from: workSets)?.e1rm ?? 0
+            let bestBWReps = workSets.map(\.reps).max() ?? 0
 
             return ExerciseDataPoint(
                 date: session.date,
                 validatedWeight: bestValidated?.weight ?? 0,
                 validatedReps: bestValidated?.reps ?? 0,
-                attemptWeight: heaviestAttempt?.weight ?? 0,
-                attemptReps: heaviestAttempt?.reps ?? 0,
+                bestE1RM: bestE1RM,
+                bestBWReps: bestBWReps,
                 topSetSummary: workSets.map { "\($0.weight.cleanWeight)x\($0.reps)" }.joined(separator: ", "),
                 isBodyweight: exercise.setPatternMode == .bodyweight
             )
@@ -111,14 +118,18 @@ struct ExerciseProgressRow: View {
         return ProgressionEngine.bestE1RM(from: allSets)?.e1rm
     }
 
-    // Trend: compare last 2 sessions
+    // Trend: compare last 2 sessions using the same effort metric as the chart
+    // (best e1RM for weighted, best reps for bodyweight). This avoids "flat/down"
+    // readings when a session swapped reps for load.
     private var trend: Trend {
         guard history.count >= 2 else { return .neutral }
         let last = history[history.count - 1]
         let prev = history[history.count - 2]
-        if last.validatedWeight > prev.validatedWeight { return .up }
-        if last.validatedWeight < prev.validatedWeight { return .down }
-        if last.validatedReps > prev.validatedReps { return .up }
+        let isBW = exercise.setPatternMode == .bodyweight
+        let lastValue = isBW ? Double(last.bestBWReps) : last.bestE1RM
+        let prevValue = isBW ? Double(prev.bestBWReps) : prev.bestE1RM
+        if lastValue > prevValue + 0.01 { return .up }
+        if lastValue < prevValue - 0.01 { return .down }
         return .neutral
     }
 
@@ -197,11 +208,13 @@ struct ExerciseProgressRow: View {
     private var exerciseChart: some View {
         let isBodyweight = exercise.setPatternMode == .bodyweight
 
+        // Use the session's best effort metric (e1RM for weighted, best reps for BW).
+        // This gives a fair curve even when a session trades reps for load.
         let chartData: [(Date, Double, Bool)] = history.map { dp in
             if isBodyweight {
-                return (dp.date, Double(dp.validatedReps), dp.validatedReps > 0)
+                return (dp.date, Double(dp.bestBWReps), dp.bestBWReps > 0)
             } else {
-                return (dp.date, dp.validatedWeight, dp.validatedWeight > 0)
+                return (dp.date, dp.bestE1RM, dp.bestE1RM > 0)
             }
         }
 
@@ -235,17 +248,6 @@ struct ExerciseProgressRow: View {
                     .foregroundStyle(Color.accentColor)
                     .symbolSize(24)
                 }
-            }
-
-            // Show unvalidated attempts as hollow dots (heavier weight but not enough reps)
-            ForEach(history.filter { !isBodyweight && $0.attemptWeight > $0.validatedWeight && $0.attemptWeight > 0 }, id: \.date) { dp in
-                PointMark(
-                    x: .value("Date", dp.date),
-                    y: .value("Weight", dp.attemptWeight)
-                )
-                .foregroundStyle(.orange.opacity(0.5))
-                .symbolSize(16)
-                .symbol(.circle)
             }
 
             // Benchmark band (shaded area between low and high reference values)
@@ -339,8 +341,10 @@ struct ExerciseDataPoint {
     let date: Date
     let validatedWeight: Double
     let validatedReps: Int
-    let attemptWeight: Double
-    let attemptReps: Int
+    /// Best Epley e1RM across all completed work sets — the primary chart metric.
+    let bestE1RM: Double
+    /// Best reps across all completed work sets — used for bodyweight exercises.
+    let bestBWReps: Int
     let topSetSummary: String
     let isBodyweight: Bool
 }

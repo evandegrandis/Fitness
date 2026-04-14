@@ -430,6 +430,11 @@ struct RecentWorkoutRow: View {
 
 // MARK: - Achievements Section (Home Bottom)
 
+private struct AchievementsKey: Hashable {
+    let sessionCount: Int
+    let exerciseCount: Int
+}
+
 struct AchievementsSection: View {
     let sessions: [WorkoutSession]
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
@@ -451,7 +456,7 @@ struct AchievementsSection: View {
                 }
             }
         }
-        .task(id: sessions.count) {
+        .task(id: AchievementsKey(sessionCount: sessions.count, exerciseCount: exercises.count)) {
             achievements = AchievementsEngine.recentAchievements(
                 sessions: sessions,
                 exercises: exercises,

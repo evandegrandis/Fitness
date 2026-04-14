@@ -219,6 +219,20 @@ class WorkoutViewModel {
     func moveExercise(from source: IndexSet, to destination: Int) {
         guard let session = activeSession else { return }
         var exercises = session.orderedExercises
+
+        // Break superset links that the move would otherwise smear onto the wrong
+        // neighbours. Conservative rule: any link *touching* a moved exercise is
+        // cleared on both sides, and the user can re-arm the link after if needed.
+        //   - the moved exercise's own isLinkedToNext (its "next" is about to change)
+        //   - the predecessor's isLinkedToNext (its link pointed at the moved exo)
+        for idx in source {
+            guard exercises.indices.contains(idx) else { continue }
+            exercises[idx].isLinkedToNext = false
+            if idx > 0 {
+                exercises[idx - 1].isLinkedToNext = false
+            }
+        }
+
         exercises.move(fromOffsets: source, toOffset: destination)
         for (i, ex) in exercises.enumerated() {
             ex.orderIndex = i
@@ -330,6 +344,12 @@ class WorkoutViewModel {
 
     func logSet(for loggedExercise: LoggedExercise, weight: Double, reps: Int, setType: SetType = .work) {
         guard let context = modelContext else { return }
+
+        // The user validated another set before the rest pause ended — cancel any
+        // pending/delivered T-3 notification so it doesn't fire after they've moved on.
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["jeera_rest_timer"])
+        center.removeDeliveredNotifications(withIdentifiers: ["jeera_rest_timer"])
 
         // Snapshot records BEFORE inserting so we can classify the new set fairly.
         let priorRecords = loggedExercise.exercise.map { records(for: $0) } ?? .empty
