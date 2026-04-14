@@ -59,10 +59,17 @@ struct ProgressionEngine {
         return primary
     }
 
-    /// Score a session's sets for comparison (higher = better)
+    /// Score a session's sets for comparison (higher = better).
+    /// Falls back to rep-count scoring when every set was bodyweight (weight == 0),
+    /// otherwise a BW-only session always scores 0 and loses to any weighted past
+    /// session — which bleeds a single experimental weighted attempt into future
+    /// suggestions forever.
     private static func sessionScore(_ sets: [LoggedSet], exercise: Exercise) -> Double {
         let workSets = sets.filter { $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff) }
-        return workSets.reduce(0.0) { $0 + $1.weight * Double($1.reps) }
+        let tonnage = workSets.reduce(0.0) { $0 + $1.weight * Double($1.reps) }
+        if tonnage > 0 { return tonnage }
+        // Pure bodyweight session: score by total validated reps so we can still compare.
+        return workSets.reduce(0.0) { $0 + Double($1.reps) }
     }
 
     // MARK: - Slot-Based (ramping, weightedBodyweight)
@@ -85,8 +92,13 @@ struct ProgressionEngine {
             )
         }
 
-        if currentSetIndex < workSets.count {
-            let prev = workSets[currentSetIndex]
+        // If last session's weights were experimental (e.g. BW → 15kg → BW), don't
+        // literally replay the outlier for set 2. Smooth to the most-validated weight
+        // when the spread is wide relative to the range. Set 1 still ramps naturally.
+        let smoothed = smoothedSlotSets(workSets, exercise: exercise)
+
+        if currentSetIndex < smoothed.count {
+            let prev = smoothed[currentSetIndex]
             let prevW = prev.weight
             let prevR = prev.reps
 
@@ -116,7 +128,7 @@ struct ProgressionEngine {
             }
         }
 
-        if let last = workSets.last {
+        if let last = smoothed.last {
             return SetSuggestion(
                 weight: last.weight,
                 reps: last.reps,
@@ -126,6 +138,43 @@ struct ProgressionEngine {
         }
 
         return SetSuggestion(weight: 20, reps: exercise.repTargetMax, setType: .work, explanation: "No data.")
+    }
+
+    /// Lightweight slot snapshot used by the suggestion engine so we can rewrite
+    /// weights without mutating or fabricating SwiftData @Model instances.
+    struct SlotSnapshot {
+        let weight: Double
+        let reps: Int
+    }
+
+    /// Smooth the previous session's slot-by-slot weights when they're too
+    /// experimental to replay verbatim. Concretely: if the min/max weights
+    /// differ by more than 40% of the max, every slot's weight is rewritten
+    /// to the *most validated* weight (highest weight that hit repTargetMin),
+    /// while keeping each slot's own rep count. This stops a single heavy
+    /// attempt from turning into next session's prescribed middle set.
+    private static func smoothedSlotSets(_ workSets: [LoggedSet], exercise: Exercise) -> [SlotSnapshot] {
+        let raw = workSets.map { SlotSnapshot(weight: $0.weight, reps: $0.reps) }
+        let weights = raw.map(\.weight)
+        guard let wMin = weights.min(), let wMax = weights.max(), wMax > 0 else {
+            return raw
+        }
+        let spread = (wMax - wMin) / max(wMax, 0.01)
+        guard spread > 0.4 else { return raw }
+
+        // Pick the baseline: the heaviest weight that hit at least repTargetMin reps.
+        // Falls back to the median weight if no set was validated (mixed messy session).
+        let validated = workSets.filter { $0.reps >= exercise.repTargetMin }
+        let baseline: Double
+        if let bestValidated = validated.max(by: { $0.weight < $1.weight })?.weight {
+            baseline = bestValidated
+        } else {
+            let sorted = weights.sorted()
+            baseline = sorted[sorted.count / 2]
+        }
+
+        // Keep the reps pattern, but prescribe the same baseline weight for every slot.
+        return raw.map { SlotSnapshot(weight: baseline, reps: $0.reps) }
     }
 
     // MARK: - Straight Sets
