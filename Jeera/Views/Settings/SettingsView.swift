@@ -116,6 +116,18 @@ struct SettingsView: View {
                         ParentGoalRow(parent: parent, goals: goals, modelContext: modelContext)
                     }
                 }
+                .task(id: goals.count) {
+                    // Ensure every MuscleParent has a backing goal row the first time
+                    // Settings is opened — previously each row self-seeded in onAppear,
+                    // which raced with SwiftData and could drop edits under fast scroll.
+                    let existing = Set(goals.map(\.parent))
+                    var inserted = false
+                    for parent in MuscleParent.allCases where !existing.contains(parent) {
+                        modelContext.insert(MuscleGoal(parent: parent, weeklyGoalSets: 0))
+                        inserted = true
+                    }
+                    if inserted { try? modelContext.save() }
+                }
 
                 Section("Exercices") {
                     NavigationLink("Gérer les exercices (\(exercises.count))") {
@@ -232,10 +244,14 @@ struct ParentGoalRow: View {
     let parent: MuscleParent
     let goals: [MuscleGoal]
     let modelContext: ModelContext
-    @State private var resolvedGoal: MuscleGoal?
 
-    private var goalSets: Double {
-        resolvedGoal?.weeklyGoalSets ?? goals.first(where: { $0.parent == parent })?.weeklyGoalSets ?? 0
+    /// Look up the goal on every render rather than caching in @State. Caching
+    /// a @Model reference in @State bypasses SwiftUI field-level observation,
+    /// so the read-only "N sets" label would never refresh after the stepper
+    /// mutated `weeklyGoalSets` — and consumers (Weekly Priority, Progress)
+    /// would show stale targets until the next app launch.
+    private var goal: MuscleGoal? {
+        goals.first(where: { $0.parent == parent })
     }
 
     var body: some View {
@@ -243,27 +259,27 @@ struct ParentGoalRow: View {
             Text(parent.displayName)
                 .font(.subheadline)
             Spacer()
-            Text("\(goalSets, specifier: "%.0f") sets")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let goal = resolvedGoal {
+            if let goal {
+                Text("\(goal.weeklyGoalSets, specifier: "%.0f") sets")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Stepper("", value: Bindable(goal).weeklyGoalSets, in: 0...40, step: 1)
                     .labelsHidden()
+                    .onChange(of: goal.weeklyGoalSets) {
+                        // Persist immediately so downstream @Query consumers
+                        // (progress chips, status line) pick up the change.
+                        try? modelContext.save()
+                    }
             } else {
-                Stepper("", value: .constant(0.0), in: 0...40, step: 1)
-                    .labelsHidden()
-            }
-        }
-        .onAppear {
-            if resolvedGoal == nil {
-                if let existing = goals.first(where: { $0.parent == parent }) {
-                    resolvedGoal = existing
-                } else {
+                Text("0 sets")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("+") {
                     let new = MuscleGoal(parent: parent, weeklyGoalSets: 0)
                     modelContext.insert(new)
                     try? modelContext.save()
-                    resolvedGoal = new
                 }
+                .font(.caption)
             }
         }
     }
