@@ -499,6 +499,11 @@ struct AchievementRow: View {
             return "Nouveau record : \(achievement.weight.cleanWeight) kg x \(achievement.reps)"
         case .repsAtWeight:
             return "\(achievement.reps) reps @ \(achievement.weight.cleanWeight) kg — record"
+        case .bodyweightReps:
+            return "BW x \(achievement.reps) — record reps"
+        case .estimated1RM:
+            let e1rm = ProgressionEngine.estimated1RM(weight: achievement.weight, reps: achievement.reps) ?? 0
+            return "e1RM \(Int(e1rm)) kg (via \(achievement.weight.cleanWeight) x \(achievement.reps))"
         }
     }
 }

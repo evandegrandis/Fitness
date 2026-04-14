@@ -374,7 +374,7 @@ class WorkoutViewModel {
             // Bump the cache: treat this new set as part of history for future sets in the same session.
             let updatedHeaviest: Double
             let updatedReps: Int
-            if kind == .heaviestWeight || weight > priorRecords.heaviestValidated {
+            if weight > 0, weight > priorRecords.heaviestValidated, reps >= exercise.repTargetMin {
                 updatedHeaviest = weight
                 updatedReps = reps
             } else {
@@ -382,13 +382,23 @@ class WorkoutViewModel {
                 updatedReps = priorRecords.repsAtHeaviestValidated
             }
             var newBestByWeight = priorRecords.bestRepsByWeight
-            if reps > (newBestByWeight[weight] ?? 0) {
+            if weight > 0, reps >= exercise.repTargetMin, reps > (newBestByWeight[weight] ?? 0) {
                 newBestByWeight[weight] = reps
             }
+            let newBWReps = (weight == 0 && reps > priorRecords.bestBodyweightReps)
+                ? reps : priorRecords.bestBodyweightReps
+            let newE1RM: Double = {
+                guard weight > 0, reps >= exercise.repTargetMin,
+                      let e = ProgressionEngine.estimated1RM(weight: weight, reps: reps)
+                else { return priorRecords.bestE1RM }
+                return max(priorRecords.bestE1RM, e)
+            }()
             recordsCache[exercise.id] = ExerciseRecords(
                 heaviestValidated: updatedHeaviest,
                 repsAtHeaviestValidated: updatedReps,
                 bestRepsByWeight: newBestByWeight,
+                bestBodyweightReps: newBWReps,
+                bestE1RM: newE1RM,
                 isEmpty: false
             )
         }
