@@ -243,17 +243,13 @@ class WorkoutViewModel {
         guard let session = activeSession else { return }
         var exercises = session.orderedExercises
 
-        // Break superset links that the move would otherwise smear onto the wrong
-        // neighbours. Conservative rule: any link *touching* a moved exercise is
-        // cleared on both sides, and the user can re-arm the link after if needed.
-        //   - the moved exercise's own isLinkedToNext (its "next" is about to change)
-        //   - the predecessor's isLinkedToNext (its link pointed at the moved exo)
+        // Break superset group membership for any moved exercise. The old
+        // adjacency model used to smear links onto the wrong neighbour here;
+        // with explicit groups we just detach the mover and let the user
+        // re-pair after the reorder settles.
         for idx in source {
             guard exercises.indices.contains(idx) else { continue }
-            exercises[idx].isLinkedToNext = false
-            if idx > 0 {
-                exercises[idx - 1].isLinkedToNext = false
-            }
+            detachFromSupersetGroup(exercises[idx])
         }
 
         exercises.move(fromOffsets: source, toOffset: destination)
@@ -266,27 +262,34 @@ class WorkoutViewModel {
 
     // MARK: - Superset
 
+    /// Toggle an exercise's superset membership. If it belongs to a group
+    /// already, detach it; otherwise arm this exercise for pairing.
     func toggleSuperset(_ loggedExercise: LoggedExercise) {
-        loggedExercise.isLinkedToNext.toggle()
-        try? modelContext?.save()
-        HapticManager.selection()
+        if loggedExercise.supersetGroup != nil {
+            detachFromSupersetGroup(loggedExercise)
+            try? modelContext?.save()
+            HapticManager.selection()
+        } else {
+            handleSupersetLink(loggedExercise)
+        }
     }
 
     /// Right-swipe "Lier en superset" / "Retirer du superset" flow.
     ///
-    /// - If already linked: unlink (set `isLinkedToNext = false`).
-    /// - If nothing is armed: arm this exercise — UI shows "Superset prêt :
-    ///   choisis le 2e exo" feedback.
-    /// - If another exercise is already armed: link the armed exercise to this
-    ///   one (move this exercise right after the armed, set armed.isLinkedToNext).
+    /// - If the exercise is already grouped: detach it from its group.
+    /// - If nothing is armed: arm this exercise — the UI shows "Superset
+    ///   prêt : choisis le 2e exo" feedback.
+    /// - If another exercise is already armed: join this one to the armed
+    ///   exercise's group (creating the group on first pair), and move the
+    ///   joining exercise to sit right after the group's tail.
     func handleSupersetLink(_ loggedExercise: LoggedExercise) {
-        guard let session = activeSession else { return }
+        guard let session = activeSession, let context = modelContext else { return }
 
-        // Unlink an already-linked exercise.
-        if loggedExercise.isLinkedToNext {
-            loggedExercise.isLinkedToNext = false
+        // Detach path — exercise is already part of a group.
+        if loggedExercise.supersetGroup != nil {
+            detachFromSupersetGroup(loggedExercise)
             armedSupersetExerciseID = nil
-            try? modelContext?.save()
+            try? context.save()
             HapticManager.selection()
             return
         }
@@ -305,10 +308,37 @@ class WorkoutViewModel {
             return
         }
 
-        // Link: armed → this. Move `loggedExercise` to sit right after the armed one.
         guard let armed = session.loggedExercises.first(where: { $0.id == armedID }) else {
             armedSupersetExerciseID = nil
             return
+        }
+
+        // Ensure there's a group. If `armed` already has one, extend it;
+        // otherwise create a fresh group and seat `armed` as the first member.
+        let group: SupersetGroup
+        if let existing = armed.supersetGroup {
+            group = existing
+        } else {
+            let newGroup = SupersetGroup(
+                orderIndex: armed.orderIndex,
+                memberOrder: [armed.id],
+                session: session,
+                members: [armed]
+            )
+            context.insert(newGroup)
+            armed.supersetGroup = newGroup
+            session.supersetGroups.append(newGroup)
+            group = newGroup
+        }
+
+        // Append the new member to the group and move it to sit right after
+        // the current tail of the group in the ordered session list.
+        if !group.memberOrder.contains(loggedExercise.id) {
+            group.memberOrder.append(loggedExercise.id)
+        }
+        loggedExercise.supersetGroup = group
+        if !group.members.contains(where: { $0.id == loggedExercise.id }) {
+            group.members.append(loggedExercise)
         }
 
         var ordered = session.orderedExercises
@@ -318,22 +348,53 @@ class WorkoutViewModel {
             return
         }
 
+        // Walk forward through the armed exercise's existing group tail so we
+        // always insert after the LAST current member, not directly after armed.
+        var tailIdx = armedIdx
+        while tailIdx < ordered.count - 1,
+              let nextGroup = ordered[tailIdx + 1].supersetGroup,
+              nextGroup.id == group.id,
+              ordered[tailIdx + 1].id != loggedExercise.id {
+            tailIdx += 1
+        }
+
         let moving = ordered.remove(at: fromIdx)
-        let insertAt = armedIdx < fromIdx ? armedIdx + 1 : armedIdx
+        let insertAt = tailIdx < fromIdx ? tailIdx + 1 : tailIdx
         ordered.insert(moving, at: insertAt)
 
         for (i, ex) in ordered.enumerated() {
             ex.orderIndex = i
         }
-        armed.isLinkedToNext = true
+
         armedSupersetExerciseID = nil
-        try? modelContext?.save()
+        try? context.save()
         HapticManager.impact(.medium)
     }
 
     /// Legacy compatibility — routes to new swipe-based handler.
     func handleSupersetDoubleTap(_ loggedExercise: LoggedExercise) {
         handleSupersetLink(loggedExercise)
+    }
+
+    /// Remove an exercise from its superset group. If the group ends up with
+    /// fewer than 2 members, the group is deleted entirely so we never leave
+    /// a "singleton superset" hanging in the session.
+    private func detachFromSupersetGroup(_ exercise: LoggedExercise) {
+        guard let group = exercise.supersetGroup, let context = modelContext else { return }
+
+        group.memberOrder.removeAll { $0 == exercise.id }
+        group.members.removeAll { $0.id == exercise.id }
+        exercise.supersetGroup = nil
+
+        if group.memberOrder.count < 2 {
+            // Unpair the lone remaining member too and delete the group.
+            for remaining in group.members {
+                remaining.supersetGroup = nil
+            }
+            group.members.removeAll()
+            activeSession?.supersetGroups.removeAll { $0.id == group.id }
+            context.delete(group)
+        }
     }
 
     // MARK: - Duplicate Exercise
@@ -377,11 +438,22 @@ class WorkoutViewModel {
         // Snapshot records BEFORE inserting so we can classify the new set fairly.
         let priorRecords = loggedExercise.exercise.map { records(for: $0) } ?? .empty
 
+        // Superset round index: when the exercise is in a group, this set
+        // belongs to the round the user is currently completing. Using
+        // `completedRounds + 1` works whether the user logs members in strict
+        // order or jumps around — each member's own work-set count determines
+        // the round they personally are on.
+        let roundIndex: Int? = {
+            guard loggedExercise.supersetGroup != nil else { return nil }
+            return loggedExercise.completedWorkSets.count + 1
+        }()
+
         let set = LoggedSet(
             weight: weight,
             reps: reps,
             setType: setType,
-            setSlotIndex: loggedExercise.nextSetSlotIndex
+            setSlotIndex: loggedExercise.nextSetSlotIndex,
+            supersetRoundIndex: roundIndex
         )
         set.loggedExercise = loggedExercise
         context.insert(set)
@@ -476,12 +548,11 @@ class WorkoutViewModel {
         applyReorderAfterValidate(loggedExercise)
     }
 
-    /// Check if this exercise is the last in a superset block (i.e., a previous exercise links to it)
+    /// Check if this exercise is the last in a superset block. With explicit
+    /// groups the answer is direct: the exercise is in a group AND is the
+    /// tail member of that group.
     private func isLastInSupersetBlock(_ loggedExercise: LoggedExercise) -> Bool {
-        guard let session = activeSession else { return false }
-        let exercises = session.orderedExercises
-        guard let index = exercises.firstIndex(where: { $0.id == loggedExercise.id }), index > 0 else { return false }
-        return exercises[index - 1].isLinkedToNext
+        return loggedExercise.isLastInSuperset
     }
 
     // MARK: - Reorder After Validate

@@ -12,6 +12,7 @@ struct JeeraApp: App {
             WorkoutSession.self,
             LoggedExercise.self,
             LoggedSet.self,
+            SupersetGroup.self,
             MuscleGoal.self,
             UserSettings.self,
         ])

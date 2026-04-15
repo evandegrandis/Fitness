@@ -6,24 +6,26 @@ final class LoggedExercise {
     @Attribute(.unique) var id: UUID
     var orderIndex: Int
     var notes: String
-    var isLinkedToNext: Bool
 
     @Relationship var exercise: Exercise?
     @Relationship(deleteRule: .cascade) var sets: [LoggedSet]
     @Relationship var session: WorkoutSession?
 
+    /// Group membership for hard-paired supersets. When non-nil, this exercise
+    /// participates in a first-class `SupersetGroup` (see that class). The old
+    /// `isLinkedToNext` adjacency bit is now derived from membership.
+    @Relationship var supersetGroup: SupersetGroup?
+
     init(
         id: UUID = UUID(),
         orderIndex: Int = 0,
         notes: String = "",
-        isLinkedToNext: Bool = false,
         exercise: Exercise? = nil,
         sets: [LoggedSet] = []
     ) {
         self.id = id
         self.orderIndex = orderIndex
         self.notes = notes
-        self.isLinkedToNext = isLinkedToNext
         self.exercise = exercise
         self.sets = sets
     }
@@ -62,5 +64,22 @@ final class LoggedExercise {
                 return "BWx\(set.reps)"
             }
         }.joined(separator: ", ")
+    }
+
+    /// True when this exercise is part of a superset AND is not the last
+    /// member. Derived from `supersetGroup.memberOrder` so the view layer
+    /// keeps reading a single adjacency bit without knowing about groups.
+    var isLinkedToNext: Bool {
+        guard let group = supersetGroup else { return false }
+        let order = group.memberOrder
+        guard let idx = order.firstIndex(of: id) else { return false }
+        return idx < order.count - 1
+    }
+
+    /// True iff this is the LAST exercise in its superset group. Callers use
+    /// this to schedule the long "superset rest" after the final member.
+    var isLastInSuperset: Bool {
+        guard let group = supersetGroup else { return false }
+        return group.memberOrder.last == id
     }
 }

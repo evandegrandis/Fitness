@@ -13,6 +13,11 @@ final class WorkoutSession {
     @Relationship var template: WorkoutTemplate?
     @Relationship(deleteRule: .cascade) var loggedExercises: [LoggedExercise]
 
+    /// First-class superset groups that live inside this session. Cascade
+    /// deletes so quitting a session cleans up its groups without orphans.
+    @Relationship(deleteRule: .cascade, inverse: \SupersetGroup.session)
+    var supersetGroups: [SupersetGroup] = []
+
     init(
         id: UUID = UUID(),
         date: Date = Date(),

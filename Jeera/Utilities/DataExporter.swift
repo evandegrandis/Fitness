@@ -59,9 +59,22 @@ struct SessionData: Codable {
     let notes: String
     let templateName: String?
     let exercises: [LoggedExerciseData]
+    /// First-class superset groups for this session. Optional so backups from
+    /// earlier versions (which encoded pairing via `isLinkedToNext`) still
+    /// decode cleanly; the importer rebuilds groups from the adjacency bits
+    /// when this field is missing.
+    let supersetGroups: [SupersetGroupData]?
+}
+
+struct SupersetGroupData: Codable {
+    let id: String
+    let orderIndex: Int
+    /// Ordered LoggedExercise ids (uuidString) forming the group.
+    let memberIDs: [String]
 }
 
 struct LoggedExerciseData: Codable {
+    let id: String?           // New: stable id used by SupersetGroupData.memberIDs
     let exerciseId: String
     let exerciseName: String
     let orderIndex: Int
@@ -77,6 +90,7 @@ struct LoggedSetData: Codable {
     let timestamp: Date
     let setSlotIndex: Int
     let completed: Bool
+    let supersetRoundIndex: Int?
 }
 
 struct TemplateData: Codable {
@@ -154,6 +168,7 @@ struct DataExporter {
                     templateName: session.template?.name,
                     exercises: session.orderedExercises.map { le in
                         LoggedExerciseData(
+                            id: le.id.uuidString,
                             exerciseId: le.exercise?.id.uuidString ?? "",
                             exerciseName: le.exercise?.name ?? "Unknown",
                             orderIndex: le.orderIndex,
@@ -166,9 +181,17 @@ struct DataExporter {
                                     setType: s.setType.rawValue,
                                     timestamp: s.timestamp,
                                     setSlotIndex: s.setSlotIndex,
-                                    completed: s.completed
+                                    completed: s.completed,
+                                    supersetRoundIndex: s.supersetRoundIndex
                                 )
                             }
+                        )
+                    },
+                    supersetGroups: session.supersetGroups.map { g in
+                        SupersetGroupData(
+                            id: g.id.uuidString,
+                            orderIndex: g.orderIndex,
+                            memberIDs: g.memberOrder.map { $0.uuidString }
                         )
                     }
                 )
@@ -306,19 +329,25 @@ struct DataExporter {
             )
             context.insert(session)
 
+            // Index exercises by their persisted id so we can re-wire the
+            // superset-group memberships after everything is inserted.
+            var loggedByID: [UUID: LoggedExercise] = [:]
+
             for leData in sData.exercises {
                 // Match exercise by ID first, then by name
                 let exercise = exerciseMap[leData.exerciseId] ?? exerciseByName[leData.exerciseName]
 
+                let loggedID = leData.id.flatMap { UUID(uuidString: $0) } ?? UUID()
                 let logged = LoggedExercise(
+                    id: loggedID,
                     orderIndex: leData.orderIndex,
                     notes: leData.notes,
-                    isLinkedToNext: leData.isLinkedToNext,
                     exercise: exercise
                 )
                 logged.session = session
                 context.insert(logged)
                 session.loggedExercises.append(logged)
+                loggedByID[loggedID] = logged
 
                 for setData in leData.sets {
                     let set = LoggedSet(
@@ -327,11 +356,65 @@ struct DataExporter {
                         setType: SetType(rawValue: setData.setType) ?? .work,
                         timestamp: setData.timestamp,
                         setSlotIndex: setData.setSlotIndex,
-                        completed: setData.completed
+                        completed: setData.completed,
+                        supersetRoundIndex: setData.supersetRoundIndex
                     )
                     set.loggedExercise = logged
                     context.insert(set)
                     logged.sets.append(set)
+                }
+            }
+
+            // Rebuild superset groups. If the backup carries `supersetGroups`,
+            // use them verbatim. Otherwise, reconstruct from the legacy
+            // adjacency bit so old backups still restore paired supersets.
+            if let groups = sData.supersetGroups, !groups.isEmpty {
+                for gData in groups {
+                    let members = gData.memberIDs
+                        .compactMap { UUID(uuidString: $0) }
+                        .compactMap { loggedByID[$0] }
+                    guard members.count >= 2 else { continue }
+                    let group = SupersetGroup(
+                        id: UUID(uuidString: gData.id) ?? UUID(),
+                        orderIndex: gData.orderIndex,
+                        memberOrder: members.map(\.id),
+                        session: session,
+                        members: members
+                    )
+                    context.insert(group)
+                    session.supersetGroups.append(group)
+                    for m in members { m.supersetGroup = group }
+                }
+            } else {
+                // Legacy path: walk the session's ordered exercises and form a
+                // group whenever we hit a run of `isLinkedToNext` exercises.
+                var runStart: LoggedExercise? = nil
+                var run: [LoggedExercise] = []
+                let ordered = sData.exercises
+                for (i, leData) in ordered.enumerated() {
+                    guard let logged = loggedByID[leData.id.flatMap { UUID(uuidString: $0) } ?? UUID()] else { continue }
+                    if leData.isLinkedToNext {
+                        if runStart == nil { runStart = logged; run = [logged] }
+                        // Peek ahead — next exercise joins the run.
+                        if i + 1 < ordered.count,
+                           let next = loggedByID[ordered[i + 1].id.flatMap { UUID(uuidString: $0) } ?? UUID()] {
+                            run.append(next)
+                        }
+                    } else if !run.isEmpty {
+                        let members = run
+                        run = []
+                        runStart = nil
+                        guard members.count >= 2 else { continue }
+                        let group = SupersetGroup(
+                            orderIndex: members.first?.orderIndex ?? 0,
+                            memberOrder: members.map(\.id),
+                            session: session,
+                            members: members
+                        )
+                        context.insert(group)
+                        session.supersetGroups.append(group)
+                        for m in members { m.supersetGroup = group }
+                    }
                 }
             }
         }
@@ -344,6 +427,7 @@ struct DataExporter {
     private static func clearAll(context: ModelContext) throws {
         // Delete in dependency order
         try context.delete(model: LoggedSet.self)
+        try context.delete(model: SupersetGroup.self)
         try context.delete(model: LoggedExercise.self)
         try context.delete(model: WorkoutSession.self)
         try context.delete(model: TemplateExercise.self)
