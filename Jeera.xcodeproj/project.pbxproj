@@ -47,6 +47,16 @@
 		E1WID002 /* JeeraWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JeeraWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		E1WEXC01 /* Exceptions for "JeeraWidgets" folder in "JeeraWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = E1WID001 /* JeeraWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E1SYNC01 /* Jeera */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -65,6 +75,9 @@
 		};
 		E1SYNC04 /* JeeraWidgets */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E1WEXC01 /* Exceptions for "JeeraWidgets" folder in "JeeraWidgets" target */,
+			);
 			path = JeeraWidgets;
 			sourceTree = "<group>";
 		};
