@@ -70,7 +70,7 @@ struct SeedData {
              muscles: [(.grandDorsal, 1.0), (.dosHaut, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.forearms, 0.1)])
 
         make("Traction pronation large", category: "Pull", mode: .bodyweight, repMin: 5, repMax: 12, rest: 180,
-             muscles: [(.grandDorsal, 1.0), (.dosHaut, 0.3), (.bicepsCourt, 0.3)])
+             muscles: [(.grandDorsal, 1.0), (.dosHaut, 0.3), (.bicepsCourt, 0.3), (.forearms, 0.1)])
 
         make("Pulley serré", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
              benchmarkLow: 40, benchmarkHigh: 80,
@@ -86,7 +86,7 @@ struct SeedData {
              muscles: [(.dosHaut, 1.0), (.grandDorsal, 0.3), (.bicepsCourt, 0.3), (.deltPost, 0.1)])
 
         make("Row uni", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
-             muscles: [(.dosHaut, 1.0), (.grandDorsal, 0.3), (.bicepsCourt, 0.3)])
+             muscles: [(.dosHaut, 1.0), (.grandDorsal, 0.3), (.bicepsCourt, 0.3), (.deltPost, 0.1)])
 
         make("Tirage vertical muscle up", category: "Pull", mode: .ramping, repMin: 6, repMax: 12, increment: 5, rest: 120,
              muscles: [(.grandDorsal, 1.0), (.dosHaut, 0.3), (.bicepsLong, 0.1)])
@@ -96,11 +96,11 @@ struct SeedData {
         make("Chest Press", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
              machine: "r5",
              benchmarkLow: 70, benchmarkHigh: 140,
-             muscles: [(.pectStern, 1.0), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3)])
+             muscles: [(.pectStern, 1.0), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.1)])
 
         make("Développé incliné haltères", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 2, rest: 180,
              benchmarkLow: 20, benchmarkHigh: 45,
-             muscles: [(.pectClav, 1.0), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3)])
+             muscles: [(.pectClav, 1.0), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.1)])
 
         make("Pec deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
              machine: "r4",
@@ -113,7 +113,7 @@ struct SeedData {
              muscles: [(.deltAnt, 1.0), (.deltLat, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3)])
 
         make("HSPU", category: "Push", mode: .bodyweight, repMin: 5, repMax: 12, rest: 120,
-             muscles: [(.deltAnt, 1.0), (.deltLat, 0.3), (.tricepsLat, 0.3), (.tricepsLong, 0.3)])
+             muscles: [(.deltAnt, 1.0), (.deltLat, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3)])
 
         make("Lateral raises", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 75,
              benchmarkLow: 8, benchmarkHigh: 20,
@@ -140,7 +140,7 @@ struct SeedData {
         // ========== BICEPS / FOREARMS ==========
         make("Curl debout", category: "Arms", mode: .ramping, repMin: 6, repMax: 10, increment: 1, rest: 75, favorite: true,
              benchmarkLow: 14, benchmarkHigh: 25,
-             muscles: [(.bicepsCourt, 1.0), (.bicepsLong, 0.3), (.forearms, 0.1)])
+             muscles: [(.bicepsLong, 1.0), (.bicepsCourt, 0.3), (.forearms, 0.1)])
 
         make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1, rest: 75,
              benchmarkLow: 10, benchmarkHigh: 22,
