@@ -91,8 +91,12 @@ class WorkoutViewModel {
             sortBy: [SortDescriptor(\.startTime, order: .reverse)]
         )
         activeSession = try? context.fetch(descriptor).first
-        if activeSession != nil {
+        if let session = activeSession {
             startWorkoutTimer()
+            // App relaunched mid-workout — re-attach a Live Activity so the
+            // lock screen keeps showing state instead of going dark.
+            startLiveActivity(for: session)
+            pushLiveActivityUpdate(restEndsAt: nil, restTotalSeconds: 0)
         }
     }
 
@@ -103,6 +107,7 @@ class WorkoutViewModel {
         try? context.save()
         activeSession = session
         startWorkoutTimer()
+        startLiveActivity(for: session)
         HapticManager.impact(.heavy)
     }
 
@@ -122,6 +127,7 @@ class WorkoutViewModel {
         try? context.save()
         activeSession = session
         startWorkoutTimer()
+        startLiveActivity(for: session)
         HapticManager.impact(.heavy)
     }
 
@@ -147,6 +153,7 @@ class WorkoutViewModel {
         try? context.save()
         activeSession = session
         startWorkoutTimer()
+        startLiveActivity(for: session)
         HapticManager.impact(.heavy)
     }
 
@@ -157,6 +164,7 @@ class WorkoutViewModel {
         try? modelContext?.save()
         restTimer.reset()
         stopWorkoutTimer()
+        endLiveActivity()
         activeSession = nil
         HapticManager.notification(.success)
     }
@@ -167,7 +175,22 @@ class WorkoutViewModel {
         try? context.save()
         restTimer.reset()
         stopWorkoutTimer()
+        endLiveActivity()
         activeSession = nil
+    }
+
+    // MARK: - Rest Timer Control
+
+    /// User tapped "skip rest" on the timer. Clears the timer, cancels the
+    /// pending notification, and updates the Live Activity so the lock-screen
+    /// countdown disappears immediately.
+    func skipRest() {
+        restTimer.reset()
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["jeera_rest_timer"])
+        center.removeDeliveredNotifications(withIdentifiers: ["jeera_rest_timer"])
+        pushLiveActivityUpdate(restEndsAt: nil, restTotalSeconds: 0)
+        HapticManager.selection()
     }
 
     // MARK: - Exercise Management
@@ -421,6 +444,8 @@ class WorkoutViewModel {
 
         // Superset rest logic: if linked to next, don't start timer.
         // If this is the last exercise in a superset chain, use supersetRestSeconds.
+        var restEndsAt: Date? = nil
+        var restTotal = 0
         if loggedExercise.isLinkedToNext {
             // In superset chain, skip rest
         } else {
@@ -435,7 +460,17 @@ class WorkoutViewModel {
             currentRestSuggested = restSeconds
             restTimer.start(seconds: restSeconds)
             scheduleRestTimerNotification(seconds: restSeconds)
+            restEndsAt = Date().addingTimeInterval(TimeInterval(restSeconds))
+            restTotal = restSeconds
         }
+
+        // Lock-screen Live Activity: show the set we just logged + rest countdown.
+        pushLiveActivityUpdate(
+            restEndsAt: restEndsAt,
+            restTotalSeconds: restTotal,
+            lastLoggedSet: set,
+            lastLoggedExercise: loggedExercise
+        )
 
         // Reorder after validate: move this exercise card to after the last-logged one.
         applyReorderAfterValidate(loggedExercise)
@@ -617,5 +652,73 @@ class WorkoutViewModel {
 
         try? context.save()
         HapticManager.notification(.success)
+    }
+
+    // MARK: - Live Activity
+
+    /// Start (or restart) the lock-screen Live Activity for the given session.
+    /// Idempotent — the controller ends any stale activity before starting a new
+    /// one, so calling this on app relaunch doesn't create duplicates.
+    private func startLiveActivity(for session: WorkoutSession) {
+        let firstExerciseName = session.orderedExercises.first?.exercise?.name ?? "Entraînement"
+        Task { @MainActor in
+            LiveActivityController.shared.start(
+                workoutID: session.id,
+                exerciseName: firstExerciseName,
+                workoutStartedAt: session.startTime,
+                totalSets: session.totalWorkSets
+            )
+        }
+    }
+
+    /// Push the current session state to the active Live Activity.
+    /// Pass `lastLoggedSet`/`lastLoggedExercise` when called from `logSet` so the
+    /// lock screen shows the just-validated set (e.g. "80 kg × 8").
+    private func pushLiveActivityUpdate(
+        restEndsAt: Date?,
+        restTotalSeconds: Int,
+        lastLoggedSet: LoggedSet? = nil,
+        lastLoggedExercise: LoggedExercise? = nil
+    ) {
+        guard let session = activeSession else { return }
+
+        let exerciseName: String = {
+            if let ex = lastLoggedExercise?.exercise { return ex.name }
+            // Fall back to the first exercise with unfinished work, else the first.
+            if let next = session.orderedExercises.first(where: { $0.workSets.isEmpty }),
+               let name = next.exercise?.name {
+                return name
+            }
+            return session.orderedExercises.first?.exercise?.name ?? "Entraînement"
+        }()
+
+        let lastSummary: String = {
+            guard let set = lastLoggedSet else { return "" }
+            if set.weight > 0 {
+                return "\(set.weight.cleanWeight) kg × \(set.reps)"
+            }
+            return "BW × \(set.reps)"
+        }()
+
+        let startedAt = session.startTime
+        let total = session.totalWorkSets
+
+        Task { @MainActor in
+            LiveActivityController.shared.update(
+                exerciseName: exerciseName,
+                lastSetSummary: lastSummary,
+                restEndsAt: restEndsAt,
+                restTotalSeconds: restTotalSeconds,
+                workoutStartedAt: startedAt,
+                totalSets: total
+            )
+        }
+    }
+
+    /// End the Live Activity. Called on finish/discard.
+    private func endLiveActivity() {
+        Task { @MainActor in
+            LiveActivityController.shared.end()
+        }
     }
 }

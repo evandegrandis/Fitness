@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1WBF001 /* JeeraWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1WID002 /* JeeraWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -17,11 +18,33 @@
 			remoteGlobalIDString = E1APP001;
 			remoteInfo = Jeera;
 		};
+		E1WPRX01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E1ROOT01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E1WID001;
+			remoteInfo = JeeraWidgets;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E1EMB001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E1WBF001 /* JeeraWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		E1APP002 /* Jeera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jeera.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E1TST002 /* JeeraTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JeeraTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1WID002 /* JeeraWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JeeraWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -35,6 +58,16 @@
 			path = JeeraTests;
 			sourceTree = "<group>";
 		};
+		E1SYNC03 /* JeeraShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JeeraShared;
+			sourceTree = "<group>";
+		};
+		E1SYNC04 /* JeeraWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = JeeraWidgets;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXGroup section */
@@ -42,6 +75,8 @@
 			isa = PBXGroup;
 			children = (
 				E1SYNC01 /* Jeera */,
+				E1SYNC03 /* JeeraShared */,
+				E1SYNC04 /* JeeraWidgets */,
 				E1SYNC02 /* JeeraTests */,
 				E1PROD01 /* Products */,
 			);
@@ -52,6 +87,7 @@
 			children = (
 				E1APP002 /* Jeera.app */,
 				E1TST002 /* JeeraTests.xctest */,
+				E1WID002 /* JeeraWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -66,13 +102,16 @@
 				E1SRC001 /* Sources */,
 				E1FRM001 /* Frameworks */,
 				E1RES001 /* Resources */,
+				E1EMB001 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E1WDEP01 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				E1SYNC01 /* Jeera */,
+				E1SYNC03 /* JeeraShared */,
 			);
 			name = Jeera;
 			packageProductDependencies = (
@@ -104,6 +143,29 @@
 			productReference = E1TST002 /* JeeraTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		E1WID001 /* JeeraWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1BCL004 /* Build configuration list for PBXNativeTarget "JeeraWidgets" */;
+			buildPhases = (
+				E1WSRC01 /* Sources */,
+				E1WFRM01 /* Frameworks */,
+				E1WRES01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				E1SYNC04 /* JeeraWidgets */,
+				E1SYNC03 /* JeeraShared */,
+			);
+			name = JeeraWidgets;
+			packageProductDependencies = (
+			);
+			productName = JeeraWidgets;
+			productReference = E1WID002 /* JeeraWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -121,6 +183,9 @@
 						CreatedOnToolsVersion = 16.0;
 						TestTargetID = E1APP001;
 					};
+					E1WID001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
 				};
 			};
 			buildConfigurationList = E1BCL002 /* Build configuration list for PBXProject "Jeera" */;
@@ -137,6 +202,7 @@
 			projectRoot = "";
 			targets = (
 				E1APP001 /* Jeera */,
+				E1WID001 /* JeeraWidgets */,
 				E1TST001 /* JeeraTests */,
 			);
 		};
@@ -151,6 +217,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		E1SRC002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E1WSRC01 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -174,6 +247,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1WFRM01 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
@@ -191,6 +271,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E1WRES01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -198,6 +285,11 @@
 			isa = PBXTargetDependency;
 			target = E1APP001 /* Jeera */;
 			targetProxy = E1TEST01 /* PBXContainerItemProxy */;
+		};
+		E1WDEP01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E1WID001 /* JeeraWidgets */;
+			targetProxy = E1WPRX01 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -265,6 +357,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jeera;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -296,6 +389,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Jeera;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -352,6 +446,54 @@
 			};
 			name = Release;
 		};
+		E1WDBG01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JeeraWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jeera.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		E1WREL01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = JeeraWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jeera.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -378,6 +520,15 @@
 			buildConfigurations = (
 				E1DBG003 /* Debug */,
 				E1REL003 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E1BCL004 /* Build configuration list for PBXNativeTarget "JeeraWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E1WDBG01 /* Debug */,
+				E1WREL01 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

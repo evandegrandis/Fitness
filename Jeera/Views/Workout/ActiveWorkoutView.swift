@@ -93,7 +93,7 @@ struct ActiveWorkoutView: View {
                     timer: viewModel.restTimer,
                     suggestedSeconds: viewModel.currentRestSuggested
                 ) {
-                    viewModel.restTimer.reset()
+                    viewModel.skipRest()
                 }
                 .padding(.bottom, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
