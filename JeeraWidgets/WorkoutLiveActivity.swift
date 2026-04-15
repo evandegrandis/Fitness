@@ -110,7 +110,7 @@ private struct CenterContent: View {
                     .font(.caption)
                     .foregroundStyle(Color.accentColor)
                 Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                    .font((compact ? .title3 : .title2).weight(.bold).monospacedDigit())
+                    .font(compact ? Font.title3.weight(.bold).monospacedDigit() : Font.title2.weight(.bold).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
                     .frame(minWidth: 56, alignment: .leading)
                 Text("repos")
