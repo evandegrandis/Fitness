@@ -168,13 +168,21 @@ struct RecordsEngine {
             return true
         }
 
-        // Also star the absolute heaviest validated weight even if reps match.
+        // Also star the absolute heaviest validated weight — but ONLY if no
+        // other set at the same weight has more reps (otherwise the user sees
+        // a star on a mediocre set when a better one at the same weight exists).
         let heaviestElsewhere = others
             .filter { $0.completed && $0.weight > 0 && $0.reps >= exercise.repTargetMin }
             .map(\.weight)
             .max() ?? 0
         if set.weight > heaviestElsewhere {
-            return true
+            let bestRepsAtThisWeight = others
+                .filter { $0.completed && $0.weight == set.weight && $0.reps >= exercise.repTargetMin }
+                .map(\.reps)
+                .max() ?? 0
+            if set.reps >= bestRepsAtThisWeight {
+                return true
+            }
         }
 
         return false

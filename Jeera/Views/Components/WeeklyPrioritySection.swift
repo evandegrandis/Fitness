@@ -21,35 +21,50 @@ struct WeeklyPrioritySection: View {
     /// Optional headline override. Defaults to "À prioriser (7 jours)".
     var title: String = "À prioriser (7 jours)"
 
-    private var chips: [(MuscleParent, Int)] {
-        EffectiveSetsEngine.rollingPriorities(
-            sessions: finishedSessions,
-            goals: goals,
-            liveSession: liveSession
-        )
-        .map { ($0.0, Int($0.1.rounded())) }
+    @State private var chips: [(MuscleParent, Int)] = []
+
+    /// Hash of every goal's parent + value so `.task(id:)` re-fires when the
+    /// user edits any goal in Settings, not only when a goal row is inserted.
+    private var goalFingerprint: Int {
+        var hasher = Hasher()
+        for g in goals {
+            hasher.combine(g.parent)
+            hasher.combine(g.weeklyGoalSets)
+        }
+        hasher.combine(finishedSessions.count)
+        return hasher.finalize()
     }
 
     var body: some View {
-        if !chips.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 20)
+        Group {
+            if !chips.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(chips, id: \.0) { parent, remaining in
-                            PriorityChip(
-                                label: parent.shortName,
-                                remaining: remaining
-                            )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(chips, id: \.0) { parent, remaining in
+                                PriorityChip(
+                                    label: parent.shortName,
+                                    remaining: remaining
+                                )
+                            }
                         }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
                 }
             }
+        }
+        .task(id: goalFingerprint) {
+            chips = EffectiveSetsEngine.rollingPriorities(
+                sessions: finishedSessions,
+                goals: goals,
+                liveSession: liveSession
+            )
+            .map { ($0.0, Int($0.1.rounded())) }
         }
     }
 }

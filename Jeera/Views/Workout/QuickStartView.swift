@@ -433,6 +433,10 @@ struct RecentWorkoutRow: View {
 private struct AchievementsKey: Hashable {
     let sessionCount: Int
     let exerciseCount: Int
+    /// Identity + content of the most recent session so the key changes when a
+    /// workout finishes (new session id) or when sets are imported/re-computed.
+    let latestSessionID: UUID?
+    let latestSessionSets: Int
 }
 
 struct AchievementsSection: View {
@@ -456,7 +460,12 @@ struct AchievementsSection: View {
                 }
             }
         }
-        .task(id: AchievementsKey(sessionCount: sessions.count, exerciseCount: exercises.count)) {
+        .task(id: AchievementsKey(
+            sessionCount: sessions.count,
+            exerciseCount: exercises.count,
+            latestSessionID: sessions.first?.id,
+            latestSessionSets: sessions.first?.totalWorkSets ?? 0
+        )) {
             achievements = AchievementsEngine.recentAchievements(
                 sessions: sessions,
                 exercises: exercises,

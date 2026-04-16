@@ -10,15 +10,19 @@ struct MuscleProgressView: View {
     ) private var sessions: [WorkoutSession]
     @Query private var goals: [MuscleGoal]
     @State private var selectedParent: MuscleParent?
+    @State private var progress: [ParentMuscleProgress] = []
+    @State private var globalCoverage: Double = 0
 
-    private var progress: [ParentMuscleProgress] {
-        EffectiveSetsEngine.rolling7DayProgress(sessions: sessions, goals: goals)
-            .filter { $0.goalSets > 0 || $0.effectiveSets > 0 }
-            .sorted { $0.goalSets > $1.goalSets }
-    }
-
-    private var globalCoverage: Double {
-        EffectiveSetsEngine.rolling7DayGlobalCoverage(sessions: sessions, goals: goals)
+    /// Hash of goal values + session count so `.task(id:)` re-fires when
+    /// goals are edited in Settings or new sessions finish.
+    private var dataFingerprint: Int {
+        var hasher = Hasher()
+        for g in goals {
+            hasher.combine(g.parent)
+            hasher.combine(g.weeklyGoalSets)
+        }
+        hasher.combine(sessions.count)
+        return hasher.finalize()
     }
 
     var body: some View {
@@ -87,6 +91,12 @@ struct MuscleProgressView: View {
                 Spacer(minLength: 80)
             }
             .padding(.top, 10)
+        }
+        .task(id: dataFingerprint) {
+            progress = EffectiveSetsEngine.rolling7DayProgress(sessions: sessions, goals: goals)
+                .filter { $0.goalSets > 0 || $0.effectiveSets > 0 }
+                .sorted { $0.goalSets > $1.goalSets }
+            globalCoverage = EffectiveSetsEngine.rolling7DayGlobalCoverage(sessions: sessions, goals: goals)
         }
     }
 }
