@@ -433,16 +433,28 @@ struct RecentWorkoutRow: View {
 private struct AchievementsKey: Hashable {
     let sessionCount: Int
     let exerciseCount: Int
-    /// Identity + content of the most recent session so the key changes when a
-    /// workout finishes (new session id) or when sets are imported/re-computed.
-    let latestSessionID: UUID?
-    let latestSessionSets: Int
+    /// Rolling hash of the 5 most recent sessions so the key changes when any
+    /// recent workout is added, finished, or has its sets count modified.
+    let recentSessionsHash: Int
 }
 
 struct AchievementsSection: View {
     let sessions: [WorkoutSession]
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
     @State private var achievements: [Achievement] = []
+
+    private var taskKey: AchievementsKey {
+        var hasher = Hasher()
+        for s in sessions.prefix(5) {
+            hasher.combine(s.id)
+            hasher.combine(s.totalWorkSets)
+        }
+        return AchievementsKey(
+            sessionCount: sessions.count,
+            exerciseCount: exercises.count,
+            recentSessionsHash: hasher.finalize()
+        )
+    }
 
     var body: some View {
         Group {
@@ -453,23 +465,18 @@ struct AchievementsSection: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal)
 
-                    ForEach(achievements.prefix(6)) { achievement in
+                    ForEach(achievements.prefix(10)) { achievement in
                         AchievementRow(achievement: achievement)
                             .padding(.horizontal)
                     }
                 }
             }
         }
-        .task(id: AchievementsKey(
-            sessionCount: sessions.count,
-            exerciseCount: exercises.count,
-            latestSessionID: sessions.first?.id,
-            latestSessionSets: sessions.first?.totalWorkSets ?? 0
-        )) {
+        .task(id: taskKey) {
             achievements = AchievementsEngine.recentAchievements(
                 sessions: sessions,
                 exercises: exercises,
-                maxSessions: 10
+                maxSessions: 15
             )
         }
     }

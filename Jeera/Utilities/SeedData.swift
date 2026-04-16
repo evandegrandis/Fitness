@@ -168,6 +168,10 @@ struct SeedData {
              benchmarkLow: 15, benchmarkHigh: 50,
              muscles: [(.absHaut, 1.0), (.absBas, 0.3)])
 
+        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75,
+             benchmarkLow: 20, benchmarkHigh: 60,
+             muscles: [(.absHaut, 1.0), (.absBas, 0.3), (.transverse, 0.1)])
+
         make("Relevé de jambes chaise romaine", category: "Core", mode: .bodyweight, repMin: 8, repMax: 15, rest: 75,
              muscles: [(.absBas, 1.0), (.absHaut, 0.3), (.obliqueExt, 0.3), (.transverse, 0.1)])
 
@@ -263,6 +267,40 @@ struct SeedData {
                 ex.lastUsed = d
             }
         }
+
+        // April 15
+        session(date(4, 15), duration: 53, [
+            ("Tractions SN",        [(0, 11), (15, 6), (0, 10)]),
+            ("Crunch déclinés",     [(50, 10), (50, 10), (50, 6)]),
+            ("HSPU",                [(0, 10), (0, 8), (0, 5)]),
+            ("Leg extension",       [(85, 10), (100, 10), (110, 4)]),
+            ("Curl debout",         [(20, 6)]),
+            ("Chest Press",         [(100, 10), (120, 8), (120, 5)]),
+            ("Pulley serré",        [(60, 5), (50, 7)]),
+        ])
+
+        // April 13
+        session(date(4, 13), duration: 52, [
+            ("Tractions SN",        [(0, 10), (15, 7), (0, 10)]),
+            ("HSPU",                [(0, 10), (0, 10), (0, 10)]),
+            ("Crunch déclinés",     [(40, 10), (55, 8)]),
+            ("Leg extension",       [(85, 10), (100, 10), (100, 7)]),
+            ("Chest Press",         [(100, 10), (140, 2), (100, 5)]),
+            ("Pulley serré",        [(50, 8), (55, 5)]),
+        ])
+
+        // April 10
+        session(date(4, 10), duration: 85, [
+            ("Tractions SN",        [(0, 10), (15, 6), (0, 8)]),
+            ("Crunch déclinés",     [(45, 10), (50, 9), (50, 5)]),
+            ("HSPU",                [(0, 10), (0, 10), (0, 5)]),
+            ("Chest Press",         [(100, 8), (100, 8), (120, 4)]),
+            ("Leg extension",       [(85, 11), (100, 10)]),
+            ("Pulley serré",        [(50, 10), (60, 3), (50, 8)]),
+            ("Curl debout",         [(18, 8), (18, 4)]),
+            ("Pec deck",            [(80, 4), (70, 8), (70, 6)]),
+            ("Tractions SN",        [(0, 10)]),
+        ])
 
         // April 7 — recent enough to be inside the rolling 7-day window.
         session(date(4, 7), duration: 75, [

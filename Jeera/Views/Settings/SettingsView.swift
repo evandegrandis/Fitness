@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import UIKit
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -9,14 +10,11 @@ struct SettingsView: View {
     @Query private var goals: [MuscleGoal]
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
 
-    @State private var showExportShare = false
-    @State private var exportURL: URL?
     @State private var showImportPicker = false
     @State private var showImportConfirm = false
     @State private var importData: Data?
     @State private var alertMessage = ""
     @State private var showAlert = false
-    @State private var lastExportDate: String = ""
 
     private var settings: UserSettings {
         if let existing = settingsArray.first { return existing }
@@ -145,11 +143,6 @@ struct SettingsView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showExportShare) {
-                if let url = exportURL {
-                    ShareSheet(activityItems: [url])
-                }
-            }
             .fileImporter(
                 isPresented: $showImportPicker,
                 allowedContentTypes: [.json],
@@ -179,8 +172,23 @@ struct SettingsView: View {
             let fileName = DataExporter.defaultFileName()
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
             try jsonData.write(to: tempURL)
-            exportURL = tempURL
-            showExportShare = true
+
+            // Present UIActivityViewController directly from the key window root so
+            // it doesn't get double-wrapped inside a SwiftUI .sheet (which causes
+            // UIActivityViewController to dismiss immediately on iOS 17+).
+            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+                alertMessage = "Impossible d'ouvrir le partage."
+                showAlert = true
+                return
+            }
+            let vc = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
+            if let pop = vc.popoverPresentationController {
+                pop.sourceView = root.view
+                pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 0, height: 0)
+                pop.permittedArrowDirections = []
+            }
+            root.present(vc, animated: true)
         } catch {
             alertMessage = "Export failed: \(error.localizedDescription)"
             showAlert = true
@@ -224,18 +232,6 @@ struct SettingsView: View {
             showAlert = true
         }
     }
-}
-
-// MARK: - Share Sheet (UIKit wrapper)
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Parent Goal Row
