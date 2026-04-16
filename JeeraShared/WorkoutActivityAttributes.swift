@@ -41,7 +41,14 @@ struct WorkoutContentState: Codable, Hashable {
     /// When the workout started. Used by the lock-screen elapsed-time label.
     var workoutStartedAt: Date
 
-    /// Count of completed work sets across the whole session. Drives the big
-    /// "Sets: N" badge on the lock screen + Dynamic Island expanded view.
-    var totalSets: Int
+    // MARK: - Next set preview (what the user actually wants to see mid-rest)
+
+    /// Name of the NEXT exercise the user is going to work on. Usually the
+    /// same exercise they just logged (still has sets to go) — occasionally
+    /// the next card for multi-exercise sessions.
+    var nextExerciseName: String
+
+    /// One-line preview of the set that the "Valider" button will log
+    /// ("15 kg × 8", "BW × 10"). Empty when there's nothing to validate yet.
+    var nextSetPreview: String
 }

@@ -54,6 +54,7 @@ struct ContentView: View {
 
             workoutVM.modelContext = modelContext
             workoutVM.loadActiveSession()
+            workoutVM.observeLiveActivityIntents()
             seedIfNeeded()
 
             // Load settings defaults

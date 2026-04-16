@@ -1,11 +1,13 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 /// Lock-screen + Dynamic Island presentation for the active workout.
-/// All data flows from the shared `WorkoutActivityAttributes` + `WorkoutContentState`
-/// (defined in `JeeraShared/WorkoutActivityAttributes.swift`). The widget owns
-/// zero state of its own — everything ticks via `Text(timerInterval:)`.
+/// All data flows from `WorkoutActivityAttributes` + `WorkoutContentState`
+/// (JeeraShared). The widget owns zero state — everything ticks via
+/// `Text(timerInterval:)` and buttons fire `LiveActivityIntent`s that
+/// execute in the app process.
 struct WorkoutLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WorkoutActivityAttributes.self) { context in
@@ -17,25 +19,21 @@ struct WorkoutLiveActivity: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Jeera")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
                         Text(context.state.exerciseName)
                             .font(.headline)
                             .lineLimit(1)
+                        if !context.state.lastSetSummary.isEmpty {
+                            Text(context.state.lastSetSummary)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Sets")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text("\(context.state.totalSets)")
-                            .font(.title3.weight(.bold).monospacedDigit())
-                    }
+                    RestOrReadyBadge(state: context.state)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    CenterContent(state: context.state, compact: false)
+                    NextSetRow(state: context.state)
                 }
             } compactLeading: {
                 Image(systemName: "dumbbell.fill")
@@ -58,6 +56,7 @@ private struct LockScreenView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Row 1: exercise name + workout elapsed
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: "dumbbell.fill")
                     .font(.caption)
@@ -67,70 +66,127 @@ private struct LockScreenView: View {
                     .lineLimit(1)
                 Spacer()
                 Text(timerInterval: state.workoutStartedAt...Date.distantFuture,
-                     countsDown: false,
-                     showsHours: false)
+                     countsDown: false, showsHours: false)
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 60, alignment: .trailing)
             }
 
+            // Row 2: last set done (small context)
             if !state.lastSetSummary.isEmpty {
                 Text(state.lastSetSummary)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            HStack {
-                CenterContent(state: state, compact: true)
+            // Row 3: rest timer (if running) + next set + action buttons
+            HStack(spacing: 12) {
+                // Left: timer or "Go"
+                if let endsAt = state.restEndsAt, endsAt > Date() {
+                    HStack(spacing: 6) {
+                        Image(systemName: "timer")
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                        Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
+                            .font(Font.title3.weight(.bold).monospacedDigit())
+                            .foregroundStyle(Color.accentColor)
+                    }
+                } else {
+                    Text("GO")
+                        .font(Font.title3.weight(.heavy))
+                        .foregroundStyle(.green)
+                }
+
                 Spacer()
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text("\(state.totalSets)")
-                        .font(.title2.weight(.bold).monospacedDigit())
-                    Text("sets")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+
+                // Right: next set preview + Valider button
+                if !state.nextSetPreview.isEmpty {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(state.nextExerciseName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text(state.nextSetPreview)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+
+                    if #available(iOS 17.0, *) {
+                        Button(intent: ValidateNextSetIntent()) {
+                            Text("Valider")
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.accentColor)
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
     }
 }
 
-// MARK: - Rest Timer / Status Line
+// MARK: - Dynamic Island helpers
 
-/// Shows the rest timer (if running) or a "Go!" label. Kept as a single view so
-/// the expanded Dynamic Island + lock screen share exactly one presentation.
-private struct CenterContent: View {
+/// Shows countdown badge or "GO" in expanded DI trailing region.
+private struct RestOrReadyBadge: View {
     let state: WorkoutContentState
-    let compact: Bool
 
     var body: some View {
         if let endsAt = state.restEndsAt, endsAt > Date() {
-            HStack(spacing: 8) {
-                Image(systemName: "timer")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
+            VStack(alignment: .trailing, spacing: 1) {
                 Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                    .font(compact ? Font.title3.weight(.bold).monospacedDigit() : Font.title2.weight(.bold).monospacedDigit())
+                    .font(.title3.weight(.bold).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
-                    .frame(minWidth: 56, alignment: .leading)
                 Text("repos")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
         } else {
-            HStack(spacing: 6) {
-                Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                Text("En cours")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.green)
+            Text("GO")
+                .font(.title3.weight(.heavy))
+                .foregroundStyle(.green)
+        }
+    }
+}
+
+/// Next set preview in the expanded DI bottom region.
+private struct NextSetRow: View {
+    let state: WorkoutContentState
+
+    var body: some View {
+        if !state.nextSetPreview.isEmpty {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Prochain")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(state.nextExerciseName) — \(state.nextSetPreview)")
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Spacer()
+                if #available(iOS 17.0, *) {
+                    Button(intent: ValidateNextSetIntent()) {
+                        Text("Valider")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.accentColor)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
 }
 
-// MARK: - Dynamic Island compact trailing
+// MARK: - Compact trailing
 
 private struct CompactTrailing: View {
     let state: WorkoutContentState
@@ -142,9 +198,9 @@ private struct CompactTrailing: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(maxWidth: 44)
         } else {
-            Text("\(state.totalSets)")
-                .font(.caption.weight(.bold).monospacedDigit())
-                .foregroundStyle(.primary)
+            Text("GO")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(.green)
         }
     }
 }

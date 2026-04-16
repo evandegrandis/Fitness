@@ -731,13 +731,19 @@ class WorkoutViewModel {
     /// Idempotent — the controller ends any stale activity before starting a new
     /// one, so calling this on app relaunch doesn't create duplicates.
     private func startLiveActivity(for session: WorkoutSession) {
-        let firstExerciseName = session.orderedExercises.first?.exercise?.name ?? "Entraînement"
+        let firstExo = session.orderedExercises.first
+        let firstExoName = firstExo?.exercise?.name ?? "Entraînement"
+
+        // Compute the first suggestion so the lock screen already shows what's coming.
+        let (nextName, nextPreview) = nextSetInfo(for: session, afterExercise: nil)
+
         Task { @MainActor in
             LiveActivityController.shared.start(
                 workoutID: session.id,
-                exerciseName: firstExerciseName,
+                exerciseName: firstExoName,
                 workoutStartedAt: session.startTime,
-                totalSets: session.totalWorkSets
+                nextExerciseName: nextName,
+                nextSetPreview: nextPreview
             )
         }
     }
@@ -755,7 +761,6 @@ class WorkoutViewModel {
 
         let exerciseName: String = {
             if let ex = lastLoggedExercise?.exercise { return ex.name }
-            // Fall back to the first exercise with unfinished work, else the first.
             if let next = session.orderedExercises.first(where: { $0.workSets.isEmpty }),
                let name = next.exercise?.name {
                 return name
@@ -771,19 +776,57 @@ class WorkoutViewModel {
             return "BW × \(set.reps)"
         }()
 
-        let startedAt = session.startTime
-        let total = session.totalWorkSets
+        let (nextName, nextPreview) = nextSetInfo(for: session, afterExercise: lastLoggedExercise)
+
+        let state = WorkoutContentState(
+            exerciseName: exerciseName,
+            lastSetSummary: lastSummary,
+            restEndsAt: restEndsAt,
+            restTotalSeconds: restTotalSeconds,
+            workoutStartedAt: session.startTime,
+            nextExerciseName: nextName,
+            nextSetPreview: nextPreview
+        )
 
         Task { @MainActor in
-            LiveActivityController.shared.update(
-                exerciseName: exerciseName,
-                lastSetSummary: lastSummary,
-                restEndsAt: restEndsAt,
-                restTotalSeconds: restTotalSeconds,
-                workoutStartedAt: startedAt,
-                totalSets: total
-            )
+            LiveActivityController.shared.update(state: state)
         }
+    }
+
+    /// Compute the (exerciseName, "W kg × R") pair for the NEXT set the user
+    /// is about to do. Usually the same exercise (next slot), sometimes the
+    /// next card if all slots for the current exercise are done.
+    private func nextSetInfo(for session: WorkoutSession, afterExercise: LoggedExercise?) -> (String, String) {
+        // Find the "next" exercise: the one the user should log next.
+        let ordered = session.orderedExercises
+        let target: LoggedExercise? = {
+            if let current = afterExercise {
+                // If the exercise is in a superset and is linked-to-next, the
+                // next set is on the NEXT superset member, not the same exo.
+                if current.isLinkedToNext,
+                   let idx = ordered.firstIndex(where: { $0.id == current.id }),
+                   idx + 1 < ordered.count {
+                    return ordered[idx + 1]
+                }
+                // Otherwise keep logging on the same exercise unless it's "done".
+                return current
+            }
+            // No last exercise: pick the first one that still has work to do.
+            return ordered.first
+        }()
+
+        guard let exo = target, let exercise = exo.exercise else {
+            return ("", "")
+        }
+
+        let sug = suggestion(for: exo)
+        let preview: String
+        if sug.weight > 0 {
+            preview = "\(sug.weight.cleanWeight) kg × \(sug.reps)"
+        } else {
+            preview = "BW × \(sug.reps)"
+        }
+        return (exercise.name, preview)
     }
 
     /// End the Live Activity. Called on finish/discard.
@@ -791,5 +834,57 @@ class WorkoutViewModel {
         Task { @MainActor in
             LiveActivityController.shared.end()
         }
+    }
+
+    // MARK: - Live Activity Intent Observers
+
+    /// Call this once at setup so the ViewModel reacts to lock-screen button taps.
+    func observeLiveActivityIntents() {
+        NotificationCenter.default.addObserver(
+            forName: .jeeraValidateNextSet,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleValidateFromLiveActivity()
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .jeeraSkipRestFromLiveActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.skipRest()
+        }
+    }
+
+    /// "Valider" tapped on the lock screen — log the suggested set for the
+    /// next pending exercise, exactly as if the user had tapped "Valider" in
+    /// the ExerciseCard.
+    private func handleValidateFromLiveActivity() {
+        guard let session = activeSession else { return }
+        let ordered = session.orderedExercises
+
+        // Find the exercise the user should validate next.
+        // If the rest timer is running, the "next" is the exercise we just
+        // logged to (still has slots) or the following one.
+        let target: LoggedExercise? = {
+            // Try: first exercise that still has fewer work sets than the
+            // typical target (3), preferring earlier orderIndex.
+            if let current = ordered.first(where: { logEx in
+                guard let ex = logEx.exercise else { return false }
+                let done = logEx.completedWorkSets.count
+                let targetSets = max(3, ex.repTargetMax > 0 ? 3 : 3)
+                return done < targetSets
+            }) {
+                return current
+            }
+            // Fall back to the first exercise entirely.
+            return ordered.first
+        }()
+
+        guard let exo = target else { return }
+
+        let sug = suggestion(for: exo)
+        logSet(for: exo, weight: sug.weight, reps: sug.reps, setType: sug.setType)
     }
 }
