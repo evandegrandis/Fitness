@@ -198,23 +198,25 @@ struct CreateExerciseView: View {
                     Stepper("Incrément : \(increment.cleanWeight) kg", value: $increment, in: 0.5...10, step: 0.5)
                 }
 
-                Section("Muscles") {
-                    ForEach(MuscleGroup.allCases) { muscle in
-                        HStack {
-                            Text(muscle.displayName)
-                            Spacer()
-                            Menu {
-                                Button("Principal (1.0)") { selectedMuscles[muscle] = 1.0 }
-                                Button("Secondaire fort (0.3)") { selectedMuscles[muscle] = 0.3 }
-                                Button("Secondaire léger (0.1)") { selectedMuscles[muscle] = 0.1 }
-                                Button("Aucun") { selectedMuscles.removeValue(forKey: muscle) }
-                            } label: {
-                                if let coeff = selectedMuscles[muscle] {
-                                    Text("\(coeff, specifier: "%.1f")")
-                                        .foregroundStyle(Color.accentColor)
-                                } else {
-                                    Text("--")
-                                        .foregroundStyle(.tertiary)
+                ForEach(MuscleParent.allCases) { parent in
+                    Section(parent.displayName) {
+                        ForEach(MuscleGroup.allCases.filter { $0.parent == parent }) { muscle in
+                            HStack {
+                                Text(muscle.displayName)
+                                Spacer()
+                                Menu {
+                                    Button("Principal (1.0)") { selectedMuscles[muscle] = 1.0 }
+                                    Button("Secondaire fort (0.3)") { selectedMuscles[muscle] = 0.3 }
+                                    Button("Secondaire léger (0.1)") { selectedMuscles[muscle] = 0.1 }
+                                    Button("Aucun") { selectedMuscles.removeValue(forKey: muscle) }
+                                } label: {
+                                    if let coeff = selectedMuscles[muscle] {
+                                        Text("\(coeff, specifier: "%.1f")")
+                                            .foregroundStyle(Color.accentColor)
+                                    } else {
+                                        Text("--")
+                                            .foregroundStyle(.tertiary)
+                                    }
                                 }
                             }
                         }

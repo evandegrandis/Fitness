@@ -45,30 +45,30 @@ struct EffectiveSetsEngineTests {
 
     @Test("Primary muscle gets full attribution")
     func primaryMuscle() {
-        let ex = makeExercise(name: "Leg Extension", muscles: [(.quads, 1.0)])
+        let ex = makeExercise(name: "Leg Extension", muscles: [(.vasteLat, 1.0)])
         let logged = makeLoggedExercise(exercise: ex, completedSets: 4)
 
         let result = EffectiveSetsEngine.leafSets(for: logged)
-        #expect(result[.quads] == 4.0)
-        #expect(result[.hamstrings] == nil)
+        #expect(result[.vasteLat] == 4.0)
+        #expect(result[.bicepsFemoral] == nil)
     }
 
     @Test("Secondary muscles get fractional attribution")
     func secondaryMuscles() {
         let ex = makeExercise(name: "Pull-Up", muscles: [
-            (.grandDorsal, 1.0),
-            (.dosHaut, 0.3),
+            (.latSup, 1.0),
+            (.trapMid, 0.3),
             (.bicepsCourt, 0.3),
-            (.forearms, 0.1),
+            (.brachioradial, 0.1),
         ])
         let logged = makeLoggedExercise(exercise: ex, completedSets: 3)
 
         let result = EffectiveSetsEngine.leafSets(for: logged)
 
-        #expect(result[.grandDorsal] == 3.0)
-        #expect(result[.dosHaut]! == 0.9)
+        #expect(result[.latSup] == 3.0)
+        #expect(result[.trapMid]! == 0.9)
         #expect(result[.bicepsCourt]! == 0.9)
-        #expect(abs(result[.forearms]! - 0.3) < 0.001)
+        #expect(abs(result[.brachioradial]! - 0.3) < 0.001)
     }
 
     @Test("Zero sets returns empty")
@@ -179,8 +179,8 @@ struct EffectiveSetsEngineTests {
     @Test("Live parent impact calculation")
     func liveParentImpact() {
         let ex = makeExercise(name: "Row", muscles: [
-            (.dosHaut, 1.0),
-            (.grandDorsal, 0.3),
+            (.trapMid, 1.0),
+            (.latSup, 0.3),
             (.bicepsCourt, 0.3),
         ])
 

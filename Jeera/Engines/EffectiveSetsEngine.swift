@@ -131,6 +131,51 @@ struct EffectiveSetsEngine {
         return totals
     }
 
+    /// Total effective leaf-level sets for sessions inside [`windowStart`, `windowEnd`).
+    static func leafTotals(
+        sessions: [WorkoutSession],
+        windowStart: Date,
+        windowEnd: Date,
+        liveSession: WorkoutSession? = nil
+    ) -> [MuscleGroup: Double] {
+        let inRange = sessions.filter { s in
+            !s.isActive && s.date >= windowStart && s.date < windowEnd
+        }
+
+        var totals: [MuscleGroup: Double] = [:]
+        for s in inRange {
+            for logged in s.loggedExercises {
+                for (leaf, v) in leafSets(for: logged) {
+                    totals[leaf, default: 0] += v
+                }
+            }
+        }
+        if let live = liveSession, live.date >= windowStart, live.date < windowEnd {
+            for logged in live.loggedExercises {
+                for (leaf, v) in leafSets(for: logged) {
+                    totals[leaf, default: 0] += v
+                }
+            }
+        }
+        return totals
+    }
+
+    /// Leaf-level breakdown for the rolling 7-day window, filtered to a specific parent.
+    static func rolling7DayLeafBreakdown(
+        sessions: [WorkoutSession],
+        parent: MuscleParent,
+        referenceDate: Date = Date(),
+        liveSession: WorkoutSession? = nil
+    ) -> [(leaf: MuscleGroup, sets: Double)] {
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: referenceDate.startOfDay) ?? referenceDate
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: end) ?? referenceDate
+        let totals = leafTotals(sessions: sessions, windowStart: start, windowEnd: end, liveSession: liveSession)
+        return MuscleGroup.allCases
+            .filter { $0.parent == parent }
+            .map { ($0, totals[$0] ?? 0) }
+            .sorted { $0.1 > $1.1 }
+    }
+
     // MARK: - Rolling 7-day progress (PRIMARY guidance loop)
 
     /// Parent-level coverage over the last 7 days ending at `referenceDate`.

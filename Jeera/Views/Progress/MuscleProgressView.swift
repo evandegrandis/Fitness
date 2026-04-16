@@ -59,6 +59,15 @@ struct MuscleProgressView: View {
                         }
 
                         if selectedParent == item.parent {
+                            LeafBreakdownCard(
+                                parent: item.parent,
+                                sessions: sessions
+                            )
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                                removal: .opacity
+                            ))
+
                             ParentHistoryChart(
                                 parent: item.parent,
                                 sessions: sessions,
@@ -256,6 +265,56 @@ struct ParentHistoryChart: View {
                             AxisValueLabel()
                                 .font(.system(size: 9))
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Leaf Breakdown Card
+
+struct LeafBreakdownCard: View {
+    let parent: MuscleParent
+    let sessions: [WorkoutSession]
+
+    private var breakdown: [(leaf: MuscleGroup, sets: Double)] {
+        EffectiveSetsEngine.rolling7DayLeafBreakdown(sessions: sessions, parent: parent)
+    }
+
+    private var maxSets: Double {
+        breakdown.map(\.sets).max() ?? 1
+    }
+
+    var body: some View {
+        GlassCard(padding: 14, cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Détail par sous-groupe")
+                    .font(.caption.weight(.semibold))
+
+                ForEach(breakdown, id: \.leaf) { item in
+                    HStack(spacing: 8) {
+                        Text(item.leaf.displayName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 110, alignment: .leading)
+                            .lineLimit(1)
+
+                        GeometryReader { geo in
+                            let barWidth = maxSets > 0
+                                ? CGFloat(item.sets / maxSets) * geo.size.width
+                                : 0
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.accentColor.opacity(0.6))
+                                .frame(width: max(barWidth, 0), height: 6)
+                                .frame(maxHeight: .infinity, alignment: .center)
+                        }
+                        .frame(height: 12)
+
+                        Text(item.sets > 0 ? String(format: "%.1f", item.sets) : "—")
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(item.sets > 0 ? .primary : .tertiary)
+                            .frame(width: 30, alignment: .trailing)
                     }
                 }
             }
