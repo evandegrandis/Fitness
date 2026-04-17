@@ -31,6 +31,25 @@ struct WorkoutTabView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
+            .overlay(alignment: .bottom) {
+                if let summary = viewModel.completedWorkoutSummary {
+                    Text(summary)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 20)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                withAnimation(.spring(response: 0.4)) {
+                                    viewModel.completedWorkoutSummary = nil
+                                }
+                            }
+                        }
+                }
+            }
+            .animation(.spring(response: 0.4), value: viewModel.completedWorkoutSummary)
         }
     }
 }

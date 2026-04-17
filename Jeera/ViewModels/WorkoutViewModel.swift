@@ -17,6 +17,7 @@ class WorkoutViewModel {
     var showUndo = false
     var currentAchievement: ProgressionEngine.Achievement?
     var showAchievement = false
+    var completedWorkoutSummary: String?
 
     var defaultRestSeconds: Int = 120
     var supersetRestSeconds: Int = 180
@@ -162,11 +163,14 @@ class WorkoutViewModel {
         session.isActive = false
         session.endTime = Date()
         try? modelContext?.save()
+        let sets = session.totalWorkSets
+        let duration = session.durationFormatted
         restTimer.reset()
         stopWorkoutTimer()
         endLiveActivity()
         activeSession = nil
         HapticManager.notification(.success)
+        completedWorkoutSummary = "Séance terminée — \(sets) sets \u{2022} \(duration)"
     }
 
     func discardWorkout() {
