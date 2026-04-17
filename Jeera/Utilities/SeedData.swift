@@ -65,10 +65,6 @@ struct SeedData {
              benchmarkLow: 0, benchmarkHigh: 40,
              muscles: [(.latSup, 1.0), (.latInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.brachioradial, 0.1)])
 
-        make("Tractions neutres lestées", category: "Pull", mode: .ramping, repMin: 6, repMax: 12, increment: 2.5, rest: 180,
-             benchmarkLow: 0, benchmarkHigh: 45,
-             muscles: [(.latSup, 1.0), (.latInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.brachioradial, 0.1)])
-
         make("Traction pronation large", category: "Pull", mode: .bodyweight, repMin: 5, repMax: 12, rest: 180,
              muscles: [(.latSup, 1.0), (.latInf, 0.3), (.trapInf, 0.3), (.bicepsCourt, 0.3), (.brachioradial, 0.1)])
 
@@ -105,6 +101,10 @@ struct SeedData {
              machine: "r4",
              benchmarkLow: 50, benchmarkHigh: 100,
              muscles: [(.pectStern, 1.0), (.pectClav, 0.1), (.deltAnt, 0.1)])
+
+        make("DC assisté", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180,
+             benchmarkLow: 40, benchmarkHigh: 100,
+             muscles: [(.pectStern, 1.0), (.pectClav, 0.3), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.1)])
 
         // ========== SHOULDERS ==========
         make("Shoulder press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
@@ -164,12 +164,8 @@ struct SeedData {
              muscles: [(.bicepsFemoral, 1.0), (.semiTendineux, 1.0), (.glutMax, 0.1)])
 
         // ========== CORE ==========
-        make("Crunch lesté", category: "Core", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75, favorite: true,
-             benchmarkLow: 15, benchmarkHigh: 50,
-             muscles: [(.absHaut, 1.0), (.absBas, 0.3)])
-
-        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75,
-             benchmarkLow: 20, benchmarkHigh: 60,
+        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75, favorite: true,
+             benchmarkLow: 15, benchmarkHigh: 60,
              muscles: [(.absHaut, 1.0), (.absBas, 0.3), (.transverse, 0.1)])
 
         make("Relevé de jambes chaise romaine", category: "Core", mode: .bodyweight, repMin: 8, repMax: 15, rest: 75,
@@ -220,7 +216,7 @@ struct SeedData {
 
         template("Full Body", [
             "Tractions SN",
-            "Crunch lesté",
+            "Crunch déclinés",
             "HSPU",
             "Chest Press",
             "Leg extension",
@@ -305,7 +301,7 @@ struct SeedData {
         // April 7 — recent enough to be inside the rolling 7-day window.
         session(date(4, 7), duration: 75, [
             ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch lesté",                [(40, 10), (40, 10)]),
+            ("Crunch déclinés",                [(40, 10), (40, 10)]),
             ("HSPU",                        [(0, 10)]),
             ("Chest Press",                 [(80, 10), (100, 9), (120, 3)]),
             ("Leg extension",               [(85, 10)]),
@@ -318,7 +314,7 @@ struct SeedData {
         // April 5 — rolling window
         session(date(4, 5), duration: 70, [
             ("Tractions SN",                [(0, 10), (0, 10), (0, 10)]),
-            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Crunch déclinés",                [(40, 10), (40, 10), (40, 10)]),
             ("Chest Press",                 [(80, 10), (100, 8), (90, 6)]),
             ("Shoulder press",              [(80, 8)]),
             ("Lateral raises",              [(12, 12), (12, 10)]),
@@ -327,7 +323,7 @@ struct SeedData {
         // April 3
         session(date(4, 3), duration: 50, [
             ("Tractions SN",                [(0, 10), (0, 10), (0, 10)]),
-            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Crunch déclinés",                [(40, 10), (40, 10), (40, 10)]),
             ("Chest Press",                 [(80, 10), (100, 8), (90, 6)]),
             ("Shoulder press",              [(80, 8)]),
         ])
@@ -335,7 +331,7 @@ struct SeedData {
         // April 1
         session(date(4, 1), duration: 80, [
             ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Crunch déclinés",                [(40, 10), (40, 10), (40, 10)]),
             ("HSPU",                        [(0, 10)]),
             ("Chest Press",                 [(100, 10), (120, 6), (100, 6)]),
             ("Leg extension",               [(85, 10)]),
@@ -348,7 +344,7 @@ struct SeedData {
         // March 30
         session(date(3, 30), duration: 85, [
             ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Crunch déclinés",                [(40, 10), (40, 10), (40, 10)]),
             ("HSPU",                        [(0, 10)]),
             ("Leg curl",                    [(65, 10), (75, 10), (75, 10)]),
             ("Leg extension",               [(85, 10), (100, 10), (100, 8)]),
@@ -361,7 +357,7 @@ struct SeedData {
         // March 25
         session(date(3, 25), duration: 70, [
             ("Tractions SN",                [(15, 7), (0, 10), (0, 10)]),
-            ("Crunch lesté",                [(40, 10), (40, 10), (40, 10)]),
+            ("Crunch déclinés",                [(40, 10), (40, 10), (40, 10)]),
             ("Leg extension",               [(85, 10), (100, 10), (100, 6)]),
             ("Curl incliné",                [(14, 10), (14, 4)]),
             ("Lateral raises",              [(14, 4)]),

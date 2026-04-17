@@ -269,6 +269,17 @@ struct DataExporter {
             exerciseByName[exData.name] = ex
         }
 
+        // Legacy exercise name aliases so old backups match renamed exercises.
+        let nameAliases: [String: String] = [
+            "Crunch lesté": "Crunch déclinés",
+            "Tractions neutres lestées": "Tractions SN",
+        ]
+        for (oldName, newName) in nameAliases {
+            if exerciseByName[oldName] == nil, let target = exerciseByName[newName] {
+                exerciseByName[oldName] = target
+            }
+        }
+
         // 2. Import goals (parent-level)
         for gData in backup.goals {
             // Try direct parent match first, then leaf → parent migration
