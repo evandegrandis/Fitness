@@ -173,22 +173,23 @@ struct SettingsView: View {
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
             try jsonData.write(to: tempURL)
 
-            // Present UIActivityViewController directly from the key window root so
-            // it doesn't get double-wrapped inside a SwiftUI .sheet (which causes
-            // UIActivityViewController to dismiss immediately on iOS 17+).
             guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
                 alertMessage = "Impossible d'ouvrir le partage."
                 showAlert = true
                 return
             }
+            var topVC = root
+            while let presented = topVC.presentedViewController {
+                topVC = presented
+            }
             let vc = UIActivityViewController(activityItems: [tempURL], applicationActivities: nil)
             if let pop = vc.popoverPresentationController {
-                pop.sourceView = root.view
-                pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 0, height: 0)
+                pop.sourceView = topVC.view
+                pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 0, height: 0)
                 pop.permittedArrowDirections = []
             }
-            root.present(vc, animated: true)
+            topVC.present(vc, animated: true)
         } catch {
             alertMessage = "Export failed: \(error.localizedDescription)"
             showAlert = true

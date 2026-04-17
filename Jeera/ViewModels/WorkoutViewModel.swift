@@ -492,9 +492,11 @@ class WorkoutViewModel {
                 else { return priorRecords.bestE1RM }
                 return max(priorRecords.bestE1RM, e)
             }()
+            let newHeaviestEver = weight > 0 ? max(priorRecords.heaviestEver, weight) : priorRecords.heaviestEver
             recordsCache[exercise.id] = ExerciseRecords(
                 heaviestValidated: updatedHeaviest,
                 repsAtHeaviestValidated: updatedReps,
+                heaviestEver: newHeaviestEver,
                 bestRepsByWeight: newBestByWeight,
                 bestBodyweightReps: newBWReps,
                 bestE1RM: newE1RM,

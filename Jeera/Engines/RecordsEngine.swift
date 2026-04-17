@@ -16,6 +16,9 @@ struct ExerciseRecords {
     let heaviestValidated: Double
     /// Reps at that heaviest weight (used to display "85 kg x 6").
     let repsAtHeaviestValidated: Int
+    /// Absolute heaviest weight ever completed (any rep count). Used so a heavy
+    /// single/double still counts as a weight PR even below rep target.
+    let heaviestEver: Double
     /// For each weight value, the best reps achieved (validated sets only).
     let bestRepsByWeight: [Double: Int]
     /// Best reps achieved on a pure bodyweight set (weight == 0). Lets BW-only
@@ -30,6 +33,7 @@ struct ExerciseRecords {
     static let empty = ExerciseRecords(
         heaviestValidated: 0,
         repsAtHeaviestValidated: 0,
+        heaviestEver: 0,
         bestRepsByWeight: [:],
         bestBodyweightReps: 0,
         bestE1RM: 0,
@@ -70,7 +74,10 @@ struct RecordsEngine {
         // e1RM track: consider all validated weighted sets (reps <= 15 for Epley to be useful).
         let bestE1RM = ProgressionEngine.bestE1RM(from: weightedValidated)?.e1rm ?? 0
 
-        guard !weightedValidated.isEmpty || bestBWReps > 0 else { return .empty }
+        let allWeighted = completedWork.filter { $0.weight > 0 }
+        let heaviestEver = allWeighted.map(\.weight).max() ?? 0
+
+        guard !weightedValidated.isEmpty || bestBWReps > 0 || heaviestEver > 0 else { return .empty }
 
         var bestRepsByWeight: [Double: Int] = [:]
         for set in weightedValidated {
@@ -85,6 +92,7 @@ struct RecordsEngine {
         return ExerciseRecords(
             heaviestValidated: heaviest?.weight ?? 0,
             repsAtHeaviestValidated: heaviest?.reps ?? 0,
+            heaviestEver: heaviestEver,
             bestRepsByWeight: bestRepsByWeight,
             bestBodyweightReps: bestBWReps,
             bestE1RM: bestE1RM,
@@ -117,13 +125,14 @@ struct RecordsEngine {
             return nil
         }
 
-        // Weighted sets must pass validation (enough reps to count as a quality set).
-        guard set.reps >= exercise.repTargetMin else { return nil }
-
-        // New PR weight: strictly heavier than the previous best validated weight.
-        if set.weight > priorRecords.heaviestValidated {
+        // New PR weight: strictly heavier than anything ever completed.
+        // No rep-minimum gate — a new all-time heaviest IS a record.
+        if set.weight > priorRecords.heaviestEver {
             return .heaviestWeight
         }
+
+        // Remaining records require validated reps (enough reps to be a quality set).
+        guard set.reps >= exercise.repTargetMin else { return nil }
 
         // New e1RM PR with a meaningful margin.
         if let newE1RM = ProgressionEngine.estimated1RM(weight: set.weight, reps: set.reps),
@@ -148,7 +157,6 @@ struct RecordsEngine {
 
         let others = allSets.filter { $0.id != set.id }
 
-        // Bodyweight branch: star when strictly more reps than any prior BW set.
         if set.weight == 0 {
             let priorBWMax = others
                 .filter { $0.completed && $0.weight == 0 }
@@ -157,6 +165,16 @@ struct RecordsEngine {
             return set.reps > priorBWMax
         }
 
+        // Absolute heaviest weight ever — star regardless of rep count.
+        let heaviestElsewhere = others
+            .filter { $0.completed && $0.weight > 0 }
+            .map(\.weight)
+            .max() ?? 0
+        if set.weight > heaviestElsewhere {
+            return true
+        }
+
+        // Rep PR at a given weight (validated sets only).
         guard set.reps >= exercise.repTargetMin else { return false }
 
         let priorAtWeight = others
@@ -166,23 +184,6 @@ struct RecordsEngine {
 
         if set.reps > priorAtWeight {
             return true
-        }
-
-        // Also star the absolute heaviest validated weight — but ONLY if no
-        // other set at the same weight has more reps (otherwise the user sees
-        // a star on a mediocre set when a better one at the same weight exists).
-        let heaviestElsewhere = others
-            .filter { $0.completed && $0.weight > 0 && $0.reps >= exercise.repTargetMin }
-            .map(\.weight)
-            .max() ?? 0
-        if set.weight > heaviestElsewhere {
-            let bestRepsAtThisWeight = others
-                .filter { $0.completed && $0.weight == set.weight && $0.reps >= exercise.repTargetMin }
-                .map(\.reps)
-                .max() ?? 0
-            if set.reps >= bestRepsAtThisWeight {
-                return true
-            }
         }
 
         return false

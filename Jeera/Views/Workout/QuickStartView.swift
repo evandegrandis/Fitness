@@ -457,28 +457,37 @@ struct AchievementsSection: View {
     }
 
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 10) {
             if !achievements.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Records récents")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
+                Text("Records récents")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
 
-                    ForEach(achievements.prefix(10)) { achievement in
-                        AchievementRow(achievement: achievement)
-                            .padding(.horizontal)
-                    }
+                ForEach(achievements.prefix(10)) { achievement in
+                    AchievementRow(achievement: achievement)
+                        .padding(.horizontal)
                 }
             }
         }
         .task(id: taskKey) {
-            achievements = AchievementsEngine.recentAchievements(
-                sessions: sessions,
-                exercises: exercises,
-                maxSessions: 15
-            )
+            achievements = computeAchievements()
         }
+        .onChange(of: sessions.count) {
+            achievements = computeAchievements()
+        }
+        .onChange(of: exercises.count) {
+            achievements = computeAchievements()
+        }
+    }
+
+    private func computeAchievements() -> [Achievement] {
+        guard !sessions.isEmpty, !exercises.isEmpty else { return [] }
+        return AchievementsEngine.recentAchievements(
+            sessions: sessions,
+            exercises: exercises,
+            maxSessions: 15
+        )
     }
 }
 

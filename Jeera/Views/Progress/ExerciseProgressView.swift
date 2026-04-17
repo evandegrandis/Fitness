@@ -250,14 +250,23 @@ struct ExerciseProgressRow: View {
                 }
             }
 
-            // Benchmark band (shaded area between low and high reference values)
             if !isBodyweight, let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
                 RuleMark(y: .value("Bench Low", low))
                     .foregroundStyle(.green.opacity(0.25))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                    .annotation(position: .trailing, alignment: .leading) {
+                        Text("1 an")
+                            .font(.system(size: 7).weight(.medium))
+                            .foregroundStyle(.green.opacity(0.6))
+                    }
                 RuleMark(y: .value("Bench High", high))
                     .foregroundStyle(.green.opacity(0.25))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                    .annotation(position: .trailing, alignment: .leading) {
+                        Text("5 ans")
+                            .font(.system(size: 7).weight(.medium))
+                            .foregroundStyle(.green.opacity(0.6))
+                    }
                 RectangleMark(
                     yStart: .value("Low", low),
                     yEnd: .value("High", high)
