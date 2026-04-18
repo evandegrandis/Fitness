@@ -28,6 +28,12 @@ struct ExerciseData: Codable {
     let lastUsed: Date?
     let machineSetting: String?
     let setupNotes: String?
+    /// Benchmark band (scientific JSON). Optional so old backups decode.
+    let benchmarkLow: Double?
+    let benchmarkHigh: Double?
+    /// Fatigue class driving the progression engine. Optional for pre-v2 backups;
+    /// defaults to .medium on import when absent.
+    let fatigueClass: String?
     let muscleMappings: [MuscleMappingData]
 }
 
@@ -139,6 +145,9 @@ struct DataExporter {
                     lastUsed: ex.lastUsed,
                     machineSetting: ex.machineSetting,
                     setupNotes: ex.setupNotes,
+                    benchmarkLow: ex.benchmarkLow,
+                    benchmarkHigh: ex.benchmarkHigh,
+                    fatigueClass: ex.fatigueClass.rawValue,
                     muscleMappings: ex.muscleMappings.map { m in
                         MuscleMappingData(muscleGroup: m.muscleGroup.rawValue, coefficient: m.coefficient)
                     }
@@ -245,7 +254,10 @@ struct DataExporter {
                 sortOrder: exData.sortOrder,
                 suggestedRestSeconds: exData.suggestedRestSeconds,
                 machineSetting: exData.machineSetting ?? "",
-                setupNotes: exData.setupNotes ?? ""
+                setupNotes: exData.setupNotes ?? "",
+                benchmarkLow: exData.benchmarkLow,
+                benchmarkHigh: exData.benchmarkHigh,
+                fatigueClass: exData.fatigueClass.flatMap(FatigueClass.init(rawValue:)) ?? .medium
             )
             ex.lastUsed = exData.lastUsed
             context.insert(ex)

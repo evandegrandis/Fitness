@@ -82,11 +82,12 @@ struct ExerciseProgressRow: View {
 
             let bestValidated = validatedSets.max(by: { $0.weight < $1.weight })
 
-            // Session effort metric that doesn't punish "heavier for fewer reps":
-            //   - weighted: best Epley e1RM across all work sets (weight × reps capped at 15)
-            //   - bodyweight: best reps across all BW sets
-            // This fixes the flat-curve bug when a session trades reps for load
-            // (e.g. 40x10 → 50x9 → 55x8 is progress, not regression).
+            // Chart metric = heaviest weight moved for >=7 reps that session.
+            // This plots the same unit (kg) as the benchmark band, so "am I inside
+            // the green zone?" is a direct visual read. e1RM stays as a text
+            // metric next to the exercise name — not the curve.
+            let benchmarkSets = workSets.filter { $0.reps >= 7 }
+            let bestWeightAt7Plus = benchmarkSets.map(\.weight).max() ?? 0
             let bestE1RM = ProgressionEngine.bestE1RM(from: workSets)?.e1rm ?? 0
             let bestBWReps = workSets.map(\.reps).max() ?? 0
 
@@ -95,6 +96,7 @@ struct ExerciseProgressRow: View {
                 validatedWeight: bestValidated?.weight ?? 0,
                 validatedReps: bestValidated?.reps ?? 0,
                 bestE1RM: bestE1RM,
+                bestWeightAt7Plus: bestWeightAt7Plus,
                 bestBWReps: bestBWReps,
                 topSetSummary: workSets.map { "\($0.weight.cleanWeight)x\($0.reps)" }.joined(separator: ", "),
                 isBodyweight: exercise.setPatternMode == .bodyweight
@@ -118,16 +120,15 @@ struct ExerciseProgressRow: View {
         return ProgressionEngine.bestE1RM(from: allSets)?.e1rm
     }
 
-    // Trend: compare last 2 sessions using the same effort metric as the chart
-    // (best e1RM for weighted, best reps for bodyweight). This avoids "flat/down"
-    // readings when a session swapped reps for load.
+    // Trend: compare last 2 sessions using the same metric as the chart
+    // (heaviest weight at ≥7 reps for weighted, best reps for bodyweight).
     private var trend: Trend {
         guard history.count >= 2 else { return .neutral }
         let last = history[history.count - 1]
         let prev = history[history.count - 2]
         let isBW = exercise.setPatternMode == .bodyweight
-        let lastValue = isBW ? Double(last.bestBWReps) : last.bestE1RM
-        let prevValue = isBW ? Double(prev.bestBWReps) : prev.bestE1RM
+        let lastValue = isBW ? Double(last.bestBWReps) : last.bestWeightAt7Plus
+        let prevValue = isBW ? Double(prev.bestBWReps) : prev.bestWeightAt7Plus
         if lastValue > prevValue + 0.01 { return .up }
         if lastValue < prevValue - 0.01 { return .down }
         return .neutral
@@ -208,13 +209,13 @@ struct ExerciseProgressRow: View {
     private var exerciseChart: some View {
         let isBodyweight = exercise.setPatternMode == .bodyweight
 
-        // Use the session's best effort metric (e1RM for weighted, best reps for BW).
-        // This gives a fair curve even when a session trades reps for load.
+        // Chart = heaviest weight moved for ≥7 reps (or best BW reps). Same unit
+        // as the benchmark band, so "am I in the green zone?" is a direct read.
         let chartData: [(Date, Double, Bool)] = history.map { dp in
             if isBodyweight {
                 return (dp.date, Double(dp.bestBWReps), dp.bestBWReps > 0)
             } else {
-                return (dp.date, dp.bestE1RM, dp.bestE1RM > 0)
+                return (dp.date, dp.bestWeightAt7Plus, dp.bestWeightAt7Plus > 0)
             }
         }
 
@@ -350,8 +351,12 @@ struct ExerciseDataPoint {
     let date: Date
     let validatedWeight: Double
     let validatedReps: Int
-    /// Best Epley e1RM across all completed work sets — the primary chart metric.
+    /// Best Epley e1RM across all completed work sets — shown as text only,
+    /// never as the chart curve (would mix units vs benchmark kg).
     let bestE1RM: Double
+    /// Heaviest weight moved for >=7 reps in this session — the primary chart
+    /// metric for weighted exercises, directly comparable to the benchmark band.
+    let bestWeightAt7Plus: Double
     /// Best reps across all completed work sets — used for bodyweight exercises.
     let bestBWReps: Int
     let topSetSummary: String

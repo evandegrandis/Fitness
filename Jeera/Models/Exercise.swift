@@ -24,6 +24,13 @@ final class Exercise {
     /// Reference upper bound — "what is naturally achievable on this exercise".
     var benchmarkHigh: Double?
 
+    /// Systemic fatigue class. Governs how aggressively the engine predicts
+    /// rep drop across successive working sets at the same load.
+    ///   H = heavy compound / weighted bodyweight (~2 rep drop)
+    ///   M = stable machine compound (~1.5 rep drop)
+    ///   L = isolation / forearms / abs (~1 rep drop)
+    var fatigueClass: FatigueClass = FatigueClass.medium
+
     @Relationship(deleteRule: .cascade) var muscleMappings: [MuscleMapping]
 
     var lastUsed: Date?
@@ -44,6 +51,7 @@ final class Exercise {
         setupNotes: String = "",
         benchmarkLow: Double? = nil,
         benchmarkHigh: Double? = nil,
+        fatigueClass: FatigueClass = .medium,
         muscleMappings: [MuscleMapping] = []
     ) {
         self.id = id
@@ -61,6 +69,7 @@ final class Exercise {
         self.setupNotes = setupNotes
         self.benchmarkLow = benchmarkLow
         self.benchmarkHigh = benchmarkHigh
+        self.fatigueClass = fatigueClass
         self.muscleMappings = muscleMappings
     }
 

@@ -11,216 +11,191 @@ struct ProgressionEngineTests {
         mode: SetPatternMode = .straight,
         repMin: Int = 8,
         repMax: Int = 12,
-        increment: Double = 2.5
+        increment: Double = 2.5,
+        fatigue: FatigueClass = .medium
     ) -> Exercise {
         Exercise(
             name: "Test Exercise",
             setPatternMode: mode,
             repTargetMin: repMin,
             repTargetMax: repMax,
-            smallestIncrement: increment
+            smallestIncrement: increment,
+            fatigueClass: fatigue
         )
     }
 
-    private func makeSet(weight: Double, reps: Int, type: SetType = .work, slot: Int = 0) -> LoggedSet {
-        LoggedSet(weight: weight, reps: reps, setType: type, setSlotIndex: slot)
+    private func makeSet(weight: Double, reps: Int, type: SetType = .work, slot: Int = 0, completed: Bool = true) -> LoggedSet {
+        let s = LoggedSet(weight: weight, reps: reps, setType: type, setSlotIndex: slot)
+        s.completed = completed
+        return s
     }
 
-    // MARK: - Straight Sets
+    // MARK: - First working set: anchor + promotion
 
-    @Test("Straight: progress when all sets hit target max")
-    func straightProgressAll() {
-        let ex = makeExercise(repMin: 8, repMax: 10, increment: 2.5)
-        let prev = [
+    @Test("First set: promotion granted when anchor validated (normal rule)")
+    func firstSetPromotesOnNormalRule() {
+        // M fatigue → 1 of last 2 sessions needs first_set >= rep_max AND avg reps at anchor >= rep_min+1.
+        let ex = makeExercise(repMin: 8, repMax: 10, increment: 2.5, fatigue: .medium)
+        let lastSession = [
             makeSet(weight: 80, reps: 10, slot: 0),
-            makeSet(weight: 80, reps: 10, slot: 1),
-            makeSet(weight: 80, reps: 10, slot: 2),
-        ]
-        let suggestion = ProgressionEngine.suggestStraight(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 2.5)
-
-        #expect(suggestion.weight == 82.5)
-        #expect(suggestion.reps == 8)
-    }
-
-    @Test("Straight: keep weight when some sets below minimum")
-    func straightKeepWeight() {
-        let ex = makeExercise(repMin: 8, repMax: 10)
-        let prev = [
-            makeSet(weight: 80, reps: 10, slot: 0),
-            makeSet(weight: 80, reps: 8, slot: 1),
-            makeSet(weight: 80, reps: 6, slot: 2),
-        ]
-        let suggestion = ProgressionEngine.suggestStraight(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 2.5)
-
-        #expect(suggestion.weight == 80)
-    }
-
-    @Test("Straight: push for more reps when in range but not at max")
-    func straightPushReps() {
-        let ex = makeExercise(repMin: 8, repMax: 10)
-        let prev = [
-            makeSet(weight: 80, reps: 9, slot: 0),
             makeSet(weight: 80, reps: 9, slot: 1),
-            makeSet(weight: 80, reps: 8, slot: 2),
+            makeSet(weight: 80, reps: 9, slot: 2),
         ]
-        let suggestion = ProgressionEngine.suggestStraight(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 2.5)
-
-        #expect(suggestion.weight == 80)
-        #expect(suggestion.reps == 10)
+        let s = ProgressionEngine.suggest(for: ex, previousSets: lastSession, currentSetIndex: 0, recentHistory: [])
+        #expect(s.weight == 82.5)
+        #expect(s.reps == 10) // rep_min + buffer=2 clamped by rep_max
     }
 
-    @Test("Straight: no previous data")
-    func straightNoPrevious() {
-        let ex = makeExercise()
-        let suggestion = ProgressionEngine.suggestStraight(exercise: ex, previousSets: [], currentSetIndex: 0, increment: 2.5)
-
-        #expect(suggestion.weight == 20)
-    }
-
-    // MARK: - Slot-Based (Ramping)
-
-    @Test("Slot-based: progress each set independently")
-    func slotBasedIndependent() {
-        let ex = makeExercise(mode: .ramping, repMin: 6, repMax: 10, increment: 5)
-        let prev = [
-            makeSet(weight: 60, reps: 10, slot: 0),
+    @Test("First set: no promotion → keep anchor, +1 rep target")
+    func firstSetKeepsAnchorWhenNoPromotion() {
+        let ex = makeExercise(repMin: 8, repMax: 10, increment: 2.5, fatigue: .medium)
+        let lastSession = [
+            makeSet(weight: 80, reps: 9, slot: 0),   // first set < rep_max → no promo
             makeSet(weight: 80, reps: 8, slot: 1),
-            makeSet(weight: 100, reps: 6, slot: 2),
         ]
-
-        let s0 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 5)
-        #expect(s0.weight == 65) // hit max → progress
-
-        let s1 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 1, increment: 5)
-        #expect(s1.weight == 80) // in range → same weight, push reps
-
-        let s2 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 2, increment: 5)
-        #expect(s2.weight == 100) // at minimum → same weight
+        let s = ProgressionEngine.suggest(for: ex, previousSets: lastSession, currentSetIndex: 0, recentHistory: [])
+        #expect(s.weight == 80)
+        #expect(s.reps == 10) // median_first_set_reps (9) + 1 capped at rep_max
     }
 
-    @Test("Slot-based: mixed weights like real pull-up data")
-    func slotBasedMixedWeights() {
-        let ex = makeExercise(mode: .ramping, repMin: 5, repMax: 12, increment: 2.5)
-        // Simulating: 15kgx7, 0kgx10, 0kgx10
-        let prev = [
-            makeSet(weight: 15, reps: 7, slot: 0),
-            makeSet(weight: 0, reps: 10, slot: 1),
-            makeSet(weight: 0, reps: 10, slot: 2),
+    @Test("First set: heavy-class needs 2 of last 3 validations to promote")
+    func firstSetHeavyStrictPromotion() {
+        let ex = makeExercise(repMin: 6, repMax: 10, increment: 2.5, fatigue: .heavy)
+        let sessionGood = [
+            makeSet(weight: 100, reps: 10, slot: 0),
+            makeSet(weight: 100, reps: 7, slot: 1),
         ]
+        let sessionBad = [
+            makeSet(weight: 100, reps: 8, slot: 0), // first < rep_max
+            makeSet(weight: 100, reps: 6, slot: 1),
+        ]
+        let noPromo = ProgressionEngine.suggest(
+            for: ex,
+            previousSets: sessionGood,
+            currentSetIndex: 0,
+            recentHistory: [sessionBad, sessionBad]
+        )
+        #expect(noPromo.weight == 100) // only 1 of 3 qualifies → no promo
 
-        let s0 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 2.5)
-        #expect(s0.weight == 15) // 7 reps in 5-12 range → same weight, push reps
-        #expect(s0.reps == 8)
-
-        let s1 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 1, increment: 2.5)
-        #expect(s1.weight == 0) // 10 reps in range → same weight, push reps
-
-        let s2 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 2, increment: 2.5)
-        #expect(s2.weight == 0) // same as slot 1
+        let promo = ProgressionEngine.suggest(
+            for: ex,
+            previousSets: sessionGood,
+            currentSetIndex: 0,
+            recentHistory: [sessionGood, sessionBad]
+        )
+        #expect(promo.weight == 102.5) // 2 of 3 qualify → promote
     }
 
-    @Test("Slot-based: extra set beyond previous count")
-    func slotBasedExtraSet() {
-        let ex = makeExercise(mode: .ramping, repMin: 8, repMax: 12, increment: 5)
-        let prev = [
-            makeSet(weight: 80, reps: 10, slot: 0),
+    @Test("First time ever: fallback suggestion")
+    func firstTimeFallback() {
+        let ex = makeExercise()
+        let s = ProgressionEngine.suggest(for: ex, previousSets: [], currentSetIndex: 0)
+        #expect(s.weight == 20)
+    }
+
+    // MARK: - Subsequent sets: predicted rep drop (the core bug-fix)
+
+    @Test("Subsequent set: heavy-class drops 2 reps at same load")
+    func subsequentHeavyClassDrops2Reps() {
+        let ex = makeExercise(repMin: 6, repMax: 10, increment: 2.5, fatigue: .heavy)
+        let doneToday = [makeSet(weight: 15, reps: 8, slot: 0)]
+        let s = ProgressionEngine.suggest(
+            for: ex,
+            previousSets: [],
+            currentSetIndex: 1,
+            currentSessionSets: doneToday
+        )
+        #expect(s.weight == 15)
+        #expect(s.reps == 6) // 8 - 2 = 6 ≥ rep_min → keep load
+    }
+
+    @Test("Subsequent set: back off when predicted falls below rep_min")
+    func subsequentBacksOffBelowFloor() {
+        let ex = makeExercise(repMin: 8, repMax: 12, increment: 2.5, fatigue: .heavy)
+        // Two sets done today: 100x8, 100x8. Next predicted = 8 - 2 - 0.5(set3) = 5.5 < 8.
+        let doneToday = [
+            makeSet(weight: 100, reps: 8, slot: 0),
             makeSet(weight: 100, reps: 8, slot: 1),
         ]
-
-        let s2 = ProgressionEngine.suggestSlotBased(exercise: ex, previousSets: prev, currentSetIndex: 2, increment: 5)
-        #expect(s2.weight == 100) // matches last previous set
-        #expect(s2.reps == 8)
+        let s = ProgressionEngine.suggest(
+            for: ex,
+            previousSets: [],
+            currentSetIndex: 2,
+            currentSessionSets: doneToday
+        )
+        #expect(s.weight == 97.5) // -1 increment
+        #expect(s.reps == 10)     // ceil((8+12)/2)
     }
 
-    // MARK: - Top Set + Backoffs
+    @Test("Subsequent set: light-class keeps load longer")
+    func subsequentLightClassKeepsLoad() {
+        let ex = makeExercise(repMin: 10, repMax: 15, increment: 2.5, fatigue: .light)
+        let doneToday = [makeSet(weight: 40, reps: 14, slot: 0)]
+        let s = ProgressionEngine.suggest(
+            for: ex,
+            previousSets: [],
+            currentSetIndex: 1,
+            currentSessionSets: doneToday
+        )
+        #expect(s.weight == 40)
+        #expect(s.reps == 13) // 14 - 1 = 13
+    }
 
-    @Test("Top Set + Backoff: progress top set when at target")
-    func topSetProgress() {
-        let ex = makeExercise(mode: .topSetBackoff, repMin: 6, repMax: 8, increment: 2.5)
-        let prev = [
-            makeSet(weight: 100, reps: 8, type: .topSet, slot: 0),
-            makeSet(weight: 80, reps: 8, type: .backoff, slot: 1),
-            makeSet(weight: 80, reps: 7, type: .backoff, slot: 2),
+    @Test("Ignores last session when current session has sets (user bug-fix)")
+    func currentSessionBeatsPreviousSession() {
+        // Last session was a brand new +15x8. Today set1 repeated +15x8.
+        // The old engine would still suggest +15x8 for set 2 because it replayed
+        // last session's slot. The new engine must predict a drop instead.
+        let ex = makeExercise(mode: .weightedBodyweight, repMin: 5, repMax: 12, increment: 2.5, fatigue: .heavy)
+        let lastSession = [
+            makeSet(weight: 0, reps: 10, slot: 0),
+            makeSet(weight: 15, reps: 8, slot: 1),
         ]
-
-        let topSuggestion = ProgressionEngine.suggestTopSetBackoff(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 2.5)
-        #expect(topSuggestion.weight == 102.5)
-        #expect(topSuggestion.setType == .topSet)
+        let doneToday = [makeSet(weight: 15, reps: 8, slot: 0)]
+        let s = ProgressionEngine.suggest(
+            for: ex,
+            previousSets: lastSession,
+            currentSetIndex: 1,
+            currentSessionSets: doneToday
+        )
+        #expect(s.weight == 15) // same load (predicted 6 ≥ rep_min 5)
+        #expect(s.reps == 6)    // 8 - 2 = 6 — NOT 8 again
     }
 
-    @Test("Top Set + Backoff: independent progression")
-    func topSetIndependentProgress() {
-        let ex = makeExercise(mode: .topSetBackoff, repMin: 6, repMax: 8, increment: 2.5)
-        let prev = [
-            makeSet(weight: 100, reps: 8, type: .topSet, slot: 0),
-            makeSet(weight: 80, reps: 8, type: .backoff, slot: 1),
-            makeSet(weight: 80, reps: 6, type: .backoff, slot: 2),
-        ]
+    // MARK: - Bodyweight mode
 
-        let top = ProgressionEngine.suggestTopSetBackoff(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 2.5)
-        #expect(top.weight == 102.5)
-
-        let back1 = ProgressionEngine.suggestTopSetBackoff(exercise: ex, previousSets: prev, currentSetIndex: 1, increment: 2.5)
-        #expect(back1.weight == 82.5)
-
-        let back2 = ProgressionEngine.suggestTopSetBackoff(exercise: ex, previousSets: prev, currentSetIndex: 2, increment: 2.5)
-        #expect(back2.weight == 80)
-    }
-
-    // MARK: - Bodyweight
-
-    @Test("Bodyweight: progress reps")
-    func bodyweightProgressReps() {
+    @Test("Bodyweight: first set = best recent reps + 1")
+    func bodyweightFirstSet() {
         let ex = makeExercise(mode: .bodyweight, repMin: 6, repMax: 12)
-        let prev = [
-            makeSet(weight: 0, reps: 8, slot: 0),
-            makeSet(weight: 0, reps: 7, slot: 1),
-        ]
-
-        let suggestion = ProgressionEngine.suggestBodyweight(exercise: ex, previousSets: prev, currentSetIndex: 0)
-        #expect(suggestion.weight == 0)
-        #expect(suggestion.reps == 9)
+        let last = [makeSet(weight: 0, reps: 8, slot: 0)]
+        let s = ProgressionEngine.suggest(for: ex, previousSets: last, currentSetIndex: 0)
+        #expect(s.weight == 0)
+        #expect(s.reps == 9)
     }
 
-    @Test("Bodyweight: at max reps suggests adding weight")
+    @Test("Bodyweight: at rep_max suggests adding weight")
     func bodyweightAtMax() {
         let ex = makeExercise(mode: .bodyweight, repMin: 6, repMax: 12)
-        let prev = [
-            makeSet(weight: 0, reps: 12, slot: 0),
-        ]
-
-        let suggestion = ProgressionEngine.suggestBodyweight(exercise: ex, previousSets: prev, currentSetIndex: 0)
-        #expect(suggestion.reps == 12)
-        #expect(suggestion.explanation.contains("adding weight"))
+        let last = [makeSet(weight: 0, reps: 12, slot: 0)]
+        let s = ProgressionEngine.suggest(for: ex, previousSets: last, currentSetIndex: 0)
+        #expect(s.reps == 12)
+        #expect(s.explanation.contains("lester"))
     }
 
-    // MARK: - Assisted Bodyweight
+    // MARK: - Assisted bodyweight
 
-    @Test("Assisted: reduce assistance when all sets at target")
-    func assistedReduce() {
+    @Test("Assisted: reduce assistance when validation hits rep_max")
+    func assistedReducesAssistance() {
         let ex = makeExercise(mode: .assistedBodyweight, repMin: 8, repMax: 10, increment: 5)
-        let prev = [
+        let last = [
             makeSet(weight: 20, reps: 10, slot: 0),
             makeSet(weight: 20, reps: 10, slot: 1),
         ]
-
-        let suggestion = ProgressionEngine.suggestAssistedBodyweight(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 5)
-        #expect(suggestion.weight == 15)
+        let s = ProgressionEngine.suggest(for: ex, previousSets: last, currentSetIndex: 0)
+        #expect(s.weight == 15)
     }
 
-    @Test("Assisted: keep assistance when not at target")
-    func assistedKeep() {
-        let ex = makeExercise(mode: .assistedBodyweight, repMin: 8, repMax: 10)
-        let prev = [
-            makeSet(weight: 20, reps: 9, slot: 0),
-            makeSet(weight: 20, reps: 8, slot: 1),
-        ]
-
-        let suggestion = ProgressionEngine.suggestAssistedBodyweight(exercise: ex, previousSets: prev, currentSetIndex: 0, increment: 5)
-        #expect(suggestion.weight == 20)
-    }
-
-    // MARK: - Repeat Last Set
+    // MARK: - Repeat last set helper
 
     @Test("Repeat last set returns correct values")
     func repeatLast() {
@@ -228,10 +203,19 @@ struct ProgressionEngineTests {
             makeSet(weight: 80, reps: 10, slot: 0),
             makeSet(weight: 80, reps: 8, slot: 1),
         ]
-
         let suggestion = ProgressionEngine.repeatLastSet(from: sets)
         #expect(suggestion != nil)
         #expect(suggestion?.weight == 80)
         #expect(suggestion?.reps == 8)
+    }
+
+    // MARK: - e1RM
+
+    @Test("Epley e1RM rounds correctly")
+    func e1RMEpley() {
+        #expect(ProgressionEngine.estimated1RM(weight: 100, reps: 5) == 100 * (1 + 5.0 / 30.0))
+        #expect(ProgressionEngine.estimated1RM(weight: 80, reps: 1) == 80)
+        #expect(ProgressionEngine.estimated1RM(weight: 80, reps: 0) == nil)
+        #expect(ProgressionEngine.estimated1RM(weight: 80, reps: 16) == nil)
     }
 }

@@ -32,6 +32,7 @@ struct SeedData {
             notes: String = "",
             benchmarkLow: Double? = nil,
             benchmarkHigh: Double? = nil,
+            fatigueClass: FatigueClass = .medium,
             muscles: [(MuscleGroup, Double)]
         ) {
             let ex = Exercise(
@@ -46,7 +47,8 @@ struct SeedData {
                 machineSetting: machine,
                 setupNotes: notes,
                 benchmarkLow: benchmarkLow,
-                benchmarkHigh: benchmarkHigh
+                benchmarkHigh: benchmarkHigh,
+                fatigueClass: fatigueClass
             )
             context.insert(ex)
             for (muscle, coeff) in muscles {
@@ -61,114 +63,123 @@ struct SeedData {
         // Canonical coefficients: primary = 1.0, secondary = 0.3, tertiary = 0.1.
 
         // ========== PULL / BACK ==========
-        make("Tractions SN", category: "Pull", mode: .ramping, repMin: 5, repMax: 12, increment: 2.5, rest: 180, favorite: true,
-             benchmarkLow: 0, benchmarkHigh: 40,
-             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.trapInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.brachioradial, 0.3), (.flechisseurs, 0.3), (.absBas, 0.1), (.transverse, 0.1), (.pectClav, 0.1)])
+        // Benchmarks, rep ranges, rest, increments + fatigue class sourced from the
+        // scientific cartography. Rest uses the mid-point of the prescribed range.
+        make("Tractions SN", category: "Pull", mode: .weightedBodyweight, repMin: 6, repMax: 10, increment: 1.25, rest: 150, favorite: true,
+             benchmarkLow: 0, benchmarkHigh: 45, fatigueClass: .heavy,
+             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.bicepsLong, 1.0), (.bicepsCourt, 1.0), (.trapInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.brachioradial, 0.3), (.flechisseurs, 0.3), (.absBas, 0.1), (.transverse, 0.1), (.pectClav, 0.1)])
 
-        make("Traction pronation large", category: "Pull", mode: .bodyweight, repMin: 5, repMax: 12, rest: 180,
-             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.trapMid, 0.3), (.trapInf, 0.3), (.rhomboides, 0.3), (.deltPost, 0.3), (.brachioradial, 0.3), (.bicepsLong, 0.1), (.bicepsCourt, 0.1), (.absBas, 0.1), (.transverse, 0.1)])
+        make("Traction pronation large", category: "Pull", mode: .weightedBodyweight, repMin: 6, repMax: 10, increment: 1.25, rest: 150,
+             benchmarkLow: 0, benchmarkHigh: 35, fatigueClass: .heavy,
+             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.trapMid, 0.3), (.trapInf, 0.3), (.rhomboides, 0.3), (.deltPost, 0.3), (.brachioradial, 0.3), (.bicepsLong, 0.1), (.bicepsCourt, 0.1), (.flechisseurs, 0.1), (.absBas, 0.1), (.transverse, 0.1)])
 
-        make("Pulley serré", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
-             benchmarkLow: 40, benchmarkHigh: 80,
+        make("Pulley serré", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 120,
+             benchmarkLow: 50, benchmarkHigh: 100, fatigueClass: .medium,
              muscles: [(.latInf, 1.0), (.latSup, 1.0), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.trapInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.brachioradial, 0.3), (.deltPost, 0.1), (.flechisseurs, 0.1), (.transverse, 0.1)])
 
-        make("Tirage horizontal large", category: "Pull", mode: .straight, repMin: 6, repMax: 12, increment: 2.5, rest: 90,
+        make("Tirage horizontal large", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 120,
              machine: "r7-6",
-             benchmarkLow: 50, benchmarkHigh: 110,
-             muscles: [(.trapMid, 1.0), (.rhomboides, 1.0), (.deltPost, 1.0), (.trapSup, 0.3), (.trapInf, 0.3), (.latSup, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.brachioradial, 0.3), (.latInf, 0.1), (.transverse, 0.1)])
+             benchmarkLow: 45, benchmarkHigh: 100, fatigueClass: .medium,
+             muscles: [(.trapMid, 1.0), (.rhomboides, 1.0), (.deltPost, 1.0), (.trapSup, 0.3), (.trapInf, 0.3), (.latSup, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.brachioradial, 0.3), (.latInf, 0.1), (.transverse, 0.1), (.obliqueExt, 0.1), (.obliqueInt, 0.1)])
 
-        make("Isolateral row", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
+        make("Isolateral row", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 120,
              machine: "r5",
+             benchmarkLow: 35, benchmarkHigh: 70, fatigueClass: .medium,
              muscles: [(.latInf, 1.0), (.latSup, 1.0), (.trapMid, 1.0), (.rhomboides, 1.0), (.deltPost, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.trapInf, 0.3), (.brachioradial, 0.1), (.flechisseurs, 0.1)])
 
-        make("Row uni", category: "Pull", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 120,
+        make("Row uni", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 2, rest: 120,
+             benchmarkLow: 32, benchmarkHigh: 60, fatigueClass: .medium,
              muscles: [(.latInf, 1.0), (.latSup, 1.0), (.trapMid, 1.0), (.rhomboides, 1.0), (.deltPost, 0.3), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.trapInf, 0.3), (.brachioradial, 0.3), (.transverse, 0.1), (.obliqueExt, 0.1), (.obliqueInt, 0.1)])
 
-        make("Tirage vertical muscle up", category: "Pull", mode: .ramping, repMin: 6, repMax: 12, increment: 5, rest: 120,
-             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.trapInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.deltPost, 0.3), (.brachioradial, 0.3), (.bicepsLong, 0.1), (.flechisseurs, 0.1), (.transverse, 0.1)])
+        make("Tirage vertical muscle up", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 120,
+             benchmarkLow: 45, benchmarkHigh: 90, fatigueClass: .medium,
+             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.trapInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.deltPost, 0.3), (.brachioradial, 0.3), (.bicepsLong, 0.1), (.bicepsCourt, 0.1), (.flechisseurs, 0.1), (.transverse, 0.1)])
 
         // ========== CHEST ==========
-        make("Chest Press", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
+        make("Chest Press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 2.5, rest: 150, favorite: true,
              machine: "r5",
-             benchmarkLow: 70, benchmarkHigh: 140,
+             benchmarkLow: 60, benchmarkHigh: 130, fatigueClass: .heavy,
              muscles: [(.pectStern, 1.0), (.pectClav, 0.3), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3), (.tricepsLong, 0.3), (.deltLat, 0.1), (.transverse, 0.1)])
 
-        make("Développé incliné haltères", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 2, rest: 180,
-             benchmarkLow: 20, benchmarkHigh: 45,
+        make("Développé incliné haltères", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 2, rest: 150,
+             benchmarkLow: 36, benchmarkHigh: 90, fatigueClass: .heavy,
              muscles: [(.pectClav, 1.0), (.pectStern, 1.0), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3), (.tricepsLong, 0.3), (.deltLat, 0.1), (.transverse, 0.1)])
 
-        make("Pec deck", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
+        make("Pec deck", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75,
              machine: "r4",
-             benchmarkLow: 50, benchmarkHigh: 100,
+             benchmarkLow: 45, benchmarkHigh: 90, fatigueClass: .light,
              muscles: [(.pectStern, 1.0), (.pectClav, 1.0), (.deltAnt, 0.3), (.tricepsLat, 0.1), (.tricepsMed, 0.1)])
 
-        make("DC assisté", category: "Push", mode: .ramping, repMin: 6, repMax: 10, increment: 5, rest: 180,
-             benchmarkLow: 40, benchmarkHigh: 100,
+        make("DC assisté", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 2.5, rest: 150,
+             benchmarkLow: 60, benchmarkHigh: 150, fatigueClass: .heavy,
              muscles: [(.pectStern, 1.0), (.pectClav, 0.3), (.deltAnt, 0.3), (.tricepsLat, 0.3), (.tricepsMed, 0.3), (.tricepsLong, 0.3), (.deltLat, 0.1), (.transverse, 0.1)])
 
         // ========== SHOULDERS ==========
-        make("Shoulder press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 5, rest: 180, favorite: true,
-             benchmarkLow: 40, benchmarkHigh: 90,
+        make("Shoulder press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 2.5, rest: 150, favorite: true,
+             benchmarkLow: 35, benchmarkHigh: 90, fatigueClass: .heavy,
              muscles: [(.deltAnt, 1.0), (.deltLat, 1.0), (.tricepsLat, 0.3), (.tricepsMed, 0.3), (.tricepsLong, 0.3), (.trapSup, 0.3), (.pectClav, 0.1), (.trapInf, 0.1), (.transverse, 0.1)])
 
-        make("HSPU", category: "Push", mode: .bodyweight, repMin: 5, repMax: 12, rest: 120,
-             muscles: [(.deltAnt, 1.0), (.deltLat, 1.0), (.tricepsLat, 1.0), (.tricepsMed, 1.0), (.tricepsLong, 0.3), (.pectClav, 0.3), (.trapSup, 0.3), (.trapInf, 0.3), (.absHaut, 0.1), (.absBas, 0.1), (.transverse, 0.1)])
+        make("HSPU", category: "Push", mode: .weightedBodyweight, repMin: 5, repMax: 10, increment: 1.25, rest: 180,
+             benchmarkLow: 0, benchmarkHigh: 25, fatigueClass: .heavy,
+             muscles: [(.deltAnt, 1.0), (.deltLat, 1.0), (.tricepsLat, 1.0), (.tricepsMed, 1.0), (.tricepsLong, 0.3), (.pectClav, 0.3), (.trapSup, 0.3), (.trapInf, 0.3), (.absHaut, 0.1), (.absBas, 0.1), (.transverse, 0.1), (.obliqueExt, 0.1), (.obliqueInt, 0.1)])
 
-        make("Lateral raises", category: "Push", mode: .straight, repMin: 10, repMax: 15, increment: 1, rest: 75,
-             benchmarkLow: 8, benchmarkHigh: 20,
+        make("Lateral raises", category: "Push", mode: .straight, repMin: 10, repMax: 20, increment: 1, rest: 75,
+             benchmarkLow: 12, benchmarkHigh: 32, fatigueClass: .light,
              muscles: [(.deltLat, 1.0), (.trapSup, 0.3), (.trapInf, 0.3), (.deltAnt, 0.1), (.deltPost, 0.1), (.transverse, 0.1)])
 
-        make("Rear delt fly", category: "Pull", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75,
-             benchmarkLow: 10, benchmarkHigh: 25,
+        make("Rear delt fly", category: "Pull", mode: .straight, repMin: 10, repMax: 20, increment: 2.5, rest: 75,
+             benchmarkLow: 20, benchmarkHigh: 55, fatigueClass: .light,
              muscles: [(.deltPost, 1.0), (.rhomboides, 0.3), (.trapMid, 0.3), (.trapInf, 0.1), (.extenseurs, 0.1)])
 
         // ========== TRICEPS ==========
-        make("Dips machine", category: "Push", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 90,
-             benchmarkLow: 40, benchmarkHigh: 90,
+        make("Dips machine", category: "Push", mode: .assistedBodyweight, repMin: 6, repMax: 10, increment: 1.25, rest: 150,
+             benchmarkLow: 0, benchmarkHigh: 60, fatigueClass: .heavy,
              muscles: [(.tricepsLat, 1.0), (.tricepsMed, 1.0), (.tricepsLong, 1.0), (.pectStern, 0.3), (.deltAnt, 0.3), (.pectClav, 0.1), (.transverse, 0.1)])
 
-        make("Extension triceps poulie", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75,
+        make("Extension triceps poulie", category: "Arms", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75,
              machine: "r16",
-             benchmarkLow: 20, benchmarkHigh: 45,
+             benchmarkLow: 32.5, benchmarkHigh: 70, fatigueClass: .light,
              muscles: [(.tricepsLat, 1.0), (.tricepsMed, 1.0), (.tricepsLong, 0.3), (.flechisseurs, 0.1), (.extenseurs, 0.1)])
 
-        make("Extension triceps haltère", category: "Arms", mode: .straight, repMin: 10, repMax: 15, increment: 2, rest: 75,
-             benchmarkLow: 10, benchmarkHigh: 25,
+        make("Extension triceps haltère", category: "Arms", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 90,
+             benchmarkLow: 25, benchmarkHigh: 50, fatigueClass: .light,
              muscles: [(.tricepsLong, 1.0), (.tricepsLat, 0.3), (.tricepsMed, 0.3), (.deltAnt, 0.1), (.transverse, 0.1)])
 
         // ========== BICEPS / FOREARMS ==========
-        make("Curl debout", category: "Arms", mode: .ramping, repMin: 6, repMax: 10, increment: 1, rest: 75, favorite: true,
-             benchmarkLow: 14, benchmarkHigh: 25,
+        make("Curl debout", category: "Arms", mode: .straight, repMin: 6, repMax: 10, increment: 2.5, rest: 90, favorite: true,
+             benchmarkLow: 30, benchmarkHigh: 60, fatigueClass: .medium,
              muscles: [(.bicepsLong, 1.0), (.bicepsCourt, 1.0), (.brachioradial, 0.3), (.flechisseurs, 0.3), (.deltAnt, 0.1), (.extenseurs, 0.1)])
 
-        make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 1, rest: 75,
-             benchmarkLow: 10, benchmarkHigh: 22,
+        make("Curl incliné", category: "Arms", mode: .straight, repMin: 8, repMax: 15, increment: 2, rest: 90,
+             benchmarkLow: 18, benchmarkHigh: 40, fatigueClass: .light,
              muscles: [(.bicepsLong, 1.0), (.bicepsCourt, 0.3), (.brachioradial, 0.3), (.flechisseurs, 0.3), (.deltAnt, 0.1), (.extenseurs, 0.1)])
 
-        make("Curl marteau poulie", category: "Arms", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 75,
-             benchmarkLow: 14, benchmarkHigh: 30,
+        make("Curl marteau poulie", category: "Arms", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75,
+             benchmarkLow: 25, benchmarkHigh: 55, fatigueClass: .light,
              muscles: [(.brachioradial, 1.0), (.bicepsLong, 0.3), (.bicepsCourt, 0.3), (.flechisseurs, 0.3), (.deltAnt, 0.1), (.extenseurs, 0.1)])
 
-        make("Wrist curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1, rest: 60,
+        make("Wrist curl", category: "Arms", mode: .straight, repMin: 12, repMax: 20, increment: 1.25, rest: 60,
+             benchmarkLow: 20, benchmarkHigh: 45, fatigueClass: .light,
              muscles: [(.flechisseurs, 1.0), (.extenseurs, 0.1), (.brachioradial, 0.1)])
 
         // ========== LEGS ==========
-        make("Leg extension", category: "Legs", mode: .ramping, repMin: 8, repMax: 12, increment: 5, rest: 120, favorite: true,
+        make("Leg extension", category: "Legs", mode: .straight, repMin: 10, repMax: 15, increment: 2.5, rest: 75, favorite: true,
              machine: "r3-5",
-             benchmarkLow: 60, benchmarkHigh: 120,
+             benchmarkLow: 40, benchmarkHigh: 90, fatigueClass: .light,
              muscles: [(.droitFemoral, 1.0), (.vasteLat, 1.0), (.vasteMed, 1.0), (.bicepsFemoral, 0.1), (.semiTendineux, 0.1), (.transverse, 0.1)])
 
-        make("Leg curl", category: "Legs", mode: .straight, repMin: 8, repMax: 12, increment: 5, rest: 120,
+        make("Leg curl", category: "Legs", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75,
              machine: "r4-5",
-             benchmarkLow: 45, benchmarkHigh: 90,
+             benchmarkLow: 35, benchmarkHigh: 80, fatigueClass: .light,
              muscles: [(.bicepsFemoral, 1.0), (.semiTendineux, 1.0), (.droitFemoral, 0.1), (.glutMax, 0.1), (.transverse, 0.1)])
 
         // ========== CORE ==========
-        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 8, repMax: 15, increment: 2.5, rest: 75, favorite: true,
-             benchmarkLow: 15, benchmarkHigh: 60,
+        make("Crunch déclinés", category: "Core", mode: .straight, repMin: 10, repMax: 20, increment: 2.5, rest: 60, favorite: true,
+             benchmarkLow: 10, benchmarkHigh: 35, fatigueClass: .light,
              muscles: [(.absHaut, 1.0), (.absBas, 1.0), (.obliqueExt, 0.3), (.obliqueInt, 0.3), (.transverse, 0.1), (.droitFemoral, 0.1)])
 
-        make("Relevé de jambes chaise romaine", category: "Core", mode: .bodyweight, repMin: 8, repMax: 15, rest: 75,
+        make("Relevé de jambes chaise romaine", category: "Core", mode: .weightedBodyweight, repMin: 10, repMax: 20, increment: 1.25, rest: 60,
+             benchmarkLow: 0, benchmarkHigh: 20, fatigueClass: .light,
              muscles: [(.absBas, 1.0), (.absHaut, 0.3), (.transverse, 0.3), (.obliqueExt, 0.3), (.obliqueInt, 0.3), (.droitFemoral, 0.3)])
 
         return map

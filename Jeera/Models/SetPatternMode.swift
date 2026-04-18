@@ -40,6 +40,34 @@ enum SetPatternMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Per-exercise systemic fatigue class used by the progression engine.
+/// Governs the expected rep drop across successive working sets at the
+/// same load, plus the strictness of load-promotion rules.
+enum FatigueClass: String, Codable, CaseIterable, Identifiable {
+    /// Heavy compound / weighted BW — ~2 rep drop, strict promotion.
+    case heavy = "H"
+    /// Stable machine compound — ~1.5 rep drop, normal promotion.
+    case medium = "M"
+    /// Isolation / forearms / abs — ~1 rep drop, normal promotion.
+    case light = "L"
+
+    var id: String { rawValue }
+
+    /// Expected rep drop on the next set at the same load, with no other
+    /// modifiers. Matches algo §3.2.
+    var baseRepDrop: Double {
+        switch self {
+        case .heavy: return 2.0
+        case .medium: return 1.5
+        case .light: return 1.0
+        }
+    }
+
+    /// Promotion rule: H uses strict (2 of last 3 exposures), M/L use normal
+    /// (1 of last 2). Matches algo §6.3.
+    var usesStrictPromotion: Bool { self == .heavy }
+}
+
 enum SetType: String, Codable, CaseIterable, Identifiable {
     case warmup
     case work

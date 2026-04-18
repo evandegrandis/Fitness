@@ -7,6 +7,15 @@ struct SetSuggestion {
     let explanation: String
 }
 
+/// Progression engine implementing the double-progression algorithm spec:
+///   - First working set: anchor load + promotion gate (strict for H, normal for M/L).
+///   - Subsequent sets: predicted from the set JUST DONE today, not replayed
+///     verbatim from last session. predicted = prev.reps − base_drop − set_penalty.
+///     If predicted >= rep_min we keep the load; otherwise we back off one increment
+///     and aim for the upper-mid band. This is the core fix for the "BW→+15x8 last
+///     time, today set1 is +15x8, app still says +15x8 for set 2" bug.
+///   - Load modes (external / bodyweight+external / assistance) are inferred from
+///     SetPatternMode so the display direction and promotion direction are right.
 struct ProgressionEngine {
 
     // MARK: - Main Entry Point
@@ -16,383 +25,301 @@ struct ProgressionEngine {
         previousSets: [LoggedSet],
         currentSetIndex: Int,
         recentHistory: [[LoggedSet]] = [],
+        currentSessionSets: [LoggedSet] = [],
         smallestIncrement: Double? = nil
     ) -> SetSuggestion {
         let increment = smallestIncrement ?? exercise.smallestIncrement
 
-        // Use best of recent sessions if available (guards against one bad session)
-        let bestSets = bestRecentSets(primary: previousSets, history: recentHistory, exercise: exercise)
+        // If any working set has been completed in the current session, the next
+        // suggestion must flow from what was *just done*, never from last session.
+        let doneToday = currentSessionSets.filter { $0.completed }
+        if !doneToday.isEmpty, let lastToday = doneToday.last {
+            return suggestSubsequent(
+                exercise: exercise,
+                lastSet: lastToday,
+                completedCount: doneToday.count,
+                increment: increment
+            )
+        }
+
+        // First working set of the session: use the anchor-load / promotion logic
+        // against comparable recent history.
+        return suggestFirstSet(
+            exercise: exercise,
+            previousSets: previousSets,
+            recentHistory: recentHistory,
+            increment: increment
+        )
+    }
+
+    // MARK: - First Working Set (anchor + promotion)
+
+    /// Anchor load = heaviest load across recent history that hit at least rep_min
+    /// on the first working set. We look up to maxSessionsConsidered sessions back
+    /// (primary + recentHistory).
+    private static func suggestFirstSet(
+        exercise: Exercise,
+        previousSets: [LoggedSet],
+        recentHistory: [[LoggedSet]],
+        increment: Double
+    ) -> SetSuggestion {
+        // Assemble comparable sessions, most recent first.
+        var sessions: [[LoggedSet]] = []
+        if !previousSets.isEmpty { sessions.append(previousSets) }
+        sessions.append(contentsOf: recentHistory)
+
+        // Extract the first completed working set of each comparable session.
+        let firstSets = sessions.compactMap { sess in
+            sess.first(where: { $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff) })
+        }
+
+        // Handle pure bodyweight & no history separately.
+        if firstSets.isEmpty {
+            return firstTimeFallback(exercise: exercise)
+        }
 
         switch exercise.setPatternMode {
-        case .straight:
-            return suggestStraight(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
-        case .topSetBackoff:
-            return suggestTopSetBackoff(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
-        case .ramping:
-            return suggestSlotBased(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
         case .bodyweight:
-            return suggestBodyweight(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex)
-        case .weightedBodyweight:
-            return suggestSlotBased(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
+            return firstSetBodyweight(exercise: exercise, firstSets: firstSets)
         case .assistedBodyweight:
-            return suggestAssistedBodyweight(exercise: exercise, previousSets: bestSets, currentSetIndex: currentSetIndex, increment: increment)
+            return firstSetAssisted(exercise: exercise, firstSets: firstSets, increment: increment)
+        default:
+            return firstSetWeighted(exercise: exercise, firstSets: firstSets, sessions: sessions, increment: increment)
         }
     }
 
-    // MARK: - Best Recent Sets
-
-    /// Compare primary (last session) with recent history. If the last session was significantly
-    /// worse than a recent session, use the better one to avoid regressing from a bad day.
-    static func bestRecentSets(primary: [LoggedSet], history: [[LoggedSet]], exercise: Exercise) -> [LoggedSet] {
-        guard !history.isEmpty else { return primary }
-
-        let primaryScore = sessionScore(primary, exercise: exercise)
-
-        for past in history {
-            let pastScore = sessionScore(past, exercise: exercise)
-            if pastScore > primaryScore * 1.15 {
-                // Past session was significantly better — use it instead
-                return past
-            }
+    private static func firstTimeFallback(exercise: Exercise) -> SetSuggestion {
+        switch exercise.setPatternMode {
+        case .bodyweight:
+            return SetSuggestion(weight: 0, reps: exercise.repTargetMin, setType: .work,
+                                 explanation: "Première fois. Cible : \(exercise.repTargetMin) reps BW.")
+        case .assistedBodyweight:
+            return SetSuggestion(weight: 20, reps: exercise.repTargetMin, setType: .work,
+                                 explanation: "Première fois. Assistance modérée pour atteindre \(exercise.repTargetMin) reps.")
+        default:
+            return SetSuggestion(weight: 20, reps: exercise.repTargetMax, setType: .work,
+                                 explanation: "Première fois. Commence avec un poids confortable.")
         }
-
-        return primary
     }
 
-    /// Score a session's sets for comparison (higher = better).
-    /// Falls back to rep-count scoring when every set was bodyweight (weight == 0),
-    /// otherwise a BW-only session always scores 0 and loses to any weighted past
-    /// session — which bleeds a single experimental weighted attempt into future
-    /// suggestions forever.
-    private static func sessionScore(_ sets: [LoggedSet], exercise: Exercise) -> Double {
-        let workSets = sets.filter { $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff) }
-        let tonnage = workSets.reduce(0.0) { $0 + $1.weight * Double($1.reps) }
-        if tonnage > 0 { return tonnage }
-        // Pure bodyweight session: score by total validated reps so we can still compare.
-        return workSets.reduce(0.0) { $0 + Double($1.reps) }
-    }
-
-    // MARK: - Slot-Based (ramping, weightedBodyweight)
-
-    static func suggestSlotBased(
+    /// External-load / weighted-BW path. Uses anchor_load + promotion rule.
+    private static func firstSetWeighted(
         exercise: Exercise,
-        previousSets: [LoggedSet],
-        currentSetIndex: Int,
+        firstSets: [LoggedSet],
+        sessions: [[LoggedSet]],
         increment: Double
     ) -> SetSuggestion {
-        let workSets = previousSets.filter { $0.setType == .work && $0.completed }
-            .sorted { $0.setSlotIndex < $1.setSlotIndex }
+        // anchor_load = heaviest first-set weight that hit >= rep_min.
+        let validated = firstSets.filter { $0.reps >= exercise.repTargetMin }
+        let anchor: Double = validated.map(\.weight).max()
+            ?? firstSets.map(\.weight).max()
+            ?? 0
 
-        guard !workSets.isEmpty else {
-            return SetSuggestion(
-                weight: 20,
-                reps: exercise.repTargetMax,
-                setType: .work,
-                explanation: "First time. Start with a comfortable weight."
-            )
-        }
+        // median of first-set reps at anchor_load (exact weight match).
+        let repsAtAnchor = firstSets.filter { $0.weight == anchor }.map(\.reps).sorted()
+        let medianReps = repsAtAnchor.isEmpty
+            ? (firstSets.first?.reps ?? exercise.repTargetMin)
+            : repsAtAnchor[repsAtAnchor.count / 2]
 
-        // If last session's weights were experimental (e.g. BW → 15kg → BW), don't
-        // literally replay the outlier for set 2. Smooth to the most-validated weight
-        // when the spread is wide relative to the range. Set 1 still ramps naturally.
-        let smoothed = smoothedSlotSets(workSets, exercise: exercise)
+        // Promotion eligibility against the anchor load across sessions.
+        let promote = isPromotionEligible(
+            exercise: exercise,
+            anchor: anchor,
+            sessions: sessions
+        )
 
-        if currentSetIndex < smoothed.count {
-            let prev = smoothed[currentSetIndex]
-            let prevW = prev.weight
-            let prevR = prev.reps
-
-            if prevR >= exercise.repTargetMax {
-                let newWeight = prevW + increment
-                return SetSuggestion(
-                    weight: newWeight,
-                    reps: exercise.repTargetMin,
-                    setType: .work,
-                    explanation: "Set \(currentSetIndex + 1): last \(prevW.cleanWeight)x\(prevR) hit \(exercise.repTargetMax) \u{2192} try \(newWeight.cleanWeight)kg."
-                )
-            } else if prevR >= exercise.repTargetMin {
-                let target = min(prevR + 1, exercise.repTargetMax)
-                return SetSuggestion(
-                    weight: prevW,
-                    reps: target,
-                    setType: .work,
-                    explanation: "Set \(currentSetIndex + 1): last \(prevW.cleanWeight)x\(prevR), push to x\(target). +weight at \(exercise.repTargetMax)r."
-                )
-            } else {
-                return SetSuggestion(
-                    weight: prevW,
-                    reps: exercise.repTargetMin,
-                    setType: .work,
-                    explanation: "Set \(currentSetIndex + 1): last \(prevW.cleanWeight)x\(prevR) (below \(exercise.repTargetMin)). Stay and build reps."
-                )
-            }
-        }
-
-        if let last = smoothed.last {
-            return SetSuggestion(
-                weight: last.weight,
-                reps: last.reps,
-                setType: .work,
-                explanation: "Extra set. Match last: \(last.weight.cleanWeight)x\(last.reps)."
-            )
-        }
-
-        return SetSuggestion(weight: 20, reps: exercise.repTargetMax, setType: .work, explanation: "No data.")
-    }
-
-    /// Lightweight slot snapshot used by the suggestion engine so we can rewrite
-    /// weights without mutating or fabricating SwiftData @Model instances.
-    struct SlotSnapshot {
-        let weight: Double
-        let reps: Int
-    }
-
-    /// Smooth the previous session's slot-by-slot weights when they're too
-    /// experimental to replay verbatim. Concretely: if the min/max weights
-    /// differ by more than 40% of the max, every slot's weight is rewritten
-    /// to the *most validated* weight (highest weight that hit repTargetMin),
-    /// while keeping each slot's own rep count. This stops a single heavy
-    /// attempt from turning into next session's prescribed middle set.
-    private static func smoothedSlotSets(_ workSets: [LoggedSet], exercise: Exercise) -> [SlotSnapshot] {
-        let raw = workSets.map { SlotSnapshot(weight: $0.weight, reps: $0.reps) }
-        let weights = raw.map(\.weight)
-        guard let wMin = weights.min(), let wMax = weights.max(), wMax > 0 else {
-            return raw
-        }
-        let spread = (wMax - wMin) / max(wMax, 0.01)
-        guard spread > 0.4 else { return raw }
-
-        // Pick the baseline: the heaviest weight that hit at least repTargetMin reps.
-        // Falls back to the median weight if no set was validated (mixed messy session).
-        let validated = workSets.filter { $0.reps >= exercise.repTargetMin }
-        let baseline: Double
-        if let bestValidated = validated.max(by: { $0.weight < $1.weight })?.weight {
-            baseline = bestValidated
-        } else {
-            let sorted = weights.sorted()
-            baseline = sorted[sorted.count / 2]
-        }
-
-        // Keep the reps pattern, but prescribe the same baseline weight for every slot.
-        return raw.map { SlotSnapshot(weight: baseline, reps: $0.reps) }
-    }
-
-    // MARK: - Straight Sets
-
-    static func suggestStraight(
-        exercise: Exercise,
-        previousSets: [LoggedSet],
-        currentSetIndex: Int,
-        increment: Double
-    ) -> SetSuggestion {
-        let workSets = previousSets.filter { $0.setType == .work && $0.completed }
-
-        guard !workSets.isEmpty else {
-            return SetSuggestion(
-                weight: 20,
-                reps: exercise.repTargetMax,
-                setType: .work,
-                explanation: "First time. Start with a comfortable weight."
-            )
-        }
-
-        let allHitTarget = workSets.allSatisfy { $0.reps >= exercise.repTargetMax }
-        let someBelow = workSets.contains { $0.reps < exercise.repTargetMin }
-        let lastWeight = workSets.first?.weight ?? 20
-        let repsStr = workSets.map { "\($0.reps)" }.joined(separator: "/")
-
-        if allHitTarget {
-            let newWeight = lastWeight + increment
+        if promote {
+            let newWeight = anchor + increment
+            let buffer = exercise.fatigueClass == .heavy ? 1 : 2
+            let target = min(exercise.repTargetMax, exercise.repTargetMin + buffer)
             return SetSuggestion(
                 weight: newWeight,
-                reps: exercise.repTargetMin,
+                reps: target,
                 setType: .work,
-                explanation: "Last: \(lastWeight.cleanWeight)x\(repsStr) all at \(exercise.repTargetMax) \u{2192} +\(increment.cleanWeight)kg to \(newWeight.cleanWeight)."
-            )
-        } else if someBelow {
-            return SetSuggestion(
-                weight: lastWeight,
-                reps: exercise.repTargetMin,
-                setType: .work,
-                explanation: "Last: \(lastWeight.cleanWeight)x\(repsStr). Some below \(exercise.repTargetMin) \u{2192} stay and build."
+                explanation: "Promo : \(anchor.cleanWeight)kg validé → +\(increment.cleanWeight) → \(newWeight.cleanWeight)kg x\(target)."
             )
         } else {
+            let target = min(exercise.repTargetMax, medianReps + 1)
+            let clampedTarget = max(target, exercise.repTargetMin)
             return SetSuggestion(
-                weight: lastWeight,
-                reps: exercise.repTargetMax,
+                weight: anchor,
+                reps: clampedTarget,
                 setType: .work,
-                explanation: "Last: \(lastWeight.cleanWeight)x\(repsStr). Push for \(exercise.repTargetMax) all sets \u{2192} then +weight."
+                explanation: "Ancre : \(anchor.cleanWeight)kg. +1 rep utile → x\(clampedTarget)."
             )
         }
     }
 
-    // MARK: - Top Set + Backoffs
-
-    static func suggestTopSetBackoff(
-        exercise: Exercise,
-        previousSets: [LoggedSet],
-        currentSetIndex: Int,
-        increment: Double
-    ) -> SetSuggestion {
-        let workSets = previousSets.filter { ($0.setType == .topSet || $0.setType == .backoff || $0.setType == .work) && $0.completed }
-
-        guard !workSets.isEmpty else {
-            let setType: SetType = currentSetIndex == 0 ? .topSet : .backoff
-            return SetSuggestion(
-                weight: 20,
-                reps: exercise.repTargetMin,
-                setType: setType,
-                explanation: "First time. Start with a comfortable weight."
-            )
-        }
-
-        let topSets = workSets.filter { $0.setType == .topSet }
-        let backoffs = workSets.filter { $0.setType == .backoff || $0.setType == .work }
-
-        if currentSetIndex == 0 {
-            if let lastTop = topSets.first {
-                if lastTop.reps >= exercise.repTargetMax {
-                    let newWeight = lastTop.weight + increment
-                    return SetSuggestion(
-                        weight: newWeight,
-                        reps: exercise.repTargetMin,
-                        setType: .topSet,
-                        explanation: "Top set: last \(lastTop.weight.cleanWeight)x\(lastTop.reps) hit \(exercise.repTargetMax) \u{2192} +\(increment.cleanWeight)kg."
-                    )
-                } else {
-                    return SetSuggestion(
-                        weight: lastTop.weight,
-                        reps: exercise.repTargetMax,
-                        setType: .topSet,
-                        explanation: "Top set: last \(lastTop.weight.cleanWeight)x\(lastTop.reps). Push to \(exercise.repTargetMax) \u{2192} then +weight."
-                    )
-                }
-            } else if let firstWork = workSets.first {
-                return SetSuggestion(
-                    weight: firstWork.weight,
-                    reps: exercise.repTargetMin,
-                    setType: .topSet,
-                    explanation: "Based on previous: \(firstWork.weight.cleanWeight)x\(firstWork.reps)."
-                )
-            }
-        } else {
-            let backoffIndex = currentSetIndex - 1
-            if backoffIndex < backoffs.count {
-                let prev = backoffs[backoffIndex]
-                if prev.reps >= exercise.repTargetMax {
-                    let newWeight = prev.weight + increment
-                    return SetSuggestion(
-                        weight: newWeight,
-                        reps: exercise.repTargetMin,
-                        setType: .backoff,
-                        explanation: "Backoff \(currentSetIndex): last \(prev.weight.cleanWeight)x\(prev.reps) hit target \u{2192} +\(increment.cleanWeight)kg."
-                    )
-                } else {
-                    return SetSuggestion(
-                        weight: prev.weight,
-                        reps: exercise.repTargetMax,
-                        setType: .backoff,
-                        explanation: "Backoff \(currentSetIndex): last \(prev.weight.cleanWeight)x\(prev.reps). Push reps."
-                    )
-                }
-            } else if let lastBackoff = backoffs.last {
-                return SetSuggestion(
-                    weight: lastBackoff.weight,
-                    reps: exercise.repTargetMin,
-                    setType: .backoff,
-                    explanation: "Extra backoff at \(lastBackoff.weight.cleanWeight)kg."
-                )
-            }
-        }
-
-        return SetSuggestion(weight: 20, reps: exercise.repTargetMin, setType: currentSetIndex == 0 ? .topSet : .backoff, explanation: "No matching data.")
-    }
-
-    // MARK: - Bodyweight
-
-    static func suggestBodyweight(
-        exercise: Exercise,
-        previousSets: [LoggedSet],
-        currentSetIndex: Int
-    ) -> SetSuggestion {
-        let workSets = previousSets.filter { $0.setType == .work && $0.completed }
-
-        guard !workSets.isEmpty else {
+    /// Bodyweight (no load) path. Simple rep progression: last reps + 1, capped.
+    private static func firstSetBodyweight(exercise: Exercise, firstSets: [LoggedSet]) -> SetSuggestion {
+        // Use the best first-set reps across recent sessions as the anchor.
+        let bestFirstReps = firstSets.map(\.reps).max() ?? exercise.repTargetMin
+        if bestFirstReps >= exercise.repTargetMax {
             return SetSuggestion(
                 weight: 0,
-                reps: exercise.repTargetMin,
+                reps: exercise.repTargetMax,
                 setType: .work,
-                explanation: "First time. Start with \(exercise.repTargetMin) reps."
+                explanation: "BW x\(bestFirstReps) au plafond — pense à lester."
             )
         }
+        let target = min(exercise.repTargetMax, bestFirstReps + 1)
+        return SetSuggestion(
+            weight: 0,
+            reps: target,
+            setType: .work,
+            explanation: "BW x\(bestFirstReps) → cible x\(target)."
+        )
+    }
 
-        if currentSetIndex < workSets.count {
-            let prev = workSets[currentSetIndex]
-            if prev.reps >= exercise.repTargetMax {
-                return SetSuggestion(
-                    weight: 0,
-                    reps: exercise.repTargetMax,
-                    setType: .work,
-                    explanation: "Last BWx\(prev.reps) at max. Consider adding weight."
-                )
+    /// Assistance path. Progress = REDUCE assistance (lower weight counter), so
+    /// the promotion direction flips vs external load.
+    private static func firstSetAssisted(
+        exercise: Exercise,
+        firstSets: [LoggedSet],
+        increment: Double
+    ) -> SetSuggestion {
+        let lastAssistance = firstSets.first?.weight ?? 20
+        let allHitTarget = firstSets.prefix(2).allSatisfy { $0.reps >= exercise.repTargetMax }
+        if allHitTarget {
+            let newAssist = max(0, lastAssistance - increment)
+            return SetSuggestion(
+                weight: newAssist,
+                reps: exercise.repTargetMin,
+                setType: .work,
+                explanation: "Assistance \(lastAssistance.cleanWeight)kg saturée → réduire à \(newAssist.cleanWeight)kg."
+            )
+        }
+        let bestReps = firstSets.map(\.reps).max() ?? exercise.repTargetMin
+        let target = min(exercise.repTargetMax, bestReps + 1)
+        return SetSuggestion(
+            weight: lastAssistance,
+            reps: target,
+            setType: .work,
+            explanation: "Assistance \(lastAssistance.cleanWeight)kg — push à x\(target)."
+        )
+    }
+
+    /// Promotion eligibility per algo §6.3.
+    /// H (strict): in 2 of last 3 comparable sessions, first_set_reps >= rep_max
+    ///   AND average working reps at anchor >= rep_min + 1
+    ///   AND no working set at anchor < rep_min - 1.
+    /// M/L (normal): in 1 of last 2 comparable sessions, first_set_reps >= rep_max
+    ///   AND average working reps at anchor >= rep_min + 1.
+    private static func isPromotionEligible(
+        exercise: Exercise,
+        anchor: Double,
+        sessions: [[LoggedSet]]
+    ) -> Bool {
+        let strict = exercise.fatigueClass.usesStrictPromotion
+        let windowSize = strict ? 3 : 2
+        let needed = strict ? 2 : 1
+        let window = sessions.prefix(windowSize)
+        guard window.count >= needed else { return false }
+
+        var qualifying = 0
+        for sess in window {
+            let workSets = sess.filter {
+                $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff)
             }
-            let target = min(prev.reps + 1, exercise.repTargetMax)
+            let atAnchor = workSets.filter { $0.weight == anchor }
+            guard let firstAtAnchor = atAnchor.first else { continue }
+            guard firstAtAnchor.reps >= exercise.repTargetMax else { continue }
+
+            let avg = Double(atAnchor.map(\.reps).reduce(0, +)) / Double(max(atAnchor.count, 1))
+            guard avg >= Double(exercise.repTargetMin + 1) else { continue }
+
+            if strict {
+                let minAllowed = exercise.repTargetMin - 1
+                guard atAnchor.allSatisfy({ $0.reps >= minAllowed }) else { continue }
+            }
+            qualifying += 1
+        }
+        return qualifying >= needed
+    }
+
+    // MARK: - Subsequent Sets (predicted from what was just done)
+
+    private static func suggestSubsequent(
+        exercise: Exercise,
+        lastSet: LoggedSet,
+        completedCount: Int,
+        increment: Double
+    ) -> SetSuggestion {
+        let base = exercise.fatigueClass.baseRepDrop
+        // Set penalty kicks in from the 3rd working set (indexing: lastSet is set N,
+        // the suggestion is for set N+1). completedCount = N.
+        let penalty = setPenalty(upcomingSetIndex: completedCount + 1)
+        let predicted = Double(lastSet.reps) - base - penalty
+
+        // Bodyweight (weight == 0, mode == bodyweight): just drop reps.
+        if exercise.setPatternMode == .bodyweight {
+            let target = max(1, min(exercise.repTargetMax, Int(predicted.rounded())))
             return SetSuggestion(
                 weight: 0,
                 reps: target,
                 setType: .work,
-                explanation: "Last BWx\(prev.reps) \u{2192} target x\(target)."
+                explanation: "Set \(completedCount + 1) : prédit BWx\(target) après BWx\(lastSet.reps)."
             )
         }
 
-        let lastReps = workSets.last?.reps ?? exercise.repTargetMin
+        // Assistance: direction flips. More fatigue → keep assistance (load stays
+        // the same kg counter) but reps drop; if predicted falls below rep_min,
+        // increase assistance by one increment to rescue the set.
+        if exercise.setPatternMode == .assistedBodyweight {
+            if predicted >= Double(exercise.repTargetMin) {
+                let reps = clamp(Int(predicted.rounded()), min: exercise.repTargetMin, max: exercise.repTargetMax)
+                return SetSuggestion(
+                    weight: lastSet.weight,
+                    reps: reps,
+                    setType: .work,
+                    explanation: "Set \(completedCount + 1) : même assistance, cible x\(reps) (chute prévue)."
+                )
+            }
+            let newAssist = lastSet.weight + increment
+            let mid = (exercise.repTargetMin + exercise.repTargetMax + 1) / 2
+            return SetSuggestion(
+                weight: newAssist,
+                reps: mid,
+                setType: .work,
+                explanation: "Set \(completedCount + 1) : +assistance \(newAssist.cleanWeight)kg pour tenir x\(mid)."
+            )
+        }
+
+        // External load / weighted-BW: same kg if predicted clears floor,
+        // otherwise back off one increment and target upper-mid band.
+        if predicted >= Double(exercise.repTargetMin) {
+            let reps = clamp(Int(predicted.rounded()), min: exercise.repTargetMin, max: exercise.repTargetMax)
+            return SetSuggestion(
+                weight: lastSet.weight,
+                reps: reps,
+                setType: .work,
+                explanation: "Set \(completedCount + 1) : même \(lastSet.weight.cleanWeight)kg, cible x\(reps) (chute prévue)."
+            )
+        }
+        let newWeight = max(0, lastSet.weight - increment)
+        let mid = Int((Double(exercise.repTargetMin + exercise.repTargetMax) / 2.0).rounded(.up))
         return SetSuggestion(
-            weight: 0,
-            reps: lastReps,
+            weight: newWeight,
+            reps: mid,
             setType: .work,
-            explanation: "Extra set. Match last: BWx\(lastReps)."
+            explanation: "Set \(completedCount + 1) : back-off \(newWeight.cleanWeight)kg x\(mid) (plancher reps atteint)."
         )
     }
 
-    // MARK: - Assisted Bodyweight
-
-    static func suggestAssistedBodyweight(
-        exercise: Exercise,
-        previousSets: [LoggedSet],
-        currentSetIndex: Int,
-        increment: Double
-    ) -> SetSuggestion {
-        let workSets = previousSets.filter { $0.setType == .work && $0.completed }
-
-        guard !workSets.isEmpty else {
-            return SetSuggestion(
-                weight: 20,
-                reps: exercise.repTargetMin,
-                setType: .work,
-                explanation: "First time. Start with moderate assistance."
-            )
+    /// Penalty added to the predicted rep drop based on which set we're about to do.
+    /// Matches algo §3.4: from the 3rd working set onward, each extra set costs
+    /// 0.5 additional reps.
+    private static func setPenalty(upcomingSetIndex: Int) -> Double {
+        switch upcomingSetIndex {
+        case ...2: return 0
+        case 3: return 0.5
+        case 4: return 1.0
+        default: return 1.5
         }
+    }
 
-        let allHitTarget = workSets.allSatisfy { $0.reps >= exercise.repTargetMax }
-        let lastWeight = workSets.first?.weight ?? 20
-        let repsStr = workSets.map { "\($0.reps)" }.joined(separator: "/")
-
-        if allHitTarget {
-            let newWeight = max(0, lastWeight - increment)
-            return SetSuggestion(
-                weight: newWeight,
-                reps: exercise.repTargetMin,
-                setType: .work,
-                explanation: "Last \(lastWeight.cleanWeight)kgx\(repsStr) all at target \u{2192} reduce to \(newWeight.cleanWeight)kg assistance."
-            )
-        } else {
-            return SetSuggestion(
-                weight: lastWeight,
-                reps: exercise.repTargetMax,
-                setType: .work,
-                explanation: "Last \(lastWeight.cleanWeight)kgx\(repsStr). Keep assistance, push reps."
-            )
-        }
+    private static func clamp(_ value: Int, min lo: Int, max hi: Int) -> Int {
+        Swift.max(lo, Swift.min(hi, value))
     }
 
     // MARK: - Repeat Last Set
@@ -416,7 +343,7 @@ struct ProgressionEngine {
         return weight * (1.0 + Double(reps) / 30.0)
     }
 
-    /// Best estimated 1RM from a set of completed work sets
+    /// Best estimated 1RM from a set of completed work sets.
     static func bestE1RM(from sets: [LoggedSet]) -> (e1rm: Double, weight: Double, reps: Int)? {
         let candidates = sets.filter { $0.completed && $0.weight > 0 && $0.reps > 0 && $0.reps <= 15 }
         var best: (e1rm: Double, weight: Double, reps: Int)?
@@ -437,7 +364,7 @@ struct ProgressionEngine {
         let detail: String
     }
 
-    /// Detect if the just-logged set represents a meaningful milestone
+    /// Detect if the just-logged set represents a meaningful milestone.
     static func detectAchievement(
         exercise: Exercise,
         justLogged: LoggedSet,
@@ -447,7 +374,6 @@ struct ProgressionEngine {
 
         let prevBestE1RM = bestE1RM(from: previousBestSets)
 
-        // Check new validated best weight (at or above rep minimum)
         if justLogged.reps >= exercise.repTargetMin {
             let prevValidated = previousBestSets
                 .filter { $0.completed && $0.reps >= exercise.repTargetMin && $0.weight > 0 }
@@ -459,24 +385,17 @@ struct ProgressionEngine {
                     detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps) validé"
                 )
             }
-
-            // First time at this weight with valid reps
-            if prevValidated == nil && justLogged.weight > 0 {
-                // Not a meaningful achievement if no history
-            }
         }
 
-        // Check new e1RM PR
         if let newE1RM = estimated1RM(weight: justLogged.weight, reps: justLogged.reps),
            let oldBest = prevBestE1RM,
-           newE1RM > oldBest.e1rm * 1.02 { // >2% improvement
+           newE1RM > oldBest.e1rm * 1.02 {
             return Achievement(
                 title: "Nouveau 1RM estimé",
                 detail: "\(Int(newE1RM))kg (via \(justLogged.weight.cleanWeight)x\(justLogged.reps))"
             )
         }
 
-        // Check rep PR at same weight
         let sameWeightSets = previousBestSets.filter { $0.weight == justLogged.weight && $0.completed }
         if let bestReps = sameWeightSets.map(\.reps).max(),
            justLogged.reps > bestReps,

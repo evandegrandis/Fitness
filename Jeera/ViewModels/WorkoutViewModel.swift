@@ -667,7 +667,8 @@ class WorkoutViewModel {
             for: exercise,
             previousSets: primarySets,
             currentSetIndex: currentSetIndex,
-            recentHistory: recentHistory
+            recentHistory: recentHistory,
+            currentSessionSets: loggedExercise.completedWorkSets
         )
     }
 
