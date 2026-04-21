@@ -6,6 +6,11 @@ import UserNotifications
 
 @Observable
 class WorkoutViewModel {
+    private struct SupersetPoint {
+        let exerciseID: UUID
+        let timestamp: Date
+    }
+
     var modelContext: ModelContext?
     var activeSession: WorkoutSession?
     var showExercisePicker = false
@@ -56,6 +61,7 @@ class WorkoutViewModel {
     // Live workout timer
     var workoutElapsed: TimeInterval = 0
     private var workoutTimer: AnyCancellable?
+    private var lastAutoBackupAt: Date?
 
     var workoutElapsedFormatted: String {
         let mins = Int(workoutElapsed) / 60
@@ -163,6 +169,9 @@ class WorkoutViewModel {
         session.isActive = false
         session.endTime = Date()
         try? modelContext?.save()
+        if let context = modelContext {
+            maybeAutoBackup(context: context, force: true)
+        }
         let sets = session.totalWorkSets
         let duration = session.durationFormatted
         restTimer.reset()
@@ -463,6 +472,7 @@ class WorkoutViewModel {
         context.insert(set)
         loggedExercise.sets.append(set)
         try? context.save()
+        autoDetectSupersetIfNeeded(triggerExercise: loggedExercise)
 
         HapticManager.logSet()
 
@@ -552,6 +562,156 @@ class WorkoutViewModel {
 
         // Reorder after validate: move this exercise card to after the last-logged one.
         applyReorderAfterValidate(loggedExercise)
+
+        // Best-effort cloud backup after each validated set (throttled).
+        maybeAutoBackup(context: context)
+    }
+
+    // MARK: - Superset Auto Detection
+
+    /// Auto-detect supersets directly from recent set order.
+    /// Pattern examples:
+    /// - 2 exercises: A -> B -> A (and optionally B again)
+    /// - 3 exercises: A -> B -> C -> A
+    /// - 4 exercises: A -> B -> C -> D -> A
+    ///
+    /// We only inspect recent completed work sets in this active session and
+    /// require short time gaps to avoid linking distant blocks.
+    private func autoDetectSupersetIfNeeded(triggerExercise: LoggedExercise) {
+        guard let session = activeSession, let context = modelContext else { return }
+
+        let points: [SupersetPoint] = session.loggedExercises
+            .flatMap { logged in
+                logged.completedWorkSets.map { SupersetPoint(exerciseID: logged.id, timestamp: $0.timestamp) }
+            }
+            .sorted { $0.timestamp < $1.timestamp }
+
+        guard points.count >= 3 else { return }
+        let recent = Array(points.suffix(24))
+        guard let memberIDs = detectSupersetMembers(from: recent) else { return }
+        guard memberIDs.contains(triggerExercise.id) else { return }
+
+        let members = memberIDs.compactMap { id in
+            session.loggedExercises.first(where: { $0.id == id })
+        }
+        guard members.count >= 2 else { return }
+
+        // Already grouped in same order -> no-op.
+        if let existing = members.first?.supersetGroup,
+           members.allSatisfy({ $0.supersetGroup?.id == existing.id }),
+           existing.memberOrder == memberIDs {
+            return
+        }
+
+        // If members are already part of other groups, don't auto-override
+        // those user-defined structures.
+        let existingGroupIDs = Set(members.compactMap { $0.supersetGroup?.id })
+        if !existingGroupIDs.isEmpty {
+            if existingGroupIDs.count != 1 { return }
+            if let groupID = existingGroupIDs.first,
+               let onlyGroup = members.first(where: { $0.supersetGroup?.id == groupID })?.supersetGroup,
+               Set(onlyGroup.memberOrder) != Set(memberIDs) {
+                return
+            }
+        }
+
+        // Detach only if all detected members are from one exact group or standalone.
+        for member in members where member.supersetGroup != nil {
+            detachFromSupersetGroup(member)
+        }
+
+        let anchorOrder = members.map(\.orderIndex).min() ?? 0
+        let group = SupersetGroup(
+            orderIndex: anchorOrder,
+            memberOrder: memberIDs,
+            session: session,
+            members: members
+        )
+        context.insert(group)
+        session.supersetGroups.append(group)
+        for member in members {
+            member.supersetGroup = group
+        }
+        recomputeSupersetRoundIndices(for: group)
+        try? context.save()
+    }
+
+    /// Return ordered member IDs for a detected 2..4-exercise superset.
+    private func detectSupersetMembers(from points: [SupersetPoint]) -> [UUID]? {
+        let maxGapSeconds: TimeInterval = 240
+        guard points.count >= 3 else { return nil }
+        let ids = points.map(\.exerciseID)
+
+        for size in stride(from: 4, through: 2, by: -1) {
+            guard ids.count >= size + 1 else { continue }
+            let windowStart = max(0, ids.count - 12)
+            for start in windowStart..<(ids.count - size) {
+                let template = Array(ids[start..<(start + size)])
+                guard Set(template).count == size else { continue }
+                guard ids[start + size] == template[0] else { continue }
+
+                // Extend while the pattern repeats.
+                var end = start + size
+                while end + 1 < ids.count {
+                    let expected = template[(end + 1 - start) % size]
+                    if ids[end + 1] != expected { break }
+                    end += 1
+                }
+
+                // Must include the most recent set.
+                guard end == ids.count - 1 else { continue }
+
+                // Need at least two rounds to avoid noisy one-off alternation.
+                guard (end - start + 1) >= (size * 2) else { continue }
+
+                // Basic temporal consistency: no huge gap inside the detected run.
+                var hasLargeGap = false
+                if start < end {
+                    for i in start..<end {
+                        if points[i + 1].timestamp.timeIntervalSince(points[i].timestamp) > maxGapSeconds {
+                            hasLargeGap = true
+                            break
+                        }
+                    }
+                }
+                guard !hasLargeGap else { continue }
+                return template
+            }
+        }
+
+        return nil
+    }
+
+    /// Normalize round indexes after auto-grouping so historical sets in the
+    /// current session align with a coherent "round 1, round 2, ...".
+    private func recomputeSupersetRoundIndices(for group: SupersetGroup) {
+        let membersByID = Dictionary(uniqueKeysWithValues: group.orderedMembers.map { ($0.id, $0) })
+        let order = group.memberOrder.compactMap { membersByID[$0] }
+        guard !order.isEmpty else { return }
+
+        var counters: [UUID: Int] = [:]
+        for member in order {
+            counters[member.id] = 0
+        }
+
+        let timeline = order
+            .flatMap { ex in ex.completedWorkSets.map { (ex.id, $0) } }
+            .sorted { $0.1.timestamp < $1.1.timestamp }
+
+        for (exerciseID, set) in timeline {
+            let next = (counters[exerciseID] ?? 0) + 1
+            counters[exerciseID] = next
+            set.supersetRoundIndex = next
+        }
+    }
+
+    private func maybeAutoBackup(context: ModelContext, force: Bool = false) {
+        let now = Date()
+        if !force, let last = lastAutoBackupAt, now.timeIntervalSince(last) < 120 {
+            return
+        }
+        BackupSyncService.backupIfLocalIsNewer(context: context)
+        lastAutoBackupAt = now
     }
 
     /// Check if this exercise is the last in a superset block. With explicit

@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var importData: Data?
     @State private var alertMessage = ""
     @State private var showAlert = false
+    @AppStorage("icloud_auto_backup_enabled") private var iCloudAutoBackupEnabled: Bool = true
 
     private var settings: UserSettings {
         if let existing = settingsArray.first { return existing }
@@ -64,6 +65,46 @@ struct SettingsView: View {
                     Text("Sauvegarde")
                 } footer: {
                     Text("Exporte avant de réinstaller l'app. Les données sont effacées quand le certificat gratuit expire (7 jours).")
+                }
+
+                Section("Sauvegarde cloud (iCloud)") {
+                    Toggle("Sauvegarde auto", isOn: $iCloudAutoBackupEnabled)
+                    Button("Sauvegarder maintenant") {
+                        do {
+                            try BackupSyncService.backupNow(context: modelContext)
+                            alertMessage = "Backup cloud envoyé."
+                        } catch {
+                            alertMessage = "Backup cloud impossible: \(error.localizedDescription)"
+                        }
+                        showAlert = true
+                    }
+                    Button("Vérifier version distante") {
+                        let status = BackupSyncService.compareLocalAndRemote(context: modelContext)
+                        switch status {
+                        case .unavailable(let reason):
+                            alertMessage = reason
+                        case .upToDate:
+                            alertMessage = "Version locale et distante identiques."
+                        case .localIsNewer:
+                            alertMessage = "La version locale est plus récente."
+                        case .remoteIsNewer:
+                            alertMessage = "La version distante est plus récente."
+                        }
+                        showAlert = true
+                    }
+                    Button("Restaurer si cloud plus récent") {
+                        do {
+                            let imported = try BackupSyncService.importRemoteIfNewer(context: modelContext)
+                            alertMessage = imported
+                                ? "Données cloud importées (plus récentes)."
+                                : "Aucune version cloud plus récente trouvée."
+                        } catch {
+                            alertMessage = "Import cloud impossible: \(error.localizedDescription)"
+                        }
+                        showAlert = true
+                    }
+                } footer: {
+                    Text("Le backup cloud reste indépendant de l'affichage local : l'app lit SwiftData en local, iCloud sert uniquement de sauvegarde.")
                 }
 
                 Section("Profil") {

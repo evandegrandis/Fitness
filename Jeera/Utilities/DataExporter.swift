@@ -6,6 +6,11 @@ import SwiftData
 struct JeeraBackup: Codable {
     let version: Int
     let exportDate: Date
+    /// Most recent logged workout timestamp in this backup. Used for
+    /// local-vs-remote recency comparison during cloud backup sync.
+    let lastWorkoutLoggedAt: Date?
+    /// Device identifier that generated the backup (best effort).
+    let deviceId: String?
     let exercises: [ExerciseData]
     let goals: [GoalData]
     let settings: SettingsData?
@@ -125,10 +130,28 @@ struct DataExporter {
             sortBy: [SortDescriptor(\WorkoutSession.startTime, order: .reverse)]
         ))) ?? []
         let templates = (try? context.fetch(FetchDescriptor<WorkoutTemplate>())) ?? []
+        let lastWorkoutLoggedAt = sessions
+            .flatMap { $0.loggedExercises }
+            .flatMap { $0.completedWorkSets }
+            .map(\.timestamp)
+            .max() ?? sessions.map(\.startTime).max()
+
+        let defaults = UserDefaults.standard
+        let deviceIDKey = "jeera_backup_device_id"
+        let persistentDeviceID: String = {
+            if let existing = defaults.string(forKey: deviceIDKey) {
+                return existing
+            }
+            let created = UUID().uuidString
+            defaults.set(created, forKey: deviceIDKey)
+            return created
+        }()
 
         let backup = JeeraBackup(
-            version: 1,
+            version: 2,
             exportDate: Date(),
+            lastWorkoutLoggedAt: lastWorkoutLoggedAt,
+            deviceId: persistentDeviceID,
             exercises: exercises.map { ex in
                 ExerciseData(
                     id: ex.id.uuidString,
@@ -355,8 +378,9 @@ struct DataExporter {
             // Index exercises by their persisted id so we can re-wire the
             // superset-group memberships after everything is inserted.
             var loggedByID: [UUID: LoggedExercise] = [:]
+            var loggedByLegacyIndex: [Int: LoggedExercise] = [:]
 
-            for leData in sData.exercises {
+            for (exerciseIndex, leData) in sData.exercises.enumerated() {
                 // Match exercise by ID first, then by name
                 let exercise = exerciseMap[leData.exerciseId] ?? exerciseByName[leData.exerciseName]
 
@@ -371,6 +395,7 @@ struct DataExporter {
                 context.insert(logged)
                 session.loggedExercises.append(logged)
                 loggedByID[loggedID] = logged
+                loggedByLegacyIndex[exerciseIndex] = logged
 
                 for setData in leData.sets {
                     let set = LoggedSet(
@@ -415,13 +440,26 @@ struct DataExporter {
                 var run: [LoggedExercise] = []
                 let ordered = sData.exercises
                 for (i, leData) in ordered.enumerated() {
-                    guard let logged = loggedByID[leData.id.flatMap { UUID(uuidString: $0) } ?? UUID()] else { continue }
+                    let logged: LoggedExercise?
+                    if let idString = leData.id, let uuid = UUID(uuidString: idString) {
+                        logged = loggedByID[uuid]
+                    } else {
+                        logged = loggedByLegacyIndex[i]
+                    }
+                    guard let logged else { continue }
                     if leData.isLinkedToNext {
                         if runStart == nil { runStart = logged; run = [logged] }
                         // Peek ahead — next exercise joins the run.
-                        if i + 1 < ordered.count,
-                           let next = loggedByID[ordered[i + 1].id.flatMap { UUID(uuidString: $0) } ?? UUID()] {
+                        if i + 1 < ordered.count {
+                            let next: LoggedExercise?
+                            if let nextID = ordered[i + 1].id, let nextUUID = UUID(uuidString: nextID) {
+                                next = loggedByID[nextUUID]
+                            } else {
+                                next = loggedByLegacyIndex[i + 1]
+                            }
+                            if let next {
                             run.append(next)
+                            }
                         }
                     } else if !run.isEmpty {
                         let members = run
