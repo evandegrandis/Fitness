@@ -1,10 +1,38 @@
 import Foundation
 
+enum SuggestionMode: String {
+    case recordAttempt = "record_attempt"
+    case fallbackHypertrophy = "fallback_hypertrophy"
+    case plateauBreak = "plateau_break"
+    case transitionMode = "transition_mode"
+}
+
 struct SetSuggestion {
     let weight: Double
     let reps: Int
     let setType: SetType
     let explanation: String
+    let confidence: Double
+    let reasonCodes: [String]
+    let mode: SuggestionMode
+
+    init(
+        weight: Double,
+        reps: Int,
+        setType: SetType,
+        explanation: String,
+        confidence: Double = 0.8,
+        reasonCodes: [String] = [],
+        mode: SuggestionMode = .recordAttempt
+    ) {
+        self.weight = weight
+        self.reps = reps
+        self.setType = setType
+        self.explanation = explanation
+        self.confidence = confidence
+        self.reasonCodes = reasonCodes
+        self.mode = mode
+    }
 }
 
 /// Progression engine implementing the double-progression algorithm spec:
@@ -18,6 +46,29 @@ struct SetSuggestion {
 ///     SetPatternMode so the display direction and promotion direction are right.
 struct ProgressionEngine {
 
+    private enum SetRoleDerived {
+        case anchorSet
+        case primerPerformanceSet
+        case rampWorkSet
+        case backoffHypertrophySet
+        case overreachSet
+        case unknown
+    }
+
+    private struct Candidate {
+        let load: Double
+        let reps: Int
+        let mode: SuggestionMode
+        let reasonCodes: [String]
+    }
+
+    private struct DerivedExerciseState {
+        let targetLoad: Double
+        let bestRepAtTarget: Int
+        let plateauCounter: Int
+        let progressVelocity: Double
+    }
+
     // MARK: - Main Entry Point
 
     static func suggest(
@@ -30,292 +81,252 @@ struct ProgressionEngine {
     ) -> SetSuggestion {
         let increment = smallestIncrement ?? exercise.smallestIncrement
 
-        // If any working set has been completed in the current session, the next
-        // suggestion must flow from what was *just done*, never from last session.
-        let doneToday = currentSessionSets.filter { $0.completed }
-        if !doneToday.isEmpty, let lastToday = doneToday.last {
-            return suggestSubsequent(
+        let doneToday = currentSessionSets.filter(\.completed)
+        let history = ([previousSets] + recentHistory).filter { !$0.isEmpty }
+        let derived = deriveState(exercise: exercise, history: history, increment: increment)
+        let fatigueConfirmed = autoFatigueFlag(exercise: exercise, currentSessionSets: doneToday)
+
+        if exercise.setPatternMode == .weightedBodyweight {
+            return suggestWeightedBodyweight(
                 exercise: exercise,
-                lastSet: lastToday,
-                completedCount: doneToday.count,
-                increment: increment
+                doneToday: doneToday,
+                derived: derived,
+                fatigueConfirmed: fatigueConfirmed
             )
         }
 
-        // First working set of the session: use the anchor-load / promotion logic
-        // against comparable recent history.
-        return suggestFirstSet(
+        return suggestGeneric(
             exercise: exercise,
-            previousSets: previousSets,
-            recentHistory: recentHistory,
+            doneToday: doneToday,
+            derived: derived,
+            increment: increment,
+            fatigueConfirmed: fatigueConfirmed
+        )
+    }
+
+    private static func suggestWeightedBodyweight(
+        exercise: Exercise,
+        doneToday: [LoggedSet],
+        derived: DerivedExerciseState,
+        fatigueConfirmed: Bool
+    ) -> SetSuggestion {
+        if doneToday.isEmpty {
+            let primer = Candidate(load: 0, reps: 10, mode: .recordAttempt, reasonCodes: ["primer_before_weighted_attempt"])
+            return render(primer, confidence: 0.95)
+        }
+
+        if doneToday.count == 1 {
+            if derived.plateauCounter >= 3 && !fatigueConfirmed {
+                let plateau = Candidate(load: derived.targetLoad + 5, reps: 5, mode: .plateauBreak, reasonCodes: ["plateau_break_overreach_jump"])
+                return render(plateau, confidence: 0.82)
+            }
+            let target = Candidate(load: derived.targetLoad, reps: exercise.repTargetMin, mode: .recordAttempt, reasonCodes: ["main_target_attempt"])
+            return render(target, confidence: fatigueConfirmed ? 0.7 : 0.92)
+        }
+
+        let last = doneToday.last
+        if let last, last.reps <= max(1, exercise.repTargetMin - 2) {
+            return render(
+                Candidate(load: 0, reps: 10, mode: .fallbackHypertrophy, reasonCodes: ["hard_fail_threshold_reached", "fallback_to_bodyweight"]),
+                confidence: 0.9
+            )
+        }
+
+        return render(
+            Candidate(load: max(0, derived.targetLoad - 5), reps: exercise.repTargetMin, mode: .fallbackHypertrophy, reasonCodes: ["intermediate_fallback"]),
+            confidence: 0.86
+        )
+    }
+
+    private static func suggestGeneric(
+        exercise: Exercise,
+        doneToday: [LoggedSet],
+        derived: DerivedExerciseState,
+        increment: Double,
+        fatigueConfirmed: Bool
+    ) -> SetSuggestion {
+        let candidates = buildCandidates(
+            exercise: exercise,
+            doneToday: doneToday,
+            derived: derived,
             increment: increment
         )
+
+        guard let best = candidates.max(by: {
+            scoreCandidate($0, exercise: exercise, doneToday: doneToday, derived: derived, fatigueConfirmed: fatigueConfirmed)
+            < scoreCandidate($1, exercise: exercise, doneToday: doneToday, derived: derived, fatigueConfirmed: fatigueConfirmed)
+        }) else {
+            return SetSuggestion(weight: 20, reps: exercise.repTargetMin, setType: .work, explanation: "Fallback.", confidence: 0.4, reasonCodes: ["fallback"], mode: .fallbackHypertrophy)
+        }
+
+        let confidence = min(0.98, max(0.5, Double(candidates.count) / 5.0 + (fatigueConfirmed ? -0.1 : 0.15)))
+        return render(best, confidence: confidence)
     }
 
-    // MARK: - First Working Set (anchor + promotion)
-
-    /// Anchor load = heaviest load across recent history that hit at least rep_min
-    /// on the first working set. We look up to maxSessionsConsidered sessions back
-    /// (primary + recentHistory).
-    private static func suggestFirstSet(
+    private static func buildCandidates(
         exercise: Exercise,
-        previousSets: [LoggedSet],
-        recentHistory: [[LoggedSet]],
+        doneToday: [LoggedSet],
+        derived: DerivedExerciseState,
         increment: Double
-    ) -> SetSuggestion {
-        // Assemble comparable sessions, most recent first.
-        var sessions: [[LoggedSet]] = []
-        if !previousSets.isEmpty { sessions.append(previousSets) }
-        sessions.append(contentsOf: recentHistory)
-
-        // Extract the first completed working set of each comparable session.
-        let firstSets = sessions.compactMap { sess in
-            sess.first(where: { $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff) })
+    ) -> [Candidate] {
+        if doneToday.isEmpty {
+            if exercise.setPatternMode == .bodyweight {
+                return [Candidate(load: 0, reps: exercise.repTargetMin, mode: .recordAttempt, reasonCodes: ["generic_first_anchor"])]
+            }
+            return [Candidate(load: derived.targetLoad, reps: exercise.repTargetMin, mode: .recordAttempt, reasonCodes: ["generic_first_anchor"])]
         }
 
-        // Handle pure bodyweight & no history separately.
-        if firstSets.isEmpty {
-            return firstTimeFallback(exercise: exercise)
+        guard let last = doneToday.last else { return [] }
+        let baseDrop = exercise.fatigueClass.baseRepDrop
+        let predicted = Int((Double(last.reps) - baseDrop).rounded())
+        let holdReps = clamp(predicted, min: max(1, exercise.repTargetMin - 1), max: exercise.repTargetMax)
+        let backoffReps = Int((Double(exercise.repTargetMin + exercise.repTargetMax) / 2).rounded(.up))
+
+        var result: [Candidate] = [
+            Candidate(load: last.weight, reps: holdReps, mode: .recordAttempt, reasonCodes: ["predicted_drop_same_load"]),
+            Candidate(load: max(0, last.weight - increment), reps: backoffReps, mode: .fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"])
+        ]
+
+        if derived.plateauCounter >= 3 {
+            result.append(
+                Candidate(load: last.weight + increment, reps: max(5, exercise.repTargetMin - 1), mode: .plateauBreak, reasonCodes: ["plateau_policy_test_heavier"])
+            )
+        }
+        return result
+    }
+
+    private static func scoreCandidate(
+        _ candidate: Candidate,
+        exercise: Exercise,
+        doneToday: [LoggedSet],
+        derived: DerivedExerciseState,
+        fatigueConfirmed: Bool
+    ) -> Double {
+        var score = 0.0
+        switch candidate.mode {
+        case .recordAttempt: score += 35
+        case .fallbackHypertrophy: score += 22
+        case .plateauBreak: score += 18
+        case .transitionMode: score += 30
         }
 
+        if abs(candidate.load - derived.targetLoad) < 0.01 { score += 15 }
+        if candidate.load > derived.targetLoad { score += 8 }
+        if candidate.load < derived.targetLoad { score -= 5 }
+
+        if fatigueConfirmed && candidate.mode == .recordAttempt { score -= 18 }
+        if fatigueConfirmed && candidate.mode == .fallbackHypertrophy { score += 12 }
+
+        if derived.progressVelocity > 0.75 && candidate.load > derived.targetLoad { score += 5 }
+        if derived.progressVelocity < 0.25 && candidate.load > derived.targetLoad { score -= 6 }
+
+        if let last = doneToday.last {
+            if last.reps <= max(1, exercise.repTargetMin - 2) && candidate.mode == .recordAttempt { score -= 20 }
+            if last.reps >= max(exercise.repTargetMin, 7) && candidate.mode == .fallbackHypertrophy { score += 6 }
+        }
+
+        if candidate.reps < 5 { score -= 10 }
+        if candidate.reps > 10 && candidate.mode != .fallbackHypertrophy { score -= 10 }
+        return score
+    }
+
+    private static func deriveState(
+        exercise: Exercise,
+        history: [[LoggedSet]],
+        increment: Double
+    ) -> DerivedExerciseState {
+        let comparable = history.prefix(5)
+        let anchors: [LoggedSet] = comparable.compactMap { session in
+            classifyAnchor(in: session, exercise: exercise)
+        }
+
+        let targetLoad = anchors.first(where: { $0.reps >= exercise.repTargetMin })?.weight
+        ?? anchors.first?.weight
+        ?? defaultStartLoad(for: exercise)
+
+        let repsAtTarget = anchors.filter { abs($0.weight - targetLoad) < 0.01 }.map(\.reps)
+        let bestRep = repsAtTarget.max() ?? exercise.repTargetMin
+
+        let plateauCounter = consecutiveAt(load: targetLoad, reps: bestRep, anchors: anchors)
+        let progressVelocity = progressVelocityScore(exercise: exercise, history: Array(history.prefix(10)))
+        return DerivedExerciseState(targetLoad: targetLoad, bestRepAtTarget: bestRep, plateauCounter: plateauCounter, progressVelocity: progressVelocity)
+    }
+
+    private static func classifyAnchor(in session: [LoggedSet], exercise: Exercise) -> LoggedSet? {
+        let completed = session.filter(\.completed)
+        guard !completed.isEmpty else { return nil }
+        let sorted = completed.sorted { $0.setSlotIndex < $1.setSlotIndex }
+
+        let heavyCandidate = sorted.max(by: { $0.weight < $1.weight })
+        guard let heavyCandidate else { return sorted.last }
+
+        if heavyCandidate.reps < max(1, exercise.repTargetMin - 1), sorted.count > 1 {
+            return sorted.dropLast().last
+        }
+        return heavyCandidate
+    }
+
+    private static func progressVelocityScore(exercise: Exercise, history: [[LoggedSet]]) -> Double {
+        let anchors = history.compactMap { classifyAnchor(in: $0, exercise: exercise) }
+        guard anchors.count >= 2 else { return 0 }
+        var velocity = 0.0
+        var alpha = 1.0
+        for idx in stride(from: anchors.count - 1, through: 1, by: -1) {
+            let cur = anchors[idx]
+            let prev = anchors[idx - 1]
+            var event = 0.0
+            if cur.weight > prev.weight && cur.reps >= prev.reps { event = 1.5 }
+            else if abs(cur.weight - prev.weight) < 0.01 && cur.reps > prev.reps { event = 1.0 }
+            else if cur.reps == prev.reps && abs(cur.weight - prev.weight) < 0.01 { event = 0.0 }
+            else if cur.reps + 1 < prev.reps { event = -0.5 }
+            velocity += event * alpha
+            alpha *= 0.84
+        }
+        return velocity / Double(max(1, anchors.count - 1))
+    }
+
+    private static func consecutiveAt(load: Double, reps: Int, anchors: [LoggedSet]) -> Int {
+        var count = 0
+        for anchor in anchors {
+            if abs(anchor.weight - load) < 0.01 && anchor.reps <= reps {
+                count += 1
+            } else {
+                break
+            }
+        }
+        return count
+    }
+
+    private static func autoFatigueFlag(exercise: Exercise, currentSessionSets: [LoggedSet]) -> Bool {
+        guard currentSessionSets.count >= 2 else { return false }
+        let avgReps = Double(currentSessionSets.map(\.reps).reduce(0, +)) / Double(currentSessionSets.count)
+        let underPerformance = avgReps < Double(exercise.repTargetMin)
+        let repeatedLow = currentSessionSets.suffix(2).allSatisfy { $0.reps <= max(1, exercise.repTargetMin - 1) }
+        return underPerformance && repeatedLow
+    }
+
+    private static func defaultStartLoad(for exercise: Exercise) -> Double {
         switch exercise.setPatternMode {
         case .bodyweight:
-            return firstSetBodyweight(exercise: exercise, firstSets: firstSets)
+            return 0
         case .assistedBodyweight:
-            return firstSetAssisted(exercise: exercise, firstSets: firstSets, increment: increment)
+            return 20
         default:
-            return firstSetWeighted(exercise: exercise, firstSets: firstSets, sessions: sessions, increment: increment)
+            return 20
         }
     }
 
-    private static func firstTimeFallback(exercise: Exercise) -> SetSuggestion {
-        switch exercise.setPatternMode {
-        case .bodyweight:
-            return SetSuggestion(weight: 0, reps: exercise.repTargetMin, setType: .work,
-                                 explanation: "Première fois. Cible : \(exercise.repTargetMin) reps BW.")
-        case .assistedBodyweight:
-            return SetSuggestion(weight: 20, reps: exercise.repTargetMin, setType: .work,
-                                 explanation: "Première fois. Assistance modérée pour atteindre \(exercise.repTargetMin) reps.")
-        default:
-            return SetSuggestion(weight: 20, reps: exercise.repTargetMax, setType: .work,
-                                 explanation: "Première fois. Commence avec un poids confortable.")
-        }
-    }
-
-    /// External-load / weighted-BW path. Uses anchor_load + promotion rule.
-    private static func firstSetWeighted(
-        exercise: Exercise,
-        firstSets: [LoggedSet],
-        sessions: [[LoggedSet]],
-        increment: Double
-    ) -> SetSuggestion {
-        // anchor_load = heaviest first-set weight that hit >= rep_min.
-        let validated = firstSets.filter { $0.reps >= exercise.repTargetMin }
-        let anchor: Double = validated.map(\.weight).max()
-            ?? firstSets.map(\.weight).max()
-            ?? 0
-
-        // median of first-set reps at anchor_load (exact weight match).
-        let repsAtAnchor = firstSets.filter { $0.weight == anchor }.map(\.reps).sorted()
-        let medianReps = repsAtAnchor.isEmpty
-            ? (firstSets.first?.reps ?? exercise.repTargetMin)
-            : repsAtAnchor[repsAtAnchor.count / 2]
-
-        // Promotion eligibility against the anchor load across sessions.
-        let promote = isPromotionEligible(
-            exercise: exercise,
-            anchor: anchor,
-            sessions: sessions
-        )
-
-        if promote {
-            let newWeight = anchor + increment
-            let buffer = exercise.fatigueClass == .heavy ? 1 : 2
-            let target = min(exercise.repTargetMax, exercise.repTargetMin + buffer)
-            return SetSuggestion(
-                weight: newWeight,
-                reps: target,
-                setType: .work,
-                explanation: "Promo : \(anchor.cleanWeight)kg validé → +\(increment.cleanWeight) → \(newWeight.cleanWeight)kg x\(target)."
-            )
-        } else {
-            let target = min(exercise.repTargetMax, medianReps + 1)
-            let clampedTarget = max(target, exercise.repTargetMin)
-            return SetSuggestion(
-                weight: anchor,
-                reps: clampedTarget,
-                setType: .work,
-                explanation: "Ancre : \(anchor.cleanWeight)kg. +1 rep utile → x\(clampedTarget)."
-            )
-        }
-    }
-
-    /// Bodyweight (no load) path. Simple rep progression: last reps + 1, capped.
-    private static func firstSetBodyweight(exercise: Exercise, firstSets: [LoggedSet]) -> SetSuggestion {
-        // Use the best first-set reps across recent sessions as the anchor.
-        let bestFirstReps = firstSets.map(\.reps).max() ?? exercise.repTargetMin
-        if bestFirstReps >= exercise.repTargetMax {
-            return SetSuggestion(
-                weight: 0,
-                reps: exercise.repTargetMax,
-                setType: .work,
-                explanation: "BW x\(bestFirstReps) au plafond — pense à lester."
-            )
-        }
-        let target = min(exercise.repTargetMax, bestFirstReps + 1)
+    private static func render(_ candidate: Candidate, confidence: Double) -> SetSuggestion {
+        let modeLabel = candidate.mode.rawValue.replacingOccurrences(of: "_", with: " ")
         return SetSuggestion(
-            weight: 0,
-            reps: target,
-            setType: .work,
-            explanation: "BW x\(bestFirstReps) → cible x\(target)."
+            weight: candidate.load,
+            reps: candidate.reps,
+            setType: candidate.mode == .fallbackHypertrophy ? .backoff : .work,
+            explanation: "\(modeLabel): \(candidate.load.cleanWeight)x\(candidate.reps).",
+            confidence: min(1, max(0, confidence)),
+            reasonCodes: candidate.reasonCodes,
+            mode: candidate.mode
         )
-    }
-
-    /// Assistance path. Progress = REDUCE assistance (lower weight counter), so
-    /// the promotion direction flips vs external load.
-    private static func firstSetAssisted(
-        exercise: Exercise,
-        firstSets: [LoggedSet],
-        increment: Double
-    ) -> SetSuggestion {
-        let lastAssistance = firstSets.first?.weight ?? 20
-        let allHitTarget = firstSets.prefix(2).allSatisfy { $0.reps >= exercise.repTargetMax }
-        if allHitTarget {
-            let newAssist = max(0, lastAssistance - increment)
-            return SetSuggestion(
-                weight: newAssist,
-                reps: exercise.repTargetMin,
-                setType: .work,
-                explanation: "Assistance \(lastAssistance.cleanWeight)kg saturée → réduire à \(newAssist.cleanWeight)kg."
-            )
-        }
-        let bestReps = firstSets.map(\.reps).max() ?? exercise.repTargetMin
-        let target = min(exercise.repTargetMax, bestReps + 1)
-        return SetSuggestion(
-            weight: lastAssistance,
-            reps: target,
-            setType: .work,
-            explanation: "Assistance \(lastAssistance.cleanWeight)kg — push à x\(target)."
-        )
-    }
-
-    /// Promotion eligibility per algo §6.3.
-    /// H (strict): in 2 of last 3 comparable sessions, first_set_reps >= rep_max
-    ///   AND average working reps at anchor >= rep_min + 1
-    ///   AND no working set at anchor < rep_min - 1.
-    /// M/L (normal): in 1 of last 2 comparable sessions, first_set_reps >= rep_max
-    ///   AND average working reps at anchor >= rep_min + 1.
-    private static func isPromotionEligible(
-        exercise: Exercise,
-        anchor: Double,
-        sessions: [[LoggedSet]]
-    ) -> Bool {
-        let strict = exercise.fatigueClass.usesStrictPromotion
-        let windowSize = strict ? 3 : 2
-        let needed = strict ? 2 : 1
-        let window = sessions.prefix(windowSize)
-        guard window.count >= needed else { return false }
-
-        var qualifying = 0
-        for sess in window {
-            let workSets = sess.filter {
-                $0.completed && ($0.setType == .work || $0.setType == .topSet || $0.setType == .backoff)
-            }
-            let atAnchor = workSets.filter { $0.weight == anchor }
-            guard let firstAtAnchor = atAnchor.first else { continue }
-            guard firstAtAnchor.reps >= exercise.repTargetMax else { continue }
-
-            let avg = Double(atAnchor.map(\.reps).reduce(0, +)) / Double(max(atAnchor.count, 1))
-            guard avg >= Double(exercise.repTargetMin + 1) else { continue }
-
-            if strict {
-                let minAllowed = exercise.repTargetMin - 1
-                guard atAnchor.allSatisfy({ $0.reps >= minAllowed }) else { continue }
-            }
-            qualifying += 1
-        }
-        return qualifying >= needed
-    }
-
-    // MARK: - Subsequent Sets (predicted from what was just done)
-
-    private static func suggestSubsequent(
-        exercise: Exercise,
-        lastSet: LoggedSet,
-        completedCount: Int,
-        increment: Double
-    ) -> SetSuggestion {
-        let base = exercise.fatigueClass.baseRepDrop
-        // Set penalty kicks in from the 3rd working set (indexing: lastSet is set N,
-        // the suggestion is for set N+1). completedCount = N.
-        let penalty = setPenalty(upcomingSetIndex: completedCount + 1)
-        let predicted = Double(lastSet.reps) - base - penalty
-
-        // Bodyweight (weight == 0, mode == bodyweight): just drop reps.
-        if exercise.setPatternMode == .bodyweight {
-            let target = max(1, min(exercise.repTargetMax, Int(predicted.rounded())))
-            return SetSuggestion(
-                weight: 0,
-                reps: target,
-                setType: .work,
-                explanation: "Set \(completedCount + 1) : prédit BWx\(target) après BWx\(lastSet.reps)."
-            )
-        }
-
-        // Assistance: direction flips. More fatigue → keep assistance (load stays
-        // the same kg counter) but reps drop; if predicted falls below rep_min,
-        // increase assistance by one increment to rescue the set.
-        if exercise.setPatternMode == .assistedBodyweight {
-            if predicted >= Double(exercise.repTargetMin) {
-                let reps = clamp(Int(predicted.rounded()), min: exercise.repTargetMin, max: exercise.repTargetMax)
-                return SetSuggestion(
-                    weight: lastSet.weight,
-                    reps: reps,
-                    setType: .work,
-                    explanation: "Set \(completedCount + 1) : même assistance, cible x\(reps) (chute prévue)."
-                )
-            }
-            let newAssist = lastSet.weight + increment
-            let mid = (exercise.repTargetMin + exercise.repTargetMax + 1) / 2
-            return SetSuggestion(
-                weight: newAssist,
-                reps: mid,
-                setType: .work,
-                explanation: "Set \(completedCount + 1) : +assistance \(newAssist.cleanWeight)kg pour tenir x\(mid)."
-            )
-        }
-
-        // External load / weighted-BW: same kg if predicted clears floor,
-        // otherwise back off one increment and target upper-mid band.
-        if predicted >= Double(exercise.repTargetMin) {
-            let reps = clamp(Int(predicted.rounded()), min: exercise.repTargetMin, max: exercise.repTargetMax)
-            return SetSuggestion(
-                weight: lastSet.weight,
-                reps: reps,
-                setType: .work,
-                explanation: "Set \(completedCount + 1) : même \(lastSet.weight.cleanWeight)kg, cible x\(reps) (chute prévue)."
-            )
-        }
-        let newWeight = max(0, lastSet.weight - increment)
-        let mid = Int((Double(exercise.repTargetMin + exercise.repTargetMax) / 2.0).rounded(.up))
-        return SetSuggestion(
-            weight: newWeight,
-            reps: mid,
-            setType: .work,
-            explanation: "Set \(completedCount + 1) : back-off \(newWeight.cleanWeight)kg x\(mid) (plancher reps atteint)."
-        )
-    }
-
-    /// Penalty added to the predicted rep drop based on which set we're about to do.
-    /// Matches algo §3.4: from the 3rd working set onward, each extra set costs
-    /// 0.5 additional reps.
-    private static func setPenalty(upcomingSetIndex: Int) -> Double {
-        switch upcomingSetIndex {
-        case ...2: return 0
-        case 3: return 0.5
-        case 4: return 1.0
-        default: return 1.5
-        }
     }
 
     private static func clamp(_ value: Int, min lo: Int, max hi: Int) -> Int {

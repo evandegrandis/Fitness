@@ -89,6 +89,7 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable, Comparable {
     case deltPost     = "delt_post"
 
     // Biceps
+    case bracchial    = "bracchial"
     case bicepsLong   = "biceps_long"
     case bicepsCourt  = "biceps_court"
 
@@ -136,7 +137,7 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable, Comparable {
             return .grandDorsal
         case .deltAnt, .deltLat, .deltPost:
             return .deltoides
-        case .bicepsLong, .bicepsCourt:
+        case .bracchial, .bicepsLong, .bicepsCourt:
             return .biceps
         case .tricepsLong, .tricepsLat, .tricepsMed:
             return .triceps
@@ -168,6 +169,7 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable, Comparable {
         case .deltAnt:        return "Deltoïde antérieur"
         case .deltLat:        return "Deltoïde latéral"
         case .deltPost:       return "Deltoïde postérieur"
+        case .bracchial:      return "Brachial"
         case .bicepsLong:     return "Biceps chef long"
         case .bicepsCourt:    return "Biceps chef court"
         case .tricepsLong:    return "Triceps chef long"
@@ -205,6 +207,7 @@ enum MuscleGroup: String, Codable, CaseIterable, Identifiable, Comparable {
         case .deltAnt:        return "Delt ant"
         case .deltLat:        return "Delt lat"
         case .deltPost:       return "Delt post"
+        case .bracchial:      return "Brachial"
         case .bicepsLong:     return "Bic long"
         case .bicepsCourt:    return "Bic court"
         case .tricepsLong:    return "Tri long"
