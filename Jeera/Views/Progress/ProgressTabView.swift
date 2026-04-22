@@ -219,8 +219,15 @@ private struct GlobalProgressView: View {
                                             y: .value("Performance", item.performance)
                                         )
                                         .foregroundStyle(.orange)
-                                        .interpolationMethod(.catmullRom)
+                                        .interpolationMethod(.linear)
                                         .lineStyle(StrokeStyle(lineWidth: 3))
+
+                                        PointMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Performance", item.performance)
+                                        )
+                                        .foregroundStyle(.orange)
+                                        .symbolSize(30)
                                     }
                                 }
 
@@ -231,7 +238,7 @@ private struct GlobalProgressView: View {
                                             y: .value("Creatine", item.creatinePct)
                                         )
                                         .foregroundStyle(.green)
-                                        .interpolationMethod(.catmullRom)
+                                        .interpolationMethod(.linear)
                                     }
                                 }
 
@@ -242,7 +249,7 @@ private struct GlobalProgressView: View {
                                             y: .value("Protein", item.proteinPct)
                                         )
                                         .foregroundStyle(.blue)
-                                        .interpolationMethod(.catmullRom)
+                                        .interpolationMethod(.linear)
                                     }
                                 }
 
@@ -253,7 +260,7 @@ private struct GlobalProgressView: View {
                                             y: .value("Sleep", item.sleepScore)
                                         )
                                         .foregroundStyle(.mint)
-                                        .interpolationMethod(.catmullRom)
+                                        .interpolationMethod(.linear)
                                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                                     }
                                 }

@@ -286,7 +286,9 @@ private struct HomeHeroCard: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(greeting)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                         Text(statusLine)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)

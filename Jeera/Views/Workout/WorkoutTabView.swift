@@ -84,129 +84,142 @@ private struct PostWorkoutSummarySheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    GlassCard(padding: 16, cornerRadius: 18) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Bilan express")
-                                    .font(.title3.weight(.bold))
-                                Text("Prérempli pour fermer la séance en quelques secondes.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        summaryHero
 
-                            HStack(spacing: 12) {
-                                stat("Durée", snapshot.duration)
-                                stat("Sets", "\(snapshot.setCount)")
-                                stat("Exos", "\(snapshot.exerciseCount)")
-                                stat("PR", "\(snapshot.prCount)")
-                            }
-
-                            HStack {
-                                Label(snapshot.progressionSignal, systemImage: "waveform.path.ecg")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.orange)
-                                Spacer()
-                                Text("Signal post-séance")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-
-                    GlassCard(padding: 16, cornerRadius: 18) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Récupération")
-                                        .font(.headline.weight(.semibold))
-                                    Text("Créatine, protéine et sommeil D-1 / D-2.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                        GlassCard(padding: 16, cornerRadius: 22) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Récupération")
+                                            .font(.headline.weight(.semibold))
+                                        Text("Créatine, protéine et sommeil D-1 / D-2.")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text("Defaults intelligents")
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(.tertiary)
                                 }
-                                Spacer()
-                                Text("Defaults intelligents")
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(.tertiary)
+
+                                dayCard(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
+                                dayCard(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
                             }
+                        }
 
-                            dayRow(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
-                            Divider().background(.white.opacity(0.12))
-                            dayRow(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
+                        Text("Skip garde les valeurs affichées et les enregistre telles quelles.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 120)
+                }
+                .background(BackgroundGradient().ignoresSafeArea())
+                .navigationTitle("Bilan séance")
+                .navigationBarTitleDisplayMode(.inline)
+                .onAppear {
+                    hydrateSuggestedDefaults()
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Skip") {
+                            persistRecoveryCheckins()
+                            onSave()
                         }
                     }
+                }
 
-                    Text("Skip garde les valeurs affichées et les enregistre telles quelles.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding()
-            }
-            .background(BackgroundGradient().ignoresSafeArea())
-            .navigationTitle("Bilan séance")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                hydrateSuggestedDefaults()
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Skip") {
-                        persistRecoveryCheckins()
-                        onSave()
-                    }
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    Button {
-                        persistRecoveryCheckins()
-                        onSave()
-                    } label: {
-                        HStack {
-                            Text("Save & close")
-                                .font(.headline.weight(.semibold))
-                            Spacer()
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .padding(.horizontal, 16)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Text("Aucune saisie texte requise.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
-                .background(.ultraThinMaterial)
+                footerBar
             }
         }
     }
 
-    private func stat(_ label: String, _ value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-            Text(label)
+    private var summaryHero: some View {
+        GlassCard(padding: 18, cornerRadius: 26) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Bilan express")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .minimumScaleFactor(0.85)
+                        Text("Prérempli pour fermer la séance vite, sans saisie inutile.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Label(snapshot.progressionSignal, systemImage: "waveform.path.ecg")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.orange.opacity(0.12), in: Capsule())
+                }
+
+                HStack(spacing: 10) {
+                    statTile("Durée", value: snapshot.duration)
+                    statTile("Sets", value: "\(snapshot.setCount)")
+                    statTile("Exos", value: "\(snapshot.exerciseCount)")
+                    statTile("PR", value: "\(snapshot.prCount)")
+                }
+            }
+        }
+    }
+
+    private var footerBar: some View {
+        VStack(spacing: 8) {
+            Button {
+                persistRecoveryCheckins()
+                onSave()
+            } label: {
+                HStack {
+                    Text("Save & close")
+                        .font(.headline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Text("Aucune saisie texte requise.")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(.ultraThinMaterial)
     }
 
-    private func dayRow(
+    private func statTile(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.weight(.bold).monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func dayCard(
         title: String,
         creatine: Binding<Bool>,
         protein: Binding<Bool>,
         sleep: Binding<Double>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
                     .font(.caption.weight(.semibold))
@@ -216,11 +229,11 @@ private struct PostWorkoutSummarySheet: View {
                 Text("h")
             }
             .font(.caption.monospacedDigit())
-            HStack {
-                Toggle("Créatine", isOn: creatine)
-                Toggle("Protéine", isOn: protein)
+            HStack(spacing: 12) {
+                compactToggle(title: "Créatine", isOn: creatine)
+                compactToggle(title: "Protéine", isOn: protein)
             }
-            .toggleStyle(.switch)
+
             HStack {
                 Text("Sommeil")
                     .font(.caption)
@@ -228,6 +241,20 @@ private struct PostWorkoutSummarySheet: View {
                 Slider(value: sleep, in: 3...11, step: 0.5)
             }
         }
+        .padding(14)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func compactToggle(title: String, isOn: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            Toggle(title, isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func hydrateSuggestedDefaults() {

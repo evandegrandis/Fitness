@@ -126,8 +126,8 @@ struct ParentMuscleCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 16) {
-            VStack(spacing: 8) {
+        GlassCard(padding: 16, cornerRadius: 20) {
+            VStack(spacing: 12) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 5) {
@@ -138,12 +138,12 @@ struct ParentMuscleCard: View {
                                 .foregroundStyle(.tertiary)
                         }
 
-                        HStack(spacing: 3) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("\(Int(progress.effectiveSets.rounded()))")
-                                .font(.title3.weight(.bold).monospacedDigit())
+                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(statusColor)
                             Text("/ \(Int(progress.goalSets.rounded()))")
-                                .font(.caption.monospacedDigit())
+                                .font(.callout.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -166,17 +166,28 @@ struct ParentMuscleCard: View {
                     }
                 }
 
-                // Progress bar
-                ProgressBar(
-                    progress: Double(progress.percentDisplay),
-                    height: 5,
-                    accentColor: statusColor
-                )
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(progress.status == .covered ? "Objectif couvert" : "\(Int(ceil(progress.remaining))) restants")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(progress.percentDisplay)%")
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                            .foregroundStyle(statusColor)
+                    }
+
+                    ProgressBar(
+                        progress: Double(progress.percentDisplay),
+                        height: 8,
+                        accentColor: statusColor
+                    )
+                }
             }
         }
         .overlay {
             if isSelected {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(statusColor.opacity(0.4), lineWidth: 1)
             }
         }
@@ -233,12 +244,12 @@ struct ParentHistoryChart: View {
                             )
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [Color.accentColor, Color.accentColor.opacity(0.4)],
+                                    colors: [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.45)],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
                             )
-                            .cornerRadius(3)
+                            .cornerRadius(6)
                         }
 
                         if goalValue > 0 {

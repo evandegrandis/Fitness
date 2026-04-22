@@ -104,8 +104,8 @@ private struct HistoryOverviewCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 16, cornerRadius: 26) {
-            VStack(alignment: .leading, spacing: 14) {
+        GlassCard(padding: 16, cornerRadius: 24) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Historique vivant")
                     .font(.headline.weight(.bold))
                 Text("Lecture rapide de tes dernières séances, avec suppression directe si tu veux nettoyer un essai raté.")
@@ -208,33 +208,16 @@ struct WeeklyHistorySection: View {
 
             VStack(spacing: 10) {
                 ForEach(sessions) { session in
-                    ZStack(alignment: .topTrailing) {
-                        NavigationLink {
-                            WorkoutDetailView(session: session)
-                        } label: {
-                            HistoryRow(
-                                session: session,
-                                allSessions: allSessions,
-                                isHighlighted: highlightedSessionID == session.id
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(role: .destructive) {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                                highlightedSessionID = session.id
-                            }
-                            onDeleteSession(session)
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(.red.opacity(0.92))
-                                .padding(9)
-                                .background(Color.red.opacity(0.12), in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(12)
+                    NavigationLink {
+                        WorkoutDetailView(session: session)
+                    } label: {
+                        HistoryRow(
+                            session: session,
+                            allSessions: allSessions,
+                            isHighlighted: highlightedSessionID == session.id
+                        )
                     }
+                    .buttonStyle(.plain)
                     .contextMenu {
                         Button(role: .destructive) {
                             highlightedSessionID = session.id
