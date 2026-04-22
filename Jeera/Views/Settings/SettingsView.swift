@@ -67,7 +67,7 @@ struct SettingsView: View {
                     Text("Exporte avant de réinstaller l'app. Les données sont effacées quand le certificat gratuit expire (7 jours).")
                 }
 
-                Section("Sauvegarde cloud (iCloud)") {
+                Section {
                     Toggle("Sauvegarde auto", isOn: $iCloudAutoBackupEnabled)
                     Button("Sauvegarder maintenant") {
                         do {
@@ -103,6 +103,8 @@ struct SettingsView: View {
                         }
                         showAlert = true
                     }
+                } header: {
+                    Text("Sauvegarde cloud (iCloud)")
                 } footer: {
                     Text("Le backup cloud reste indépendant de l'affichage local : l'app lit SwiftData en local, iCloud sert uniquement de sauvegarde.")
                 }
