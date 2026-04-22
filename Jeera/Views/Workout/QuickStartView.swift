@@ -17,6 +17,7 @@ struct QuickStartView: View {
     @State private var templateToRename: WorkoutTemplate?
     @State private var renameText = ""
     @State private var templateToDelete: WorkoutTemplate?
+    @Namespace private var modeNamespace
 
     private var settings: UserSettings? { settingsArray.first }
 
@@ -56,14 +57,16 @@ struct QuickStartView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Header - personalized greeting
-                VStack(spacing: 6) {
-                    Text(greeting)
-                        .font(.title2.weight(.bold))
-                    Text(statusLine)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                HomeHeroCard(
+                    greeting: greeting,
+                    statusLine: statusLine,
+                    selectedMode: viewModel.selectedStartMode
+                )
+                .padding(.horizontal)
+                .scrollTransition(.animated(.smooth(duration: 0.35, extraBounce: 0.06))) { content, phase in
+                    content
+                        .scaleEffect(phase.isIdentity ? 1 : 0.97)
+                        .opacity(phase.isIdentity ? 1 : 0.82)
                 }
                 .padding(.top, 12)
 
@@ -80,7 +83,8 @@ struct QuickStartView: View {
                         ForEach(WorkoutViewModel.WorkoutMode.allCases) { mode in
                             ModeSelectorCard(
                                 mode: mode,
-                                isSelected: viewModel.selectedStartMode == mode
+                                isSelected: viewModel.selectedStartMode == mode,
+                                namespace: modeNamespace
                             ) {
                                 withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                                     viewModel.selectedStartMode = mode
@@ -117,6 +121,11 @@ struct QuickStartView: View {
                     }
                 }
                 .padding(.horizontal)
+                .scrollTransition(.animated(.smooth(duration: 0.34, extraBounce: 0.05))) { content, phase in
+                    content
+                        .offset(y: phase.isIdentity ? 0 : 18)
+                        .opacity(phase.isIdentity ? 1 : 0.75)
+                }
 
                 // Templates
                 VStack(alignment: .leading, spacing: 10) {
@@ -166,11 +175,21 @@ struct QuickStartView: View {
                             }
                         }
                         .padding(.horizontal)
+                        .scrollTransition(.animated(.smooth(duration: 0.32, extraBounce: 0.02))) { content, phase in
+                            content
+                                .offset(x: phase.isIdentity ? 0 : -18)
+                                .opacity(phase.isIdentity ? 1 : 0.68)
+                        }
                     }
                 }
 
                 // Recent Achievements (records)
                 AchievementsSection(sessions: recentSessions)
+                    .scrollTransition(.animated(.smooth(duration: 0.4, extraBounce: 0.04))) { content, phase in
+                        content
+                            .offset(y: phase.isIdentity ? 0 : 20)
+                            .opacity(phase.isIdentity ? 1 : 0.72)
+                    }
 
                 Spacer(minLength: 80)
             }
@@ -255,6 +274,75 @@ struct QuickStartView: View {
 }
 
 // MARK: - Workout Detail View (History)
+
+private struct HomeHeroCard: View {
+    let greeting: String
+    let statusLine: String
+    let selectedMode: WorkoutViewModel.WorkoutMode
+
+    var body: some View {
+        GlassCard(padding: 18, cornerRadius: 30) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(greeting)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                        Text(statusLine)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: selectedMode.symbolName)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(selectedMode.accentColor)
+                        .padding(12)
+                        .background(selectedMode.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+
+                HStack(spacing: 10) {
+                    heroBadge("Mode", value: selectedMode.displayName, tint: selectedMode.accentColor)
+                    heroBadge("Tempo", value: selectedMode == .normal ? "Habituel" : "Session spéciale", tint: selectedMode.secondaryColor)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                selectedMode.secondaryColor.opacity(0.26),
+                                selectedMode.accentColor.opacity(0.14),
+                                Color.clear
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+        }
+    }
+
+    private func heroBadge(_ title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(tint.opacity(0.28), lineWidth: 0.8)
+        }
+    }
+}
 
 struct WorkoutDetailView: View {
     let session: WorkoutSession
@@ -380,9 +468,14 @@ struct QuickStartButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundStyle(color)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(color.opacity(0.18))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: icon)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(color)
+                }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
@@ -401,15 +494,20 @@ struct QuickStartButton: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .glassCard(padding: 14)
+            .glassCard(cornerRadius: 24, padding: 14)
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(color.opacity(0.15), lineWidth: 1)
+            }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiftButtonStyle())
     }
 }
 
 struct ModeSelectorCard: View {
     let mode: WorkoutViewModel.WorkoutMode
     let isSelected: Bool
+    let namespace: Namespace.ID
     let action: () -> Void
 
     var body: some View {
@@ -459,6 +557,19 @@ struct ModeSelectorCard: View {
                             endPoint: .bottomTrailing
                         )
                     )
+                    .overlay {
+                        if isSelected {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [mode.accentColor.opacity(0.18), .clear],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .matchedGeometryEffect(id: "selected-mode-background", in: namespace)
+                        }
+                    }
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -470,7 +581,7 @@ struct ModeSelectorCard: View {
             .shadow(color: mode.accentColor.opacity(isSelected ? 0.18 : 0), radius: 18, y: 8)
             .scaleEffect(isSelected ? 1.01 : 1.0)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiftButtonStyle(scale: 0.985))
     }
 }
 
@@ -493,9 +604,9 @@ struct TemplateRow: View {
                     .font(.body)
                     .foregroundStyle(Color.accentColor)
             }
-            .glassCard(padding: 14)
+            .glassCard(cornerRadius: 22, padding: 14)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LiftButtonStyle(scale: 0.99))
     }
 }
 
@@ -562,6 +673,11 @@ struct AchievementsSection: View {
                 ForEach(achievements.prefix(10)) { achievement in
                     AchievementRow(achievement: achievement)
                         .padding(.horizontal)
+                        .scrollTransition(.animated(.smooth(duration: 0.28, extraBounce: 0.02))) { content, phase in
+                            content
+                                .scaleEffect(phase.isIdentity ? 1 : 0.98)
+                                .opacity(phase.isIdentity ? 1 : 0.74)
+                        }
                 }
             }
         }

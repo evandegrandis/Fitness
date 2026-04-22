@@ -11,6 +11,7 @@ struct HistoryTabView: View {
 
     @Query private var goals: [MuscleGoal]
     @State private var sessionToDelete: WorkoutSession?
+    @State private var highlightedSessionID: UUID?
 
     /// Sessions grouped into ISO weeks (Mon-Sun Europe/Paris). The dictionary key
     /// is the Monday of that week; groups are sorted newest-first.
@@ -31,12 +32,20 @@ struct HistoryTabView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 18) {
+                            HistoryOverviewCard(sessions: sessions)
+                                .scrollTransition(.animated(.smooth(duration: 0.35, extraBounce: 0.06))) { content, phase in
+                                    content
+                                        .scaleEffect(phase.isIdentity ? 1 : 0.97)
+                                        .opacity(phase.isIdentity ? 1 : 0.8)
+                                }
+
                             ForEach(weeklyGroups, id: \.weekStart) { group in
                                 WeeklyHistorySection(
                                     weekStart: group.weekStart,
                                     sessions: group.sessions,
                                     allSessions: sessions,
                                     goals: goals,
+                                    highlightedSessionID: $highlightedSessionID,
                                     onDeleteSession: { sessionToDelete = $0 }
                                 )
                             }
@@ -86,6 +95,66 @@ struct HistoryTabView: View {
     }
 }
 
+private struct HistoryOverviewCard: View {
+    let sessions: [WorkoutSession]
+
+    private var totalSets: Int { sessions.prefix(8).reduce(0) { $0 + $1.totalWorkSets } }
+    private var totalPRs: Int {
+        sessions.prefix(8).reduce(0) { $0 + recordCount(in: $1) }
+    }
+
+    var body: some View {
+        GlassCard(padding: 16, cornerRadius: 26) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Historique vivant")
+                    .font(.headline.weight(.bold))
+                Text("Lecture rapide de tes dernières séances, avec suppression directe si tu veux nettoyer un essai raté.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 10) {
+                    metric("Séances", value: "\(min(sessions.count, 8))")
+                    metric("Sets", value: "\(totalSets)")
+                    metric("PR", value: "\(totalPRs)")
+                }
+            }
+        }
+    }
+
+    private func metric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.weight(.bold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func recordCount(in session: WorkoutSession) -> Int {
+        var count = 0
+
+        for logged in session.loggedExercises {
+            guard let exercise = logged.exercise else { continue }
+            let allSets = sessions
+                .filter { $0.date <= session.date }
+                .flatMap { currentSession in
+                    currentSession.loggedExercises.filter { $0.exercise?.id == exercise.id }
+                }
+                .flatMap(\.completedWorkSets)
+
+            for set in logged.completedWorkSets where RecordsEngine.isRecordSet(set, among: allSets, exercise: exercise) {
+                count += 1
+            }
+        }
+
+        return count
+    }
+}
+
 // MARK: - Weekly Section
 
 struct WeeklyHistorySection: View {
@@ -93,6 +162,7 @@ struct WeeklyHistorySection: View {
     let sessions: [WorkoutSession]
     var allSessions: [WorkoutSession] = []
     let goals: [MuscleGoal]
+    @Binding var highlightedSessionID: UUID?
     var onDeleteSession: (WorkoutSession) -> Void = { _ in }
 
     private var weekLabel: String {
@@ -138,18 +208,45 @@ struct WeeklyHistorySection: View {
 
             VStack(spacing: 10) {
                 ForEach(sessions) { session in
-                    NavigationLink {
-                        WorkoutDetailView(session: session)
-                    } label: {
-                        HistoryRow(session: session, allSessions: allSessions)
+                    ZStack(alignment: .topTrailing) {
+                        NavigationLink {
+                            WorkoutDetailView(session: session)
+                        } label: {
+                            HistoryRow(
+                                session: session,
+                                allSessions: allSessions,
+                                isHighlighted: highlightedSessionID == session.id
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                highlightedSessionID = session.id
+                            }
+                            onDeleteSession(session)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.red.opacity(0.92))
+                                .padding(9)
+                                .background(Color.red.opacity(0.12), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(12)
                     }
-                    .buttonStyle(.plain)
                     .contextMenu {
                         Button(role: .destructive) {
+                            highlightedSessionID = session.id
                             onDeleteSession(session)
                         } label: {
                             Label("Supprimer la séance", systemImage: "trash")
                         }
+                    }
+                    .scrollTransition(.animated(.smooth(duration: 0.28, extraBounce: 0.04))) { content, phase in
+                        content
+                            .offset(y: phase.isIdentity ? 0 : 16)
+                            .opacity(phase.isIdentity ? 1 : 0.75)
                     }
                 }
             }
@@ -163,6 +260,7 @@ struct HistoryRow: View {
     let session: WorkoutSession
     /// All finished sessions, needed to detect which sets were records at the time.
     var allSessions: [WorkoutSession] = []
+    var isHighlighted = false
 
     private var exerciseNames: String {
         let names = session.orderedExercises.compactMap { $0.exercise?.name }
@@ -230,5 +328,10 @@ struct HistoryRow: View {
                     .lineLimit(1)
             }
         }
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(isHighlighted ? .red.opacity(0.45) : .clear, lineWidth: 1.2)
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isHighlighted)
     }
 }

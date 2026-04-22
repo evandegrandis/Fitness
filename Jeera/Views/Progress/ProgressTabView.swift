@@ -4,6 +4,7 @@ import Charts
 
 struct ProgressTabView: View {
     @State private var selectedLayer = 0
+    @Namespace private var layerNamespace
 
     var body: some View {
         NavigationStack {
@@ -11,13 +12,7 @@ struct ProgressTabView: View {
                 BackgroundGradient()
 
                 VStack(spacing: 0) {
-                    // Segmented Picker
-                    Picker("Layer", selection: $selectedLayer) {
-                        Text("Muscles").tag(0)
-                        Text("Exercices").tag(1)
-                        Text("Global").tag(2)
-                    }
-                    .pickerStyle(.segmented)
+                    ProgressLayerSwitcher(selectedLayer: $selectedLayer, namespace: layerNamespace)
                     .padding(.horizontal)
                     .padding(.top, 8)
 
@@ -32,10 +27,57 @@ struct ProgressTabView: View {
                             .tag(2)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.spring(response: 0.42, dampingFraction: 0.84), value: selectedLayer)
                 }
             }
             .navigationTitle("Progrès")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct ProgressLayerSwitcher: View {
+    @Binding var selectedLayer: Int
+    let namespace: Namespace.ID
+
+    private let items: [(Int, String, String)] = [
+        (0, "Muscles", "figure.strengthtraining.traditional"),
+        (1, "Exercices", "dumbbell.fill"),
+        (2, "Global", "waveform.path.ecg")
+    ]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(items, id: \.0) { item in
+                let isSelected = selectedLayer == item.0
+                Button {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.84)) {
+                        selectedLayer = item.0
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: item.2)
+                            .font(.caption.weight(.bold))
+                        Text(item.1)
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(isSelected ? .black : .white.opacity(0.82))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(isSelected ? Color.white.opacity(0.92) : Color.white.opacity(0.05))
+                            .matchedGeometryEffect(id: isSelected ? "progress-layer-pill" : item.1, in: namespace)
+                    }
+                }
+                .buttonStyle(LiftButtonStyle(scale: 0.985))
+            }
+        }
+        .padding(6)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
         }
     }
 }
@@ -255,10 +297,12 @@ private struct GlobalProgressView: View {
                                         .gesture(
                                             DragGesture(minimumDistance: 0)
                                                 .onChanged { value in
-                                                    let plotOrigin = geo[proxy.plotAreaFrame].origin
-                                                    let x = value.location.x - plotOrigin.x
-                                                    if let date: Date = proxy.value(atX: x) {
-                                                        selectedWeek = nearestWeekStart(to: date)
+                                                    if let plotFrame = proxy.plotFrame {
+                                                        let plotOrigin = geo[plotFrame].origin
+                                                        let x = value.location.x - plotOrigin.x
+                                                        if let date: Date = proxy.value(atX: x) {
+                                                            selectedWeek = nearestWeekStart(to: date)
+                                                        }
                                                     }
                                                 }
                                                 .onEnded { _ in }

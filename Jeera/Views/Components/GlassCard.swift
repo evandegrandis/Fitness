@@ -89,3 +89,14 @@ extension View {
         modifier(GlassCardModifier(cornerRadius: cornerRadius, padding: padding))
     }
 }
+
+struct LiftButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.975
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .brightness(configuration.isPressed ? 0.03 : 0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.78), value: configuration.isPressed)
+    }
+}
