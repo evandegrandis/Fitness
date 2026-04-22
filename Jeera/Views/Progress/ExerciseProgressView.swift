@@ -66,6 +66,7 @@ struct ExerciseProgressRow: View {
     let exercise: Exercise
     let sessions: [WorkoutSession]
     var isSelected: Bool = false
+    private let rollingWindowSessions = 4
 
     private var history: [ExerciseDataPoint] {
         sessions.compactMap { session in
@@ -120,18 +121,37 @@ struct ExerciseProgressRow: View {
         return ProgressionEngine.bestE1RM(from: allSets)?.e1rm
     }
 
-    // Trend: compare last 2 sessions using the same metric as the chart
-    // (heaviest weight at ≥7 reps for weighted, best reps for bodyweight).
+    // Trend: compare last 2 points of the same rolling-best curve as the chart.
     private var trend: Trend {
         guard history.count >= 2 else { return .neutral }
-        let last = history[history.count - 1]
-        let prev = history[history.count - 2]
         let isBW = exercise.setPatternMode == .bodyweight
-        let lastValue = isBW ? Double(last.bestBWReps) : last.bestWeightAt7Plus
-        let prevValue = isBW ? Double(prev.bestBWReps) : prev.bestWeightAt7Plus
+        let rawValues = history.map { dp in
+            isBW ? Double(dp.bestBWReps) : dp.bestWeightAt7Plus
+        }
+        let rolling = rollingBestSeries(values: rawValues)
+        let lastValue = rolling[rolling.count - 1]
+        let prevValue = rolling[rolling.count - 2]
         if lastValue > prevValue + 0.01 { return .up }
-        if lastValue < prevValue - 0.01 { return .down }
         return .neutral
+    }
+
+    private var showsSecondaryRepChart: Bool {
+        exercise.setPatternMode != .bodyweight &&
+        (exercise.setPatternMode == .weightedBodyweight || repBenchmarkRange != nil)
+    }
+
+    /// Exercise-specific rep benchmark bands requested by user.
+    private var repBenchmarkRange: ClosedRange<Double>? {
+        switch exercise.name {
+        case "Tractions SN":
+            return 14...33
+        case "Crunch décliné":
+            return 29...76
+        case "Relevé jambe chaise roumaine":
+            return 18...46
+        default:
+            return nil
+        }
     }
 
     var body: some View {
@@ -182,6 +202,9 @@ struct ExerciseProgressRow: View {
 
                     if history.count >= 2 {
                         exerciseChart
+                        if showsSecondaryRepChart {
+                            repChartForWeightedBodyweight
+                        }
                     } else if let only = history.first {
                         // Sparse data: show milestone instead of chart
                         HStack {
@@ -209,14 +232,16 @@ struct ExerciseProgressRow: View {
     private var exerciseChart: some View {
         let isBodyweight = exercise.setPatternMode == .bodyweight
 
-        // Chart = heaviest weight moved for ≥7 reps (or best BW reps). Same unit
-        // as the benchmark band, so "am I in the green zone?" is a direct read.
-        let chartData: [(Date, Double, Bool)] = history.map { dp in
-            if isBodyweight {
-                return (dp.date, Double(dp.bestBWReps), dp.bestBWReps > 0)
-            } else {
-                return (dp.date, dp.bestWeightAt7Plus, dp.bestWeightAt7Plus > 0)
-            }
+        // Rolling "best so far in the last N sessions for this exercise".
+        // With N=4 this stays mostly flat/up while still allowing rare drops
+        // when an old PR ages out of the short recent window.
+        let rawValues = history.map { dp in
+            isBodyweight ? Double(dp.bestBWReps) : dp.bestWeightAt7Plus
+        }
+        let rolling = rollingBestSeries(values: rawValues)
+        let chartData: [(Date, Double, Bool)] = zip(history, rolling).map { pair in
+            let (dp, value) = pair
+            return (dp.date, value, value > 0)
         }
 
         // Tight y-axis domain (not starting at 0), include benchmark range if present
@@ -294,6 +319,78 @@ struct ExerciseProgressRow: View {
                 AxisValueLabel()
                     .font(.system(size: 9))
             }
+        }
+    }
+
+    private var repChartForWeightedBodyweight: some View {
+        let rawReps = history.map { Double($0.bestBWReps) }
+        let rolling = rollingBestSeries(values: rawReps)
+        let chartData: [(Date, Double, Bool)] = zip(history, rolling).map { pair in
+            let (dp, value) = pair
+            return (dp.date, value, value > 0)
+        }
+        var vals = chartData.filter(\.2).map(\.1)
+        if let band = repBenchmarkRange {
+            vals.append(band.lowerBound)
+            vals.append(band.upperBound)
+        }
+        let minVal = vals.min() ?? 0
+        let maxVal = vals.max() ?? 12
+        let padding = max((maxVal - minVal) * 0.2, 1)
+        let yMin = max(0, minVal - padding)
+        let yMax = maxVal + padding
+
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Reps perf (max 4 dernières séances)")
+                .font(.system(size: 10).weight(.medium))
+                .foregroundStyle(.secondary)
+            Chart {
+                if let band = repBenchmarkRange {
+                    RectangleMark(
+                        yStart: .value("Rep Bench Low", band.lowerBound),
+                        yEnd: .value("Rep Bench High", band.upperBound)
+                    )
+                    .foregroundStyle(.green.opacity(0.08))
+
+                    RuleMark(y: .value("Rep Bench Low", band.lowerBound))
+                        .foregroundStyle(.green.opacity(0.25))
+                        .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                    RuleMark(y: .value("Rep Bench High", band.upperBound))
+                        .foregroundStyle(.green.opacity(0.25))
+                        .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                }
+
+                ForEach(chartData, id: \.0) { date, value, hasData in
+                    if hasData {
+                        LineMark(x: .value("Date", date), y: .value("Reps", value))
+                            .foregroundStyle(.orange)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.catmullRom)
+                        PointMark(x: .value("Date", date), y: .value("Reps", value))
+                            .foregroundStyle(.orange)
+                            .symbolSize(22)
+                    }
+                }
+            }
+            .chartYScale(domain: yMin...yMax)
+            .frame(height: 90)
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        .foregroundStyle(.white.opacity(0.08))
+                    AxisValueLabel().font(.system(size: 9))
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func rollingBestSeries(values: [Double]) -> [Double] {
+        values.indices.map { idx in
+            let start = max(0, idx - (rollingWindowSessions - 1))
+            let window = values[start...idx]
+            return window.max() ?? 0
         }
     }
 
