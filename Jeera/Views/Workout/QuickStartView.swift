@@ -73,7 +73,7 @@ struct QuickStartView: View {
                 // Quick Actions
                 VStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Mode de séance")
+                        Text("Séance")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
@@ -97,21 +97,12 @@ struct QuickStartView: View {
                     if let recommended = recommendedTemplate {
                         QuickStartButton(
                             title: recommended.name,
-                            subtitle: "Recommandé — couvre tes plus gros déficits",
+                            subtitle: startSubtitle(for: recommended),
                             icon: "star.circle.fill",
                             color: .orange
                         ) {
                             viewModel.startFromTemplate(recommended, mode: viewModel.selectedStartMode)
                         }
-                    }
-
-                    QuickStartButton(
-                        title: "Séance vide",
-                        subtitle: "Partir de zéro",
-                        icon: "plus.circle.fill",
-                        color: Color.accentColor
-                    ) {
-                        viewModel.startEmptyWorkout(mode: viewModel.selectedStartMode)
                     }
 
                     if !recentSessions.isEmpty {
@@ -249,6 +240,17 @@ struct QuickStartView: View {
 
     private var modeHint: String {
         viewModel.selectedStartMode.shortDescription
+    }
+
+    private func startSubtitle(for template: WorkoutTemplate) -> String {
+        switch viewModel.selectedStartMode {
+        case .normal:
+            return "Base habituelle"
+        case .beast:
+            return "Base habituelle + overlay Beast"
+        case .monk:
+            return "Base habituelle + correction Monk"
+        }
     }
 }
 

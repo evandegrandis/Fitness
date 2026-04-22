@@ -113,7 +113,7 @@ struct SettingsView: View {
                     }
                 )
 
-                Section("Profil") {
+                Section {
                     HStack {
                         Text("Prénom")
                         Spacer()
