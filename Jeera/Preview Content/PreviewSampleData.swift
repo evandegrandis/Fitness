@@ -36,8 +36,8 @@ extension Exercise {
             smallestIncrement: 5,
             isFavorite: true,
             suggestedRestSeconds: 180,
-            benchmarkLow: 70,
-            benchmarkHigh: 140,
+            benchmarkLow: 75,
+            benchmarkHigh: 135,
             muscleMappings: [
                 MuscleMapping(muscleGroup: .pectStern, coefficient: 1.0),
                 MuscleMapping(muscleGroup: .tricepsLat, coefficient: 0.3),

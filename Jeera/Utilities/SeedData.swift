@@ -119,8 +119,11 @@ struct SeedData {
              benchmarkLow: 60, benchmarkHigh: 120, fatigueClass: .heavy,
              muscles: [(.deltAnt, 1.0), (.deltLat, 1.0), (.tricepsLat, 0.3), (.tricepsMed, 0.3), (.tricepsLong, 0.3), (.trapSup, 0.3), (.pectClav, 0.1), (.trapInf, 0.1), (.transverse, 0.1)])
 
+        // No weight benchmark band for HSPU: this exercise is tracked in reps in
+        // this app, and the user explicitly does not want a fake 10RM-style
+        // weighted comparison zone rendered for it.
         make("HSPU", category: "Push", mode: .weightedBodyweight, repMin: 5, repMax: 10, increment: 1.25, rest: 180,
-             benchmarkLow: 0, benchmarkHigh: 25, fatigueClass: .heavy,
+             benchmarkLow: nil, benchmarkHigh: nil, fatigueClass: .heavy,
              muscles: [(.deltAnt, 1.0), (.deltLat, 1.0), (.tricepsLat, 1.0), (.tricepsMed, 1.0), (.tricepsLong, 0.3), (.pectClav, 0.3), (.trapSup, 0.3), (.trapInf, 0.3), (.absHaut, 0.1), (.absBas, 0.1), (.transverse, 0.1), (.obliqueExt, 0.1), (.obliqueInt, 0.1)])
 
         make("Lateral raises", category: "Push", mode: .straight, repMin: 10, repMax: 20, increment: 1, rest: 75,
