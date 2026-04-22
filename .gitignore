@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# Xcode user/local state
+*.xcuserdatad/
+*.xcuserstate
+
+# Generated workspace/user data for .xcodeproj setup
+Jeera.xcodeproj/project.xcworkspace/
+Jeera.xcodeproj/xcuserdata/
