@@ -70,6 +70,7 @@ struct WorkoutTabView: View {
 
 private struct PostWorkoutSummarySheet: View {
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \RecoveryCheckin.date, order: .reverse) private var recoveryHistory: [RecoveryCheckin]
     let snapshot: WorkoutViewModel.FinishedWorkoutSnapshot
     var onSave: () -> Void
 
@@ -79,44 +80,76 @@ private struct PostWorkoutSummarySheet: View {
     @AppStorage("recovery_protein_d2") private var proteinD2 = false
     @AppStorage("recovery_sleep_d1") private var sleepD1 = 7.0
     @AppStorage("recovery_sleep_d2") private var sleepD2 = 7.0
+    @State private var loadedSuggestedDefaults = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 14) {
-                GlassCard(padding: 14, cornerRadius: 16) {
-                    HStack(spacing: 16) {
-                        stat("Durée", snapshot.duration)
-                        stat("Sets", "\(snapshot.setCount)")
-                        stat("PR", "\(snapshot.prCount)")
-                        stat("Signal", snapshot.progressionSignal)
+            ScrollView {
+                VStack(spacing: 14) {
+                    GlassCard(padding: 16, cornerRadius: 18) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Bilan express")
+                                    .font(.title3.weight(.bold))
+                                Text("Prérempli pour fermer la séance en quelques secondes.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            HStack(spacing: 12) {
+                                stat("Durée", snapshot.duration)
+                                stat("Sets", "\(snapshot.setCount)")
+                                stat("Exos", "\(snapshot.exerciseCount)")
+                                stat("PR", "\(snapshot.prCount)")
+                            }
+
+                            HStack {
+                                Label(snapshot.progressionSignal, systemImage: "waveform.path.ecg")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                                Spacer()
+                                Text("Signal post-séance")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
                     }
-                }
 
-                GlassCard(padding: 14, cornerRadius: 16) {
-                    VStack(spacing: 10) {
-                        dayRow(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
-                        Divider().background(.white.opacity(0.12))
-                        dayRow(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
+                    GlassCard(padding: 16, cornerRadius: 18) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Récupération")
+                                        .font(.headline.weight(.semibold))
+                                    Text("Créatine, protéine et sommeil D-1 / D-2.")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("Defaults intelligents")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.tertiary)
+                            }
+
+                            dayRow(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
+                            Divider().background(.white.opacity(0.12))
+                            dayRow(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
+                        }
                     }
-                }
 
-                Spacer()
-
-                Button {
-                    persistRecoveryCheckins()
-                    onSave()
-                } label: {
-                    Text("Save & close")
-                        .font(.headline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                    Text("Skip garde les valeurs affichées et les enregistre telles quelles.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .buttonStyle(.borderedProminent)
+                .padding()
             }
-            .padding()
             .background(BackgroundGradient().ignoresSafeArea())
             .navigationTitle("Bilan séance")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                hydrateSuggestedDefaults()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Skip") {
@@ -124,6 +157,34 @@ private struct PostWorkoutSummarySheet: View {
                         onSave()
                     }
                 }
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    Button {
+                        persistRecoveryCheckins()
+                        onSave()
+                    } label: {
+                        HStack {
+                            Text("Save & close")
+                                .font(.headline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.headline)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 16)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Text("Aucune saisie texte requise.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+                .background(.ultraThinMaterial)
             }
         }
     }
@@ -146,24 +207,55 @@ private struct PostWorkoutSummarySheet: View {
         sleep: Binding<Double>
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(sleep.wrappedValue, format: .number.precision(.fractionLength(1))) +
+                Text("h")
+            }
+            .font(.caption.monospacedDigit())
             HStack {
                 Toggle("Créatine", isOn: creatine)
                 Toggle("Protéine", isOn: protein)
             }
+            .toggleStyle(.switch)
             HStack {
                 Text("Sommeil")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Slider(value: sleep, in: 3...11, step: 0.5)
-                Text("\(sleep.wrappedValue, specifier: "%.1fh")")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, alignment: .trailing)
             }
         }
+    }
+
+    private func hydrateSuggestedDefaults() {
+        guard !loadedSuggestedDefaults else { return }
+        loadedSuggestedDefaults = true
+
+        if let d1 = checkin(forDayOffset: -1) {
+            creatineD1 = d1.tookCreatine
+            proteinD1 = d1.proteinTargetMet
+            sleepD1 = d1.sleepHours
+        }
+
+        if let d2 = checkin(forDayOffset: -2) {
+            creatineD2 = d2.tookCreatine
+            proteinD2 = d2.proteinTargetMet
+            sleepD2 = d2.sleepHours
+        } else if let fallback = recoveryHistory.first {
+            creatineD2 = fallback.tookCreatine
+            proteinD2 = fallback.proteinTargetMet
+            sleepD2 = fallback.sleepHours
+        }
+    }
+
+    private func checkin(forDayOffset offset: Int) -> RecoveryCheckin? {
+        let calendar = Calendar.current
+        guard let targetDate = calendar.date(byAdding: .day, value: offset, to: Date()) else { return nil }
+        let dayStart = calendar.startOfDay(for: targetDate)
+        return recoveryHistory.first { calendar.isDate($0.date, inSameDayAs: dayStart) }
     }
 
     private func persistRecoveryCheckins() {

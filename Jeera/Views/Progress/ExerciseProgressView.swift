@@ -66,6 +66,7 @@ struct ExerciseProgressRow: View {
     let exercise: Exercise
     let sessions: [WorkoutSession]
     var isSelected: Bool = false
+    @State private var showCurveExplanation = false
     private let rollingWindowSessions = 4
 
     private var history: [ExerciseDataPoint] {
@@ -132,6 +133,7 @@ struct ExerciseProgressRow: View {
         let lastValue = rolling[rolling.count - 1]
         let prevValue = rolling[rolling.count - 2]
         if lastValue > prevValue + 0.01 { return .up }
+        if lastValue < prevValue - 0.01 { return .down }
         return .neutral
     }
 
@@ -201,6 +203,7 @@ struct ExerciseProgressRow: View {
                     Divider().background(.white.opacity(0.08))
 
                     if history.count >= 2 {
+                        chartHeader
                         exerciseChart
                         if showsSecondaryRepChart {
                             repChartForWeightedBodyweight
@@ -229,6 +232,37 @@ struct ExerciseProgressRow: View {
 
     // MARK: - Chart with proper scaling
 
+    private var chartHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(exercise.setPatternMode == .bodyweight ? "Courbe reps" : "Courbe perf")
+                .font(.system(size: 10).weight(.medium))
+                .foregroundStyle(.secondary)
+
+            if exercise.setPatternMode != .bodyweight {
+                Button {
+                    showCurveExplanation.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showCurveExplanation, arrowEdge: .top) {
+                    Text("Courbe = meilleur perf 7+ reps sur les 4 dernières séances de cet exo")
+                        .font(.caption)
+                        .padding(10)
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
+
+            Spacer()
+
+            Text("Fenêtre \(rollingWindowSessions) séances")
+                .font(.system(size: 9).weight(.medium))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
     private var exerciseChart: some View {
         let isBodyweight = exercise.setPatternMode == .bodyweight
 
@@ -256,68 +290,76 @@ struct ExerciseProgressRow: View {
         let yMin = max(0, minVal - padding)
         let yMax = maxVal + padding
 
-        return Chart {
-            ForEach(chartData, id: \.0) { date, value, isValidated in
-                if isValidated {
-                    LineMark(
-                        x: .value("Date", date),
-                        y: .value(isBodyweight ? "Reps" : "Weight", value)
-                    )
-                    .foregroundStyle(Color.accentColor)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-                    .interpolationMethod(.catmullRom)
+        return VStack(alignment: .leading, spacing: 4) {
+            Chart {
+                ForEach(chartData, id: \.0) { date, value, isValidated in
+                    if isValidated {
+                        LineMark(
+                            x: .value("Date", date),
+                            y: .value(isBodyweight ? "Reps" : "Weight", value)
+                        )
+                        .foregroundStyle(Color.accentColor)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                        .interpolationMethod(.catmullRom)
 
-                    PointMark(
-                        x: .value("Date", date),
-                        y: .value(isBodyweight ? "Reps" : "Weight", value)
+                        PointMark(
+                            x: .value("Date", date),
+                            y: .value(isBodyweight ? "Reps" : "Weight", value)
+                        )
+                        .foregroundStyle(Color.accentColor)
+                        .symbolSize(24)
+                    }
+                }
+
+                if !isBodyweight, let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
+                    RuleMark(y: .value("Bench Low", low))
+                        .foregroundStyle(.green.opacity(0.25))
+                        .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                        .annotation(position: .trailing, alignment: .leading) {
+                            Text("1 an")
+                                .font(.system(size: 7).weight(.medium))
+                                .foregroundStyle(.green.opacity(0.6))
+                        }
+                    RuleMark(y: .value("Bench High", high))
+                        .foregroundStyle(.green.opacity(0.25))
+                        .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                        .annotation(position: .trailing, alignment: .leading) {
+                            Text("5 ans")
+                                .font(.system(size: 7).weight(.medium))
+                                .foregroundStyle(.green.opacity(0.6))
+                        }
+                    RectangleMark(
+                        yStart: .value("Low", low),
+                        yEnd: .value("High", high)
                     )
-                    .foregroundStyle(Color.accentColor)
-                    .symbolSize(24)
+                    .foregroundStyle(.green.opacity(0.06))
+                }
+            }
+            .chartYScale(domain: yMin...yMax)
+            .frame(height: 130)
+            .chartXAxis {
+                AxisMarks { value in
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(date.shortDate)
+                                .font(.system(size: 9))
+                        }
+                    }
+                }
+            }
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        .foregroundStyle(.white.opacity(0.08))
+                    AxisValueLabel()
+                        .font(.system(size: 9))
                 }
             }
 
-            if !isBodyweight, let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
-                RuleMark(y: .value("Bench Low", low))
-                    .foregroundStyle(.green.opacity(0.25))
-                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
-                    .annotation(position: .trailing, alignment: .leading) {
-                        Text("1 an")
-                            .font(.system(size: 7).weight(.medium))
-                            .foregroundStyle(.green.opacity(0.6))
-                    }
-                RuleMark(y: .value("Bench High", high))
-                    .foregroundStyle(.green.opacity(0.25))
-                    .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
-                    .annotation(position: .trailing, alignment: .leading) {
-                        Text("5 ans")
-                            .font(.system(size: 7).weight(.medium))
-                            .foregroundStyle(.green.opacity(0.6))
-                    }
-                RectangleMark(
-                    yStart: .value("Low", low),
-                    yEnd: .value("High", high)
-                )
-                .foregroundStyle(.green.opacity(0.06))
-            }
-        }
-        .chartYScale(domain: yMin...yMax)
-        .frame(height: 130)
-        .chartXAxis {
-            AxisMarks { value in
-                AxisValueLabel {
-                    if let date = value.as(Date.self) {
-                        Text(date.shortDate)
-                            .font(.system(size: 9))
-                    }
-                }
-            }
-        }
-        .chartYAxis {
-            AxisMarks { _ in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
-                    .foregroundStyle(.white.opacity(0.08))
-                AxisValueLabel()
+            if !isBodyweight {
+                Text("Courbe = meilleur perf 7+ reps sur les 4 dernières séances de cet exo")
                     .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
             }
         }
     }

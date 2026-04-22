@@ -24,6 +24,7 @@ class WorkoutViewModel {
         let id = UUID()
         let duration: String
         let setCount: Int
+        let exerciseCount: Int
         let prCount: Int
         let progressionSignal: String
     }
@@ -240,6 +241,7 @@ class WorkoutViewModel {
         finishedWorkoutSnapshot = FinishedWorkoutSnapshot(
             duration: duration,
             setCount: sets,
+            exerciseCount: session.loggedExercises.filter { !$0.completedWorkSets.isEmpty }.count,
             prCount: prCount,
             progressionSignal: progressionSignal
         )
