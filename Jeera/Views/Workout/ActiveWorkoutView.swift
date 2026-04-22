@@ -6,6 +6,7 @@ struct ActiveWorkoutView: View {
     @State private var showFinishAlert = false
     @State private var showExercisePicker = false
     @State private var modeIntroVisible = false
+    @State private var modeAuraPulse = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -25,6 +26,13 @@ struct ActiveWorkoutView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+
+                    if viewModel.activeWorkoutMode != .normal {
+                        ModeFocusBanner(mode: viewModel.activeWorkoutMode)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 4, trailing: 20))
+                    }
 
                     if let session = viewModel.activeSession {
                         WeeklyPrioritySection(liveSession: session)
@@ -133,6 +141,7 @@ struct ActiveWorkoutView: View {
         .animation(.spring(response: 0.4), value: viewModel.showAchievement)
         .animation(.spring(response: 0.55, dampingFraction: 0.82), value: viewModel.activeWorkoutMode)
         .onAppear {
+            modeAuraPulse = true
             triggerModeIntroIfNeeded()
         }
         .onChange(of: viewModel.activeWorkoutMode) { _, _ in
@@ -196,12 +205,12 @@ struct ActiveWorkoutView: View {
 
                 RadialGradient(
                     colors: [
-                        Color.orange.opacity(0.18),
+                        Color.orange.opacity(modeAuraPulse ? 0.24 : 0.10),
                         Color.clear
                     ],
                     center: .bottomLeading,
                     startRadius: 0,
-                    endRadius: 360
+                    endRadius: modeAuraPulse ? 420 : 300
                 )
             case .monk:
                 LinearGradient(
@@ -216,12 +225,12 @@ struct ActiveWorkoutView: View {
 
                 RadialGradient(
                     colors: [
-                        Color.green.opacity(0.18),
+                        Color.green.opacity(modeAuraPulse ? 0.22 : 0.10),
                         Color.clear
                     ],
                     center: .top,
                     startRadius: 0,
-                    endRadius: 320
+                    endRadius: modeAuraPulse ? 390 : 280
                 )
 
                 LinearGradient(
@@ -239,6 +248,7 @@ struct ActiveWorkoutView: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true), value: modeAuraPulse)
     }
 
     private func triggerModeIntroIfNeeded() {
@@ -264,28 +274,37 @@ struct WorkoutHeaderView: View {
     var mode: WorkoutViewModel.WorkoutMode = .normal
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("Séance")
-                    if mode != .normal {
-                        Label(mode.displayName.uppercased(), systemImage: mode.symbolName)
-                            .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(modeChipColor.opacity(0.22), in: Capsule())
-                            .foregroundStyle(modeChipColor)
+        GlassCard(padding: 16, cornerRadius: 28) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 6) {
+                        Text("Séance")
+                        if mode != .normal {
+                            Label(mode.displayName.uppercased(), systemImage: mode.symbolName)
+                                .font(.caption2.weight(.bold))
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(modeChipColor.opacity(0.22), in: Capsule())
+                                .foregroundStyle(modeChipColor)
+                        }
+                    }
+                    .font(.title3.weight(.bold))
+
+                    HStack(spacing: 10) {
+                        workoutMetric(elapsedFormatted, icon: "clock")
+                        workoutMetric("\(totalSets) sets", icon: "checkmark.circle")
                     }
                 }
-                    .font(.title3.weight(.bold))
-                HStack(spacing: 12) {
-                    Label(elapsedFormatted, systemImage: "clock")
-                    Label("\(totalSets) sets", systemImage: "checkmark.circle")
+                Spacer()
+                ZStack {
+                    Circle()
+                        .fill(modeChipColor.opacity(0.14))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: mode.symbolName)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(modeChipColor)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
-            Spacer()
         }
     }
 
@@ -297,6 +316,61 @@ struct WorkoutHeaderView: View {
             return .orange
         case .monk:
             return .green
+        }
+    }
+
+    private func workoutMetric(_ value: String, icon: String) -> some View {
+        Label(value, systemImage: icon)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.white.opacity(0.05), in: Capsule())
+    }
+}
+
+private struct ModeFocusBanner: View {
+    let mode: WorkoutViewModel.WorkoutMode
+
+    var body: some View {
+        GlassCard(padding: 14, cornerRadius: 24) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(mode.accentColor.opacity(0.16))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: mode.symbolName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(mode.accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(mode == .beast ? "Session brute" : "Session Monk")
+                        .font(.subheadline.weight(.bold))
+                    Text(modeBannerCopy)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(mode.accentColor.opacity(0.22), lineWidth: 1)
+        }
+    }
+
+    private var modeBannerCopy: String {
+        switch mode {
+        case .normal:
+            return ""
+        case .beast:
+            return "Base familière, charge plus agressive. Cherche le lourd propre sans dériver sur les reps."
+        case .monk:
+            return "Base familière, déficit hebdo priorisé. Laisse respirer les muscles déjà taxés."
         }
     }
 }

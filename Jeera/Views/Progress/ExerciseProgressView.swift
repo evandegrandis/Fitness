@@ -10,6 +10,7 @@ struct ExerciseProgressView: View {
         order: .reverse
     ) private var sessions: [WorkoutSession]
     @State private var selectedExercise: Exercise?
+    @Namespace private var selectionNamespace
 
     private var usedExercises: [Exercise] {
         exercises.filter { ex in
@@ -26,7 +27,8 @@ struct ExerciseProgressView: View {
                     ExerciseProgressRow(
                         exercise: exercise,
                         sessions: sessions,
-                        isSelected: selectedExercise?.id == exercise.id
+                        isSelected: selectedExercise?.id == exercise.id,
+                        namespace: selectionNamespace
                     )
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3)) {
@@ -66,6 +68,7 @@ struct ExerciseProgressRow: View {
     let exercise: Exercise
     let sessions: [WorkoutSession]
     var isSelected: Bool = false
+    let namespace: Namespace.ID
     @State private var showCurveExplanation = false
     private let rollingWindowSessions = 4
 
@@ -110,6 +113,10 @@ struct ExerciseProgressRow: View {
     // Best validated ever
     private var bestValidated: ExerciseDataPoint? {
         history.max(by: { $0.validatedWeight < $1.validatedWeight })
+    }
+
+    private var latestPoint: ExerciseDataPoint? {
+        history.last
     }
 
     // Best e1RM across all history
@@ -198,15 +205,23 @@ struct ExerciseProgressRow: View {
                     }
                 }
 
+                statStrip
+
                 // Expanded chart
                 if isSelected {
                     Divider().background(.white.opacity(0.08))
 
                     if history.count >= 2 {
-                        chartHeader
-                        exerciseChart
+                        chartBlock("Courbe principale") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                chartHeader
+                                exerciseChart
+                            }
+                        }
                         if showsSecondaryRepChart {
-                            repChartForWeightedBodyweight
+                            chartBlock("Zone reps") {
+                                repChartForWeightedBodyweight
+                            }
                         }
                     } else if let only = history.first {
                         // Sparse data: show milestone instead of chart
@@ -228,13 +243,30 @@ struct ExerciseProgressRow: View {
                 }
             }
         }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isSelected ? exerciseTint.opacity(0.35) : .white.opacity(0.03), lineWidth: 1)
+        }
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [exerciseTint.opacity(0.10), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .matchedGeometryEffect(id: "exercise-progress-selection", in: namespace)
+            }
+        }
     }
 
     // MARK: - Chart with proper scaling
 
     private var chartHeader: some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(exercise.setPatternMode == .bodyweight ? "Courbe reps" : "Courbe perf")
+            Text(exercise.setPatternMode == .bodyweight ? "Courbe reps" : "Meilleure charge 7+")
                 .font(.system(size: 10).weight(.medium))
                 .foregroundStyle(.secondary)
 
@@ -383,9 +415,6 @@ struct ExerciseProgressRow: View {
         let yMax = maxVal + padding
 
         return VStack(alignment: .leading, spacing: 4) {
-            Text("Reps perf (max 4 dernières séances)")
-                .font(.system(size: 10).weight(.medium))
-                .foregroundStyle(.secondary)
             Chart {
                 if let band = repBenchmarkRange {
                     RectangleMark(
@@ -457,6 +486,47 @@ struct ExerciseProgressRow: View {
         }
     }
 
+    private var statStrip: some View {
+        HStack(spacing: 8) {
+            statChip("Dernier", value: latestDisplay, tint: .white.opacity(0.9))
+            if let band = benchmarkDisplay {
+                statChip("Zone", value: band, tint: .green)
+            }
+            statChip("Tendance", value: trendLabel, tint: trendTint)
+        }
+    }
+
+    private func statChip(_ title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(tint)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private func chartBlock<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary.opacity(0.9))
+            content()
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.06), lineWidth: 0.8)
+        }
+    }
+
     // MARK: - Trend Badge
 
     @ViewBuilder
@@ -481,6 +551,50 @@ struct ExerciseProgressRow: View {
         case .neutral:
             EmptyView()
         }
+    }
+
+    private var latestDisplay: String {
+        guard let latestPoint else { return "--" }
+        if exercise.setPatternMode == .bodyweight {
+            return "BW x \(latestPoint.bestBWReps)"
+        }
+        if latestPoint.bestWeightAt7Plus > 0 {
+            return "\(latestPoint.bestWeightAt7Plus.cleanWeight) kg"
+        }
+        return latestPoint.topSetSummary
+    }
+
+    private var benchmarkDisplay: String? {
+        if exercise.setPatternMode == .bodyweight, let band = repBenchmarkRange {
+            return "\(Int(band.lowerBound))-\(Int(band.upperBound)) reps"
+        }
+        if let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
+            return "\(low.cleanWeight)-\(high.cleanWeight) kg"
+        }
+        return nil
+    }
+
+    private var trendLabel: String {
+        switch trend {
+        case .up: return "Hausse"
+        case .down: return "Baisse"
+        case .neutral: return "Stable"
+        }
+    }
+
+    private var trendTint: Color {
+        switch trend {
+        case .up: return .green
+        case .down: return .orange
+        case .neutral: return .secondary
+        }
+    }
+
+    private var exerciseTint: Color {
+        if exercise.setPatternMode == .bodyweight {
+            return .orange
+        }
+        return benchmarkDisplay == nil ? .blue : .green
     }
 }
 
