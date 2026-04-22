@@ -2,6 +2,11 @@ import Foundation
 import SwiftData
 
 struct SeedData {
+    private struct BenchmarkPreset {
+        let benchmarkLow: Double?
+        let benchmarkHigh: Double?
+    }
+
     static func seed(context: ModelContext) {
         let settings = UserSettings()
         context.insert(settings)
@@ -13,6 +18,65 @@ struct SeedData {
 
         try? context.save()
     }
+
+    static func syncCanonicalExerciseMetadata(context: ModelContext) {
+        let descriptor = FetchDescriptor<Exercise>()
+        guard let exercises = try? context.fetch(descriptor), !exercises.isEmpty else { return }
+
+        let presets = canonicalBenchmarkPresets
+        var didMutate = false
+
+        for exercise in exercises {
+            guard let preset = presets[exercise.name] else { continue }
+            if exercise.benchmarkLow != preset.benchmarkLow {
+                exercise.benchmarkLow = preset.benchmarkLow
+                didMutate = true
+            }
+            if exercise.benchmarkHigh != preset.benchmarkHigh {
+                exercise.benchmarkHigh = preset.benchmarkHigh
+                didMutate = true
+            }
+        }
+
+        if didMutate {
+            try? context.save()
+        }
+    }
+
+    private static let canonicalBenchmarkPresets: [String: BenchmarkPreset] = [
+        "Tractions SN": .init(benchmarkLow: 25.5, benchmarkHigh: 69.8),
+        "Traction pronation large": .init(benchmarkLow: 25.5, benchmarkHigh: 69.8),
+        "Pulley serré": .init(benchmarkLow: 60, benchmarkHigh: 120),
+        "Tirage horizontal large": .init(benchmarkLow: 60, benchmarkHigh: 120),
+        "Isolateral row": .init(benchmarkLow: 75, benchmarkHigh: 150),
+        "Row uni": .init(benchmarkLow: 90, benchmarkHigh: 180),
+        "Row unilatéral": .init(benchmarkLow: 90, benchmarkHigh: 180),
+        "Tirage vertical muscle up": .init(benchmarkLow: 60, benchmarkHigh: 105),
+        "Tirage vertical muscle-up grip": .init(benchmarkLow: 60, benchmarkHigh: 105),
+        "Chest Press": .init(benchmarkLow: 75, benchmarkHigh: 135),
+        "Chest press machine": .init(benchmarkLow: 75, benchmarkHigh: 135),
+        "Shoulder press": .init(benchmarkLow: 60, benchmarkHigh: 120),
+        "Shoulder press machine": .init(benchmarkLow: 60, benchmarkHigh: 120),
+        "Développé incliné haltères": .init(benchmarkLow: 30, benchmarkHigh: 51),
+        "Pec deck": .init(benchmarkLow: 60, benchmarkHigh: 120),
+        "DC assisté": .init(benchmarkLow: 75, benchmarkHigh: 135),
+        "HSPU": .init(benchmarkLow: nil, benchmarkHigh: nil),
+        "Lateral raises": .init(benchmarkLow: 12, benchmarkHigh: 27),
+        "Rear delt fly": .init(benchmarkLow: 45, benchmarkHigh: 105),
+        "Dips machine": .init(benchmarkLow: 75, benchmarkHigh: 165),
+        "Extension triceps poulie": .init(benchmarkLow: 39, benchmarkHigh: 84),
+        "Extension triceps haltère": .init(benchmarkLow: 24, benchmarkHigh: 51),
+        "Extension triceps haltère overhead": .init(benchmarkLow: 24, benchmarkHigh: 51),
+        "Curl debout": .init(benchmarkLow: 18, benchmarkHigh: 39),
+        "Curl incliné": .init(benchmarkLow: 15, benchmarkHigh: 33),
+        "Curl marteau poulie": .init(benchmarkLow: 15, benchmarkHigh: 33),
+        "Wrist curl": .init(benchmarkLow: 45, benchmarkHigh: 120),
+        "Leg extension": .init(benchmarkLow: 75, benchmarkHigh: 150),
+        "Leg curl": .init(benchmarkLow: 60, benchmarkHigh: 120),
+        "Crunch déclinés": .init(benchmarkLow: 60, benchmarkHigh: 135),
+        "Crunch déclinés lesté": .init(benchmarkLow: 60, benchmarkHigh: 135),
+        "Relevé de jambes chaise romaine": .init(benchmarkLow: 32.2, benchmarkHigh: 94.5)
+    ]
 
     // MARK: - Exercises
 

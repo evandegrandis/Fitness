@@ -137,125 +137,197 @@ private struct GlobalProgressView: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, 24)
                 } else {
-                    Chart {
-                        ForEach(weekly.filter(\.isPositiveCorrelationWindow)) { item in
-                            RectangleMark(
-                                xStart: .value("Week Start", item.weekStart),
-                                xEnd: .value("Week End", Calendar.current.date(byAdding: .day, value: 7, to: item.weekStart) ?? item.weekStart),
-                                yStart: .value("Bottom", 0),
-                                yEnd: .value("Top", 100)
-                            )
-                            .foregroundStyle(.green.opacity(0.06))
-                        }
-
-                        if showPerformance {
-                            ForEach(weekly) { item in
-                                LineMark(
-                                    x: .value("Week", item.weekStart),
-                                    y: .value("Performance", item.performance)
-                                )
-                                .foregroundStyle(.orange)
-                                .interpolationMethod(.catmullRom)
+                    GlassCard(padding: 16, cornerRadius: 22) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Global")
+                                    .font(.headline.weight(.bold))
+                                Text("Performance vs adhérence hebdo, avec lecture rapide puis scrub détaillé.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                        }
 
-                        if showCreatine {
-                            ForEach(weekly) { item in
-                                LineMark(
-                                    x: .value("Week", item.weekStart),
-                                    y: .value("Creatine", item.creatinePct)
-                                )
-                                .foregroundStyle(.green)
-                            }
-                        }
-
-                        if showProtein {
-                            ForEach(weekly) { item in
-                                LineMark(
-                                    x: .value("Week", item.weekStart),
-                                    y: .value("Protein", item.proteinPct)
-                                )
-                                .foregroundStyle(.blue)
-                            }
-                        }
-
-                        if showSleep {
-                            ForEach(weekly) { item in
-                                LineMark(
-                                    x: .value("Week", item.weekStart),
-                                    y: .value("Sleep", item.sleepScore)
-                                )
-                                .foregroundStyle(.purple)
-                            }
-                        }
-
-                        if let selected = selectedPoint {
-                            RuleMark(x: .value("Selected week", selected.weekStart))
-                                .foregroundStyle(.white.opacity(0.35))
-                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                .annotation(position: .top, alignment: .leading) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(selected.weekStart.shortDate)
-                                            .font(.caption2.weight(.semibold))
-                                        if showPerformance {
-                                            Text("Perf idx \(selected.performance, specifier: "%.0f")")
-                                                .font(.caption2)
-                                        }
-                                        if showCreatine {
-                                            Text("Créatine \(selected.creatinePct, specifier: "%.0f")%")
-                                                .font(.caption2)
-                                        }
-                                        if showProtein {
-                                            Text("Protéine \(selected.proteinPct, specifier: "%.0f")%")
-                                                .font(.caption2)
-                                        }
-                                        if showSleep {
-                                            Text("Sommeil \(selected.sleepScore, specifier: "%.0f")")
-                                                .font(.caption2)
-                                        }
-                                    }
-                                    .padding(6)
-                                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                            Chart {
+                                ForEach(weekly.filter(\.isPositiveCorrelationWindow)) { item in
+                                    RectangleMark(
+                                        xStart: .value("Week Start", item.weekStart),
+                                        xEnd: .value("Week End", Calendar.current.date(byAdding: .day, value: 7, to: item.weekStart) ?? item.weekStart),
+                                        yStart: .value("Bottom", 0),
+                                        yEnd: .value("Top", 100)
+                                    )
+                                    .foregroundStyle(.green.opacity(0.06))
                                 }
-                        }
-                    }
-                    .frame(height: 220)
-                    .padding(.horizontal)
-                    .chartOverlay { proxy in
-                        GeometryReader { geo in
-                            Rectangle()
-                                .fill(.clear)
-                                .contentShape(Rectangle())
-                                .gesture(
-                                    DragGesture(minimumDistance: 0)
-                                        .onChanged { value in
-                                            let plotOrigin = geo[proxy.plotAreaFrame].origin
-                                            let x = value.location.x - plotOrigin.x
-                                            if let date: Date = proxy.value(atX: x) {
-                                                selectedWeek = nearestWeekStart(to: date)
-                                            }
-                                        }
-                                        .onEnded { _ in }
-                                )
-                        }
-                    }
 
-                    VStack(spacing: 8) {
-                        Toggle("Performance", isOn: $showPerformance).tint(.orange)
-                        Toggle("Créatine %", isOn: $showCreatine).tint(.green)
-                        Toggle("Protéine %", isOn: $showProtein).tint(.blue)
-                        Toggle("Sommeil score", isOn: $showSleep).tint(.purple)
+                                if showPerformance {
+                                    ForEach(weekly) { item in
+                                        AreaMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Performance", item.performance)
+                                        )
+                                        .foregroundStyle(
+                                            LinearGradient(
+                                                colors: [.orange.opacity(0.22), .clear],
+                                                startPoint: .top,
+                                                endPoint: .bottom
+                                            )
+                                        )
+
+                                        LineMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Performance", item.performance)
+                                        )
+                                        .foregroundStyle(.orange)
+                                        .interpolationMethod(.catmullRom)
+                                        .lineStyle(StrokeStyle(lineWidth: 3))
+                                    }
+                                }
+
+                                if showCreatine {
+                                    ForEach(weekly) { item in
+                                        LineMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Creatine", item.creatinePct)
+                                        )
+                                        .foregroundStyle(.green)
+                                        .interpolationMethod(.catmullRom)
+                                    }
+                                }
+
+                                if showProtein {
+                                    ForEach(weekly) { item in
+                                        LineMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Protein", item.proteinPct)
+                                        )
+                                        .foregroundStyle(.blue)
+                                        .interpolationMethod(.catmullRom)
+                                    }
+                                }
+
+                                if showSleep {
+                                    ForEach(weekly) { item in
+                                        LineMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Sleep", item.sleepScore)
+                                        )
+                                        .foregroundStyle(.mint)
+                                        .interpolationMethod(.catmullRom)
+                                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                    }
+                                }
+
+                                if let selected = selectedPoint {
+                                    RuleMark(x: .value("Selected week", selected.weekStart))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                                        .annotation(position: .top, alignment: .leading) {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(selected.weekStart.shortDate)
+                                                    .font(.caption2.weight(.semibold))
+                                                if showPerformance {
+                                                    Text("Perf idx \(selected.performance, specifier: "%.0f")")
+                                                        .font(.caption2)
+                                                }
+                                                if showCreatine {
+                                                    Text("Créatine \(selected.creatinePct, specifier: "%.0f")%")
+                                                        .font(.caption2)
+                                                }
+                                                if showProtein {
+                                                    Text("Protéine \(selected.proteinPct, specifier: "%.0f")%")
+                                                        .font(.caption2)
+                                                }
+                                                if showSleep {
+                                                    Text("Sommeil \(selected.sleepScore, specifier: "%.0f")")
+                                                        .font(.caption2)
+                                                }
+                                            }
+                                            .padding(8)
+                                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                                        }
+                                }
+                            }
+                            .frame(height: 250)
+                            .chartOverlay { proxy in
+                                GeometryReader { geo in
+                                    Rectangle()
+                                        .fill(.clear)
+                                        .contentShape(Rectangle())
+                                        .gesture(
+                                            DragGesture(minimumDistance: 0)
+                                                .onChanged { value in
+                                                    let plotOrigin = geo[proxy.plotAreaFrame].origin
+                                                    let x = value.location.x - plotOrigin.x
+                                                    if let date: Date = proxy.value(atX: x) {
+                                                        selectedWeek = nearestWeekStart(to: date)
+                                                    }
+                                                }
+                                                .onEnded { _ in }
+                                        )
+                                }
+                            }
+
+                            flowLegend
+
+                            Text("Perf idx = performance hebdo normalisée (0–100)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .font(.caption)
                     .padding(.horizontal)
-                    Text("Perf idx = performance hebdo normalisée (0–100)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal)
                 }
             }
             .padding(.top, 10)
         }
+    }
+
+    private var flowLegend: some View {
+        ViewThatFits(in: .vertical) {
+            HStack(spacing: 8) {
+                legendPill("Perf", color: .orange, isOn: $showPerformance)
+                legendPill("Créatine", color: .green, isOn: $showCreatine)
+                legendPill("Protéine", color: .blue, isOn: $showProtein)
+                legendPill("Sommeil", color: .mint, isOn: $showSleep)
+            }
+
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    legendPill("Perf", color: .orange, isOn: $showPerformance)
+                    legendPill("Créatine", color: .green, isOn: $showCreatine)
+                }
+                HStack(spacing: 8) {
+                    legendPill("Protéine", color: .blue, isOn: $showProtein)
+                    legendPill("Sommeil", color: .mint, isOn: $showSleep)
+                }
+            }
+        }
+    }
+
+    private func legendPill(_ title: String, color: Color, isOn: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isOn.wrappedValue.toggle()
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isOn.wrappedValue ? .white : .secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .fill(isOn.wrappedValue ? color.opacity(0.20) : Color.white.opacity(0.05))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
+                    .stroke(isOn.wrappedValue ? color.opacity(0.55) : .white.opacity(0.08), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var selectedPoint: WeeklyPoint? {

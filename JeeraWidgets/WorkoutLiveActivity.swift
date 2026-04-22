@@ -55,97 +55,90 @@ private struct LockScreenView: View {
     let state: WorkoutContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Row 1: exercise name + workout elapsed
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: "dumbbell.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
-                Text(state.exerciseName)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "dumbbell.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(state.exerciseName)
+                            .font(.headline.weight(.semibold))
+                            .lineLimit(1)
+                    }
+
+                    if !state.lastSetSummary.isEmpty {
+                        Text(state.lastSetSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
                 Text(timerInterval: state.workoutStartedAt...Date.distantFuture,
                      countsDown: false, showsHours: false)
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: 60, alignment: .trailing)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.06), in: Capsule())
             }
 
-            // Row 2: last set done (small context)
-            if !state.lastSetSummary.isEmpty {
-                Text(state.lastSetSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    restBadge
 
-            // Row 3: rest timer (if running) + next set + action buttons
-            HStack(spacing: 12) {
-                // Left: timer or "Go"
-                if let endsAt = state.restEndsAt, endsAt > Date() {
-                    HStack(spacing: 6) {
-                        Image(systemName: "timer")
-                            .font(.caption)
-                            .foregroundStyle(Color.accentColor)
-                        Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                            .font(Font.title3.weight(.bold).monospacedDigit())
-                            .foregroundStyle(Color.accentColor)
+                    if !state.nextSetPreview.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(state.nextExerciseName)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            Text(state.nextSetPreview)
+                                .font(.title3.weight(.bold).monospacedDigit())
+                                .lineLimit(1)
+                        }
                     }
-                } else {
-                    Text("GO")
-                        .font(Font.title3.weight(.heavy))
-                        .foregroundStyle(.green)
                 }
 
-                Spacer()
+                Spacer(minLength: 8)
 
-                // Right: next set preview + Valider button
-                if !state.nextSetPreview.isEmpty {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(state.nextExerciseName)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Text(state.nextSetPreview)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-                    }
+                if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        HStack(spacing: 6) {
+                            tinyButton("Kg-", intent: DecreaseWeightIntent())
+                            tinyButton("Kg+", intent: IncreaseWeightIntent())
+                            tinyButton("R-", intent: DecreaseRepsIntent())
+                            tinyButton("R+", intent: IncreaseRepsIntent())
+                        }
 
-                    if #available(iOS 17.0, *) {
-                        VStack(alignment: .trailing, spacing: 6) {
-                            HStack(spacing: 5) {
-                                tinyButton("-kg", intent: DecreaseWeightIntent())
-                                tinyButton("+kg", intent: IncreaseWeightIntent())
-                                tinyButton("-rep", intent: DecreaseRepsIntent())
-                                tinyButton("+rep", intent: IncreaseRepsIntent())
-                            }
-
-                            HStack(spacing: 6) {
-                                Button(intent: NextExerciseIntent()) {
-                                    Text("Suivant")
-                                        .font(.caption.weight(.bold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(.white.opacity(0.12))
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                                Button(intent: ValidateNextSetIntent()) {
-                                    Text("Valider")
-                                        .font(.caption.weight(.bold))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Color.accentColor)
-                                        .foregroundStyle(.white)
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            .buttonStyle(.plain)
+                        HStack(spacing: 8) {
+                            primaryButton("Suivant", fill: .white.opacity(0.10), intent: NextExerciseIntent())
+                            primaryButton("Valider", fill: Color.accentColor, intent: ValidateNextSetIntent())
                         }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var restBadge: some View {
+        if let endsAt = state.restEndsAt, endsAt > Date() {
+            HStack(spacing: 8) {
+                Image(systemName: "timer")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.accentColor)
+                Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
+                    .font(.system(size: 30, weight: .heavy, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.accentColor)
+            }
+        } else {
+            Text("GO")
+                .font(.system(size: 28, weight: .black, design: .rounded))
+                .foregroundStyle(.green)
         }
     }
 }
@@ -231,12 +224,27 @@ private struct NextSetRow: View {
 private func tinyButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
     Button(intent: intent) {
         Text(title)
-            .font(.system(size: 9, weight: .semibold))
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .frame(minWidth: 36)
             .padding(.horizontal, 6)
-            .padding(.vertical, 3)
+            .padding(.vertical, 7)
             .background(.white.opacity(0.10))
             .foregroundStyle(.white)
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    .buttonStyle(.plain)
+}
+
+@available(iOS 17.0, *)
+private func primaryButton<I: LiveActivityIntent>(_ title: String, fill: some ShapeStyle, intent: I) -> some View {
+    Button(intent: intent) {
+        Text(title)
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .foregroundStyle(.white)
     }
     .buttonStyle(.plain)
 }
