@@ -66,7 +66,7 @@ struct SettingsView: View {
                     Text("Exporte avant de réinstaller l'app. Les données sont effacées quand le certificat gratuit expire (7 jours).")
                 }
 
-                Section("Profil") {
+                Section {
                     HStack {
                         Text("Prénom")
                         Spacer()
@@ -74,9 +74,11 @@ struct SettingsView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text("Profil")
                 }
 
-                Section("Unités") {
+                Section {
                     Toggle("Kilogrammes", isOn: Bindable(settings).usesKilograms)
 
                     HStack {
@@ -87,9 +89,11 @@ struct SettingsView: View {
                         Stepper("", value: Bindable(settings).defaultSmallestIncrement, in: 0.5...10, step: 0.5)
                             .labelsHidden()
                     }
+                } header: {
+                    Text("Unités")
                 }
 
-                Section("Repos") {
+                Section {
                     Stepper("Par défaut : \(settings.defaultRestTimerSeconds)s",
                             value: Bindable(settings).defaultRestTimerSeconds,
                             in: 30...600,
@@ -98,21 +102,27 @@ struct SettingsView: View {
                             value: Bindable(settings).supersetRestSeconds,
                             in: 60...600,
                             step: 15)
+                } header: {
+                    Text("Repos")
                 }
 
-                Section("Reps par défaut") {
+                Section {
                     Stepper("Min : \(settings.defaultRepTargetMin)",
                             value: Bindable(settings).defaultRepTargetMin,
                             in: 1...50)
                     Stepper("Max : \(settings.defaultRepTargetMax)",
                             value: Bindable(settings).defaultRepTargetMax,
                             in: 1...50)
+                } header: {
+                    Text("Reps par défaut")
                 }
 
-                Section("Objectifs hebdo (sets)") {
+                Section {
                     ForEach(MuscleParent.allCases) { parent in
                         ParentGoalRow(parent: parent, goals: goals, modelContext: modelContext)
                     }
+                } header: {
+                    Text("Objectifs hebdo (sets)")
                 }
                 .task(id: goals.count) {
                     // Ensure every MuscleParent has a backing goal row the first time
@@ -127,10 +137,12 @@ struct SettingsView: View {
                     if inserted { try? modelContext.save() }
                 }
 
-                Section("Exercices") {
+                Section {
                     NavigationLink("Gérer les exercices (\(exercises.count))") {
                         ExerciseManagementView()
                     }
+                } header: {
+                    Text("Exercices")
                 }
             }
             .navigationTitle("Réglages")
@@ -336,7 +348,7 @@ struct ExerciseDetailView: View {
 
     var body: some View {
         Form {
-            Section("Détails") {
+            Section {
                 TextField("Nom", text: $exercise.name)
                 Toggle("Favori", isOn: $exercise.isFavorite)
                 Picker("Pattern", selection: $exercise.setPatternMode) {
@@ -344,26 +356,34 @@ struct ExerciseDetailView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
+            } header: {
+                Text("Détails")
             }
 
-            Section("Machine") {
+            Section {
                 TextField("Réglage (ex: r4-5)", text: $exercise.machineSetting)
                 TextField("Notes setup", text: $exercise.setupNotes)
+            } header: {
+                Text("Machine")
             }
 
-            Section("Reps") {
+            Section {
                 Stepper("Min : \(exercise.repTargetMin)", value: $exercise.repTargetMin, in: 1...50)
                 Stepper("Max : \(exercise.repTargetMax)", value: $exercise.repTargetMax, in: 1...50)
                 Stepper("Incrément : \(exercise.smallestIncrement.cleanWeight)",
                         value: $exercise.smallestIncrement, in: 0.5...20, step: 0.5)
+            } header: {
+                Text("Reps")
             }
 
-            Section("Repos") {
+            Section {
                 Stepper("Repos : \(exercise.suggestedRestSeconds)s",
                         value: $exercise.suggestedRestSeconds, in: 30...600, step: 15)
+            } header: {
+                Text("Repos")
             }
 
-            Section("Muscles") {
+            Section {
                 ForEach(exercise.muscleMappings) { mapping in
                     HStack {
                         Text(mapping.muscleGroup.displayName)
@@ -379,6 +399,8 @@ struct ExerciseDetailView: View {
                     modelContext.insert(mapping)
                     exercise.muscleMappings.append(mapping)
                 }
+            } header: {
+                Text("Muscles")
             }
         }
         .navigationTitle(exercise.name)
