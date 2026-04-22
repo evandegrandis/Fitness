@@ -20,9 +20,16 @@ struct ExerciseProgressView: View {
         }
     }
 
+    private var totalLoggedSessions: Int {
+        sessions.count
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
+                exerciseHeader
+                    .padding(.horizontal)
+
                 ForEach(usedExercises) { exercise in
                     ExerciseProgressRow(
                         exercise: exercise,
@@ -59,6 +66,41 @@ struct ExerciseProgressView: View {
             }
             .padding(.top, 12)
         }
+    }
+
+    private var exerciseHeader: some View {
+        GlassCard(padding: 16, cornerRadius: 22) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Exercices")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                    Text("Lecture rapide par exo, puis ouverture pour voir la courbe et la zone benchmark.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    miniMetric("Exos", value: "\(usedExercises.count)")
+                    miniMetric("Séances", value: "\(totalLoggedSessions)")
+                }
+            }
+        }
+    }
+
+    private func miniMetric(_ title: String, value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.bold).monospacedDigit())
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -119,6 +161,12 @@ struct ExerciseProgressRow: View {
         history.last
     }
 
+    private var recentAverage7Plus: Double? {
+        let values = history.suffix(4).map(\.bestWeightAt7Plus).filter { $0 > 0 }
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
     // Best e1RM across all history
     private var bestEstimated1RM: Double? {
         let allSets = sessions.flatMap { session in
@@ -164,13 +212,14 @@ struct ExerciseProgressRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 16) {
-            VStack(spacing: 8) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
+        GlassCard(padding: 16, cornerRadius: 20) {
+            VStack(spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text(exercise.name)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
 
                         HStack(spacing: 6) {
                             if let best = bestValidated, best.validatedWeight > 0 {
@@ -195,17 +244,20 @@ struct ExerciseProgressRow: View {
 
                     Spacer()
 
-                    HStack(spacing: 6) {
+                    VStack(alignment: .trailing, spacing: 6) {
                         Text("\(history.count)")
-                            .font(.caption2.monospacedDigit())
+                            .font(.headline.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.86))
+                        Text("entrées")
+                            .font(.caption2)
                             .foregroundStyle(.tertiary)
                         Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                            .font(.caption2)
+                            .font(.caption2.weight(.bold))
                             .foregroundStyle(.tertiary)
                     }
                 }
 
-                statStrip
+                collapsedPreviewStrip
 
                 // Expanded chart
                 if isSelected {
@@ -332,7 +384,7 @@ struct ExerciseProgressRow: View {
                         )
                         .foregroundStyle(Color.accentColor)
                         .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.catmullRom)
+                        .interpolationMethod(.linear)
 
                         PointMark(
                             x: .value("Date", date),
@@ -436,7 +488,7 @@ struct ExerciseProgressRow: View {
                         LineMark(x: .value("Date", date), y: .value("Reps", value))
                             .foregroundStyle(.orange)
                             .lineStyle(StrokeStyle(lineWidth: 2))
-                            .interpolationMethod(.catmullRom)
+                            .interpolationMethod(.linear)
                         PointMark(x: .value("Date", date), y: .value("Reps", value))
                             .foregroundStyle(.orange)
                             .symbolSize(22)
@@ -486,13 +538,13 @@ struct ExerciseProgressRow: View {
         }
     }
 
-    private var statStrip: some View {
+    private var collapsedPreviewStrip: some View {
         HStack(spacing: 8) {
             statChip("Dernier", value: latestDisplay, tint: .white.opacity(0.9))
             if let band = benchmarkDisplay {
                 statChip("Zone", value: band, tint: .green)
             }
-            statChip("Tendance", value: trendLabel, tint: trendTint)
+            statChip(metricTitle, value: metricValue, tint: trendTint)
         }
     }
 
@@ -580,6 +632,20 @@ struct ExerciseProgressRow: View {
         case .down: return "Baisse"
         case .neutral: return "Stable"
         }
+    }
+
+    private var metricTitle: String {
+        exercise.setPatternMode == .bodyweight ? "Tendance" : "Moyenne"
+    }
+
+    private var metricValue: String {
+        if exercise.setPatternMode == .bodyweight {
+            return trendLabel
+        }
+        if let avg = recentAverage7Plus {
+            return "\(avg.cleanWeight) kg"
+        }
+        return trendLabel
     }
 
     private var trendTint: Color {

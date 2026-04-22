@@ -36,7 +36,7 @@ struct ContentView: View {
             // BackgroundGradient shows through for a more ambient look.
             let tabAppearance = UITabBarAppearance()
             tabAppearance.configureWithTransparentBackground()
-            tabAppearance.backgroundColor = UIColor(red: 0.10, green: 0.11, blue: 0.17, alpha: 0.72)
+            tabAppearance.backgroundColor = UIColor(red: 0.09, green: 0.10, blue: 0.16, alpha: 0.84)
             tabAppearance.shadowColor = UIColor.white.withAlphaComponent(0.06)
 
             let itemAppearance = UITabBarItemAppearance()
@@ -45,12 +45,19 @@ struct ContentView: View {
                 .foregroundColor: UIColor.white.withAlphaComponent(0.45),
                 .font: UIFont.systemFont(ofSize: 10, weight: .medium)
             ]
+            itemAppearance.selected.iconColor = UIColor(Color.accentColor)
+            itemAppearance.selected.titleTextAttributes = [
+                .foregroundColor: UIColor(Color.accentColor),
+                .font: UIFont.systemFont(ofSize: 10, weight: .semibold)
+            ]
             tabAppearance.stackedLayoutAppearance = itemAppearance
             tabAppearance.inlineLayoutAppearance = itemAppearance
             tabAppearance.compactInlineLayoutAppearance = itemAppearance
+            tabAppearance.stackedItemPositioning = .centered
 
             UITabBar.appearance().standardAppearance = tabAppearance
             UITabBar.appearance().scrollEdgeAppearance = tabAppearance
+            UITabBar.appearance().isTranslucent = true
 
             workoutVM.modelContext = modelContext
             workoutVM.loadActiveSession()
