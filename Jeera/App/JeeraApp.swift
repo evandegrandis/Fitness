@@ -15,6 +15,7 @@ struct JeeraApp: App {
             SupersetGroup.self,
             MuscleGoal.self,
             UserSettings.self,
+            RecoveryCheckin.self,
         ])
         let modelConfiguration = ModelConfiguration(
             schema: schema,

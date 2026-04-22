@@ -6,6 +6,28 @@ import UserNotifications
 
 @Observable
 class WorkoutViewModel {
+    enum WorkoutMode: String, CaseIterable, Identifiable {
+        case normal
+        case beast
+        case monk
+        var id: String { rawValue }
+        var displayName: String {
+            switch self {
+            case .normal: return "Normal"
+            case .beast: return "Beast"
+            case .monk: return "Monk"
+            }
+        }
+    }
+
+    struct FinishedWorkoutSnapshot: Identifiable, Equatable {
+        let id = UUID()
+        let duration: String
+        let setCount: Int
+        let prCount: Int
+        let progressionSignal: String
+    }
+
     private struct SupersetPoint {
         let exerciseID: UUID
         let timestamp: Date
@@ -23,6 +45,9 @@ class WorkoutViewModel {
     var currentAchievement: ProgressionEngine.Achievement?
     var showAchievement = false
     var completedWorkoutSummary: String?
+    var finishedWorkoutSnapshot: FinishedWorkoutSnapshot?
+    var selectedStartMode: WorkoutMode = .normal
+    var activeWorkoutMode: WorkoutMode = .normal
 
     var defaultRestSeconds: Int = 120
     var supersetRestSeconds: Int = 180
@@ -62,6 +87,10 @@ class WorkoutViewModel {
     var workoutElapsed: TimeInterval = 0
     private var workoutTimer: AnyCancellable?
     private var lastAutoBackupAt: Date?
+    private var liveActivityPreviewExerciseID: UUID?
+    private var liveActivityWeightDelta: Double = 0
+    private var liveActivityRepsDelta: Int = 0
+    private var liveActivityIntentObservers: [NSObjectProtocol] = []
 
     var workoutElapsedFormatted: String {
         let mins = Int(workoutElapsed) / 60
@@ -107,19 +136,26 @@ class WorkoutViewModel {
         }
     }
 
-    func startEmptyWorkout() {
+    func startEmptyWorkout(mode: WorkoutMode? = nil) {
         guard let context = modelContext else { return }
+        activeWorkoutMode = mode ?? selectedStartMode
         let session = WorkoutSession()
         context.insert(session)
         try? context.save()
         activeSession = session
+        if activeWorkoutMode == .monk {
+            appendMonkDeficitExercises(to: session, maxExtra: 2)
+        } else if activeWorkoutMode == .beast, shouldExtendBeastSession() {
+            appendBeastExtensionExercises(to: session, maxExtra: 1)
+        }
         startWorkoutTimer()
         startLiveActivity(for: session)
         HapticManager.impact(.heavy)
     }
 
-    func startFromTemplate(_ template: WorkoutTemplate) {
+    func startFromTemplate(_ template: WorkoutTemplate, mode: WorkoutMode? = nil) {
         guard let context = modelContext else { return }
+        activeWorkoutMode = mode ?? selectedStartMode
         let session = WorkoutSession(template: template)
         context.insert(session)
 
@@ -133,13 +169,19 @@ class WorkoutViewModel {
 
         try? context.save()
         activeSession = session
+        if activeWorkoutMode == .monk {
+            appendMonkDeficitExercises(to: session, maxExtra: 2)
+        } else if activeWorkoutMode == .beast, shouldExtendBeastSession() {
+            appendBeastExtensionExercises(to: session, maxExtra: 1)
+        }
         startWorkoutTimer()
         startLiveActivity(for: session)
         HapticManager.impact(.heavy)
     }
 
-    func repeatLastWorkout() {
+    func repeatLastWorkout(mode: WorkoutMode? = nil) {
         guard let context = modelContext else { return }
+        activeWorkoutMode = mode ?? selectedStartMode
         let descriptor = FetchDescriptor<WorkoutSession>(
             predicate: #Predicate { !$0.isActive },
             sortBy: [SortDescriptor(\.startTime, order: .reverse)]
@@ -159,6 +201,11 @@ class WorkoutViewModel {
 
         try? context.save()
         activeSession = session
+        if activeWorkoutMode == .monk {
+            appendMonkDeficitExercises(to: session, maxExtra: 2)
+        } else if activeWorkoutMode == .beast, shouldExtendBeastSession() {
+            appendBeastExtensionExercises(to: session, maxExtra: 1)
+        }
         startWorkoutTimer()
         startLiveActivity(for: session)
         HapticManager.impact(.heavy)
@@ -174,22 +221,43 @@ class WorkoutViewModel {
         }
         let sets = session.totalWorkSets
         let duration = session.durationFormatted
+        let prCount = session.loggedExercises
+            .flatMap(\.completedWorkSets)
+            .filter { justHitRecord[$0.id] != nil }
+            .count
+        let progressionSignal = prCount > 0 ? "Haussier" : (sets >= 12 ? "Stable+" : "Stable")
+        cancelRestTimerNotifications()
         restTimer.reset()
         stopWorkoutTimer()
         endLiveActivity()
         activeSession = nil
+        activeWorkoutMode = .normal
+        liveActivityPreviewExerciseID = nil
+        liveActivityWeightDelta = 0
+        liveActivityRepsDelta = 0
         HapticManager.notification(.success)
         completedWorkoutSummary = "Séance terminée — \(sets) sets \u{2022} \(duration)"
+        finishedWorkoutSnapshot = FinishedWorkoutSnapshot(
+            duration: duration,
+            setCount: sets,
+            prCount: prCount,
+            progressionSignal: progressionSignal
+        )
     }
 
     func discardWorkout() {
         guard let session = activeSession, let context = modelContext else { return }
         context.delete(session)
         try? context.save()
+        cancelRestTimerNotifications()
         restTimer.reset()
         stopWorkoutTimer()
         endLiveActivity()
         activeSession = nil
+        activeWorkoutMode = .normal
+        liveActivityPreviewExerciseID = nil
+        liveActivityWeightDelta = 0
+        liveActivityRepsDelta = 0
     }
 
     // MARK: - Rest Timer Control
@@ -336,11 +404,10 @@ class WorkoutViewModel {
                 orderIndex: armed.orderIndex,
                 memberOrder: [armed.id],
                 session: session,
-                members: [armed]
+                members: []
             )
             context.insert(newGroup)
             armed.supersetGroup = newGroup
-            session.supersetGroups.append(newGroup)
             group = newGroup
         }
 
@@ -350,9 +417,6 @@ class WorkoutViewModel {
             group.memberOrder.append(loggedExercise.id)
         }
         loggedExercise.supersetGroup = group
-        if !group.members.contains(where: { $0.id == loggedExercise.id }) {
-            group.members.append(loggedExercise)
-        }
 
         var ordered = session.orderedExercises
         guard let fromIdx = ordered.firstIndex(where: { $0.id == loggedExercise.id }),
@@ -441,6 +505,8 @@ class WorkoutViewModel {
 
     func logSet(for loggedExercise: LoggedExercise, weight: Double, reps: Int, setType: SetType = .work) {
         guard let context = modelContext else { return }
+        liveActivityWeightDelta = 0
+        liveActivityRepsDelta = 0
 
         // The user validated another set before the rest pause ended — cancel any
         // pending/delivered T-3 notification so it doesn't fire after they've moved on.
@@ -559,9 +625,13 @@ class WorkoutViewModel {
             lastLoggedSet: set,
             lastLoggedExercise: loggedExercise
         )
+        liveActivityPreviewExerciseID = nil
 
         // Reorder after validate: move this exercise card to after the last-logged one.
         applyReorderAfterValidate(loggedExercise)
+        if activeWorkoutMode == .monk {
+            applyMonkFatigueAwareOrdering(after: loggedExercise)
+        }
 
         // Best-effort cloud backup after each validated set (throttled).
         maybeAutoBackup(context: context)
@@ -625,10 +695,9 @@ class WorkoutViewModel {
             orderIndex: anchorOrder,
             memberOrder: memberIDs,
             session: session,
-            members: members
+            members: []
         )
         context.insert(group)
-        session.supersetGroups.append(group)
         for member in members {
             member.supersetGroup = group
         }
@@ -767,6 +836,44 @@ class WorkoutViewModel {
         try? modelContext?.save()
     }
 
+    /// Monk mode ordering: after validating a set, try to place a "less-fatigued"
+    /// candidate right after the current exercise by avoiding dominant parent
+    /// muscles used in the last 2 performed exercises.
+    private func applyMonkFatigueAwareOrdering(after loggedExercise: LoggedExercise) {
+        guard let session = activeSession else { return }
+        var ordered = session.orderedExercises
+        guard let currentIdx = ordered.firstIndex(where: { $0.id == loggedExercise.id }) else { return }
+
+        let recent = ordered
+            .filter { !$0.completedWorkSets.isEmpty }
+            .sorted {
+                ($0.completedWorkSets.last?.timestamp ?? .distantPast) >
+                ($1.completedWorkSets.last?.timestamp ?? .distantPast)
+            }
+        let fatiguedParents = Set(recent.prefix(2).compactMap { dominantParent(for: $0.exercise) })
+
+        let candidateIdx = ordered.enumerated().first { idx, ex in
+            guard idx > currentIdx else { return false }
+            guard ex.id != loggedExercise.id else { return false }
+            guard ex.supersetGroup == nil else { return false }
+            guard let parent = dominantParent(for: ex.exercise) else { return false }
+            return !fatiguedParents.contains(parent)
+        }?.offset
+
+        guard let fromIdx = candidateIdx, fromIdx > currentIdx + 1 else { return }
+        let moving = ordered.remove(at: fromIdx)
+        ordered.insert(moving, at: currentIdx + 1)
+        for (i, ex) in ordered.enumerated() {
+            ex.orderIndex = i
+        }
+        try? modelContext?.save()
+    }
+
+    private func dominantParent(for exercise: Exercise?) -> MuscleParent? {
+        guard let exercise else { return nil }
+        return exercise.muscleMappings.max(by: { $0.coefficient < $1.coefficient })?.muscleGroup.parent
+    }
+
     // MARK: - Rest Timer Notification (T-3)
 
     /// Schedule a local notification 3 seconds before the rest timer ends.
@@ -823,13 +930,27 @@ class WorkoutViewModel {
         let (primarySets, recentHistory) = fetchRecentSets(for: exercise, maxSessions: 3)
         let currentSetIndex = loggedExercise.completedWorkSets.count
 
-        return ProgressionEngine.suggest(
+        var suggestion = ProgressionEngine.suggest(
             for: exercise,
             previousSets: primarySets,
             currentSetIndex: currentSetIndex,
             recentHistory: recentHistory,
             currentSessionSets: loggedExercise.completedWorkSets
         )
+
+        if activeWorkoutMode == .beast, currentSetIndex == 1, suggestion.weight > 0 {
+            let bump = max(1, exercise.defaultIncrement)
+            suggestion = SetSuggestion(
+                weight: suggestion.weight + bump,
+                reps: suggestion.reps,
+                setType: suggestion.setType,
+                explanation: "Beast mode: \(suggestion.explanation)",
+                confidence: suggestion.confidence,
+                reasonCodes: suggestion.reasonCodes + ["beast_mode_weight_bias"],
+                mode: suggestion.mode
+            )
+        }
+        return suggestion
     }
 
     /// Fetch last N sessions for this exercise. Returns (mostRecent, [olderSessions]).
@@ -872,6 +993,82 @@ class WorkoutViewModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             self?.showUndo = false
         }
+    }
+
+    private func appendMonkDeficitExercises(to session: WorkoutSession, maxExtra: Int) {
+        guard let context = modelContext, maxExtra > 0 else { return }
+        let sessionsDescriptor = FetchDescriptor<WorkoutSession>(
+            predicate: #Predicate { !$0.isActive },
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+        )
+        let goalsDescriptor = FetchDescriptor<MuscleGoal>()
+        let exercisesDescriptor = FetchDescriptor<Exercise>()
+
+        guard let finishedSessions = try? context.fetch(sessionsDescriptor),
+              let goals = try? context.fetch(goalsDescriptor),
+              let allExercises = try? context.fetch(exercisesDescriptor) else { return }
+
+        let priorities = EffectiveSetsEngine.rollingPriorities(sessions: finishedSessions, goals: goals)
+        let targetParents = Set(priorities.prefix(3).map(\.0))
+        if targetParents.isEmpty { return }
+
+        let existingExerciseIDs = Set(session.loggedExercises.compactMap { $0.exercise?.id })
+        var candidates = allExercises.filter { ex in
+            !existingExerciseIDs.contains(ex.id) &&
+            ex.muscleMappings.contains { targetParents.contains($0.muscleGroup.parent) && $0.coefficient >= 0.3 }
+        }
+        candidates.sort { a, b in
+            let aScore = a.muscleMappings.filter { targetParents.contains($0.muscleGroup.parent) }.map(\.coefficient).reduce(0, +)
+            let bScore = b.muscleMappings.filter { targetParents.contains($0.muscleGroup.parent) }.map(\.coefficient).reduce(0, +)
+            return aScore > bScore
+        }
+
+        let startIndex = (session.orderedExercises.map(\.orderIndex).max() ?? -1) + 1
+        for (offset, exercise) in candidates.prefix(maxExtra).enumerated() {
+            let logged = LoggedExercise(orderIndex: startIndex + offset, exercise: exercise)
+            logged.session = session
+            context.insert(logged)
+            session.loggedExercises.append(logged)
+        }
+        try? context.save()
+    }
+
+    private func shouldExtendBeastSession() -> Bool {
+        guard let context = modelContext else { return false }
+        let descriptor = FetchDescriptor<RecoveryCheckin>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        guard let recent = try? context.fetch(descriptor), !recent.isEmpty else { return false }
+        let window = Array(recent.prefix(2))
+        let avgSleep = window.reduce(0.0) { $0 + $1.sleepHours } / Double(window.count)
+        let adherence = window.filter { $0.tookCreatine || $0.proteinTargetMet }.count
+        return avgSleep >= 7.0 && adherence >= 1
+    }
+
+    private func appendBeastExtensionExercises(to session: WorkoutSession, maxExtra: Int) {
+        guard let context = modelContext, maxExtra > 0 else { return }
+        let descriptor = FetchDescriptor<Exercise>()
+        guard let allExercises = try? context.fetch(descriptor) else { return }
+
+        let existingExerciseIDs = Set(session.loggedExercises.compactMap { $0.exercise?.id })
+        let candidates = allExercises.filter { ex in
+            !existingExerciseIDs.contains(ex.id) &&
+            (ex.isFavorite || ex.fatigueClass == .heavy || ex.suggestedRestSeconds >= 150)
+        }
+        .sorted { a, b in
+            let aScore = (a.isFavorite ? 2 : 0) + (a.fatigueClass == .heavy ? 2 : 0) + (a.suggestedRestSeconds >= 150 ? 1 : 0)
+            let bScore = (b.isFavorite ? 2 : 0) + (b.fatigueClass == .heavy ? 2 : 0) + (b.suggestedRestSeconds >= 150 ? 1 : 0)
+            return aScore > bScore
+        }
+
+        let startIndex = (session.orderedExercises.map(\.orderIndex).max() ?? -1) + 1
+        for (offset, exercise) in candidates.prefix(maxExtra).enumerated() {
+            let logged = LoggedExercise(orderIndex: startIndex + offset, exercise: exercise)
+            logged.session = session
+            context.insert(logged)
+            session.loggedExercises.append(logged)
+        }
+        try? context.save()
     }
 
     // MARK: - Templates
@@ -967,16 +1164,12 @@ class WorkoutViewModel {
         // Find the "next" exercise: the one the user should log next.
         let ordered = session.orderedExercises
         let target: LoggedExercise? = {
+            if let previewID = liveActivityPreviewExerciseID,
+               let preview = ordered.first(where: { $0.id == previewID }) {
+                return preview
+            }
             if let current = afterExercise {
-                // If the exercise is in a superset and is linked-to-next, the
-                // next set is on the NEXT superset member, not the same exo.
-                if current.isLinkedToNext,
-                   let idx = ordered.firstIndex(where: { $0.id == current.id }),
-                   idx + 1 < ordered.count {
-                    return ordered[idx + 1]
-                }
-                // Otherwise keep logging on the same exercise unless it's "done".
-                return current
+                return nextExerciseInSessionContext(session: session, current: current) ?? current
             }
             // No last exercise: pick the first one that still has work to do.
             return ordered.first
@@ -987,11 +1180,13 @@ class WorkoutViewModel {
         }
 
         let sug = suggestion(for: exo)
+        let adjustedWeight = max(0, sug.weight + liveActivityWeightDelta)
+        let adjustedReps = max(1, sug.reps + liveActivityRepsDelta)
         let preview: String
-        if sug.weight > 0 {
-            preview = "\(sug.weight.cleanWeight) kg × \(sug.reps)"
+        if adjustedWeight > 0 {
+            preview = "\(adjustedWeight.cleanWeight) kg × \(adjustedReps)"
         } else {
-            preview = "BW × \(sug.reps)"
+            preview = "BW × \(adjustedReps)"
         }
         return (exercise.name, preview)
     }
@@ -1007,7 +1202,8 @@ class WorkoutViewModel {
 
     /// Call this once at setup so the ViewModel reacts to lock-screen button taps.
     func observeLiveActivityIntents() {
-        NotificationCenter.default.addObserver(
+        guard liveActivityIntentObservers.isEmpty else { return }
+        let validateObserver = NotificationCenter.default.addObserver(
             forName: .jeeraValidateNextSet,
             object: nil,
             queue: .main
@@ -1015,13 +1211,63 @@ class WorkoutViewModel {
             self?.handleValidateFromLiveActivity()
         }
 
-        NotificationCenter.default.addObserver(
+        let skipObserver = NotificationCenter.default.addObserver(
             forName: .jeeraSkipRestFromLiveActivity,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             self?.skipRest()
         }
+
+        let nextObserver = NotificationCenter.default.addObserver(
+            forName: .jeeraNextExerciseFromLiveActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleNextExerciseFromLiveActivity()
+        }
+
+        let incWeightObserver = NotificationCenter.default.addObserver(
+            forName: .jeeraIncreaseWeightFromLiveActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.adjustLiveActivityPreview(weightDelta: 1, repsDelta: 0)
+        }
+
+        let decWeightObserver = NotificationCenter.default.addObserver(
+            forName: .jeeraDecreaseWeightFromLiveActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.adjustLiveActivityPreview(weightDelta: -1, repsDelta: 0)
+        }
+
+        let incRepsObserver = NotificationCenter.default.addObserver(
+            forName: .jeeraIncreaseRepsFromLiveActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.adjustLiveActivityPreview(weightDelta: 0, repsDelta: 1)
+        }
+
+        let decRepsObserver = NotificationCenter.default.addObserver(
+            forName: .jeeraDecreaseRepsFromLiveActivity,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.adjustLiveActivityPreview(weightDelta: 0, repsDelta: -1)
+        }
+
+        liveActivityIntentObservers = [
+            validateObserver,
+            skipObserver,
+            nextObserver,
+            incWeightObserver,
+            decWeightObserver,
+            incRepsObserver,
+            decRepsObserver
+        ]
     }
 
     /// "Valider" tapped on the lock screen — log the suggested set for the
@@ -1035,6 +1281,9 @@ class WorkoutViewModel {
         // If the rest timer is running, the "next" is the exercise we just
         // logged to (still has slots) or the following one.
         let target: LoggedExercise? = {
+            if let previewID = liveActivityPreviewExerciseID {
+                return ordered.first(where: { $0.id == previewID })
+            }
             // Try: first exercise that still has fewer work sets than the
             // typical target (3), preferring earlier orderIndex.
             if let current = ordered.first(where: { logEx in
@@ -1050,8 +1299,85 @@ class WorkoutViewModel {
         }()
 
         guard let exo = target else { return }
-
+        liveActivityPreviewExerciseID = nil
         let sug = suggestion(for: exo)
-        logSet(for: exo, weight: sug.weight, reps: sug.reps, setType: sug.setType)
+        let adjustedWeight = max(0, sug.weight + liveActivityWeightDelta)
+        let adjustedReps = max(1, sug.reps + liveActivityRepsDelta)
+        liveActivityWeightDelta = 0
+        liveActivityRepsDelta = 0
+        logSet(for: exo, weight: adjustedWeight, reps: adjustedReps, setType: sug.setType)
+    }
+
+    private func handleNextExerciseFromLiveActivity() {
+        guard let session = activeSession else { return }
+        let ordered = session.orderedExercises
+        guard !ordered.isEmpty else { return }
+
+        let current = liveActivityPreviewExerciseID
+            .flatMap { id in ordered.first(where: { $0.id == id }) }
+            ?? ordered.first
+
+        if let next = nextExerciseInSessionContext(session: session, current: current) {
+            liveActivityPreviewExerciseID = next.id
+            liveActivityWeightDelta = 0
+            liveActivityRepsDelta = 0
+            let restEndsAt: Date? = restTimer.isRunning
+                ? Date().addingTimeInterval(max(0, Double(restTimer.targetSeconds) - restTimer.elapsed))
+                : nil
+            pushLiveActivityUpdate(restEndsAt: restEndsAt, restTotalSeconds: currentRestSuggested)
+        }
+    }
+
+    private func nextExerciseInSessionContext(session: WorkoutSession, current: LoggedExercise?) -> LoggedExercise? {
+        let ordered = session.orderedExercises
+        guard !ordered.isEmpty else { return nil }
+        guard let current else { return ordered.first }
+
+        if let group = current.supersetGroup {
+            let members = group.orderedMembers
+            if let memberIdx = members.firstIndex(where: { $0.id == current.id }), memberIdx + 1 < members.count {
+                return members[memberIdx + 1]
+            }
+            if !members.isEmpty {
+                let counts = members.map { ($0, $0.completedWorkSets.count) }
+                let minCount = counts.map(\.1).min() ?? 0
+                if let candidate = counts.first(where: { $0.1 == minCount })?.0 {
+                    return candidate
+                }
+            }
+            return members.first ?? ordered.first
+        }
+
+        if let idx = ordered.firstIndex(where: { $0.id == current.id }), idx + 1 < ordered.count {
+            return ordered[idx + 1]
+        }
+        return ordered.first
+    }
+
+    private func adjustLiveActivityPreview(weightDelta: Double, repsDelta: Int) {
+        guard activeSession != nil else { return }
+        liveActivityWeightDelta += weightDelta
+        liveActivityRepsDelta += repsDelta
+        if liveActivityWeightDelta < -200 { liveActivityWeightDelta = -200 }
+        if liveActivityRepsDelta < -30 { liveActivityRepsDelta = -30 }
+
+        let restEndsAt: Date? = restTimer.isRunning
+            ? Date().addingTimeInterval(max(0, Double(restTimer.targetSeconds) - restTimer.elapsed))
+            : nil
+        pushLiveActivityUpdate(restEndsAt: restEndsAt, restTotalSeconds: currentRestSuggested)
+    }
+
+    private func cancelRestTimerNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["jeera_rest_timer"])
+        center.removeDeliveredNotifications(withIdentifiers: ["jeera_rest_timer"])
+    }
+
+    deinit {
+        let center = NotificationCenter.default
+        for observer in liveActivityIntentObservers {
+            center.removeObserver(observer)
+        }
+        liveActivityIntentObservers.removeAll()
     }
 }

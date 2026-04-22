@@ -145,9 +145,9 @@ struct ExerciseProgressRow: View {
         switch exercise.name {
         case "Tractions SN":
             return 14...33
-        case "Crunch décliné":
+        case "Crunch décliné", "Crunch déclinés":
             return 29...76
-        case "Relevé jambe chaise roumaine":
+        case "Relevé jambe chaise roumaine", "Relevé de jambes chaise romaine":
             return 18...46
         default:
             return nil

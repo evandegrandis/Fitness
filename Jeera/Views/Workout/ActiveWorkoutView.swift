@@ -8,6 +8,8 @@ struct ActiveWorkoutView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            modeBackdrop
+
             // A List (not a ScrollView) so that .swipeActions inside each
             // ExerciseCard actually fires. The list style + transparent row
             // backgrounds make it look like an airy scroll view.
@@ -16,7 +18,8 @@ struct ActiveWorkoutView: View {
                     WorkoutHeaderView(
                         session: viewModel.activeSession,
                         elapsedFormatted: viewModel.workoutElapsedFormatted,
-                        totalSets: viewModel.activeSession?.totalWorkSets ?? 0
+                        totalSets: viewModel.activeSession?.totalWorkSets ?? 0,
+                        mode: viewModel.activeWorkoutMode
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -149,6 +152,38 @@ struct ActiveWorkoutView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private var modeBackdrop: some View {
+        switch viewModel.activeWorkoutMode {
+        case .beast:
+            LinearGradient(
+                colors: [
+                    Color.red.opacity(0.16),
+                    Color.purple.opacity(0.10),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+        case .monk:
+            LinearGradient(
+                colors: [
+                    Color.green.opacity(0.14),
+                    Color.blue.opacity(0.08),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+        case .normal:
+            Color.clear
+        }
+    }
 }
 
 // MARK: - Workout Header
@@ -157,11 +192,22 @@ struct WorkoutHeaderView: View {
     let session: WorkoutSession?
     var elapsedFormatted: String = "--"
     var totalSets: Int = 0
+    var mode: WorkoutViewModel.WorkoutMode = .normal
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Séance")
+                HStack(spacing: 6) {
+                    Text("Séance")
+                    if mode != .normal {
+                        Text(mode.displayName.uppercased())
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(modeChipColor.opacity(0.22), in: Capsule())
+                            .foregroundStyle(modeChipColor)
+                    }
+                }
                     .font(.title3.weight(.bold))
                 HStack(spacing: 12) {
                     Label(elapsedFormatted, systemImage: "clock")
@@ -171,6 +217,17 @@ struct WorkoutHeaderView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer()
+        }
+    }
+
+    private var modeChipColor: Color {
+        switch mode {
+        case .normal:
+            return .secondary
+        case .beast:
+            return .orange
+        case .monk:
+            return .green
         }
     }
 }
