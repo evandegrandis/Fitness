@@ -28,18 +28,8 @@ struct MuscleProgressView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
-                // Rolling 7-day header
-                HStack {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("7 derniers jours")
-                            .font(.subheadline.weight(.semibold))
-                        Text("Couverture globale \(Int((globalCoverage * 100).rounded()))%")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal)
+                muscleHeader
+                    .padding(.horizontal)
 
                 ForEach(progress) { item in
                     VStack(spacing: 6) {
@@ -107,6 +97,60 @@ struct MuscleProgressView: View {
                 .sorted { $0.goalSets > $1.goalSets }
             globalCoverage = EffectiveSetsEngine.rolling7DayGlobalCoverage(sessions: sessions, goals: goals)
         }
+    }
+
+    private var topPriority: ParentMuscleProgress? {
+        progress.sorted { $0.remaining > $1.remaining }.first
+    }
+
+    private var muscleHeader: some View {
+        GlassCard(padding: 18, cornerRadius: 24) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("7 derniers jours")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                        Text("Couverture globale \(Int((globalCoverage * 100).rounded()))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if let topPriority {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Priorité")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Text(topPriority.parent.displayName)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                }
+
+                if let topPriority {
+                    HStack(spacing: 10) {
+                        headerMetric("Restants", value: "\(Int(ceil(topPriority.remaining)))", tint: .red)
+                        headerMetric("Objectif", value: "\(Int(topPriority.goalSets.rounded()))", tint: .white)
+                        headerMetric("Faits", value: "\(Int(topPriority.effectiveSets.rounded()))", tint: .white)
+                    }
+                }
+            }
+        }
+    }
+
+    private func headerMetric(_ title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

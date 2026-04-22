@@ -12,9 +12,13 @@ struct ProgressTabView: View {
                 BackgroundGradient()
 
                 VStack(spacing: 0) {
+                    ProgressHero(selectedLayer: selectedLayer)
+                        .padding(.horizontal)
+                        .padding(.top, 10)
+
                     ProgressLayerSwitcher(selectedLayer: $selectedLayer, namespace: layerNamespace)
                     .padding(.horizontal)
-                    .padding(.top, 8)
+                    .padding(.top, 12)
 
                     TabView(selection: $selectedLayer) {
                         MuscleProgressView()
@@ -32,6 +36,69 @@ struct ProgressTabView: View {
             }
             .navigationTitle("Progrès")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+private struct ProgressHero: View {
+    let selectedLayer: Int
+
+    private var title: String {
+        switch selectedLayer {
+        case 0: return "Stress musculaire"
+        case 1: return "Lecture par exercice"
+        default: return "Corrélations hebdo"
+        }
+    }
+
+    private var subtitle: String {
+        switch selectedLayer {
+        case 0: return "Voir où tu manques vraiment de volume, puis ouvrir les détails utiles."
+        case 1: return "Voir vite le dernier niveau, la zone benchmark et la tendance de chaque exo."
+        default: return "Comparer perf, créatine, protéine et sommeil sans courbes artificielles."
+        }
+    }
+
+    private var accent: Color {
+        switch selectedLayer {
+        case 0: return .red
+        case 1: return .blue
+        default: return .orange
+        }
+    }
+
+    private var symbol: String {
+        switch selectedLayer {
+        case 0: return "figure.strengthtraining.traditional"
+        case 1: return "dumbbell.fill"
+        default: return "waveform.path.ecg"
+        }
+    }
+
+    var body: some View {
+        GlassCard(padding: 18, cornerRadius: 26) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .minimumScaleFactor(0.8)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(accent.opacity(0.14))
+                        .frame(width: 68, height: 68)
+                    Image(systemName: symbol)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(accent)
+                }
+            }
         }
     }
 }
@@ -325,10 +392,43 @@ private struct GlobalProgressView: View {
                         }
                     }
                     .padding(.horizontal)
+
+                    if let selected = selectedPoint {
+                        GlassCard(padding: 14, cornerRadius: 18) {
+                            HStack(spacing: 10) {
+                                globalMetric("Semaine", value: selected.weekStart.shortDate, tint: .white)
+                                if showPerformance {
+                                    globalMetric("Perf", value: String(format: "%.0f", selected.performance), tint: .orange)
+                                }
+                                if showCreatine {
+                                    globalMetric("Créatine", value: "\(String(format: "%.0f", selected.creatinePct))%", tint: .green)
+                                }
+                                if showProtein {
+                                    globalMetric("Protéine", value: "\(String(format: "%.0f", selected.proteinPct))%", tint: .blue)
+                                }
+                                if showSleep {
+                                    globalMetric("Sommeil", value: String(format: "%.0f", selected.sleepScore), tint: .mint)
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
                 }
             }
             .padding(.top, 10)
         }
+    }
+
+    private func globalMetric(_ title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var flowLegend: some View {

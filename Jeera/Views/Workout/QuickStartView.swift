@@ -54,6 +54,11 @@ struct QuickStartView: View {
         EffectiveSetsEngine.rollingStatusLine(progress: rollingProgress, sessions: recentSessions)
     }
 
+    private var dominantGapLabel: String {
+        guard let firstGap = muscleGaps.first else { return "Base habituelle prête" }
+        return "\(firstGap.0.displayName) prioritaire"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -97,6 +102,8 @@ struct QuickStartView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ModeIntensityStrip(mode: viewModel.selectedStartMode, dominantGapLabel: dominantGapLabel)
 
                     if let recommended = recommendedTemplate {
                         QuickStartButton(
@@ -547,8 +554,8 @@ struct ModeSelectorCard: View {
                         LinearGradient(
                             colors: isSelected
                                 ? [
-                                    mode.secondaryColor.opacity(0.30),
-                                    mode.accentColor.opacity(0.16),
+                                    mode.secondaryColor.opacity(mode == .beast ? 0.36 : mode == .monk ? 0.28 : 0.24),
+                                    mode.accentColor.opacity(mode == .beast ? 0.24 : mode == .monk ? 0.18 : 0.14),
                                     Color.white.opacity(0.03)
                                 ]
                                 : [
@@ -584,6 +591,79 @@ struct ModeSelectorCard: View {
             .scaleEffect(isSelected ? 1.01 : 1.0)
         }
         .buttonStyle(LiftButtonStyle(scale: 0.985))
+    }
+}
+
+private struct ModeIntensityStrip: View {
+    let mode: WorkoutViewModel.WorkoutMode
+    let dominantGapLabel: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            intensityChip("Structure", value: structureValue, tint: mode.accentColor)
+            intensityChip("Charge", value: loadValue, tint: loadTint)
+            intensityChip("Focus", value: focusValue, tint: focusTint)
+        }
+    }
+
+    private var structureValue: String {
+        switch mode {
+        case .normal: return "Stable"
+        case .beast: return "Familière"
+        case .monk: return "Adaptée"
+        }
+    }
+
+    private var loadValue: String {
+        switch mode {
+        case .normal: return "Normale"
+        case .beast: return "Agressive"
+        case .monk: return "Calme"
+        }
+    }
+
+    private var focusValue: String {
+        switch mode {
+        case .normal: return "Routine"
+        case .beast: return "PR / lourd"
+        case .monk: return dominantGapLabel
+        }
+    }
+
+    private var loadTint: Color {
+        switch mode {
+        case .normal: return .blue
+        case .beast: return .orange
+        case .monk: return .green
+        }
+    }
+
+    private var focusTint: Color {
+        switch mode {
+        case .normal: return .secondary
+        case .beast: return .orange
+        case .monk: return .green
+        }
+    }
+
+    private func intensityChip(_ title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 0.8)
+        }
     }
 }
 
