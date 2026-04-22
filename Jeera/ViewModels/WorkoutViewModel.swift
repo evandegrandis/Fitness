@@ -186,13 +186,9 @@ class WorkoutViewModel {
         activeWorkoutMode = mode ?? selectedStartMode
         let session = WorkoutSession()
         context.insert(session)
+        seedSessionForModeIfNeeded(session, mode: activeWorkoutMode)
         try? context.save()
         activeSession = session
-        if activeWorkoutMode == .monk {
-            appendMonkDeficitExercises(to: session, maxExtra: 2)
-        } else if activeWorkoutMode == .beast, shouldExtendBeastSession() {
-            appendBeastExtensionExercises(to: session, maxExtra: 1)
-        }
         startWorkoutTimer()
         startLiveActivity(for: session)
         HapticManager.impact(.heavy)
@@ -214,11 +210,7 @@ class WorkoutViewModel {
 
         try? context.save()
         activeSession = session
-        if activeWorkoutMode == .monk {
-            appendMonkDeficitExercises(to: session, maxExtra: 2)
-        } else if activeWorkoutMode == .beast, shouldExtendBeastSession() {
-            appendBeastExtensionExercises(to: session, maxExtra: 1)
-        }
+        applyModeOverlayIfNeeded(to: session)
         startWorkoutTimer()
         startLiveActivity(for: session)
         HapticManager.impact(.heavy)
@@ -246,14 +238,119 @@ class WorkoutViewModel {
 
         try? context.save()
         activeSession = session
+        applyModeOverlayIfNeeded(to: session)
+        startWorkoutTimer()
+        startLiveActivity(for: session)
+        HapticManager.impact(.heavy)
+    }
+
+    private func seedSessionForModeIfNeeded(_ session: WorkoutSession, mode: WorkoutMode) {
+        guard session.loggedExercises.isEmpty else {
+            applyModeOverlayIfNeeded(to: session)
+            return
+        }
+
+        switch mode {
+        case .normal:
+            return
+        case .beast, .monk:
+            let baseExercises = preferredBaseExercises(for: mode)
+            seedSession(session, with: baseExercises)
+            applyModeOverlayIfNeeded(to: session)
+        }
+    }
+
+    private func applyModeOverlayIfNeeded(to session: WorkoutSession) {
         if activeWorkoutMode == .monk {
             appendMonkDeficitExercises(to: session, maxExtra: 2)
         } else if activeWorkoutMode == .beast, shouldExtendBeastSession() {
             appendBeastExtensionExercises(to: session, maxExtra: 1)
         }
-        startWorkoutTimer()
-        startLiveActivity(for: session)
-        HapticManager.impact(.heavy)
+    }
+
+    private func seedSession(_ session: WorkoutSession, with exercises: [Exercise]) {
+        guard let context = modelContext else { return }
+        var seen = Set<UUID>()
+        let uniqueExercises = exercises.filter { exercise in
+            seen.insert(exercise.id).inserted
+        }
+        for (index, exercise) in uniqueExercises.enumerated() {
+            let logged = LoggedExercise(orderIndex: index, exercise: exercise)
+            logged.session = session
+            context.insert(logged)
+            session.loggedExercises.append(logged)
+        }
+    }
+
+    private func preferredBaseExercises(for mode: WorkoutMode) -> [Exercise] {
+        guard let context = modelContext else { return [] }
+
+        let sessionsDescriptor = FetchDescriptor<WorkoutSession>(
+            predicate: #Predicate { !$0.isActive },
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+        )
+        let templatesDescriptor = FetchDescriptor<WorkoutTemplate>(
+            sortBy: [SortDescriptor(\.sortOrder, order: .forward)]
+        )
+        let goalsDescriptor = FetchDescriptor<MuscleGoal>()
+
+        let recentSessions = (try? context.fetch(sessionsDescriptor)) ?? []
+        let templates = (try? context.fetch(templatesDescriptor)) ?? []
+        let goals = (try? context.fetch(goalsDescriptor)) ?? []
+
+        switch mode {
+        case .normal:
+            return []
+        case .beast:
+            if let recentBase = recentSessions.first?.orderedExercises.compactMap(\.exercise), !recentBase.isEmpty {
+                return recentBase
+            }
+            if let favoriteTemplate = templates.max(by: { templateModeScore($0, for: .beast, priorities: []) < templateModeScore($1, for: .beast, priorities: []) }) {
+                return favoriteTemplate.orderedExercises.compactMap(\.exercise)
+            }
+            return []
+        case .monk:
+            let priorities = EffectiveSetsEngine.rollingPriorities(sessions: recentSessions, goals: goals)
+            if let bestTemplate = templates.max(by: { templateModeScore($0, for: .monk, priorities: priorities) < templateModeScore($1, for: .monk, priorities: priorities) }) {
+                let chosen = bestTemplate.orderedExercises.compactMap(\.exercise)
+                if !chosen.isEmpty { return chosen }
+            }
+            if let recentBase = recentSessions.first?.orderedExercises.compactMap(\.exercise), !recentBase.isEmpty {
+                return recentBase
+            }
+            return []
+        }
+    }
+
+    private func templateModeScore(
+        _ template: WorkoutTemplate,
+        for mode: WorkoutMode,
+        priorities: [(MuscleParent, Double)]
+    ) -> Double {
+        let exercises = template.orderedExercises.compactMap(\.exercise)
+        guard !exercises.isEmpty else { return 0 }
+
+        switch mode {
+        case .normal:
+            return 0
+        case .beast:
+            return exercises.reduce(0) { score, exercise in
+                score
+                + (exercise.isFavorite ? 2.5 : 0)
+                + (exercise.fatigueClass == .heavy ? 2.0 : 0)
+                + (exercise.suggestedRestSeconds >= 150 ? 1.0 : 0)
+            }
+        case .monk:
+            let weightMap = Dictionary(uniqueKeysWithValues: priorities.prefix(5).enumerated().map { index, pair in
+                (pair.0, Double(6 - index))
+            })
+            return exercises.reduce(0) { score, exercise in
+                let contribution = exercise.muscleMappings.reduce(0.0) { subtotal, mapping in
+                    subtotal + (weightMap[mapping.muscleGroup.parent] ?? 0) * mapping.coefficient
+                }
+                return score + contribution
+            }
+        }
     }
 
     func finishWorkout() {
@@ -1097,13 +1194,32 @@ class WorkoutViewModel {
         guard let allExercises = try? context.fetch(descriptor) else { return }
 
         let existingExerciseIDs = Set(session.loggedExercises.compactMap { $0.exercise?.id })
+        let sessionCategories = Set(session.loggedExercises.compactMap { $0.exercise?.category }.filter { !$0.isEmpty })
+        let sessionParents = Set(
+            session.loggedExercises
+                .compactMap(\.exercise)
+                .flatMap { exercise in
+                    exercise.muscleMappings.map { $0.muscleGroup.parent }
+                }
+        )
+
         let candidates = allExercises.filter { ex in
             !existingExerciseIDs.contains(ex.id) &&
             (ex.isFavorite || ex.fatigueClass == .heavy || ex.suggestedRestSeconds >= 150)
         }
         .sorted { a, b in
-            let aScore = (a.isFavorite ? 2 : 0) + (a.fatigueClass == .heavy ? 2 : 0) + (a.suggestedRestSeconds >= 150 ? 1 : 0)
-            let bScore = (b.isFavorite ? 2 : 0) + (b.fatigueClass == .heavy ? 2 : 0) + (b.suggestedRestSeconds >= 150 ? 1 : 0)
+            let aScore =
+                (a.isFavorite ? 2.5 : 0)
+                + (a.fatigueClass == .heavy ? 2.0 : 0)
+                + (a.suggestedRestSeconds >= 150 ? 1.0 : 0)
+                + (sessionCategories.contains(a.category) ? 1.5 : 0)
+                + (a.muscleMappings.contains { sessionParents.contains($0.muscleGroup.parent) && $0.coefficient >= 0.3 } ? 1.5 : 0)
+            let bScore =
+                (b.isFavorite ? 2.5 : 0)
+                + (b.fatigueClass == .heavy ? 2.0 : 0)
+                + (b.suggestedRestSeconds >= 150 ? 1.0 : 0)
+                + (sessionCategories.contains(b.category) ? 1.5 : 0)
+                + (b.muscleMappings.contains { sessionParents.contains($0.muscleGroup.parent) && $0.coefficient >= 0.3 } ? 1.5 : 0)
             return aScore > bScore
         }
 
