@@ -51,10 +51,15 @@ final class SupersetGroup {
     /// `LoggedExercise.orderIndex` if a member id is missing from
     /// `memberOrder` (safety net if the array ever drifts).
     var orderedMembers: [LoggedExercise] {
-        let byID = Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0) })
+        var byID: [UUID: LoggedExercise] = [:]
+        for member in members {
+            if byID[member.id] == nil {
+                byID[member.id] = member
+            }
+        }
         var result: [LoggedExercise] = memberOrder.compactMap { byID[$0] }
         let listedIDs = Set(memberOrder)
-        let extras = members.filter { !listedIDs.contains($0.id) }
+        let extras = byID.values.filter { !listedIDs.contains($0.id) }
             .sorted { $0.orderIndex < $1.orderIndex }
         result.append(contentsOf: extras)
         return result

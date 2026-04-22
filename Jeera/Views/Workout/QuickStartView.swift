@@ -72,6 +72,18 @@ struct QuickStartView: View {
 
                 // Quick Actions
                 VStack(spacing: 10) {
+                    Picker("Mode", selection: $viewModel.selectedStartMode) {
+                        ForEach(WorkoutViewModel.WorkoutMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.bottom, 4)
+                    Text(modeHint)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                     if let recommended = recommendedTemplate {
                         QuickStartButton(
                             title: recommended.name,
@@ -79,7 +91,7 @@ struct QuickStartView: View {
                             icon: "star.circle.fill",
                             color: .orange
                         ) {
-                            viewModel.startFromTemplate(recommended)
+                            viewModel.startFromTemplate(recommended, mode: viewModel.selectedStartMode)
                         }
                     }
 
@@ -89,7 +101,7 @@ struct QuickStartView: View {
                         icon: "plus.circle.fill",
                         color: Color.accentColor
                     ) {
-                        viewModel.startEmptyWorkout()
+                        viewModel.startEmptyWorkout(mode: viewModel.selectedStartMode)
                     }
 
                     if !recentSessions.isEmpty {
@@ -99,7 +111,7 @@ struct QuickStartView: View {
                             icon: "arrow.counterclockwise.circle.fill",
                             color: .blue
                         ) {
-                            viewModel.repeatLastWorkout()
+                            viewModel.repeatLastWorkout(mode: viewModel.selectedStartMode)
                         }
                     }
                 }
@@ -132,7 +144,7 @@ struct QuickStartView: View {
 
                     ForEach(templates) { template in
                         TemplateRow(template: template) {
-                            viewModel.startFromTemplate(template)
+                            viewModel.startFromTemplate(template, mode: viewModel.selectedStartMode)
                         }
                         .contextMenu {
                             Button {
@@ -223,6 +235,17 @@ struct QuickStartView: View {
         let preview = exercises.prefix(2).joined(separator: ", ")
         let more = exercises.count > 2 ? " +\(exercises.count - 2)" : ""
         return "\(last.date.relativeDay) — \(preview)\(more)"
+    }
+
+    private var modeHint: String {
+        switch viewModel.selectedStartMode {
+        case .normal:
+            return "Normal: progression standard"
+        case .beast:
+            return "Beast: charge agressive + extension si récupération ok"
+        case .monk:
+            return "Monk: comble les déficits hebdo + ordre anti-fatigue"
+        }
     }
 }
 

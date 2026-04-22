@@ -14,6 +14,80 @@ public extension Notification.Name {
 
     /// Posted when the user taps "Passer" (skip rest).
     static let jeeraSkipRestFromLiveActivity = Notification.Name("jeeraSkipRestFromLiveActivity")
+    static let jeeraNextExerciseFromLiveActivity = Notification.Name("jeeraNextExerciseFromLiveActivity")
+    static let jeeraIncreaseWeightFromLiveActivity = Notification.Name("jeeraIncreaseWeightFromLiveActivity")
+    static let jeeraDecreaseWeightFromLiveActivity = Notification.Name("jeeraDecreaseWeightFromLiveActivity")
+    static let jeeraIncreaseRepsFromLiveActivity = Notification.Name("jeeraIncreaseRepsFromLiveActivity")
+    static let jeeraDecreaseRepsFromLiveActivity = Notification.Name("jeeraDecreaseRepsFromLiveActivity")
+}
+
+/// "Suivant" — move Live Activity focus to the next exercise context.
+@available(iOS 17.0, *)
+public struct NextExerciseIntent: LiveActivityIntent {
+    public static var title: LocalizedStringResource = "Suivant"
+    public static var description = IntentDescription("Passe à l'exercice suivant")
+    public static var isDiscoverable: Bool = false
+
+    public init() {}
+
+    public func perform() async throws -> some IntentResult {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .jeeraNextExerciseFromLiveActivity, object: nil)
+        }
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+public struct IncreaseWeightIntent: LiveActivityIntent {
+    public static var title: LocalizedStringResource = "+Kg"
+    public static var isDiscoverable: Bool = false
+    public init() {}
+    public func perform() async throws -> some IntentResult {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .jeeraIncreaseWeightFromLiveActivity, object: nil)
+        }
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+public struct DecreaseWeightIntent: LiveActivityIntent {
+    public static var title: LocalizedStringResource = "-Kg"
+    public static var isDiscoverable: Bool = false
+    public init() {}
+    public func perform() async throws -> some IntentResult {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .jeeraDecreaseWeightFromLiveActivity, object: nil)
+        }
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+public struct IncreaseRepsIntent: LiveActivityIntent {
+    public static var title: LocalizedStringResource = "+Rep"
+    public static var isDiscoverable: Bool = false
+    public init() {}
+    public func perform() async throws -> some IntentResult {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .jeeraIncreaseRepsFromLiveActivity, object: nil)
+        }
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+public struct DecreaseRepsIntent: LiveActivityIntent {
+    public static var title: LocalizedStringResource = "-Rep"
+    public static var isDiscoverable: Bool = false
+    public init() {}
+    public func perform() async throws -> some IntentResult {
+        await MainActor.run {
+            NotificationCenter.default.post(name: .jeeraDecreaseRepsFromLiveActivity, object: nil)
+        }
+        return .result()
+    }
 }
 
 /// "Valider" — log the currently-suggested set from the lock screen.

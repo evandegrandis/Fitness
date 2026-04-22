@@ -112,16 +112,37 @@ private struct LockScreenView: View {
                     }
 
                     if #available(iOS 17.0, *) {
-                        Button(intent: ValidateNextSetIntent()) {
-                            Text("Valider")
-                                .font(.caption.weight(.bold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Color.accentColor)
-                                .foregroundStyle(.white)
-                                .clipShape(Capsule())
+                        VStack(alignment: .trailing, spacing: 6) {
+                            HStack(spacing: 5) {
+                                tinyButton("-kg", intent: DecreaseWeightIntent())
+                                tinyButton("+kg", intent: IncreaseWeightIntent())
+                                tinyButton("-rep", intent: DecreaseRepsIntent())
+                                tinyButton("+rep", intent: IncreaseRepsIntent())
+                            }
+
+                            HStack(spacing: 6) {
+                                Button(intent: NextExerciseIntent()) {
+                                    Text("Suivant")
+                                        .font(.caption.weight(.bold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(.white.opacity(0.12))
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                Button(intent: ValidateNextSetIntent()) {
+                                    Text("Valider")
+                                        .font(.caption.weight(.bold))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.accentColor)
+                                        .foregroundStyle(.white)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -170,20 +191,54 @@ private struct NextSetRow: View {
                 }
                 Spacer()
                 if #available(iOS 17.0, *) {
-                    Button(intent: ValidateNextSetIntent()) {
-                        Text("Valider")
-                            .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.accentColor)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
+                    VStack(alignment: .trailing, spacing: 4) {
+                        HStack(spacing: 4) {
+                            tinyButton("-kg", intent: DecreaseWeightIntent())
+                            tinyButton("+kg", intent: IncreaseWeightIntent())
+                            tinyButton("-r", intent: DecreaseRepsIntent())
+                            tinyButton("+r", intent: IncreaseRepsIntent())
+                        }
+                        HStack(spacing: 6) {
+                            Button(intent: NextExerciseIntent()) {
+                                Text("Suivant")
+                                    .font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(.white.opacity(0.12))
+                                    .foregroundStyle(.white)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            Button(intent: ValidateNextSetIntent()) {
+                                Text("Valider")
+                                    .font(.caption2.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.accentColor)
+                                    .foregroundStyle(.white)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
     }
+}
+
+@available(iOS 17.0, *)
+private func tinyButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
+    Button(intent: intent) {
+        Text(title)
+            .font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.white.opacity(0.10))
+            .foregroundStyle(.white)
+            .clipShape(Capsule())
+    }
+    .buttonStyle(.plain)
 }
 
 // MARK: - Compact trailing

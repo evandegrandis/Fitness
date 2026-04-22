@@ -31,3 +31,26 @@ final class UserSettings {
 
     var unitLabel: String { usesKilograms ? "kg" : "lb" }
 }
+
+@Model
+final class RecoveryCheckin {
+    @Attribute(.unique) var id: UUID
+    var date: Date
+    var tookCreatine: Bool
+    var proteinTargetMet: Bool
+    var sleepHours: Double
+
+    init(
+        id: UUID = UUID(),
+        date: Date,
+        tookCreatine: Bool,
+        proteinTargetMet: Bool,
+        sleepHours: Double
+    ) {
+        self.id = id
+        self.date = date
+        self.tookCreatine = tookCreatine
+        self.proteinTargetMet = proteinTargetMet
+        self.sleepHours = sleepHours
+    }
+}
