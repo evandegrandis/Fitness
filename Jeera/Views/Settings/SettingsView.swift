@@ -67,47 +67,51 @@ struct SettingsView: View {
                     Text("Exporte avant de réinstaller l'app. Les données sont effacées quand le certificat gratuit expire (7 jours).")
                 }
 
-                Section {
-                    Toggle("Sauvegarde auto", isOn: $iCloudAutoBackupEnabled)
-                    Button("Sauvegarder maintenant") {
-                        do {
-                            try BackupSyncService.backupNow(context: modelContext)
-                            alertMessage = "Backup cloud envoyé."
-                        } catch {
-                            alertMessage = "Backup cloud impossible: \(error.localizedDescription)"
+                Section(
+                    content: {
+                        Toggle("Sauvegarde auto", isOn: $iCloudAutoBackupEnabled)
+                        Button("Sauvegarder maintenant") {
+                            do {
+                                try BackupSyncService.backupNow(context: modelContext)
+                                alertMessage = "Backup cloud envoyé."
+                            } catch {
+                                alertMessage = "Backup cloud impossible: \(error.localizedDescription)"
+                            }
+                            showAlert = true
                         }
-                        showAlert = true
-                    }
-                    Button("Vérifier version distante") {
-                        let status = BackupSyncService.compareLocalAndRemote(context: modelContext)
-                        switch status {
-                        case .unavailable(let reason):
-                            alertMessage = reason
-                        case .upToDate:
-                            alertMessage = "Version locale et distante identiques."
-                        case .localIsNewer:
-                            alertMessage = "La version locale est plus récente."
-                        case .remoteIsNewer:
-                            alertMessage = "La version distante est plus récente."
+                        Button("Vérifier version distante") {
+                            let status = BackupSyncService.compareLocalAndRemote(context: modelContext)
+                            switch status {
+                            case .unavailable(let reason):
+                                alertMessage = reason
+                            case .upToDate:
+                                alertMessage = "Version locale et distante identiques."
+                            case .localIsNewer:
+                                alertMessage = "La version locale est plus récente."
+                            case .remoteIsNewer:
+                                alertMessage = "La version distante est plus récente."
+                            }
+                            showAlert = true
                         }
-                        showAlert = true
-                    }
-                    Button("Restaurer si cloud plus récent") {
-                        do {
-                            let imported = try BackupSyncService.importRemoteIfNewer(context: modelContext)
-                            alertMessage = imported
-                                ? "Données cloud importées (plus récentes)."
-                                : "Aucune version cloud plus récente trouvée."
-                        } catch {
-                            alertMessage = "Import cloud impossible: \(error.localizedDescription)"
+                        Button("Restaurer si cloud plus récent") {
+                            do {
+                                let imported = try BackupSyncService.importRemoteIfNewer(context: modelContext)
+                                alertMessage = imported
+                                    ? "Données cloud importées (plus récentes)."
+                                    : "Aucune version cloud plus récente trouvée."
+                            } catch {
+                                alertMessage = "Import cloud impossible: \(error.localizedDescription)"
+                            }
+                            showAlert = true
                         }
-                        showAlert = true
+                    },
+                    header: {
+                        Text("Sauvegarde cloud (iCloud)")
+                    },
+                    footer: {
+                        Text("Le backup cloud reste indépendant de l'affichage local : l'app lit SwiftData en local, iCloud sert uniquement de sauvegarde.")
                     }
-                } header: {
-                    Text("Sauvegarde cloud (iCloud)")
-                } footer: {
-                    Text("Le backup cloud reste indépendant de l'affichage local : l'app lit SwiftData en local, iCloud sert uniquement de sauvegarde.")
-                }
+                )
 
                 Section("Profil") {
                     HStack {
