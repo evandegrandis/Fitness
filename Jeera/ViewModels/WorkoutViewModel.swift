@@ -18,6 +18,50 @@ class WorkoutViewModel {
             case .monk: return "Monk"
             }
         }
+
+        var shortDescription: String {
+            switch self {
+            case .normal:
+                return "Base habituelle, progression standard"
+            case .beast:
+                return "Charge agressive, ambiance brutale"
+            case .monk:
+                return "Déficits hebdo, ordre plus paisible"
+            }
+        }
+
+        var symbolName: String {
+            switch self {
+            case .normal:
+                return "figure.strengthtraining.traditional"
+            case .beast:
+                return "flame.fill"
+            case .monk:
+                return "leaf.fill"
+            }
+        }
+
+        var accentColor: Color {
+            switch self {
+            case .normal:
+                return .blue
+            case .beast:
+                return .orange
+            case .monk:
+                return .green
+            }
+        }
+
+        var secondaryColor: Color {
+            switch self {
+            case .normal:
+                return Color(red: 0.30, green: 0.57, blue: 0.96)
+            case .beast:
+                return Color(red: 0.80, green: 0.18, blue: 0.12)
+            case .monk:
+                return Color(red: 0.17, green: 0.52, blue: 0.47)
+            }
+        }
     }
 
     struct FinishedWorkoutSnapshot: Identifiable, Equatable {
@@ -941,7 +985,7 @@ class WorkoutViewModel {
         )
 
         if activeWorkoutMode == .beast, currentSetIndex == 1, suggestion.weight > 0 {
-            let bump = max(1, exercise.defaultIncrement)
+            let bump = max(1, exercise.smallestIncrement)
             suggestion = SetSuggestion(
                 weight: suggestion.weight + bump,
                 reps: suggestion.reps,

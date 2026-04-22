@@ -72,12 +72,22 @@ struct QuickStartView: View {
 
                 // Quick Actions
                 VStack(spacing: 10) {
-                    Picker("Mode", selection: $viewModel.selectedStartMode) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Mode de séance")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
                         ForEach(WorkoutViewModel.WorkoutMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
+                            ModeSelectorCard(
+                                mode: mode,
+                                isSelected: viewModel.selectedStartMode == mode
+                            ) {
+                                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                                    viewModel.selectedStartMode = mode
+                                }
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
                     .padding(.bottom, 4)
                     Text(modeHint)
                         .font(.caption2)
@@ -238,14 +248,7 @@ struct QuickStartView: View {
     }
 
     private var modeHint: String {
-        switch viewModel.selectedStartMode {
-        case .normal:
-            return "Normal: progression standard"
-        case .beast:
-            return "Beast: charge agressive + extension si récupération ok"
-        case .monk:
-            return "Monk: comble les déficits hebdo + ordre anti-fatigue"
-        }
+        viewModel.selectedStartMode.shortDescription
     }
 }
 
@@ -397,6 +400,73 @@ struct QuickStartButton: View {
                     .foregroundStyle(.tertiary)
             }
             .glassCard(padding: 14)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ModeSelectorCard: View {
+    let mode: WorkoutViewModel.WorkoutMode
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(mode.accentColor.opacity(isSelected ? 0.24 : 0.12))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: mode.symbolName)
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(mode.accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(mode.displayName)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                    Text(mode.shortDescription)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isSelected ? mode.accentColor : .white.opacity(0.25))
+            }
+            .padding(15)
+            .background {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: isSelected
+                                ? [
+                                    mode.secondaryColor.opacity(0.30),
+                                    mode.accentColor.opacity(0.16),
+                                    Color.white.opacity(0.03)
+                                ]
+                                : [
+                                    Color.white.opacity(0.05),
+                                    Color.white.opacity(0.02)
+                                ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(
+                        isSelected ? mode.accentColor.opacity(0.55) : .white.opacity(0.08),
+                        lineWidth: isSelected ? 1.2 : 0.8
+                    )
+            }
+            .shadow(color: mode.accentColor.opacity(isSelected ? 0.18 : 0), radius: 18, y: 8)
+            .scaleEffect(isSelected ? 1.01 : 1.0)
         }
         .buttonStyle(.plain)
     }

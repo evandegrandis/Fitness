@@ -5,6 +5,7 @@ struct ActiveWorkoutView: View {
     @Bindable var viewModel: WorkoutViewModel
     @State private var showFinishAlert = false
     @State private var showExercisePicker = false
+    @State private var modeIntroVisible = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -118,10 +119,25 @@ struct ActiveWorkoutView: View {
                     .transition(.scale.combined(with: .opacity))
                     .zIndex(100)
             }
+
+            if modeIntroVisible, viewModel.activeWorkoutMode != .normal {
+                ModeTransitionOverlay(mode: viewModel.activeWorkoutMode)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 1.08)),
+                                            removal: .opacity))
+                    .zIndex(90)
+                    .allowsHitTesting(false)
+            }
         }
         .animation(.spring(response: 0.3), value: viewModel.restTimer.isRunning)
         .animation(.spring(response: 0.3), value: viewModel.showUndo)
         .animation(.spring(response: 0.4), value: viewModel.showAchievement)
+        .animation(.spring(response: 0.55, dampingFraction: 0.82), value: viewModel.activeWorkoutMode)
+        .onAppear {
+            triggerModeIntroIfNeeded()
+        }
+        .onChange(of: viewModel.activeWorkoutMode) { _, _ in
+            triggerModeIntroIfNeeded()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -155,33 +171,86 @@ struct ActiveWorkoutView: View {
 
     @ViewBuilder
     private var modeBackdrop: some View {
-        switch viewModel.activeWorkoutMode {
-        case .beast:
-            LinearGradient(
-                colors: [
-                    Color.red.opacity(0.16),
-                    Color.purple.opacity(0.10),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
-        case .monk:
-            LinearGradient(
-                colors: [
-                    Color.green.opacity(0.14),
-                    Color.blue.opacity(0.08),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
-        case .normal:
-            Color.clear
+        ZStack {
+            switch viewModel.activeWorkoutMode {
+            case .beast:
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.36, green: 0.07, blue: 0.05).opacity(0.92),
+                        Color(red: 0.23, green: 0.03, blue: 0.08).opacity(0.78),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                AngularGradient(
+                    colors: [
+                        Color.orange.opacity(0.32),
+                        Color.red.opacity(0.14),
+                        Color.clear,
+                        Color.orange.opacity(0.18)
+                    ],
+                    center: .topTrailing
+                )
+
+                RadialGradient(
+                    colors: [
+                        Color.orange.opacity(0.18),
+                        Color.clear
+                    ],
+                    center: .bottomLeading,
+                    startRadius: 0,
+                    endRadius: 360
+                )
+            case .monk:
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.05, green: 0.21, blue: 0.18).opacity(0.90),
+                        Color(red: 0.06, green: 0.15, blue: 0.21).opacity(0.72),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                RadialGradient(
+                    colors: [
+                        Color.green.opacity(0.18),
+                        Color.clear
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 320
+                )
+
+                LinearGradient(
+                    colors: [
+                        Color.teal.opacity(0.16),
+                        Color.clear,
+                        Color.blue.opacity(0.10)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            case .normal:
+                Color.clear
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    private func triggerModeIntroIfNeeded() {
+        guard viewModel.activeWorkoutMode != .normal else {
+            modeIntroVisible = false
+            return
+        }
+        modeIntroVisible = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            withAnimation(.easeOut(duration: 0.35)) {
+                modeIntroVisible = false
+            }
         }
     }
 }
@@ -200,10 +269,10 @@ struct WorkoutHeaderView: View {
                 HStack(spacing: 6) {
                     Text("Séance")
                     if mode != .normal {
-                        Text(mode.displayName.uppercased())
+                        Label(mode.displayName.uppercased(), systemImage: mode.symbolName)
                             .font(.caption2.weight(.bold))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
                             .background(modeChipColor.opacity(0.22), in: Capsule())
                             .foregroundStyle(modeChipColor)
                     }
@@ -228,6 +297,56 @@ struct WorkoutHeaderView: View {
             return .orange
         case .monk:
             return .green
+        }
+    }
+}
+
+private struct ModeTransitionOverlay: View {
+    let mode: WorkoutViewModel.WorkoutMode
+    @State private var hasAnimatedIn = false
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.18))
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(mode.accentColor.opacity(0.22))
+                        .frame(width: 88, height: 88)
+                    Circle()
+                        .stroke(mode.accentColor.opacity(0.40), lineWidth: 1)
+                        .frame(width: 104, height: 104)
+                    Image(systemName: mode.symbolName)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(mode.accentColor)
+                }
+
+                Text(mode.displayName.uppercased())
+                    .font(.title3.weight(.black))
+                    .tracking(1.8)
+
+                Text(mode.shortDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 26)
+            .padding(.vertical, 24)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(mode.accentColor.opacity(0.30), lineWidth: 1)
+            }
+            .scaleEffect(hasAnimatedIn ? 1 : 0.92)
+            .opacity(hasAnimatedIn ? 1 : 0)
+            .blur(radius: hasAnimatedIn ? 0 : 10)
+            .onAppear {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                    hasAnimatedIn = true
+                }
+            }
         }
     }
 }
