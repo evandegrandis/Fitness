@@ -416,6 +416,8 @@ struct CompactSetRow: View {
     let set: LoggedSet
     var isRecord: Bool = false
     var onTap: () -> Void = {}
+    @State private var highlight = false
+    @State private var starScale: CGFloat = 0.7
 
     var body: some View {
         Button(action: onTap) {
@@ -451,6 +453,8 @@ struct CompactSetRow: View {
                     Image(systemName: "star.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(.yellow)
+                        .scaleEffect(starScale)
+                        .shadow(color: .yellow.opacity(0.35), radius: 8)
                 }
 
                 Spacer()
@@ -461,8 +465,30 @@ struct CompactSetRow: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(highlight ? .yellow.opacity(0.10) : .clear)
+            )
+            .overlay {
+                if isRecord {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.yellow.opacity(highlight ? 0.45 : 0.18), lineWidth: 1)
+                }
+            }
         }
         .buttonStyle(.plain)
+        .onAppear {
+            guard isRecord else { return }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.55)) {
+                highlight = true
+                starScale = 1.18
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                withAnimation(.easeOut(duration: 0.28)) {
+                    starScale = 1.0
+                }
+            }
+        }
     }
 
     @ViewBuilder

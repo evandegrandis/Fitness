@@ -151,11 +151,11 @@ private struct RestOrReadyBadge: View {
 
     var body: some View {
         if let endsAt = state.restEndsAt, endsAt > Date() {
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .trailing, spacing: 3) {
                 Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                    .font(.title3.weight(.bold).monospacedDigit())
+                    .font(.title3.weight(.heavy).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
-                Text("repos")
+                Text("Repos")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -173,46 +173,33 @@ private struct NextSetRow: View {
 
     var body: some View {
         if !state.nextSetPreview.isEmpty {
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Prochain")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("\(state.nextExerciseName) — \(state.nextSetPreview)")
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
+            VStack(spacing: 8) {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.nextExerciseName)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text(state.nextSetPreview)
+                            .font(.headline.weight(.bold).monospacedDigit())
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    RestOrReadyBadge(state: state)
                 }
-                Spacer()
+
                 if #available(iOS 17.0, *) {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        HStack(spacing: 4) {
-                            tinyButton("-kg", intent: DecreaseWeightIntent())
-                            tinyButton("+kg", intent: IncreaseWeightIntent())
-                            tinyButton("-r", intent: DecreaseRepsIntent())
-                            tinyButton("+r", intent: IncreaseRepsIntent())
-                        }
+                    VStack(spacing: 6) {
                         HStack(spacing: 6) {
-                            Button(intent: NextExerciseIntent()) {
-                                Text("Suivant")
-                                    .font(.caption2.weight(.bold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(.white.opacity(0.12))
-                                    .foregroundStyle(.white)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            Button(intent: ValidateNextSetIntent()) {
-                                Text("Valider")
-                                    .font(.caption2.weight(.bold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color.accentColor)
-                                    .foregroundStyle(.white)
-                                    .clipShape(Capsule())
-                            }
+                            tinyButton("Kg-", intent: DecreaseWeightIntent())
+                            tinyButton("Kg+", intent: IncreaseWeightIntent())
+                            tinyButton("R-", intent: DecreaseRepsIntent())
+                            tinyButton("R+", intent: IncreaseRepsIntent())
                         }
-                        .buttonStyle(.plain)
+                        HStack(spacing: 8) {
+                            primaryButton("Suivant", fill: .white.opacity(0.10), intent: NextExerciseIntent())
+                            primaryButton("Valider", fill: Color.accentColor, intent: ValidateNextSetIntent())
+                        }
                     }
                 }
             }
@@ -257,7 +244,7 @@ private struct CompactTrailing: View {
     var body: some View {
         if let endsAt = state.restEndsAt, endsAt > Date() {
             Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                .font(.caption.weight(.bold).monospacedDigit())
+                .font(.caption.weight(.heavy).monospacedDigit())
                 .foregroundStyle(Color.accentColor)
                 .frame(maxWidth: 44)
         } else {

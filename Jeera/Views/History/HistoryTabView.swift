@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct HistoryTabView: View {
+    @Environment(\.modelContext) private var modelContext
     @Query(
         filter: #Predicate<WorkoutSession> { !$0.isActive },
         sort: \WorkoutSession.startTime,
@@ -9,6 +10,7 @@ struct HistoryTabView: View {
     ) private var sessions: [WorkoutSession]
 
     @Query private var goals: [MuscleGoal]
+    @State private var sessionToDelete: WorkoutSession?
 
     /// Sessions grouped into ISO weeks (Mon-Sun Europe/Paris). The dictionary key
     /// is the Monday of that week; groups are sorted newest-first.
@@ -34,7 +36,8 @@ struct HistoryTabView: View {
                                     weekStart: group.weekStart,
                                     sessions: group.sessions,
                                     allSessions: sessions,
-                                    goals: goals
+                                    goals: goals,
+                                    onDeleteSession: { sessionToDelete = $0 }
                                 )
                             }
                         }
@@ -46,6 +49,25 @@ struct HistoryTabView: View {
             }
             .navigationTitle("Historique")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Supprimer cette séance ?", isPresented: Binding(
+                get: { sessionToDelete != nil },
+                set: { if !$0 { sessionToDelete = nil } }
+            )) {
+                Button("Supprimer", role: .destructive) {
+                    if let sessionToDelete {
+                        modelContext.delete(sessionToDelete)
+                        try? modelContext.save()
+                    }
+                    sessionToDelete = nil
+                }
+                Button("Annuler", role: .cancel) {
+                    sessionToDelete = nil
+                }
+            } message: {
+                if let sessionToDelete {
+                    Text("\(sessionToDelete.date.relativeDay) · \(sessionToDelete.totalWorkSets) sets")
+                }
+            }
         }
     }
 
@@ -71,6 +93,7 @@ struct WeeklyHistorySection: View {
     let sessions: [WorkoutSession]
     var allSessions: [WorkoutSession] = []
     let goals: [MuscleGoal]
+    var onDeleteSession: (WorkoutSession) -> Void = { _ in }
 
     private var weekLabel: String {
         if Calendar.current.isDate(weekStart, equalTo: Date(), toGranularity: .weekOfYear) {
@@ -121,6 +144,13 @@ struct WeeklyHistorySection: View {
                         HistoryRow(session: session, allSessions: allSessions)
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onDeleteSession(session)
+                        } label: {
+                            Label("Supprimer la séance", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }
