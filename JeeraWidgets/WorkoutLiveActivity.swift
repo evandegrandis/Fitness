@@ -83,20 +83,26 @@ private struct LockScreenView: View {
                 HStack(spacing: 8) {
                     compactRestBadge
 
-                    if !state.nextExerciseName.isEmpty {
-                        Text("Puis \(state.nextExerciseName)")
+                    if !state.nextSetPreview.isEmpty {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("A suivre")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Text(nextSummary)
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                        }
+                    } else if !state.nextExerciseName.isEmpty {
+                        Text(state.nextExerciseName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
 
-                if !state.nextSetPreview.isEmpty {
-                    Text(state.nextSetPreview)
-                        .font(.system(size: 28, weight: .heavy, design: .rounded).monospacedDigit())
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                } else if !state.lastSetSummary.isEmpty {
+                if state.nextSetPreview.isEmpty, !state.lastSetSummary.isEmpty {
                     Text(state.lastSetSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -150,6 +156,10 @@ private struct LockScreenView: View {
             .background(.green.opacity(0.10), in: Capsule())
         }
     }
+
+    private var nextSummary: String {
+        workoutNextSummary(state: state)
+    }
 }
 
 // MARK: - Dynamic Island helpers
@@ -185,11 +195,10 @@ private struct NextSetRow: View {
             VStack(spacing: 8) {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(state.nextExerciseName)
-                            .font(.caption2)
+                        Text("A suivre")
+                            .font(.caption2.weight(.bold))
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Text(state.nextSetPreview)
+                        Text(nextSummary)
                             .font(.headline.weight(.bold).monospacedDigit())
                             .lineLimit(1)
                     }
@@ -214,6 +223,18 @@ private struct NextSetRow: View {
             }
         }
     }
+
+    private var nextSummary: String {
+        workoutNextSummary(state: state)
+    }
+}
+
+private func workoutNextSummary(state: WorkoutContentState) -> String {
+    let name = state.nextExerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
+    let preview = state.nextSetPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+    if name.isEmpty { return preview }
+    if preview.isEmpty { return name }
+    return "\(name) • \(preview)"
 }
 
 @available(iOS 17.0, *)

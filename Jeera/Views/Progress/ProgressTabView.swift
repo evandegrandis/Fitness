@@ -186,7 +186,6 @@ private struct GlobalProgressView: View {
         let creatinePct: Double
         let proteinPct: Double
         let sleepScore: Double
-        let isPositiveCorrelationWindow: Bool
     }
 
     private var weekly: [WeeklyPoint] {
@@ -234,22 +233,17 @@ private struct GlobalProgressView: View {
                 performance: normalizedPerformance,
                 creatinePct: tuple.2,
                 proteinPct: tuple.3,
-                sleepScore: tuple.4,
-                isPositiveCorrelationWindow: false
+                sleepScore: tuple.4
             )
         }
 
         return points.enumerated().map { idx, point in
-            let prevPerf = idx > 0 ? points[idx - 1].performance : point.performance
-            let perfUp = point.performance >= prevPerf
-            let adherenceStrong = point.creatinePct >= 60 && point.proteinPct >= 60 && point.sleepScore >= 60
             return WeeklyPoint(
                 weekStart: point.weekStart,
                 performance: point.performance,
                 creatinePct: point.creatinePct,
                 proteinPct: point.proteinPct,
-                sleepScore: point.sleepScore,
-                isPositiveCorrelationWindow: perfUp && adherenceStrong
+                sleepScore: point.sleepScore
             )
         }
     }
@@ -274,16 +268,6 @@ private struct GlobalProgressView: View {
                             }
 
                             Chart {
-                                ForEach(weekly.filter(\.isPositiveCorrelationWindow)) { item in
-                                    RectangleMark(
-                                        xStart: .value("Week Start", item.weekStart),
-                                        xEnd: .value("Week End", Calendar.current.date(byAdding: .day, value: 7, to: item.weekStart) ?? item.weekStart),
-                                        yStart: .value("Bottom", 0),
-                                        yEnd: .value("Top", 100)
-                                    )
-                                    .foregroundStyle(.green.opacity(0.06))
-                                }
-
                                 ForEach(weekly) { item in
                                     AreaMark(
                                         x: .value("Week", item.weekStart),
@@ -377,6 +361,11 @@ private struct GlobalProgressView: View {
                 }
             }
             .padding(.top, 10)
+        }
+        .onAppear {
+            if selectedWeek == nil {
+                selectedWeek = weekly.last?.weekStart
+            }
         }
     }
 

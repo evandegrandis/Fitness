@@ -119,12 +119,6 @@ struct ExerciseProgressRow: View {
         history.last
     }
 
-    private var recentAverage7Plus: Double? {
-        let values = history.suffix(4).map(\.bestWeightAt7Plus).filter { $0 > 0 }
-        guard !values.isEmpty else { return nil }
-        return values.reduce(0, +) / Double(values.count)
-    }
-
     // Trend: compare last 2 points of the same rolling-best curve as the chart.
     private var trend: Trend {
         guard history.count >= 2 else { return .neutral }
@@ -542,16 +536,10 @@ struct ExerciseProgressRow: View {
     }
 
     private var metricTitle: String {
-        exercise.setPatternMode == .bodyweight ? "Tendance" : "4 sé."
+        "Tendance"
     }
 
     private var metricValue: String {
-        if exercise.setPatternMode == .bodyweight {
-            return trendLabel
-        }
-        if let avg = recentAverage7Plus {
-            return "\(avg.cleanWeight) kg"
-        }
         return trendLabel
     }
 

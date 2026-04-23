@@ -107,21 +107,21 @@ struct MuscleProgressView: View {
         GlassCard(padding: 18, cornerRadius: 24) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("7 derniers jours")
+                    Text("\(Int((globalCoverage * 100).rounded()))% couvert")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("Couverture \(Int((globalCoverage * 100).rounded()))%")
+                    Text("7 jours")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if let topPriority {
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("Priorité")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
                         Text(topPriority.parent.displayName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.red)
+                        Text("\(Int(ceil(topPriority.remaining))) restants")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -165,43 +165,27 @@ struct ParentMuscleCard: View {
                                 .font(.callout.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
+                        
+                        Text(progress.remaining <= 0 ? "Couvert" : "\(Int(ceil(progress.remaining))) restants")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
 
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(progress.status.label)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(statusColor)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(statusColor.opacity(0.12), in: Capsule())
-
-                        if progress.remaining > 0 {
-                            Text("\(Int(ceil(progress.remaining)))")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Text(progress.status.label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(statusColor.opacity(0.12), in: Capsule())
                 }
 
-                VStack(spacing: 8) {
-                    HStack {
-                        Text(progress.status == .covered ? "Couvert" : "\(Int(ceil(progress.remaining))) restants")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(progress.percentDisplay)%")
-                            .font(.caption2.weight(.bold).monospacedDigit())
-                            .foregroundStyle(statusColor)
-                    }
-
-                    ProgressBar(
-                        progress: Double(progress.percentDisplay),
-                        height: 8,
-                        accentColor: statusColor
-                    )
-                }
+                ProgressBar(
+                    progress: Double(progress.percentDisplay),
+                    height: 8,
+                    accentColor: statusColor
+                )
             }
         }
         .overlay {
