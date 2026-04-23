@@ -102,13 +102,16 @@ private struct HistoryOverviewCard: View {
     private var totalPRs: Int {
         sessions.prefix(8).reduce(0) { $0 + recordCount(in: $1) }
     }
+    private var totalHours: Int {
+        Int(sessions.prefix(8).reduce(0.0) { $0 + ($1.duration ?? 0) } / 3600.0)
+    }
 
     var body: some View {
         GlassCard(padding: 16, cornerRadius: 24) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Historique vivant")
-                    .font(.headline.weight(.bold))
-                Text("Lecture rapide de tes dernières séances, avec suppression directe si tu veux nettoyer un essai raté.")
+                Text("Archive d'entraînement")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                Text("Tes dernières séances, regroupées par semaine pour relire la continuité du cycle plutôt qu'une simple liste.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -116,6 +119,7 @@ private struct HistoryOverviewCard: View {
                     metric("Séances", value: "\(min(sessions.count, 8))")
                     metric("Sets", value: "\(totalSets)")
                     metric("PR", value: "\(totalPRs)")
+                    metric("Heures", value: "\(totalHours)h")
                 }
             }
         }
@@ -193,7 +197,7 @@ struct WeeklyHistorySection: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(weekLabel)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                 Spacer()
                 let pct = coveragePct
@@ -275,26 +279,24 @@ struct HistoryRow: View {
 
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 22) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(session.date.relativeDay)
-                        .font(.subheadline.weight(.semibold))
-                    if recordCount > 0 {
-                        HStack(spacing: 2) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.yellow)
-                            if recordCount > 1 {
-                                Text("×\(recordCount)")
-                                    .font(.system(size: 9).weight(.bold).monospacedDigit())
-                                    .foregroundStyle(.yellow)
-                            }
-                        }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(session.date.relativeDay)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                        Text(session.date.shortTime)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.tertiary)
                     }
                     Spacer()
-                    Text(session.date.shortTime)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    if recordCount > 0 {
+                        Label(recordCount > 1 ? "PR ×\(recordCount)" : "PR", systemImage: "star.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.yellow)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(.yellow.opacity(0.10), in: Capsule())
+                    }
                 }
 
                 HStack(spacing: 10) {
@@ -306,8 +308,8 @@ struct HistoryRow: View {
                 .foregroundStyle(.secondary)
 
                 Text(exerciseNames)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }

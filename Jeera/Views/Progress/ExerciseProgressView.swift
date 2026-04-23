@@ -264,14 +264,12 @@ struct ExerciseProgressRow: View {
                     Divider().background(.white.opacity(0.08))
 
                     if history.count >= 2 {
-                        chartBlock("Courbe principale") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                chartHeader
-                                exerciseChart
-                            }
+                        VStack(alignment: .leading, spacing: 10) {
+                            chartHeader
+                            exerciseChart
                         }
                         if showsSecondaryRepChart {
-                            chartBlock("Zone reps") {
+                            chartBlock {
                                 repChartForWeightedBodyweight
                             }
                         }
@@ -520,12 +518,15 @@ struct ExerciseProgressRow: View {
     // MARK: - Recent Summary
 
     private var recentSummary: some View {
-        let recent = history.suffix(3).reversed()
-        return VStack(spacing: 4) {
+        let recent = history.suffix(2).reversed()
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Récent")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
             ForEach(Array(recent), id: \.date) { dp in
                 HStack {
                     Text(dp.date.shortDate)
-                        .font(.caption2)
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(.tertiary)
                         .frame(width: 46, alignment: .leading)
                     Text(dp.topSetSummary)
@@ -544,7 +545,9 @@ struct ExerciseProgressRow: View {
             if let band = benchmarkDisplay {
                 statChip("Zone", value: band, tint: .green)
             }
-            statChip(metricTitle, value: metricValue, tint: trendTint)
+            if history.count >= 2 || exercise.setPatternMode != .bodyweight {
+                statChip(metricTitle, value: metricValue, tint: trendTint)
+            }
         }
     }
 
@@ -564,11 +567,8 @@ struct ExerciseProgressRow: View {
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
-    private func chartBlock<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func chartBlock<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary.opacity(0.9))
             content()
         }
         .padding(12)
@@ -635,7 +635,7 @@ struct ExerciseProgressRow: View {
     }
 
     private var metricTitle: String {
-        exercise.setPatternMode == .bodyweight ? "Tendance" : "Moyenne"
+        exercise.setPatternMode == .bodyweight ? "Tendance" : "4 sé."
     }
 
     private var metricValue: String {
