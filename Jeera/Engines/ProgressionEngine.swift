@@ -116,6 +116,30 @@ struct ProgressionEngine {
         }
 
         if doneToday.count == 1 {
+            if let first = doneToday.first, first.weight > 0 {
+                let drop = exercise.fatigueClass.baseRepDrop
+                let predictedReps = Int((Double(first.reps) - drop).rounded())
+                let holdReps = clamp(predictedReps, min: max(4, exercise.repTargetMin - 1), max: exercise.repTargetMax)
+
+                if first.reps >= exercise.repTargetMin {
+                    let sameLoad = Candidate(
+                        load: first.weight,
+                        reps: holdReps,
+                        mode: .recordAttempt,
+                        reasonCodes: ["adapt_from_first_weighted_set"]
+                    )
+                    return render(sameLoad, confidence: fatigueConfirmed ? 0.74 : 0.9)
+                }
+
+                let lighter = Candidate(
+                    load: max(0, first.weight - max(1.25, exercise.smallestIncrement)),
+                    reps: max(exercise.repTargetMin, holdReps + 1),
+                    mode: .fallbackHypertrophy,
+                    reasonCodes: ["first_weighted_set_under_target", "lighter_followup"]
+                )
+                return render(lighter, confidence: 0.84)
+            }
+
             if derived.plateauCounter >= 3 && !fatigueConfirmed {
                 let plateau = Candidate(load: derived.targetLoad + 5, reps: 5, mode: .plateauBreak, reasonCodes: ["plateau_break_overreach_jump"])
                 return render(plateau, confidence: 0.82)
@@ -129,6 +153,16 @@ struct ProgressionEngine {
             return render(
                 Candidate(load: 0, reps: 10, mode: .fallbackHypertrophy, reasonCodes: ["hard_fail_threshold_reached", "fallback_to_bodyweight"]),
                 confidence: 0.9
+            )
+        }
+
+        if let last, last.weight > 0 {
+            let drop = exercise.fatigueClass.baseRepDrop
+            let predictedReps = Int((Double(last.reps) - drop).rounded())
+            let holdReps = clamp(predictedReps, min: max(4, exercise.repTargetMin - 2), max: exercise.repTargetMax)
+            return render(
+                Candidate(load: last.weight, reps: holdReps, mode: .fallbackHypertrophy, reasonCodes: ["weighted_followup_from_last_set"]),
+                confidence: 0.82
             )
         }
 

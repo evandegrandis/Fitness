@@ -110,10 +110,7 @@ private struct HistoryOverviewCard: View {
         GlassCard(padding: 16, cornerRadius: 24) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Archive d'entraînement")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Tes dernières séances, regroupées par semaine pour relire la continuité du cycle plutôt qu'une simple liste.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.title2.weight(.bold))
 
                 HStack(spacing: 10) {
                     metric("Séances", value: "\(min(sessions.count, 8))")
@@ -131,10 +128,11 @@ private struct HistoryOverviewCard: View {
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3.weight(.bold))
+                .font(.headline.weight(.bold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 

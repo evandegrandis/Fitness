@@ -181,26 +181,30 @@ struct ExerciseCard: View {
 
     private var cardHeader: some View {
         HStack(spacing: 8) {
-            Text(exercise?.name ?? "Unknown")
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(exercise?.name ?? "Unknown")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
 
-            if loggedExercise.isLinkedToNext {
-                Image(systemName: "link")
-                    .font(.caption2)
-                    .foregroundStyle(Color.accentColor.opacity(0.7))
+                    if loggedExercise.isLinkedToNext {
+                        Image(systemName: "link")
+                            .font(.caption2)
+                            .foregroundStyle(Color.accentColor.opacity(0.7))
+                    }
+                }
+
+                if let machineSetting = exercise?.machineSetting, !machineSetting.isEmpty {
+                    Text(machineSetting.uppercased())
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer(minLength: 4)
 
-            if let ex = exercise {
-                Text(ex.repTargetDisplay + "r")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.06), in: Capsule())
-            }
+            validerButton
+                .frame(minWidth: 104)
         }
     }
 
@@ -234,9 +238,6 @@ struct ExerciseCard: View {
 
                 repsStepper
                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                validerButton
-                    .layoutPriority(1.4)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {

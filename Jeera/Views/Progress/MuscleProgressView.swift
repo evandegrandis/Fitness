@@ -28,8 +28,10 @@ struct MuscleProgressView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
-                muscleHeader
-                    .padding(.horizontal)
+                if let topPriority {
+                    compactSummary(topPriority: topPriority)
+                        .padding(.horizontal)
+                }
 
                 ForEach(progress) { item in
                     VStack(spacing: 6) {
@@ -103,29 +105,26 @@ struct MuscleProgressView: View {
         progress.sorted { $0.remaining > $1.remaining }.first
     }
 
-    private var muscleHeader: some View {
-        GlassCard(padding: 18, cornerRadius: 24) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(Int((globalCoverage * 100).rounded()))% couvert")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("7 jours")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if let topPriority {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(topPriority.parent.displayName)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.red)
-                        Text("\(Int(ceil(topPriority.remaining))) restants")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+    private func compactSummary(topPriority: ParentMuscleProgress) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(Int((globalCoverage * 100).rounded()))% couvert")
+                    .font(.headline.weight(.bold))
+                Text("7 jours")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(topPriority.parent.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                Text("\(Int(ceil(topPriority.remaining))) restants")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
+        .padding(.horizontal, 4)
     }
 }
 

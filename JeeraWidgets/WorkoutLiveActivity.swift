@@ -55,67 +55,61 @@ private struct LockScreenView: View {
     let state: WorkoutContentState
 
     var body: some View {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "dumbbell.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.accentColor)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "dumbbell.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.accentColor)
                     Text(state.exerciseName)
                         .font(.headline.weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
 
-                Spacer(minLength: 8)
-
+                Spacer()
                 Text(timerInterval: state.workoutStartedAt...Date.distantFuture,
                      countsDown: false, showsHours: false)
                     .font(.callout.weight(.bold).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    compactRestBadge
+            HStack(spacing: 10) {
+                compactRestBadge
 
-                    if !state.nextSetPreview.isEmpty {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(nextSummary)
-                                .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(.white.opacity(0.92))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-                        }
-                    } else if !state.nextExerciseName.isEmpty {
-                        Text(state.nextExerciseName)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-
-                if state.nextSetPreview.isEmpty, !state.lastSetSummary.isEmpty {
-                    Text(state.lastSetSummary)
-                        .font(.caption)
+                if !state.nextSetPreview.isEmpty {
+                    Text(nextSummary)
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                } else if !state.nextExerciseName.isEmpty {
+                    Text(state.nextExerciseName)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
+                }
+            }
+
+            if !state.lastSetSummary.isEmpty, state.nextSetPreview.isEmpty {
+                Text(state.lastSetSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
+                HStack(spacing: 8) {
+                    secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                        .frame(maxWidth: 104)
+                    primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
                 }
 
-                if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
-                    VStack(spacing: 7) {
-                        HStack(spacing: 8) {
-                            secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                            primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
-                        }
-
-                        HStack(spacing: 6) {
-                            nudgeButton("-k", intent: DecreaseWeightIntent())
-                            nudgeButton("+k", intent: IncreaseWeightIntent())
-                            nudgeButton("-r", intent: DecreaseRepsIntent())
-                            nudgeButton("+r", intent: IncreaseRepsIntent())
-                        }
-                    }
+                HStack(spacing: 6) {
+                    nudgeButton("-k", intent: DecreaseWeightIntent())
+                    nudgeButton("+k", intent: IncreaseWeightIntent())
+                    nudgeButton("-r", intent: DecreaseRepsIntent())
+                    nudgeButton("+r", intent: IncreaseRepsIntent())
                 }
             }
         }

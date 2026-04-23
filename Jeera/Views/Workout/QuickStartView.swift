@@ -18,10 +18,6 @@ struct QuickStartView: View {
     @State private var templateToDelete: WorkoutTemplate?
     @Namespace private var modeNamespace
 
-    private var rollingProgress: [ParentMuscleProgress] {
-        EffectiveSetsEngine.rolling7DayProgress(sessions: recentSessions, goals: goals)
-    }
-
     private var muscleGaps: [(MuscleParent, Double)] {
         EffectiveSetsEngine.rollingPriorities(sessions: recentSessions, goals: goals)
     }
@@ -43,48 +39,14 @@ struct QuickStartView: View {
         }
     }
 
-    private var statusLine: String {
-        EffectiveSetsEngine.rollingStatusLine(progress: rollingProgress, sessions: recentSessions)
-    }
-
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                HomeHeroCard(
-                    statusLine: statusLine,
-                    selectedMode: viewModel.selectedStartMode
-                )
-                .padding(.horizontal)
-                .scrollTransition(.animated(.smooth(duration: 0.35, extraBounce: 0.06))) { content, phase in
-                    content
-                        .scaleEffect(phase.isIdentity ? 1 : 0.97)
-                        .opacity(phase.isIdentity ? 1 : 0.82)
-                }
-                .padding(.top, 12)
+                WeeklyPrioritySection(title: "7 jours")
+                    .padding(.top, 12)
 
-                // Weekly priority strip — horizontally scrolling chip row, live counts.
-                WeeklyPrioritySection()
-
-                // Quick Actions
                 VStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Séance")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        ForEach(WorkoutViewModel.WorkoutMode.allCases) { mode in
-                            ModeSelectorCard(
-                                mode: mode,
-                                isSelected: viewModel.selectedStartMode == mode,
-                                namespace: modeNamespace
-                            ) {
-                                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                                    viewModel.selectedStartMode = mode
-                                }
-                            }
-                        }
-                    }
-                    .padding(.bottom, 4)
+                    modePickerRow
 
                     if let recommended = recommendedTemplate {
                         QuickStartButton(
@@ -248,76 +210,38 @@ struct QuickStartView: View {
     private func startSubtitle(for template: WorkoutTemplate) -> String {
         switch viewModel.selectedStartMode {
         case .normal:
-            return ""
+            return "Base"
         case .beast:
             return "Beast"
         case .monk:
             return "Monk"
         }
     }
+
+    private var modePickerRow: some View {
+        HStack(spacing: 8) {
+            ForEach(WorkoutViewModel.WorkoutMode.allCases) { mode in
+                ModeSelectorCard(
+                    mode: mode,
+                    isSelected: viewModel.selectedStartMode == mode,
+                    namespace: modeNamespace
+                ) {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                        viewModel.selectedStartMode = mode
+                    }
+                }
+            }
+        }
+        .padding(6)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(.white.opacity(0.06), lineWidth: 1)
+        }
+    }
 }
 
 // MARK: - Workout Detail View (History)
-
-private struct HomeHeroCard: View {
-    let statusLine: String
-    let selectedMode: WorkoutViewModel.WorkoutMode
-
-    var body: some View {
-        GlassCard(padding: 16, cornerRadius: 26) {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(statusLine)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-
-                    heroBadge("Mode", value: selectedMode.displayName, tint: selectedMode.accentColor)
-                }
-
-                Spacer()
-
-                Image(systemName: selectedMode.symbolName)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(selectedMode.accentColor)
-                    .padding(12)
-                    .background(selectedMode.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-            .background {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                selectedMode.secondaryColor.opacity(0.26),
-                                selectedMode.accentColor.opacity(0.14),
-                                Color.clear
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-        }
-    }
-
-    private func heroBadge(_ title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(tint.opacity(0.28), lineWidth: 0.8)
-        }
-    }
-}
 
 struct WorkoutDetailView: View {
     let session: WorkoutSession
@@ -454,10 +378,10 @@ struct QuickStartButton: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.headline.weight(.semibold))
                     if !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -469,9 +393,9 @@ struct QuickStartButton: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .glassCard(cornerRadius: 24, padding: 14)
+            .glassCard(cornerRadius: 22, padding: 16)
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(color.opacity(0.15), lineWidth: 1)
             }
         }
@@ -487,45 +411,28 @@ struct ModeSelectorCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(mode.accentColor.opacity(isSelected ? 0.24 : 0.12))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: mode.symbolName)
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(mode.accentColor)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(mode.displayName)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.primary)
-                    Text(modeRowSubtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(isSelected ? mode.accentColor : .white.opacity(0.25))
+            HStack(spacing: 8) {
+                Image(systemName: mode.symbolName)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(mode.accentColor)
+                Text(mode.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .lineLimit(1)
             }
-            .padding(15)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
             .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: isSelected
                                 ? [
-                                    mode.secondaryColor.opacity(mode == .beast ? 0.36 : mode == .monk ? 0.28 : 0.24),
-                                    mode.accentColor.opacity(mode == .beast ? 0.24 : mode == .monk ? 0.18 : 0.14),
-                                    Color.white.opacity(0.03)
+                                    mode.secondaryColor.opacity(mode == .beast ? 0.24 : mode == .monk ? 0.18 : 0.16),
+                                    mode.accentColor.opacity(mode == .beast ? 0.14 : mode == .monk ? 0.12 : 0.10)
                                 ]
                                 : [
-                                    Color.white.opacity(0.05),
+                                    Color.white.opacity(0.03),
                                     Color.white.opacity(0.02)
                                 ],
                             startPoint: .topLeading,
@@ -534,10 +441,10 @@ struct ModeSelectorCard: View {
                     )
                     .overlay {
                         if isSelected {
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .fill(
                                     LinearGradient(
-                                        colors: [mode.accentColor.opacity(0.18), .clear],
+                                        colors: [mode.accentColor.opacity(0.10), .clear],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -547,27 +454,14 @@ struct ModeSelectorCard: View {
                     }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(
-                        isSelected ? mode.accentColor.opacity(0.55) : .white.opacity(0.08),
-                        lineWidth: isSelected ? 1.2 : 0.8
+                        isSelected ? mode.accentColor.opacity(0.45) : .white.opacity(0.06),
+                        lineWidth: 0.9
                     )
             }
-            .shadow(color: mode.accentColor.opacity(isSelected ? 0.18 : 0), radius: 18, y: 8)
-            .scaleEffect(isSelected ? 1.01 : 1.0)
         }
-        .buttonStyle(LiftButtonStyle(scale: 0.985))
-    }
-
-    private var modeRowSubtitle: String {
-        switch mode {
-        case .normal:
-            return "Standard"
-        case .beast:
-            return "Lourd"
-        case .monk:
-            return "Déficits"
-        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -580,9 +474,9 @@ struct TemplateRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(template.name)
-                        .font(.caption.weight(.semibold))
-                    Text("\(template.templateExercises.count) exercises")
-                        .font(.caption2)
+                        .font(.headline.weight(.semibold))
+                    Text("\(template.templateExercises.count) exercices")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -590,7 +484,7 @@ struct TemplateRow: View {
                     .font(.body)
                     .foregroundStyle(Color.accentColor)
             }
-            .glassCard(cornerRadius: 22, padding: 14)
+            .glassCard(cornerRadius: 22, padding: 16)
         }
         .buttonStyle(LiftButtonStyle(scale: 0.99))
     }
@@ -700,9 +594,9 @@ struct AchievementRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(achievement.exerciseName)
-                        .font(.caption.weight(.semibold))
+                        .font(.headline.weight(.semibold))
                     Text(recordDescription)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 

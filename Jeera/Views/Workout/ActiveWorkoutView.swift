@@ -26,6 +26,14 @@ struct ActiveWorkoutView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
+
+                    WeeklyPrioritySection(
+                        liveSession: viewModel.activeSession,
+                        title: "À couvrir"
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
                 }
 
                 if let session = viewModel.activeSession {
@@ -261,15 +269,17 @@ struct WorkoutHeaderView: View {
 
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 8) {
                 Text(sessionTitle)
                     .font(.headline.weight(.bold))
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .center)
 
                 HStack(spacing: 10) {
                     workoutMetric(elapsedFormatted, icon: "clock")
                     workoutMetric("\(totalSets) sets", icon: "checkmark.circle")
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }

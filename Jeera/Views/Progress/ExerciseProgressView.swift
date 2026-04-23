@@ -69,7 +69,6 @@ struct ExerciseProgressRow: View {
     let sessions: [WorkoutSession]
     var isSelected: Bool = false
     let namespace: Namespace.ID
-    @State private var showCurveExplanation = false
     private let rollingWindowSessions = 4
 
     private var history: [ExerciseDataPoint] {
@@ -119,21 +118,6 @@ struct ExerciseProgressRow: View {
         history.last
     }
 
-    // Trend: compare last 2 points of the same rolling-best curve as the chart.
-    private var trend: Trend {
-        guard history.count >= 2 else { return .neutral }
-        let isBW = exercise.setPatternMode == .bodyweight
-        let rawValues = history.map { dp in
-            isBW ? Double(dp.bestBWReps) : dp.bestWeightAt7Plus
-        }
-        let rolling = rollingBestSeries(values: rawValues)
-        let lastValue = rolling[rolling.count - 1]
-        let prevValue = rolling[rolling.count - 2]
-        if lastValue > prevValue + 0.01 { return .up }
-        if lastValue < prevValue - 0.01 { return .down }
-        return .neutral
-    }
-
     private var showsSecondaryRepChart: Bool {
         exercise.setPatternMode != .bodyweight &&
         (exercise.setPatternMode == .weightedBodyweight || repBenchmarkRange != nil)
@@ -162,8 +146,6 @@ struct ExerciseProgressRow: View {
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
-
-                        trendBadge
                     }
 
                     Spacer()
@@ -236,23 +218,6 @@ struct ExerciseProgressRow: View {
                 .font(.system(size: 10).weight(.medium))
                 .foregroundStyle(.secondary)
 
-            if exercise.setPatternMode != .bodyweight {
-                Button {
-                    showCurveExplanation.toggle()
-                } label: {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showCurveExplanation, arrowEdge: .top) {
-                    Text("Courbe = meilleur perf 7+ reps sur les 4 dernières séances de cet exo")
-                        .font(.caption)
-                        .padding(10)
-                        .presentationCompactAdaptation(.popover)
-                }
-            }
-
             Spacer()
         }
     }
@@ -309,19 +274,9 @@ struct ExerciseProgressRow: View {
                     RuleMark(y: .value("Bench Low", low))
                         .foregroundStyle(.green.opacity(0.25))
                         .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
-                        .annotation(position: .trailing, alignment: .leading) {
-                            Text("1 an")
-                                .font(.system(size: 7).weight(.medium))
-                                .foregroundStyle(.green.opacity(0.6))
-                        }
                     RuleMark(y: .value("Bench High", high))
                         .foregroundStyle(.green.opacity(0.25))
                         .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
-                        .annotation(position: .trailing, alignment: .leading) {
-                            Text("5 ans")
-                                .font(.system(size: 7).weight(.medium))
-                                .foregroundStyle(.green.opacity(0.6))
-                        }
                     RectangleMark(
                         yStart: .value("Low", low),
                         yEnd: .value("High", high)
@@ -445,10 +400,10 @@ struct ExerciseProgressRow: View {
     private var collapsedPreviewStrip: some View {
         HStack(spacing: 8) {
             statChip("Dernier", value: latestDisplay, tint: .white.opacity(0.9))
-            if let band = benchmarkDisplay {
-                statChip("Zone", value: band, tint: .green)
+            statChip("e1RM", value: e1rmDisplay, tint: .orange)
+            if let best = bestDisplay {
+                statChip("Best", value: best, tint: .green)
             }
-            statChip(metricTitle, value: metricValue, tint: trendTint)
         }
     }
 
@@ -480,32 +435,6 @@ struct ExerciseProgressRow: View {
         }
     }
 
-    // MARK: - Trend Badge
-
-    @ViewBuilder
-    private var trendBadge: some View {
-        switch trend {
-        case .up:
-            HStack(spacing: 1) {
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 8).weight(.bold))
-                Text("Up")
-                    .font(.system(size: 9).weight(.semibold))
-            }
-            .foregroundStyle(.green)
-        case .down:
-            HStack(spacing: 1) {
-                Image(systemName: "arrow.down.right")
-                    .font(.system(size: 8).weight(.bold))
-                Text("Down")
-                    .font(.system(size: 9).weight(.semibold))
-            }
-            .foregroundStyle(.orange)
-        case .neutral:
-            EmptyView()
-        }
-    }
-
     private var latestDisplay: String {
         guard let latestPoint else { return "--" }
         if exercise.setPatternMode == .bodyweight {
@@ -517,45 +446,27 @@ struct ExerciseProgressRow: View {
         return latestPoint.topSetSummary
     }
 
-    private var benchmarkDisplay: String? {
-        if exercise.setPatternMode == .bodyweight, let band = repBenchmarkRange {
-            return "\(Int(band.lowerBound))-\(Int(band.upperBound)) reps"
+    private var e1rmDisplay: String {
+        guard let bestValidated, exercise.setPatternMode != .bodyweight, bestValidated.bestE1RM > 0 else { return "--" }
+        return "\(Int(bestValidated.bestE1RM.rounded())) kg"
+    }
+
+    private var bestDisplay: String? {
+        guard let bestValidated else { return nil }
+        if exercise.setPatternMode == .bodyweight {
+            return "BW x \(bestValidated.bestBWReps)"
         }
-        if let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
-            return "\(low.cleanWeight)-\(high.cleanWeight) kg"
+        if bestValidated.validatedWeight > 0, bestValidated.validatedReps > 0 {
+            return "\(bestValidated.validatedWeight.cleanWeight)x\(bestValidated.validatedReps)"
         }
         return nil
-    }
-
-    private var trendLabel: String {
-        switch trend {
-        case .up: return "Hausse"
-        case .down: return "Baisse"
-        case .neutral: return "Stable"
-        }
-    }
-
-    private var metricTitle: String {
-        "Tendance"
-    }
-
-    private var metricValue: String {
-        return trendLabel
-    }
-
-    private var trendTint: Color {
-        switch trend {
-        case .up: return .green
-        case .down: return .orange
-        case .neutral: return .secondary
-        }
     }
 
     private var exerciseTint: Color {
         if exercise.setPatternMode == .bodyweight {
             return .orange
         }
-        return benchmarkDisplay == nil ? .blue : .green
+        return exercise.benchmarkLow == nil ? .blue : .green
     }
 }
 
@@ -575,8 +486,4 @@ struct ExerciseDataPoint {
     let bestBWReps: Int
     let topSetSummary: String
     let isBodyweight: Bool
-}
-
-enum Trend {
-    case up, down, neutral
 }

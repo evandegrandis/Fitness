@@ -126,62 +126,16 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("Kilogrammes", isOn: Bindable(settings).usesKilograms)
-
-                    HStack {
-                        Text("Incrément par défaut")
-                        Spacer()
-                        Text("\(settings.defaultSmallestIncrement.cleanWeight) \(settings.unitLabel)")
-                            .foregroundStyle(.secondary)
-                        Stepper("", value: Bindable(settings).defaultSmallestIncrement, in: 0.5...10, step: 0.5)
-                            .labelsHidden()
-                    }
-                } header: {
-                    Text("Unités")
-                }
-
-                Section {
-                    Stepper("Par défaut : \(settings.defaultRestTimerSeconds)s",
-                            value: Bindable(settings).defaultRestTimerSeconds,
-                            in: 30...600,
-                            step: 15)
-                    Stepper("Superset : \(settings.supersetRestSeconds)s",
-                            value: Bindable(settings).supersetRestSeconds,
-                            in: 60...600,
-                            step: 15)
-                } header: {
-                    Text("Repos")
-                }
-
-                Section {
-                    Stepper("Min : \(settings.defaultRepTargetMin)",
-                            value: Bindable(settings).defaultRepTargetMin,
-                            in: 1...50)
-                    Stepper("Max : \(settings.defaultRepTargetMax)",
-                            value: Bindable(settings).defaultRepTargetMax,
-                            in: 1...50)
-                } header: {
-                    Text("Reps par défaut")
-                }
-
-                Section {
                     ForEach(MuscleParent.allCases) { parent in
                         ParentGoalRow(parent: parent, goals: goals, modelContext: modelContext)
                     }
                 } header: {
                     Text("Objectifs hebdo (sets)")
+                } footer: {
+                    Text("Valeurs fixes resynchronisées automatiquement.")
                 }
                 .task(id: goals.count) {
-                    // Ensure every MuscleParent has a backing goal row the first time
-                    // Settings is opened — previously each row self-seeded in onAppear,
-                    // which raced with SwiftData and could drop edits under fast scroll.
-                    let existing = Set(goals.map(\.parent))
-                    var inserted = false
-                    for parent in MuscleParent.allCases where !existing.contains(parent) {
-                        modelContext.insert(MuscleGoal(parent: parent, weeklyGoalSets: 0))
-                        inserted = true
-                    }
-                    if inserted { try? modelContext.save() }
+                    SeedData.syncCanonicalGoals(context: modelContext)
                 }
 
                 Section {
@@ -319,23 +273,10 @@ struct ParentGoalRow: View {
                 Text("\(goal.weeklyGoalSets, specifier: "%.0f") sets")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Stepper("", value: Bindable(goal).weeklyGoalSets, in: 0...40, step: 1)
-                    .labelsHidden()
-                    .onChange(of: goal.weeklyGoalSets) {
-                        // Persist immediately so downstream @Query consumers
-                        // (progress chips, status line) pick up the change.
-                        try? modelContext.save()
-                    }
             } else {
                 Text("0 sets")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("+") {
-                    let new = MuscleGoal(parent: parent, weeklyGoalSets: 0)
-                    modelContext.insert(new)
-                    try? modelContext.save()
-                }
-                .font(.caption)
             }
         }
     }

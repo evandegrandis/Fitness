@@ -12,10 +12,6 @@ struct ProgressTabView: View {
                 BackgroundGradient()
 
                 VStack(spacing: 0) {
-                    ProgressHero(selectedLayer: selectedLayer)
-                        .padding(.horizontal)
-                        .padding(.top, 10)
-
                     ProgressLayerSwitcher(selectedLayer: $selectedLayer, namespace: layerNamespace)
                     .padding(.horizontal)
                     .padding(.top, 12)
@@ -36,57 +32,6 @@ struct ProgressTabView: View {
             }
             .navigationTitle("Progrès")
             .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-}
-
-private struct ProgressHero: View {
-    let selectedLayer: Int
-
-    private var title: String {
-        switch selectedLayer {
-        case 0: return "Muscles"
-        case 1: return "Exercices"
-        default: return "Global"
-        }
-    }
-
-    private var accent: Color {
-        switch selectedLayer {
-        case 0: return .red
-        case 1: return .blue
-        default: return .orange
-        }
-    }
-
-    private var symbol: String {
-        switch selectedLayer {
-        case 0: return "figure.strengthtraining.traditional"
-        case 1: return "dumbbell.fill"
-        default: return "waveform.path.ecg"
-        }
-    }
-
-    var body: some View {
-        GlassCard(padding: 16, cornerRadius: 24) {
-            HStack(alignment: .center, spacing: 14) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .minimumScaleFactor(0.8)
-                }
-
-                Spacer()
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(accent.opacity(0.14))
-                        .frame(width: 68, height: 68)
-                    Image(systemName: symbol)
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(accent)
-                }
-            }
         }
     }
 }
@@ -202,7 +147,7 @@ private struct GlobalProgressView: View {
 
             let rawPerformance = weekSessions.isEmpty
                 ? 0
-                : weekSessions.reduce(0.0) { $0 + Double($1.totalWorkSets) } / Double(weekSessions.count)
+                : weekSessions.reduce(0.0) { $0 + Double($1.totalWorkSets) }
 
             let creatinePct = weekCheckins.isEmpty
                 ? 0
@@ -221,16 +166,10 @@ private struct GlobalProgressView: View {
             return (weekStart, rawPerformance, creatinePct, proteinPct, sleepScore)
         }
 
-        let rawValues = rawTuples.map(\.1)
-        let minRaw = rawValues.min() ?? 0
-        let maxRaw = rawValues.max() ?? 0
-        let range = max(maxRaw - minRaw, 1)
-
         let points: [WeeklyPoint] = rawTuples.map { tuple in
-            let normalizedPerformance = ((tuple.1 - minRaw) / range) * 100
             return WeeklyPoint(
                 weekStart: tuple.0,
-                performance: normalizedPerformance,
+                performance: tuple.1,
                 creatinePct: tuple.2,
                 proteinPct: tuple.3,
                 sleepScore: tuple.4
@@ -262,7 +201,7 @@ private struct GlobalProgressView: View {
                             if let selected = selectedPoint {
                                 HStack(spacing: 10) {
                                     globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
-                                    globalMetric("Perf", value: String(format: "%.0f", selected.performance), tint: .orange)
+                                    globalMetric("Volume", value: String(format: "%.0f", selected.performance), tint: .orange)
                                     globalMetric(selectedSecondaryMetric.shortTitle, value: secondaryValueText(for: selected), tint: selectedSecondaryMetric.color)
                                 }
                             }
@@ -318,18 +257,6 @@ private struct GlobalProgressView: View {
                                     RuleMark(x: .value("Selected week", selected.weekStart))
                                         .foregroundStyle(.white.opacity(0.35))
                                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                        .annotation(position: .top, alignment: .leading) {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(selected.weekStart.shortDate)
-                                                    .font(.caption2.weight(.semibold))
-                                                Text("Perf \(selected.performance, specifier: "%.0f")")
-                                                    .font(.caption2)
-                                                Text("\(selectedSecondaryMetric.title) \(secondaryValueText(for: selected))")
-                                                    .font(.caption2)
-                                            }
-                                            .padding(8)
-                                            .background(Color.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
-                                        }
                                 }
                             }
                             .frame(height: 250)

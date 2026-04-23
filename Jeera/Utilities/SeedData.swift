@@ -7,6 +7,21 @@ struct SeedData {
         let benchmarkHigh: Double?
     }
 
+    private static let canonicalWeeklyGoals: [(MuscleParent, Double)] = [
+        (.pectoraux, 18),
+        (.dosHaut, 14),
+        (.grandDorsal, 14),
+        (.deltoides, 18),
+        (.biceps, 12),
+        (.triceps, 12),
+        (.abs, 14),
+        (.obliques, 9),
+        (.forearms, 9),
+        (.quads, 9),
+        (.hamstrings, 9),
+        (.glutes, 9)
+    ]
+
     static func seed(context: ModelContext) {
         let settings = UserSettings()
         context.insert(settings)
@@ -34,6 +49,29 @@ struct SeedData {
             }
             if exercise.benchmarkHigh != preset.benchmarkHigh {
                 exercise.benchmarkHigh = preset.benchmarkHigh
+                didMutate = true
+            }
+        }
+
+        if didMutate {
+            try? context.save()
+        }
+    }
+
+    static func syncCanonicalGoals(context: ModelContext) {
+        let descriptor = FetchDescriptor<MuscleGoal>()
+        let existing = (try? context.fetch(descriptor)) ?? []
+        let goalByParent = Dictionary(uniqueKeysWithValues: existing.map { ($0.parent, $0) })
+        var didMutate = false
+
+        for (parent, sets) in canonicalWeeklyGoals {
+            if let goal = goalByParent[parent] {
+                if goal.weeklyGoalSets != sets {
+                    goal.weeklyGoalSets = sets
+                    didMutate = true
+                }
+            } else {
+                context.insert(MuscleGoal(parent: parent, weeklyGoalSets: sets))
                 didMutate = true
             }
         }
@@ -255,23 +293,7 @@ struct SeedData {
     // MARK: - Goals (parent-level)
 
     static func createGoals(context: ModelContext) {
-        // User's actual weekly targets at the parent-group level.
-        let goals: [(MuscleParent, Double)] = [
-            (.pectoraux,    18),
-            (.dosHaut,      16),
-            (.grandDorsal,  16),
-            (.deltoides,    22),   // covers ant + lat + post
-            (.biceps,       12),
-            (.triceps,      12),
-            (.abs,          15),
-            (.obliques,      8),
-            (.forearms,      6),
-            (.quads,         9),
-            (.hamstrings,    9),
-            (.glutes,        6),
-        ]
-
-        for (parent, sets) in goals {
+        for (parent, sets) in canonicalWeeklyGoals {
             let goal = MuscleGoal(parent: parent, weeklyGoalSets: sets)
             context.insert(goal)
         }

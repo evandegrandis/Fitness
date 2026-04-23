@@ -87,33 +87,16 @@ private struct PostWorkoutSummarySheet: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 12) {
-                        summaryHero
+                        compactSummaryRow
 
                         GlassCard(padding: 16, cornerRadius: 22) {
-                            VStack(alignment: .leading, spacing: 14) {
-                                HStack(alignment: .top) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("Récupération")
-                                            .font(.headline.weight(.semibold))
-                                        Text("Créatine, protéine et sommeil D-1 / D-2.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Text("Defaults intelligents")
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(.tertiary)
-                                }
-
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Récupération")
+                                    .font(.headline.weight(.semibold))
                                 dayCard(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
                                 dayCard(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
                             }
                         }
-
-                        Text("Skip garde les valeurs affichées et les enregistre telles quelles.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 14)
@@ -139,34 +122,12 @@ private struct PostWorkoutSummarySheet: View {
         }
     }
 
-    private var summaryHero: some View {
-        GlassCard(padding: 18, cornerRadius: 26) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Bilan express")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .minimumScaleFactor(0.85)
-                        Text("Prérempli pour fermer la séance vite, sans saisie inutile.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Label(snapshot.progressionSignal, systemImage: "waveform.path.ecg")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(.orange.opacity(0.12), in: Capsule())
-                }
-
-                HStack(spacing: 10) {
-                    statTile("Durée", value: snapshot.duration)
-                    statTile("Sets", value: "\(snapshot.setCount)")
-                    statTile("Exos", value: "\(snapshot.exerciseCount)")
-                    statTile("PR", value: "\(snapshot.prCount)")
-                }
-            }
+    private var compactSummaryRow: some View {
+        HStack(spacing: 10) {
+            statTile("Durée", value: snapshot.duration)
+            statTile("Sets", value: "\(snapshot.setCount)")
+            statTile("Exos", value: "\(snapshot.exerciseCount)")
+            statTile("PR", value: "\(snapshot.prCount)")
         }
     }
 
@@ -188,10 +149,6 @@ private struct PostWorkoutSummarySheet: View {
                 .padding(.horizontal, 16)
             }
             .buttonStyle(.borderedProminent)
-
-            Text("Aucune saisie texte requise.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
@@ -241,8 +198,8 @@ private struct PostWorkoutSummarySheet: View {
                 Slider(value: sleep, in: 3...11, step: 0.5)
             }
         }
-        .padding(14)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(12)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func compactToggle(title: String, isOn: Binding<Bool>) -> some View {

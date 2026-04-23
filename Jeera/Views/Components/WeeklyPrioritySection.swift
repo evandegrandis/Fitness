@@ -82,17 +82,17 @@ private struct PriorityChip: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(.caption.weight(.medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .fixedSize()
 
             Text("\(remaining)")
-                .font(.caption.weight(.heavy).monospacedDigit())
+                .font(.caption2.weight(.heavy).monospacedDigit())
                 .foregroundStyle(accent)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .background {
             Capsule()
                 .fill(Color.white.opacity(0.08))

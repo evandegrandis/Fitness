@@ -64,6 +64,7 @@ struct ContentView: View {
             workoutVM.observeLiveActivityIntents()
             seedIfNeeded()
             SeedData.syncCanonicalExerciseMetadata(context: modelContext)
+            SeedData.syncCanonicalGoals(context: modelContext)
 
             // Load settings defaults
             let descriptor = FetchDescriptor<UserSettings>()
