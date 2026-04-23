@@ -55,12 +55,12 @@ private struct LockScreenView: View {
     let state: WorkoutContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "dumbbell.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.accentColor)
                     Text(state.exerciseName)
                         .font(.headline.weight(.semibold))
                         .lineLimit(1)
@@ -81,9 +81,6 @@ private struct LockScreenView: View {
 
                     if !state.nextSetPreview.isEmpty {
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("A suivre")
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
                             Text(nextSummary)
                                 .font(.caption.weight(.semibold).monospacedDigit())
                                 .foregroundStyle(.white.opacity(0.92))
@@ -106,7 +103,7 @@ private struct LockScreenView: View {
                 }
 
                 if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 7) {
                         HStack(spacing: 8) {
                             secondaryActionButton("Suiv.", intent: NextExerciseIntent())
                             primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
@@ -188,12 +185,9 @@ private struct NextSetRow: View {
 
     var body: some View {
         if !state.nextSetPreview.isEmpty {
-            VStack(spacing: 8) {
+            VStack(spacing: 7) {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("A suivre")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
                         Text(nextSummary)
                             .font(.headline.weight(.bold).monospacedDigit())
                             .lineLimit(1)

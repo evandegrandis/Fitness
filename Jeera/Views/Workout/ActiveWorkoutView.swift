@@ -261,41 +261,16 @@ struct WorkoutHeaderView: View {
 
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 24) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(sessionTitle)
-                        .font(.headline.weight(.bold))
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(sessionTitle)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(1)
 
-                    HStack(spacing: 10) {
-                        workoutMetric(elapsedFormatted, icon: "clock")
-                        workoutMetric("\(totalSets) sets", icon: "checkmark.circle")
-                        if mode != .normal {
-                            workoutMetric(mode.displayName, icon: mode.symbolName)
-                        }
-                    }
-                }
-                Spacer()
-                ZStack {
-                    Circle()
-                        .fill(modeChipColor.opacity(0.14))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: mode.symbolName)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(modeChipColor)
+                HStack(spacing: 10) {
+                    workoutMetric(elapsedFormatted, icon: "clock")
+                    workoutMetric("\(totalSets) sets", icon: "checkmark.circle")
                 }
             }
-        }
-    }
-
-    private var modeChipColor: Color {
-        switch mode {
-        case .normal:
-            return .secondary
-        case .beast:
-            return .orange
-        case .monk:
-            return .green
         }
     }
 

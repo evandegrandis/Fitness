@@ -195,8 +195,11 @@ struct ExerciseCard: View {
 
             if let ex = exercise {
                 Text(ex.repTargetDisplay + "r")
-                    .font(.caption2)
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.06), in: Capsule())
             }
         }
     }
@@ -384,12 +387,7 @@ struct CompactSetRow: View {
         Button(action: onTap) {
             HStack(spacing: 8) {
                 setTypeLabel
-                    .frame(width: 18, alignment: .center)
-
-                Text("#\(set.setSlotIndex + 1)")
-                    .font(.caption2.weight(.medium).monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 18, alignment: .leading)
+                    .frame(width: 12, alignment: .center)
 
                 if set.weight > 0 {
                     Text(set.weight.cleanWeight)
@@ -419,10 +417,6 @@ struct CompactSetRow: View {
                 }
 
                 Spacer()
-
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9).weight(.bold))
-                    .foregroundStyle(.green.opacity(0.7))
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
