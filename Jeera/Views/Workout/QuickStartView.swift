@@ -41,7 +41,7 @@ struct QuickStartView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 18) {
+            VStack(spacing: 16) {
                 WeeklyPrioritySection(title: "7 jours")
                     .padding(.top, 12)
 
@@ -78,10 +78,10 @@ struct QuickStartView: View {
                 }
 
                 // Templates
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Templates")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button {
@@ -141,7 +141,7 @@ struct QuickStartView: View {
                             .opacity(phase.isIdentity ? 1 : 0.72)
                     }
 
-                Spacer(minLength: 80)
+                Spacer(minLength: 60)
             }
         }
         .alert("Nouveau template", isPresented: $showNewTemplate) {
@@ -547,7 +547,7 @@ struct AchievementsSection: View {
         VStack(alignment: .leading, spacing: 10) {
             if !achievements.isEmpty {
                 Text("Records récents")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
 

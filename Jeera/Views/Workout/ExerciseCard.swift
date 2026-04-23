@@ -32,8 +32,8 @@ struct ExerciseCard: View {
                 VStack(spacing: 0) {
                     cardHeader
                         .padding(.horizontal, 14)
-                        .padding(.top, 10)
-                        .padding(.bottom, 5)
+                        .padding(.top, 9)
+                        .padding(.bottom, 4)
 
                     Divider().background(.white.opacity(0.06))
 
@@ -43,8 +43,8 @@ struct ExerciseCard: View {
 
                     inlineEditSection
                         .padding(.horizontal, 14)
-                        .padding(.top, 6)
-                        .padding(.bottom, 8)
+                        .padding(.top, 5)
+                        .padding(.bottom, 7)
                 }
             }
             .overlay {
@@ -230,7 +230,7 @@ struct ExerciseCard: View {
 
     private var inlineEditSection: some View {
         VStack(spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: 7) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -282,6 +282,7 @@ struct ExerciseCard: View {
                     .buttonStyle(.plain)
                 }
             }
+            .frame(height: 24)
         }
     }
 
@@ -367,8 +368,8 @@ struct ExerciseCard: View {
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 8)
                     .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)

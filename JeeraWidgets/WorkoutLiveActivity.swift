@@ -55,7 +55,7 @@ private struct LockScreenView: View {
     let state: WorkoutContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "dumbbell.fill")
@@ -70,22 +70,22 @@ private struct LockScreenView: View {
                 Spacer()
                 Text(timerInterval: state.workoutStartedAt...Date.distantFuture,
                      countsDown: false, showsHours: false)
-                    .font(.callout.weight(.bold).monospacedDigit())
+                    .font(.caption.weight(.bold).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 compactRestBadge
 
                 if !state.nextSetPreview.isEmpty {
                     Text(nextSummary)
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 } else if !state.nextExerciseName.isEmpty {
                     Text(state.nextExerciseName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -109,10 +109,10 @@ private struct LockScreenView: View {
                     .frame(maxWidth: .infinity)
 
                     secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                        .frame(width: 92)
+                        .frame(width: 84)
 
                     primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
-                        .frame(width: 128)
+                        .frame(width: 116)
                 }
             }
         }
@@ -126,11 +126,11 @@ private struct LockScreenView: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.accentColor)
                 Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                    .font(.system(size: 18, weight: .heavy, design: .rounded).monospacedDigit())
+                    .font(.system(size: 16, weight: .heavy, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
             .background(Color.accentColor.opacity(0.10), in: Capsule())
         } else {
             HStack(spacing: 8) {
@@ -138,11 +138,11 @@ private struct LockScreenView: View {
                     .fill(.green)
                     .frame(width: 9, height: 9)
                 Text("GO")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
             .background(.green.opacity(0.10), in: Capsule())
         }
     }
@@ -226,10 +226,10 @@ private func workoutNextSummary(state: WorkoutContentState) -> String {
 private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
     Button(intent: intent) {
         Text(title)
-            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .font(.system(size: 10, weight: .bold, design: .rounded))
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 4)
-            .padding(.vertical, 7)
+            .padding(.vertical, 6)
             .background(.white.opacity(0.10))
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -241,12 +241,12 @@ private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> s
 private func primaryActionButton<I: LiveActivityIntent>(_ title: String, intent: I, emphasis: CGFloat = 1.0) -> some View {
     Button(intent: intent) {
         Text(title)
-            .font(.system(size: 15, weight: .bold, design: .rounded))
+            .font(.system(size: 14, weight: .bold, design: .rounded))
             .lineLimit(1)
             .minimumScaleFactor(0.72)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .foregroundStyle(.white)
     }
@@ -258,12 +258,12 @@ private func primaryActionButton<I: LiveActivityIntent>(_ title: String, intent:
 private func secondaryActionButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
     Button(intent: intent) {
         Text(title)
-            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .font(.system(size: 13, weight: .bold, design: .rounded))
             .lineLimit(1)
             .minimumScaleFactor(0.72)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 10)
             .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .foregroundStyle(.white)
     }
