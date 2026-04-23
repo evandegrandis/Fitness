@@ -127,7 +127,8 @@ private struct GlobalProgressView: View {
     private struct WeeklyPoint: Identifiable {
         let id = UUID()
         let weekStart: Date
-        let performance: Double
+        let performanceDisplay: Double
+        let performanceChartValue: Double
         let creatinePct: Double
         let proteinPct: Double
         let sleepScore: Double
@@ -166,10 +167,13 @@ private struct GlobalProgressView: View {
             return (weekStart, rawPerformance, creatinePct, proteinPct, sleepScore)
         }
 
+        let maxVolume = max(rawTuples.map(\.1).max() ?? 0, 1)
+
         let points: [WeeklyPoint] = rawTuples.map { tuple in
             return WeeklyPoint(
                 weekStart: tuple.0,
-                performance: tuple.1,
+                performanceDisplay: tuple.1,
+                performanceChartValue: (tuple.1 / maxVolume) * 100,
                 creatinePct: tuple.2,
                 proteinPct: tuple.3,
                 sleepScore: tuple.4
@@ -179,7 +183,8 @@ private struct GlobalProgressView: View {
         return points.enumerated().map { idx, point in
             return WeeklyPoint(
                 weekStart: point.weekStart,
-                performance: point.performance,
+                performanceDisplay: point.performanceDisplay,
+                performanceChartValue: point.performanceChartValue,
                 creatinePct: point.creatinePct,
                 proteinPct: point.proteinPct,
                 sleepScore: point.sleepScore
@@ -201,39 +206,20 @@ private struct GlobalProgressView: View {
                             if let selected = selectedPoint {
                                 HStack(spacing: 10) {
                                     globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
-                                    globalMetric("Volume", value: String(format: "%.0f", selected.performance), tint: .orange)
+                                    globalMetric("Sets", value: String(format: "%.0f", selected.performanceDisplay), tint: .orange)
                                     globalMetric(selectedSecondaryMetric.shortTitle, value: secondaryValueText(for: selected), tint: selectedSecondaryMetric.color)
                                 }
                             }
 
                             Chart {
                                 ForEach(weekly) { item in
-                                    AreaMark(
+                                    BarMark(
                                         x: .value("Week", item.weekStart),
-                                        y: .value("Performance", item.performance)
+                                        y: .value("Performance", item.performanceChartValue),
+                                        width: .fixed(20)
                                     )
-                                    .foregroundStyle(
-                                        LinearGradient(
-                                            colors: [.orange.opacity(0.20), .clear],
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
-                                    )
-
-                                    LineMark(
-                                        x: .value("Week", item.weekStart),
-                                        y: .value("Performance", item.performance)
-                                    )
-                                    .foregroundStyle(.orange)
-                                    .interpolationMethod(.linear)
-                                    .lineStyle(StrokeStyle(lineWidth: 3))
-
-                                    PointMark(
-                                        x: .value("Week", item.weekStart),
-                                        y: .value("Performance", item.performance)
-                                    )
-                                    .foregroundStyle(.orange)
-                                    .symbolSize(28)
+                                    .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .orange : .orange.opacity(0.35))
+                                    .cornerRadius(6)
                                 }
 
                                 ForEach(weekly) { item in
@@ -250,7 +236,7 @@ private struct GlobalProgressView: View {
                                         y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
                                     )
                                     .foregroundStyle(selectedSecondaryMetric.color)
-                                    .symbolSize(18)
+                                    .symbolSize(item.weekStart == selectedPoint?.weekStart ? 28 : 18)
                                 }
 
                                 if let selected = selectedPoint {
@@ -260,6 +246,7 @@ private struct GlobalProgressView: View {
                                 }
                             }
                             .frame(height: 250)
+                            .chartYScale(domain: 0...100)
                             .chartOverlay { proxy in
                                 GeometryReader { geo in
                                     Rectangle()
@@ -324,7 +311,7 @@ private struct GlobalProgressView: View {
             Circle()
                 .fill(.orange)
                 .frame(width: 8, height: 8)
-            Text("Perf")
+            Text("Sets")
                 .font(.caption.weight(.semibold))
         }
         .foregroundStyle(.white)

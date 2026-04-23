@@ -6,7 +6,6 @@ import UIKit
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query private var settingsArray: [UserSettings]
     @Query private var goals: [MuscleGoal]
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
 
@@ -16,14 +15,6 @@ struct SettingsView: View {
     @State private var alertMessage = ""
     @State private var showAlert = false
     @AppStorage("icloud_auto_backup_enabled") private var iCloudAutoBackupEnabled: Bool = true
-
-    private var settings: UserSettings {
-        if let existing = settingsArray.first { return existing }
-        let new = UserSettings()
-        modelContext.insert(new)
-        try? modelContext.save()
-        return new
-    }
 
     var body: some View {
         NavigationStack {
@@ -114,20 +105,8 @@ struct SettingsView: View {
                 )
 
                 Section {
-                    HStack {
-                        Text("Prénom")
-                        Spacer()
-                        TextField("Nom", text: Bindable(settings).userName)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Profil")
-                }
-
-                Section {
                     ForEach(MuscleParent.allCases) { parent in
-                        ParentGoalRow(parent: parent, goals: goals, modelContext: modelContext)
+                        ParentGoalRow(parent: parent, goals: goals)
                     }
                 } header: {
                     Text("Objectifs hebdo (sets)")
@@ -253,7 +232,6 @@ struct SettingsView: View {
 struct ParentGoalRow: View {
     let parent: MuscleParent
     let goals: [MuscleGoal]
-    let modelContext: ModelContext
 
     /// Look up the goal on every render rather than caching in @State. Caching
     /// a @Model reference in @State bypasses SwiftUI field-level observation,
