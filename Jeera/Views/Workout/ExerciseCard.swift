@@ -32,8 +32,8 @@ struct ExerciseCard: View {
                 VStack(spacing: 0) {
                     cardHeader
                         .padding(.horizontal, 14)
-                        .padding(.top, 12)
-                        .padding(.bottom, 6)
+                        .padding(.top, 10)
+                        .padding(.bottom, 5)
 
                     Divider().background(.white.opacity(0.06))
 
@@ -43,8 +43,8 @@ struct ExerciseCard: View {
 
                     inlineEditSection
                         .padding(.horizontal, 14)
-                        .padding(.top, 8)
-                        .padding(.bottom, 10)
+                        .padding(.top, 6)
+                        .padding(.bottom, 8)
                 }
             }
             .overlay {
@@ -196,7 +196,7 @@ struct ExerciseCard: View {
 
                 if let machineSetting = exercise?.machineSetting, !machineSetting.isEmpty {
                     Text(machineSetting.uppercased())
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -256,7 +256,7 @@ struct ExerciseCard: View {
                             }
                             .foregroundStyle(.primary)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 3)
                             .background(Color.white.opacity(0.08), in: Capsule())
                         }
                         .buttonStyle(.plain)
@@ -276,7 +276,7 @@ struct ExerciseCard: View {
                         }
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 3)
                         .background(Color.white.opacity(0.08), in: Capsule())
                     }
                     .buttonStyle(.plain)
@@ -363,13 +363,13 @@ struct ExerciseCard: View {
                 )
             }
         } label: {
-            Text("Valider")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                Text("Valider")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
     }

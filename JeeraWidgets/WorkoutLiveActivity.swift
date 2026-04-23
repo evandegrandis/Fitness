@@ -100,16 +100,19 @@ private struct LockScreenView: View {
 
             if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
                 HStack(spacing: 8) {
-                    secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                        .frame(maxWidth: 104)
-                    primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
-                }
+                    HStack(spacing: 6) {
+                        nudgeButton("-k", intent: DecreaseWeightIntent())
+                        nudgeButton("+k", intent: IncreaseWeightIntent())
+                        nudgeButton("-r", intent: DecreaseRepsIntent())
+                        nudgeButton("+r", intent: IncreaseRepsIntent())
+                    }
+                    .frame(maxWidth: .infinity)
 
-                HStack(spacing: 6) {
-                    nudgeButton("-k", intent: DecreaseWeightIntent())
-                    nudgeButton("+k", intent: IncreaseWeightIntent())
-                    nudgeButton("-r", intent: DecreaseRepsIntent())
-                    nudgeButton("+r", intent: IncreaseRepsIntent())
+                    secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                        .frame(width: 92)
+
+                    primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
+                        .frame(width: 128)
                 }
             }
         }
@@ -191,17 +194,15 @@ private struct NextSetRow: View {
                 }
 
                 if #available(iOS 17.0, *) {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 8) {
-                            secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                            primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
-                        }
-                        HStack(spacing: 6) {
-                            nudgeButton("-k", intent: DecreaseWeightIntent())
-                            nudgeButton("+k", intent: IncreaseWeightIntent())
-                            nudgeButton("-r", intent: DecreaseRepsIntent())
-                            nudgeButton("+r", intent: IncreaseRepsIntent())
-                        }
+                    HStack(spacing: 6) {
+                        nudgeButton("-k", intent: DecreaseWeightIntent())
+                        nudgeButton("+k", intent: IncreaseWeightIntent())
+                        nudgeButton("-r", intent: DecreaseRepsIntent())
+                        nudgeButton("+r", intent: IncreaseRepsIntent())
+                        secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                            .frame(width: 76)
+                        primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
+                            .frame(width: 108)
                     }
                 }
             }

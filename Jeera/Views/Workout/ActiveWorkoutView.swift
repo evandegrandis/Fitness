@@ -33,7 +33,7 @@ struct ActiveWorkoutView: View {
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
                 }
 
                 if let session = viewModel.activeSession {
@@ -45,7 +45,7 @@ struct ActiveWorkoutView: View {
                             )
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
                             .transition(.opacity)
                         }
                         .onMove { from, to in
@@ -70,7 +70,7 @@ struct ActiveWorkoutView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 8)
                         .background {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .stroke(Color.accentColor.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
@@ -297,10 +297,10 @@ struct WorkoutHeaderView: View {
 
     private func workoutMetric(_ value: String, icon: String) -> some View {
         Label(value, systemImage: icon)
-            .font(.caption.weight(.medium))
+            .font(.caption2.weight(.medium))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
             .background(Color.white.opacity(0.05), in: Capsule())
     }
 }

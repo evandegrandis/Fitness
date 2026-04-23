@@ -41,7 +41,7 @@ struct QuickStartView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 18) {
                 WeeklyPrioritySection(title: "7 jours")
                     .padding(.top, 12)
 
@@ -238,6 +238,7 @@ struct QuickStartView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(.white.opacity(0.06), lineWidth: 1)
         }
+        .padding(.bottom, 2)
     }
 }
 
