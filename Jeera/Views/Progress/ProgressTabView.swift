@@ -144,10 +144,39 @@ private struct GlobalProgressView: View {
     ) private var sessions: [WorkoutSession]
     @Query(sort: \RecoveryCheckin.date) private var checkins: [RecoveryCheckin]
 
-    @State private var showPerformance = true
-    @State private var showCreatine = true
-    @State private var showProtein = true
-    @State private var showSleep = true
+    private enum SecondaryMetric: String, CaseIterable, Identifiable {
+        case creatine
+        case protein
+        case sleep
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .creatine: return "Créatine"
+            case .protein: return "Protéine"
+            case .sleep: return "Sommeil"
+            }
+        }
+
+        var shortTitle: String {
+            switch self {
+            case .creatine: return "Créa"
+            case .protein: return "Prot"
+            case .sleep: return "Sommeil"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .creatine: return .green
+            case .protein: return .blue
+            case .sleep: return .mint
+            }
+        }
+    }
+
+    @State private var selectedSecondaryMetric: SecondaryMetric = .protein
     @State private var selectedWeek: Date?
 
     private struct WeeklyPoint: Identifiable {
@@ -239,18 +268,8 @@ private struct GlobalProgressView: View {
                             if let selected = selectedPoint {
                                 HStack(spacing: 10) {
                                     globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
-                                    if showPerformance {
-                                        globalMetric("Perf", value: String(format: "%.0f", selected.performance), tint: .orange)
-                                    }
-                                    if showCreatine {
-                                        globalMetric("Créa", value: "\(String(format: "%.0f", selected.creatinePct))%", tint: .green)
-                                    }
-                                    if showProtein {
-                                        globalMetric("Prot", value: "\(String(format: "%.0f", selected.proteinPct))%", tint: .blue)
-                                    }
-                                    if showSleep {
-                                        globalMetric("Sommeil", value: String(format: "%.0f", selected.sleepScore), tint: .mint)
-                                    }
+                                    globalMetric("Perf", value: String(format: "%.0f", selected.performance), tint: .orange)
+                                    globalMetric(selectedSecondaryMetric.shortTitle, value: secondaryValueText(for: selected), tint: selectedSecondaryMetric.color)
                                 }
                             }
 
@@ -265,69 +284,50 @@ private struct GlobalProgressView: View {
                                     .foregroundStyle(.green.opacity(0.06))
                                 }
 
-                                if showPerformance {
-                                    ForEach(weekly) { item in
-                                        AreaMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Performance", item.performance)
+                                ForEach(weekly) { item in
+                                    AreaMark(
+                                        x: .value("Week", item.weekStart),
+                                        y: .value("Performance", item.performance)
+                                    )
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.orange.opacity(0.20), .clear],
+                                            startPoint: .top,
+                                            endPoint: .bottom
                                         )
-                                        .foregroundStyle(
-                                            LinearGradient(
-                                                colors: [.orange.opacity(0.22), .clear],
-                                                startPoint: .top,
-                                                endPoint: .bottom
-                                            )
-                                        )
+                                    )
 
-                                        LineMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Performance", item.performance)
-                                        )
-                                        .foregroundStyle(.orange)
-                                        .interpolationMethod(.linear)
-                                        .lineStyle(StrokeStyle(lineWidth: 3))
+                                    LineMark(
+                                        x: .value("Week", item.weekStart),
+                                        y: .value("Performance", item.performance)
+                                    )
+                                    .foregroundStyle(.orange)
+                                    .interpolationMethod(.linear)
+                                    .lineStyle(StrokeStyle(lineWidth: 3))
 
-                                        PointMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Performance", item.performance)
-                                        )
-                                        .foregroundStyle(.orange)
-                                        .symbolSize(30)
-                                    }
+                                    PointMark(
+                                        x: .value("Week", item.weekStart),
+                                        y: .value("Performance", item.performance)
+                                    )
+                                    .foregroundStyle(.orange)
+                                    .symbolSize(28)
                                 }
 
-                                if showCreatine {
-                                    ForEach(weekly) { item in
-                                        LineMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Creatine", item.creatinePct)
-                                        )
-                                        .foregroundStyle(.green)
-                                        .interpolationMethod(.linear)
-                                    }
-                                }
+                                ForEach(weekly) { item in
+                                    LineMark(
+                                        x: .value("Week", item.weekStart),
+                                        y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
+                                    )
+                                    .foregroundStyle(selectedSecondaryMetric.color)
+                                    .interpolationMethod(.linear)
+                                    .lineStyle(secondaryLineStyle)
 
-                                if showProtein {
-                                    ForEach(weekly) { item in
-                                        LineMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Protein", item.proteinPct)
-                                        )
-                                        .foregroundStyle(.blue)
-                                        .interpolationMethod(.linear)
-                                    }
-                                }
-
-                                if showSleep {
-                                    ForEach(weekly) { item in
-                                        LineMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Sleep", item.sleepScore)
-                                        )
-                                        .foregroundStyle(.mint)
-                                        .interpolationMethod(.linear)
-                                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                                    }
+                                    PointMark(
+                                        x: .value("Week", item.weekStart),
+                                        y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
+                                    )
+                                    .foregroundStyle(selectedSecondaryMetric.color)
+                                    .symbolSize(18)
                                 }
 
                                 if let selected = selectedPoint {
@@ -338,22 +338,10 @@ private struct GlobalProgressView: View {
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(selected.weekStart.shortDate)
                                                     .font(.caption2.weight(.semibold))
-                                                if showPerformance {
-                                                    Text("Perf idx \(selected.performance, specifier: "%.0f")")
-                                                        .font(.caption2)
-                                                }
-                                                if showCreatine {
-                                                    Text("Créatine \(selected.creatinePct, specifier: "%.0f")%")
-                                                        .font(.caption2)
-                                                }
-                                                if showProtein {
-                                                    Text("Protéine \(selected.proteinPct, specifier: "%.0f")%")
-                                                        .font(.caption2)
-                                                }
-                                                if showSleep {
-                                                    Text("Sommeil \(selected.sleepScore, specifier: "%.0f")")
-                                                        .font(.caption2)
-                                                }
+                                                Text("Perf \(selected.performance, specifier: "%.0f")")
+                                                    .font(.caption2)
+                                                Text("\(selectedSecondaryMetric.title) \(secondaryValueText(for: selected))")
+                                                    .font(.caption2)
                                             }
                                             .padding(8)
                                             .background(Color.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
@@ -407,51 +395,88 @@ private struct GlobalProgressView: View {
     private var flowLegend: some View {
         ViewThatFits(in: .vertical) {
             HStack(spacing: 8) {
-                legendPill("Perf", color: .orange, isOn: $showPerformance)
-                legendPill("Créatine", color: .green, isOn: $showCreatine)
-                legendPill("Protéine", color: .blue, isOn: $showProtein)
-                legendPill("Sommeil", color: .mint, isOn: $showSleep)
-            }
-
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    legendPill("Perf", color: .orange, isOn: $showPerformance)
-                    legendPill("Créatine", color: .green, isOn: $showCreatine)
-                }
-                HStack(spacing: 8) {
-                    legendPill("Protéine", color: .blue, isOn: $showProtein)
-                    legendPill("Sommeil", color: .mint, isOn: $showSleep)
+                perfPill
+                ForEach(SecondaryMetric.allCases) { metric in
+                    metricPill(metric)
                 }
             }
         }
     }
 
-    private func legendPill(_ title: String, color: Color, isOn: Binding<Bool>) -> some View {
-        Button {
+    private var perfPill: some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(.orange)
+                .frame(width: 8, height: 8)
+            Text("Perf")
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(Color.orange.opacity(0.20))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .stroke(Color.orange.opacity(0.55), lineWidth: 1)
+        }
+    }
+
+    private func metricPill(_ metric: SecondaryMetric) -> some View {
+        let isSelected = selectedSecondaryMetric == metric
+        return Button {
             withAnimation(.easeInOut(duration: 0.18)) {
-                isOn.wrappedValue.toggle()
+                selectedSecondaryMetric = metric
             }
         } label: {
             HStack(spacing: 7) {
                 Circle()
-                    .fill(color)
+                    .fill(metric.color)
                     .frame(width: 8, height: 8)
-                Text(title)
+                Text(metric.title)
                     .font(.caption.weight(.semibold))
             }
-            .foregroundStyle(isOn.wrappedValue ? .white : .secondary)
+            .foregroundStyle(isSelected ? .white : .secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 999, style: .continuous)
-                    .fill(isOn.wrappedValue ? color.opacity(0.20) : Color.white.opacity(0.05))
+                    .fill(isSelected ? metric.color.opacity(0.20) : Color.white.opacity(0.05))
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 999, style: .continuous)
-                    .stroke(isOn.wrappedValue ? color.opacity(0.55) : .white.opacity(0.08), lineWidth: 1)
+                    .stroke(isSelected ? metric.color.opacity(0.55) : .white.opacity(0.08), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private func secondaryValue(for point: WeeklyPoint) -> Double {
+        switch selectedSecondaryMetric {
+        case .creatine: return point.creatinePct
+        case .protein: return point.proteinPct
+        case .sleep: return point.sleepScore
+        }
+    }
+
+    private func secondaryValueText(for point: WeeklyPoint) -> String {
+        switch selectedSecondaryMetric {
+        case .creatine, .protein:
+            return "\(String(format: "%.0f", secondaryValue(for: point)))%"
+        case .sleep:
+            return String(format: "%.0f", secondaryValue(for: point))
+        }
+    }
+
+    private var secondaryLineStyle: StrokeStyle {
+        switch selectedSecondaryMetric {
+        case .creatine, .protein:
+            return StrokeStyle(lineWidth: 2)
+        case .sleep:
+            return StrokeStyle(lineWidth: 1.5, dash: [5, 4])
+        }
     }
 
     private var selectedPoint: WeeklyPoint? {

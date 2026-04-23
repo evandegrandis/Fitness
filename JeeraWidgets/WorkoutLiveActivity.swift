@@ -64,7 +64,7 @@ private struct LockScreenView: View {
                     Text(state.exerciseName)
                         .font(.headline.weight(.semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                        .minimumScaleFactor(0.8)
                 }
 
                 Spacer(minLength: 8)
@@ -84,7 +84,7 @@ private struct LockScreenView: View {
                     compactRestBadge
 
                     if !state.nextExerciseName.isEmpty {
-                        Text(state.nextExerciseName)
+                        Text("Puis \(state.nextExerciseName)")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -93,7 +93,7 @@ private struct LockScreenView: View {
 
                 if !state.nextSetPreview.isEmpty {
                     Text(state.nextSetPreview)
-                        .font(.system(size: 30, weight: .heavy, design: .rounded).monospacedDigit())
+                        .font(.system(size: 28, weight: .heavy, design: .rounded).monospacedDigit())
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
                 } else if !state.lastSetSummary.isEmpty {
@@ -106,10 +106,10 @@ private struct LockScreenView: View {
                 if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
                     VStack(spacing: 8) {
                         HStack(spacing: 6) {
-                            nudgeButton("Kg-", intent: DecreaseWeightIntent())
-                            nudgeButton("Kg+", intent: IncreaseWeightIntent())
-                            nudgeButton("R-", intent: DecreaseRepsIntent())
-                            nudgeButton("R+", intent: IncreaseRepsIntent())
+                            nudgeButton("-kg", intent: DecreaseWeightIntent())
+                            nudgeButton("+kg", intent: IncreaseWeightIntent())
+                            nudgeButton("-rep", intent: DecreaseRepsIntent())
+                            nudgeButton("+rep", intent: IncreaseRepsIntent())
                         }
 
                         HStack(spacing: 8) {
@@ -200,10 +200,10 @@ private struct NextSetRow: View {
                 if #available(iOS 17.0, *) {
                     VStack(spacing: 6) {
                         HStack(spacing: 6) {
-                            nudgeButton("Kg-", intent: DecreaseWeightIntent())
-                            nudgeButton("Kg+", intent: IncreaseWeightIntent())
-                            nudgeButton("R-", intent: DecreaseRepsIntent())
-                            nudgeButton("R+", intent: IncreaseRepsIntent())
+                            nudgeButton("-kg", intent: DecreaseWeightIntent())
+                            nudgeButton("+kg", intent: IncreaseWeightIntent())
+                            nudgeButton("-rep", intent: DecreaseRepsIntent())
+                            nudgeButton("+rep", intent: IncreaseRepsIntent())
                         }
                         HStack(spacing: 8) {
                             actionButton("Suiv.", fill: .white.opacity(0.10), intent: NextExerciseIntent())
@@ -220,10 +220,10 @@ private struct NextSetRow: View {
 private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
     Button(intent: intent) {
         Text(title)
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .font(.system(size: 11, weight: .bold, design: .rounded))
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 6)
-            .padding(.vertical, 9)
+            .padding(.vertical, 8)
             .background(.white.opacity(0.10))
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

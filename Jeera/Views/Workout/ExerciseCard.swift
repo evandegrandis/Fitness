@@ -199,7 +199,7 @@ struct ExerciseCard: View {
                             .foregroundStyle(.secondary)
                     }
                     if !loggedExercise.completedWorkSets.isEmpty {
-                        Text("\(loggedExercise.completedWorkSets.count) sets")
+                        Text("\(loggedExercise.completedWorkSets.count) faits")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -247,7 +247,6 @@ struct ExerciseCard: View {
                 Spacer(minLength: 0)
             }
 
-            // Quick actions + muscle impact strip.
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     if let lastSet = loggedExercise.lastCompletedSet {
@@ -288,23 +287,6 @@ struct ExerciseCard: View {
                         .background(Color.white.opacity(0.08), in: Capsule())
                     }
                     .buttonStyle(.plain)
-
-                    if !loggedExercise.completedWorkSets.isEmpty, let ex = exercise {
-                        let impact = EffectiveSetsEngine.liveParentImpact(exercise: ex, completedSets: loggedExercise.completedWorkSets.count)
-                        let sorted = impact.sorted(by: { $0.value > $1.value })
-                        ForEach(sorted, id: \.key) { parent, sets in
-                            HStack(spacing: 3) {
-                                Text(parent.shortName)
-                                    .font(.caption2.weight(.medium))
-                                Text("+\(sets, specifier: "%.1f")")
-                                    .font(.caption2.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(sets >= 1 ? Color.accentColor : .secondary)
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.06), in: Capsule())
-                        }
-                    }
                 }
             }
         }

@@ -174,17 +174,9 @@ struct ExerciseProgressRow: View {
 
                     Spacer()
 
-                    VStack(alignment: .trailing, spacing: 6) {
-                        Text("\(history.count)")
-                            .font(.headline.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.white.opacity(0.86))
-                        Text("logs")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.tertiary)
-                    }
+                    Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.tertiary)
                 }
 
                 collapsedPreviewStrip
@@ -268,10 +260,6 @@ struct ExerciseProgressRow: View {
             }
 
             Spacer()
-
-            Text("Fenêtre \(rollingWindowSessions) séances")
-                .font(.system(size: 9).weight(.medium))
-                .foregroundStyle(.tertiary)
         }
     }
 
@@ -367,12 +355,6 @@ struct ExerciseProgressRow: View {
                         .font(.system(size: 9))
                 }
             }
-
-            if !isBodyweight {
-                Text("Courbe = meilleur perf 7+ reps sur les 4 dernières séances de cet exo")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
         }
     }
 
@@ -448,11 +430,8 @@ struct ExerciseProgressRow: View {
     // MARK: - Recent Summary
 
     private var recentSummary: some View {
-        let recent = history.suffix(2).reversed()
+        let recent = history.suffix(1).reversed()
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Récent")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
             ForEach(Array(recent), id: \.date) { dp in
                 HStack {
                     Text(dp.date.shortDate)
@@ -472,7 +451,6 @@ struct ExerciseProgressRow: View {
     private var collapsedPreviewStrip: some View {
         HStack(spacing: 8) {
             statChip("Dernier", value: latestDisplay, tint: .white.opacity(0.9))
-            statChip("Best", value: bestDisplay, tint: Color.accentColor)
             if let band = benchmarkDisplay {
                 statChip("Zone", value: band, tint: .green)
             }
@@ -543,14 +521,6 @@ struct ExerciseProgressRow: View {
             return "\(latestPoint.bestWeightAt7Plus.cleanWeight) kg"
         }
         return latestPoint.topSetSummary
-    }
-
-    private var bestDisplay: String {
-        guard let bestValidated else { return "--" }
-        if bestValidated.isBodyweight {
-            return "BW x \(bestValidated.validatedReps)"
-        }
-        return "\(bestValidated.validatedWeight.cleanWeight) x \(bestValidated.validatedReps)"
     }
 
     private var benchmarkDisplay: String? {
