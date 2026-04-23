@@ -25,7 +25,7 @@ struct ActiveWorkoutView: View {
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
                 }
 
                 if let session = viewModel.activeSession {
@@ -37,7 +37,7 @@ struct ActiveWorkoutView: View {
                             )
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                             .transition(.opacity)
                         }
                         .onMove { from, to in
@@ -55,16 +55,16 @@ struct ActiveWorkoutView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "plus.circle.fill")
-                                .font(.body)
+                                .font(.subheadline)
                                 .foregroundStyle(Color.accentColor)
                             Text("Ajouter un exercice")
-                                .font(.subheadline.weight(.medium))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 10)
                         .background {
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .stroke(Color.accentColor.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
                         }
                         .padding(.horizontal, 16)
@@ -72,7 +72,7 @@ struct ActiveWorkoutView: View {
                     .buttonStyle(.plain)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                 }
 
                 // Bottom breathing room so the rest timer / toast don't collide.

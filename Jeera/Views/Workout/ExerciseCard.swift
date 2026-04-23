@@ -43,7 +43,8 @@ struct ExerciseCard: View {
 
                     inlineEditSection
                         .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
                 }
             }
             .overlay {
@@ -222,7 +223,7 @@ struct ExerciseCard: View {
 
     private var inlineEditSection: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -232,6 +233,7 @@ struct ExerciseCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 validerButton
+                    .layoutPriority(1.4)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -295,9 +297,9 @@ struct ExerciseCard: View {
                 Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .lineLimit(1)
-                    .frame(minWidth: 52)
+                    .frame(minWidth: 48)
                     .padding(.vertical, 6)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 6)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
@@ -322,9 +324,9 @@ struct ExerciseCard: View {
             } label: {
                 Text("\(editReps)")
                     .font(.callout.weight(.bold).monospacedDigit())
-                    .frame(minWidth: 40)
+                    .frame(minWidth: 34)
                     .padding(.vertical, 6)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 6)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
@@ -361,7 +363,7 @@ struct ExerciseCard: View {
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }

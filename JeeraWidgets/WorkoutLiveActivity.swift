@@ -73,10 +73,6 @@ private struct LockScreenView: View {
                      countsDown: false, showsHours: false)
                     .font(.callout.weight(.bold).monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .frame(minWidth: 82, alignment: .leading)
-                    .background(.white.opacity(0.06), in: Capsule())
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -113,7 +109,7 @@ private struct LockScreenView: View {
                     VStack(spacing: 8) {
                         HStack(spacing: 8) {
                             secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                            primaryActionButton("Valider", intent: ValidateNextSetIntent())
+                            primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
                         }
 
                         HStack(spacing: 6) {
@@ -210,7 +206,7 @@ private struct NextSetRow: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 8) {
                             secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                            primaryActionButton("Valider", intent: ValidateNextSetIntent())
+                            primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
                         }
                         HStack(spacing: 6) {
                             nudgeButton("-k", intent: DecreaseWeightIntent())
@@ -253,7 +249,7 @@ private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> s
 }
 
 @available(iOS 17.0, *)
-private func primaryActionButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
+private func primaryActionButton<I: LiveActivityIntent>(_ title: String, intent: I, emphasis: CGFloat = 1.0) -> some View {
     Button(intent: intent) {
         Text(title)
             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -266,6 +262,7 @@ private func primaryActionButton<I: LiveActivityIntent>(_ title: String, intent:
             .foregroundStyle(.white)
     }
     .buttonStyle(.plain)
+    .layoutPriority(emphasis)
 }
 
 @available(iOS 17.0, *)
