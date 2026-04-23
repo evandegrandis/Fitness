@@ -26,20 +26,6 @@ struct ActiveWorkoutView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
-
-                    if viewModel.activeWorkoutMode != .normal {
-                        ModeFocusBanner(mode: viewModel.activeWorkoutMode)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 4, trailing: 20))
-                    }
-
-                    if let session = viewModel.activeSession {
-                        WeeklyPrioritySection(liveSession: session)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    }
                 }
 
                 if let session = viewModel.activeSession {
@@ -277,22 +263,16 @@ struct WorkoutHeaderView: View {
         GlassCard(padding: 16, cornerRadius: 28) {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 6) {
-                        Text("Séance")
-                        if mode != .normal {
-                            Label(mode.displayName.uppercased(), systemImage: mode.symbolName)
-                                .font(.caption2.weight(.bold))
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(modeChipColor.opacity(0.22), in: Capsule())
-                                .foregroundStyle(modeChipColor)
-                        }
-                    }
-                    .font(.title3.weight(.bold))
+                    Text(sessionTitle)
+                        .font(.title3.weight(.bold))
+                        .lineLimit(1)
 
                     HStack(spacing: 10) {
                         workoutMetric(elapsedFormatted, icon: "clock")
                         workoutMetric("\(totalSets) sets", icon: "checkmark.circle")
+                        if mode != .normal {
+                            workoutMetric(mode.displayName, icon: mode.symbolName)
+                        }
                     }
                 }
                 Spacer()
@@ -319,6 +299,17 @@ struct WorkoutHeaderView: View {
         }
     }
 
+    private var sessionTitle: String {
+        switch mode {
+        case .normal:
+            return "Séance"
+        case .beast:
+            return "Séance Beast"
+        case .monk:
+            return "Séance Monk"
+        }
+    }
+
     private func workoutMetric(_ value: String, icon: String) -> some View {
         Label(value, systemImage: icon)
             .font(.caption.weight(.medium))
@@ -326,52 +317,6 @@ struct WorkoutHeaderView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(Color.white.opacity(0.05), in: Capsule())
-    }
-}
-
-private struct ModeFocusBanner: View {
-    let mode: WorkoutViewModel.WorkoutMode
-
-    var body: some View {
-        GlassCard(padding: 14, cornerRadius: 24) {
-            HStack(alignment: .top, spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(mode.accentColor.opacity(0.16))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: mode.symbolName)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(mode.accentColor)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(mode == .beast ? "Session brute" : "Session Monk")
-                        .font(.subheadline.weight(.bold))
-                    Text(modeBannerCopy)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(mode.accentColor.opacity(0.22), lineWidth: 1)
-        }
-    }
-
-    private var modeBannerCopy: String {
-        switch mode {
-        case .normal:
-            return ""
-        case .beast:
-            return "Base familière, charge plus agressive. Cherche le lourd propre sans dériver sur les reps."
-        case .monk:
-            return "Base familière, déficit hebdo priorisé. Laisse respirer les muscles déjà taxés."
-        }
     }
 }
 

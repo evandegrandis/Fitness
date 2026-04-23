@@ -45,17 +45,9 @@ private struct ProgressHero: View {
 
     private var title: String {
         switch selectedLayer {
-        case 0: return "Stress musculaire"
-        case 1: return "Lecture par exercice"
-        default: return "Corrélations hebdo"
-        }
-    }
-
-    private var subtitle: String {
-        switch selectedLayer {
-        case 0: return "Voir où tu manques vraiment de volume, puis ouvrir les détails utiles."
-        case 1: return "Voir vite le dernier niveau, la zone benchmark et la tendance de chaque exo."
-        default: return "Comparer perf, créatine, protéine et sommeil sans courbes artificielles."
+        case 0: return "Muscles"
+        case 1: return "Exercices"
+        default: return "Global"
         }
     }
 
@@ -76,16 +68,12 @@ private struct ProgressHero: View {
     }
 
     var body: some View {
-        GlassCard(padding: 18, cornerRadius: 26) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
+        GlassCard(padding: 16, cornerRadius: 24) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
                         .minimumScaleFactor(0.8)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -248,12 +236,22 @@ private struct GlobalProgressView: View {
                 } else {
                     GlassCard(padding: 16, cornerRadius: 22) {
                         VStack(alignment: .leading, spacing: 14) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Global")
-                                    .font(.headline.weight(.bold))
-                                Text("Performance vs adhérence hebdo, avec lecture rapide puis scrub détaillé.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            if let selected = selectedPoint {
+                                HStack(spacing: 10) {
+                                    globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
+                                    if showPerformance {
+                                        globalMetric("Perf", value: String(format: "%.0f", selected.performance), tint: .orange)
+                                    }
+                                    if showCreatine {
+                                        globalMetric("Créa", value: "\(String(format: "%.0f", selected.creatinePct))%", tint: .green)
+                                    }
+                                    if showProtein {
+                                        globalMetric("Prot", value: "\(String(format: "%.0f", selected.proteinPct))%", tint: .blue)
+                                    }
+                                    if showSleep {
+                                        globalMetric("Sommeil", value: String(format: "%.0f", selected.sleepScore), tint: .mint)
+                                    }
+                                }
                             }
 
                             Chart {
@@ -358,7 +356,7 @@ private struct GlobalProgressView: View {
                                                 }
                                             }
                                             .padding(8)
-                                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                                            .background(Color.black.opacity(0.86), in: RoundedRectangle(cornerRadius: 10))
                                         }
                                 }
                             }
@@ -385,34 +383,9 @@ private struct GlobalProgressView: View {
                             }
 
                             flowLegend
-
-                            Text("Perf idx = performance hebdo normalisée (0–100)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         }
                     }
                     .padding(.horizontal)
-
-                    if let selected = selectedPoint {
-                        GlassCard(padding: 14, cornerRadius: 18) {
-                            HStack(spacing: 10) {
-                                globalMetric("Semaine", value: selected.weekStart.shortDate, tint: .white)
-                                if showPerformance {
-                                    globalMetric("Perf", value: String(format: "%.0f", selected.performance), tint: .orange)
-                                }
-                                if showCreatine {
-                                    globalMetric("Créatine", value: "\(String(format: "%.0f", selected.creatinePct))%", tint: .green)
-                                }
-                                if showProtein {
-                                    globalMetric("Protéine", value: "\(String(format: "%.0f", selected.proteinPct))%", tint: .blue)
-                                }
-                                if showSleep {
-                                    globalMetric("Sommeil", value: String(format: "%.0f", selected.sleepScore), tint: .mint)
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
                 }
             }
             .padding(.top, 10)

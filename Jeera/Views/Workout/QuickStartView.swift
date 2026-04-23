@@ -10,7 +10,6 @@ struct QuickStartView: View {
     ) private var recentSessions: [WorkoutSession]
     @Query(sort: \WorkoutTemplate.sortOrder) private var templates: [WorkoutTemplate]
     @Query private var goals: [MuscleGoal]
-    @Query private var settingsArray: [UserSettings]
 
     @State private var showNewTemplate = false
     @State private var newTemplateName = ""
@@ -18,8 +17,6 @@ struct QuickStartView: View {
     @State private var renameText = ""
     @State private var templateToDelete: WorkoutTemplate?
     @Namespace private var modeNamespace
-
-    private var settings: UserSettings? { settingsArray.first }
 
     private var rollingProgress: [ParentMuscleProgress] {
         EffectiveSetsEngine.rolling7DayProgress(sessions: recentSessions, goals: goals)
@@ -46,24 +43,14 @@ struct QuickStartView: View {
         }
     }
 
-    private var greeting: String {
-        Date.frenchGreeting(for: settings?.userName ?? "Evan")
-    }
-
     private var statusLine: String {
         EffectiveSetsEngine.rollingStatusLine(progress: rollingProgress, sessions: recentSessions)
-    }
-
-    private var dominantGapLabel: String {
-        guard let firstGap = muscleGaps.first else { return "Base habituelle prête" }
-        return "\(firstGap.0.displayName) prioritaire"
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 HomeHeroCard(
-                    greeting: greeting,
                     statusLine: statusLine,
                     selectedMode: viewModel.selectedStartMode
                 )
@@ -98,12 +85,6 @@ struct QuickStartView: View {
                         }
                     }
                     .padding(.bottom, 4)
-                    Text(modeHint)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    ModeIntensityStrip(mode: viewModel.selectedStartMode, dominantGapLabel: dominantGapLabel)
 
                     if let recommended = recommendedTemplate {
                         QuickStartButton(
@@ -264,18 +245,14 @@ struct QuickStartView: View {
         return "\(last.date.relativeDay) — \(preview)\(more)"
     }
 
-    private var modeHint: String {
-        viewModel.selectedStartMode.shortDescription
-    }
-
     private func startSubtitle(for template: WorkoutTemplate) -> String {
         switch viewModel.selectedStartMode {
         case .normal:
-            return "Base habituelle"
+            return ""
         case .beast:
-            return "Base habituelle + overlay Beast"
+            return "Beast"
         case .monk:
-            return "Base habituelle + correction Monk"
+            return "Monk"
         }
     }
 }
@@ -283,42 +260,31 @@ struct QuickStartView: View {
 // MARK: - Workout Detail View (History)
 
 private struct HomeHeroCard: View {
-    let greeting: String
     let statusLine: String
     let selectedMode: WorkoutViewModel.WorkoutMode
 
     var body: some View {
-        GlassCard(padding: 18, cornerRadius: 30) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(greeting)
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                        Text(statusLine)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+        GlassCard(padding: 16, cornerRadius: 26) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(statusLine)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
 
-                    Spacer()
-
-                    Image(systemName: selectedMode.symbolName)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(selectedMode.accentColor)
-                        .padding(12)
-                        .background(selectedMode.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-
-                HStack(spacing: 10) {
                     heroBadge("Mode", value: selectedMode.displayName, tint: selectedMode.accentColor)
-                    heroBadge("Tempo", value: selectedMode == .normal ? "Habituel" : "Session spéciale", tint: selectedMode.secondaryColor)
                 }
+
+                Spacer()
+
+                Image(systemName: selectedMode.symbolName)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(selectedMode.accentColor)
+                    .padding(12)
+                    .background(selectedMode.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -535,10 +501,10 @@ struct ModeSelectorCard: View {
                     Text(mode.displayName)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.primary)
-                    Text(mode.shortDescription)
+                    Text(modeRowSubtitle)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
 
                 Spacer()
@@ -592,77 +558,15 @@ struct ModeSelectorCard: View {
         }
         .buttonStyle(LiftButtonStyle(scale: 0.985))
     }
-}
 
-private struct ModeIntensityStrip: View {
-    let mode: WorkoutViewModel.WorkoutMode
-    let dominantGapLabel: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            intensityChip("Structure", value: structureValue, tint: mode.accentColor)
-            intensityChip("Charge", value: loadValue, tint: loadTint)
-            intensityChip("Focus", value: focusValue, tint: focusTint)
-        }
-    }
-
-    private var structureValue: String {
+    private var modeRowSubtitle: String {
         switch mode {
-        case .normal: return "Stable"
-        case .beast: return "Familière"
-        case .monk: return "Adaptée"
-        }
-    }
-
-    private var loadValue: String {
-        switch mode {
-        case .normal: return "Normale"
-        case .beast: return "Agressive"
-        case .monk: return "Calme"
-        }
-    }
-
-    private var focusValue: String {
-        switch mode {
-        case .normal: return "Routine"
-        case .beast: return "PR / lourd"
-        case .monk: return dominantGapLabel
-        }
-    }
-
-    private var loadTint: Color {
-        switch mode {
-        case .normal: return .blue
-        case .beast: return .orange
-        case .monk: return .green
-        }
-    }
-
-    private var focusTint: Color {
-        switch mode {
-        case .normal: return .secondary
-        case .beast: return .orange
-        case .monk: return .green
-        }
-    }
-
-    private func intensityChip(_ title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(tint.opacity(0.18), lineWidth: 0.8)
+        case .normal:
+            return "Standard"
+        case .beast:
+            return "Lourd"
+        case .monk:
+            return "Déficits"
         }
     }
 }

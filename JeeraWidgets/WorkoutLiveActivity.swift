@@ -75,34 +75,33 @@ private struct LockScreenView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .frame(minWidth: 88, alignment: .leading)
+                    .frame(minWidth: 82, alignment: .leading)
                     .background(.white.opacity(0.06), in: Capsule())
             }
 
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
                     compactRestBadge
 
-                    if !state.nextSetPreview.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(state.nextExerciseName)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Text(state.nextSetPreview)
-                                .font(.system(size: 27, weight: .heavy, design: .rounded).monospacedDigit())
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                        }
-                        .padding(.top, 2)
-                    } else if !state.lastSetSummary.isEmpty {
-                        Text(state.lastSetSummary)
-                            .font(.caption)
+                    if !state.nextExerciseName.isEmpty {
+                        Text(state.nextExerciseName)
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !state.nextSetPreview.isEmpty {
+                    Text(state.nextSetPreview)
+                        .font(.system(size: 30, weight: .heavy, design: .rounded).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                } else if !state.lastSetSummary.isEmpty {
+                    Text(state.lastSetSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
 
                 if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
                     VStack(spacing: 8) {
@@ -114,11 +113,10 @@ private struct LockScreenView: View {
                         }
 
                         HStack(spacing: 8) {
-                            actionButton("Suivant", fill: .white.opacity(0.10), intent: NextExerciseIntent())
+                            actionButton("Suiv.", fill: .white.opacity(0.10), intent: NextExerciseIntent())
                             actionButton("Valider", fill: Color.accentColor, intent: ValidateNextSetIntent())
                         }
                     }
-                    .frame(maxWidth: 310)
                 }
             }
         }
@@ -132,23 +130,23 @@ private struct LockScreenView: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.accentColor)
                 Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                    .font(.system(size: 22, weight: .heavy, design: .rounded).monospacedDigit())
+                    .font(.system(size: 18, weight: .heavy, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.accentColor)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .background(Color.accentColor.opacity(0.10), in: Capsule())
         } else {
             HStack(spacing: 8) {
                 Circle()
                     .fill(.green)
                     .frame(width: 9, height: 9)
-                Text("Prêt")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                Text("GO")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .background(.green.opacity(0.10), in: Capsule())
         }
     }
@@ -208,7 +206,7 @@ private struct NextSetRow: View {
                             nudgeButton("R+", intent: IncreaseRepsIntent())
                         }
                         HStack(spacing: 8) {
-                            actionButton("Suivant", fill: .white.opacity(0.10), intent: NextExerciseIntent())
+                            actionButton("Suiv.", fill: .white.opacity(0.10), intent: NextExerciseIntent())
                             actionButton("Valider", fill: Color.accentColor, intent: ValidateNextSetIntent())
                         }
                     }
@@ -223,8 +221,8 @@ private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> s
     Button(intent: intent) {
         Text(title)
             .font(.system(size: 12, weight: .bold, design: .rounded))
-            .frame(minWidth: 56)
-            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
             .padding(.vertical, 9)
             .background(.white.opacity(0.10))
             .foregroundStyle(.white)
@@ -240,8 +238,8 @@ private func actionButton<I: LiveActivityIntent>(_ title: String, fill: some Sha
             .font(.system(size: 15, weight: .bold, design: .rounded))
             .lineLimit(1)
             .minimumScaleFactor(0.72)
-            .frame(minWidth: 104)
-            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
             .padding(.vertical, 11)
             .background(fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .foregroundStyle(.white)

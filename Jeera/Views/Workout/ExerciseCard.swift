@@ -194,20 +194,9 @@ struct ExerciseCard: View {
 
                 HStack(spacing: 6) {
                     if let ex = exercise {
-                        Text(ex.setPatternMode.shortName)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
                         Text(ex.repTargetDisplay + "r")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        if !ex.machineSetting.isEmpty {
-                            Text(ex.machineSetting)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color.orange.opacity(0.12), in: Capsule())
-                        }
                     }
                     if !loggedExercise.completedWorkSets.isEmpty {
                         Text("\(loggedExercise.completedWorkSets.count) sets")

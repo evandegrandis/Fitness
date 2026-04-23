@@ -105,52 +105,27 @@ struct MuscleProgressView: View {
 
     private var muscleHeader: some View {
         GlassCard(padding: 18, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("7 derniers jours")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                        Text("Couverture globale \(Int((globalCoverage * 100).rounded()))%")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if let topPriority {
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("Priorité")
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                            Text(topPriority.parent.displayName)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.red)
-                        }
-                    }
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("7 derniers jours")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                    Text("Couverture \(Int((globalCoverage * 100).rounded()))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-
+                Spacer()
                 if let topPriority {
-                    HStack(spacing: 10) {
-                        headerMetric("Restants", value: "\(Int(ceil(topPriority.remaining)))", tint: .red)
-                        headerMetric("Objectif", value: "\(Int(topPriority.goalSets.rounded()))", tint: .white)
-                        headerMetric("Faits", value: "\(Int(topPriority.effectiveSets.rounded()))", tint: .white)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Priorité")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text(topPriority.parent.displayName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
                     }
                 }
             }
         }
-    }
-
-    private func headerMetric(_ title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.headline.weight(.bold).monospacedDigit())
-                .foregroundStyle(tint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -203,7 +178,7 @@ struct ParentMuscleCard: View {
                             .background(statusColor.opacity(0.12), in: Capsule())
 
                         if progress.remaining > 0 {
-                            Text("\(Int(ceil(progress.remaining))) restants")
+                            Text("\(Int(ceil(progress.remaining)))")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -212,7 +187,7 @@ struct ParentMuscleCard: View {
 
                 VStack(spacing: 8) {
                     HStack {
-                        Text(progress.status == .covered ? "Objectif couvert" : "\(Int(ceil(progress.remaining))) restants")
+                        Text(progress.status == .covered ? "Couvert" : "\(Int(ceil(progress.remaining))) restants")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
                         Spacer()
