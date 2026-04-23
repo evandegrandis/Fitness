@@ -225,11 +225,11 @@ struct ExerciseCard: View {
             HStack(spacing: 10) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 repsStepper
-
-                Spacer(minLength: 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 validerButton
             }
@@ -295,7 +295,7 @@ struct ExerciseCard: View {
                 Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .lineLimit(1)
-                    .frame(minWidth: 50)
+                    .frame(minWidth: 52)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 8)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
@@ -322,7 +322,7 @@ struct ExerciseCard: View {
             } label: {
                 Text("\(editReps)")
                     .font(.callout.weight(.bold).monospacedDigit())
-                    .frame(minWidth: 36)
+                    .frame(minWidth: 40)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 8)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
@@ -361,7 +361,7 @@ struct ExerciseCard: View {
                 .font(.caption.weight(.heavy))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 18)
                 .padding(.vertical, 10)
                 .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }

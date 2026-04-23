@@ -260,11 +260,11 @@ struct WorkoutHeaderView: View {
     var mode: WorkoutViewModel.WorkoutMode = .normal
 
     var body: some View {
-        GlassCard(padding: 16, cornerRadius: 28) {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
+        GlassCard(padding: 14, cornerRadius: 24) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(sessionTitle)
-                        .font(.title3.weight(.bold))
+                        .font(.headline.weight(.bold))
                         .lineLimit(1)
 
                     HStack(spacing: 10) {
@@ -279,9 +279,9 @@ struct WorkoutHeaderView: View {
                 ZStack {
                     Circle()
                         .fill(modeChipColor.opacity(0.14))
-                        .frame(width: 48, height: 48)
+                        .frame(width: 42, height: 42)
                     Image(systemName: mode.symbolName)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(modeChipColor)
                 }
             }
@@ -314,8 +314,8 @@ struct WorkoutHeaderView: View {
         Label(value, systemImage: icon)
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
             .background(Color.white.opacity(0.05), in: Capsule())
     }
 }

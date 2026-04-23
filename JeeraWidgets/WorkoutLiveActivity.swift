@@ -111,16 +111,16 @@ private struct LockScreenView: View {
 
                 if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
                     VStack(spacing: 8) {
-                        HStack(spacing: 6) {
-                            nudgeButton("-kg", intent: DecreaseWeightIntent())
-                            nudgeButton("+kg", intent: IncreaseWeightIntent())
-                            nudgeButton("-rep", intent: DecreaseRepsIntent())
-                            nudgeButton("+rep", intent: IncreaseRepsIntent())
+                        HStack(spacing: 8) {
+                            secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                            primaryActionButton("Valider", intent: ValidateNextSetIntent())
                         }
 
-                        HStack(spacing: 8) {
-                            actionButton("Suiv.", fill: .white.opacity(0.10), intent: NextExerciseIntent())
-                            actionButton("Valider", fill: Color.accentColor, intent: ValidateNextSetIntent())
+                        HStack(spacing: 6) {
+                            nudgeButton("-k", intent: DecreaseWeightIntent())
+                            nudgeButton("+k", intent: IncreaseWeightIntent())
+                            nudgeButton("-r", intent: DecreaseRepsIntent())
+                            nudgeButton("+r", intent: IncreaseRepsIntent())
                         }
                     }
                 }
@@ -208,15 +208,15 @@ private struct NextSetRow: View {
 
                 if #available(iOS 17.0, *) {
                     VStack(spacing: 6) {
-                        HStack(spacing: 6) {
-                            nudgeButton("-kg", intent: DecreaseWeightIntent())
-                            nudgeButton("+kg", intent: IncreaseWeightIntent())
-                            nudgeButton("-rep", intent: DecreaseRepsIntent())
-                            nudgeButton("+rep", intent: IncreaseRepsIntent())
-                        }
                         HStack(spacing: 8) {
-                            actionButton("Suiv.", fill: .white.opacity(0.10), intent: NextExerciseIntent())
-                            actionButton("Valider", fill: Color.accentColor, intent: ValidateNextSetIntent())
+                            secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                            primaryActionButton("Valider", intent: ValidateNextSetIntent())
+                        }
+                        HStack(spacing: 6) {
+                            nudgeButton("-k", intent: DecreaseWeightIntent())
+                            nudgeButton("+k", intent: IncreaseWeightIntent())
+                            nudgeButton("-r", intent: DecreaseRepsIntent())
+                            nudgeButton("+r", intent: IncreaseRepsIntent())
                         }
                     }
                 }
@@ -243,17 +243,17 @@ private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> s
         Text(title)
             .font(.system(size: 11, weight: .bold, design: .rounded))
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 7)
             .background(.white.opacity(0.10))
             .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
     .buttonStyle(.plain)
 }
 
 @available(iOS 17.0, *)
-private func actionButton<I: LiveActivityIntent>(_ title: String, fill: some ShapeStyle, intent: I) -> some View {
+private func primaryActionButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
     Button(intent: intent) {
         Text(title)
             .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -262,7 +262,23 @@ private func actionButton<I: LiveActivityIntent>(_ title: String, fill: some Sha
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
-            .background(fill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .foregroundStyle(.white)
+    }
+    .buttonStyle(.plain)
+}
+
+@available(iOS 17.0, *)
+private func secondaryActionButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
+    Button(intent: intent) {
+        Text(title)
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 11)
+            .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .foregroundStyle(.white)
     }
     .buttonStyle(.plain)
