@@ -292,13 +292,9 @@ struct HistoryRow: View {
                     }
                 }
 
-                HStack(spacing: 9) {
-                    Label("\(session.totalWorkSets) sets", systemImage: "checkmark.circle")
-                    Label(session.durationFormatted, systemImage: "clock")
-                    Label("\(session.orderedExercises.count) exos", systemImage: "dumbbell")
-                }
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
+                Text("\(session.totalWorkSets) sets · \(session.durationFormatted) · \(session.orderedExercises.count) exos")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
 
                 Text(exerciseNames)
                     .font(.caption2)

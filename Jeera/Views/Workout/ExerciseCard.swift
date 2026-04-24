@@ -32,8 +32,8 @@ struct ExerciseCard: View {
                 VStack(spacing: 0) {
                     cardHeader
                         .padding(.horizontal, 14)
-                        .padding(.top, 8)
-                        .padding(.bottom, 3)
+                        .padding(.top, 7)
+                        .padding(.bottom, 2)
 
                     Divider().background(.white.opacity(0.06))
 
@@ -43,8 +43,8 @@ struct ExerciseCard: View {
 
                     inlineEditSection
                         .padding(.horizontal, 14)
-                        .padding(.top, 4)
-                        .padding(.bottom, 6)
+                        .padding(.top, 3)
+                        .padding(.bottom, 5)
                 }
             }
             .overlay {
@@ -295,8 +295,8 @@ struct ExerciseCard: View {
                 Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .lineLimit(1)
-                    .frame(minWidth: 48)
-                    .padding(.vertical, 6)
+                    .frame(minWidth: 46)
+                    .padding(.vertical, 5)
                     .padding(.horizontal, 6)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
             }
@@ -323,7 +323,7 @@ struct ExerciseCard: View {
                 Text("\(editReps)")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .frame(minWidth: 34)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 5)
                     .padding(.horizontal, 6)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
             }
@@ -340,7 +340,7 @@ struct ExerciseCard: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .bold))
-                .frame(width: 28, height: 28)
+                .frame(width: 26, height: 26)
                 .background(Color.white.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)
@@ -414,7 +414,7 @@ struct CompactSetRow: View {
                 Spacer()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(highlight ? .yellow.opacity(0.10) : .clear)
