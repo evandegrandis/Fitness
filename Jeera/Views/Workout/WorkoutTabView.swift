@@ -86,20 +86,20 @@ private struct PostWorkoutSummarySheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         compactSummaryRow
 
-                        GlassCard(padding: 16, cornerRadius: 22) {
-                            VStack(alignment: .leading, spacing: 12) {
+                        GlassCard(padding: 14, cornerRadius: 20) {
+                            VStack(alignment: .leading, spacing: 10) {
                                 Text("Récupération")
-                                    .font(.headline.weight(.semibold))
+                                    .font(.subheadline.weight(.semibold))
                                 dayCard(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
                                 dayCard(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
                             }
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
+                    .padding(.top, 12)
                     .padding(.bottom, 120)
                 }
                 .background(BackgroundGradient().ignoresSafeArea())
@@ -123,7 +123,7 @@ private struct PostWorkoutSummarySheet: View {
     }
 
     private var compactSummaryRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             statTile("Durée", value: snapshot.duration)
             statTile("Sets", value: "\(snapshot.setCount)")
             statTile("Exos", value: "\(snapshot.exerciseCount)")
@@ -159,15 +159,15 @@ private struct PostWorkoutSummarySheet: View {
     private func statTile(_ label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3.weight(.bold).monospacedDigit())
+                .font(.headline.weight(.bold).monospacedDigit())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func dayCard(
@@ -176,7 +176,7 @@ private struct PostWorkoutSummarySheet: View {
         protein: Binding<Bool>,
         sleep: Binding<Double>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
                     .font(.caption.weight(.semibold))
@@ -198,12 +198,12 @@ private struct PostWorkoutSummarySheet: View {
                 Slider(value: sleep, in: 3...11, step: 0.5)
             }
         }
-        .padding(12)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(10)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func compactToggle(title: String, isOn: Binding<Bool>) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)

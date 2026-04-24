@@ -14,7 +14,7 @@ struct ProgressTabView: View {
                 VStack(spacing: 0) {
                     ProgressLayerSwitcher(selectedLayer: $selectedLayer, namespace: layerNamespace)
                     .padding(.horizontal)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
 
                     TabView(selection: $selectedLayer) {
                         MuscleProgressView()
@@ -63,7 +63,7 @@ private struct ProgressLayerSwitcher: View {
                     }
                     .foregroundStyle(isSelected ? .black : .white.opacity(0.82))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
+                    .padding(.vertical, 10)
                     .background {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(isSelected ? Color.white.opacity(0.92) : Color.white.opacity(0.05))
@@ -73,7 +73,7 @@ private struct ProgressLayerSwitcher: View {
                 .buttonStyle(LiftButtonStyle(scale: 0.985))
             }
         }
-        .padding(6)
+        .padding(5)
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)

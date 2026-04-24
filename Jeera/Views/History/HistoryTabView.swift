@@ -31,7 +31,7 @@ struct HistoryTabView: View {
                     emptyState
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 18) {
+                        LazyVStack(spacing: 14) {
                             HistoryOverviewCard(sessions: sessions)
                                 .scrollTransition(.animated(.smooth(duration: 0.35, extraBounce: 0.06))) { content, phase in
                                     content
@@ -51,7 +51,7 @@ struct HistoryTabView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.top, 12)
+                        .padding(.top, 10)
                         .padding(.bottom, 80)
                     }
                 }
@@ -107,17 +107,12 @@ private struct HistoryOverviewCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 16, cornerRadius: 24) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Archive d'entraînement")
-                    .font(.title2.weight(.bold))
-
-                HStack(spacing: 10) {
-                    metric("Séances", value: "\(min(sessions.count, 8))")
-                    metric("Sets", value: "\(totalSets)")
-                    metric("PR", value: "\(totalPRs)")
-                    metric("Heures", value: "\(totalHours)h")
-                }
+        GlassCard(padding: 12, cornerRadius: 20) {
+            HStack(spacing: 8) {
+                metric("Séances", value: "\(min(sessions.count, 8))")
+                metric("Sets", value: "\(totalSets)")
+                metric("PR", value: "\(totalPRs)")
+                metric("Heures", value: "\(totalHours)h")
             }
         }
     }
@@ -125,15 +120,15 @@ private struct HistoryOverviewCard: View {
     private func metric(_ title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.headline.weight(.bold))
+                .font(.subheadline.weight(.bold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func recordCount(in session: WorkoutSession) -> Int {
@@ -192,10 +187,10 @@ struct WeeklyHistorySection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 Text(weekLabel)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                 Spacer()
                 let pct = coveragePct
@@ -208,7 +203,7 @@ struct WeeklyHistorySection: View {
             }
             .padding(.horizontal, 4)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 ForEach(sessions) { session in
                     NavigationLink {
                         WorkoutDetailView(session: session)
@@ -276,12 +271,12 @@ struct HistoryRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 22) {
-            VStack(alignment: .leading, spacing: 10) {
+        GlassCard(padding: 12, cornerRadius: 20) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(session.date.relativeDay)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
                         Text(session.date.shortTime)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.tertiary)
@@ -302,17 +297,17 @@ struct HistoryRow: View {
                     Label(session.durationFormatted, systemImage: "clock")
                     Label("\(session.orderedExercises.count) exos", systemImage: "dumbbell")
                 }
-                .font(.caption2)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
 
                 Text(exerciseNames)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(isHighlighted ? .red.opacity(0.45) : .clear, lineWidth: 1.2)
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isHighlighted)

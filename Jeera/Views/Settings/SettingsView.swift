@@ -100,7 +100,7 @@ struct SettingsView: View {
                         Text("Sauvegarde cloud (iCloud)")
                     },
                     footer: {
-                        Text("Le backup cloud reste indépendant de l'affichage local : l'app lit SwiftData en local, iCloud sert uniquement de sauvegarde.")
+                        Text("iCloud sert uniquement de sauvegarde.")
                     }
                 )
 
@@ -111,7 +111,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Objectifs hebdo (sets)")
                 } footer: {
-                    Text("Valeurs fixes resynchronisées automatiquement.")
+                    Text("Valeurs fixes.")
                 }
                 .task(id: goals.count) {
                     SeedData.syncCanonicalGoals(context: modelContext)

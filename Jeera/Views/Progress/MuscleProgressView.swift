@@ -27,14 +27,9 @@ struct MuscleProgressView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
-                if let topPriority {
-                    compactSummary(topPriority: topPriority)
-                        .padding(.horizontal)
-                }
-
+            VStack(spacing: 8) {
                 ForEach(progress) { item in
-                    VStack(spacing: 6) {
+                    VStack(spacing: 5) {
                         ParentMuscleCard(
                             progress: item,
                             isSelected: selectedParent == item.parent
@@ -91,7 +86,7 @@ struct MuscleProgressView: View {
 
                 Spacer(minLength: 80)
             }
-            .padding(.top, 10)
+            .padding(.top, 8)
         }
         .task(id: dataFingerprint) {
             progress = EffectiveSetsEngine.rolling7DayProgress(sessions: sessions, goals: goals)
@@ -99,32 +94,6 @@ struct MuscleProgressView: View {
                 .sorted { $0.goalSets > $1.goalSets }
             globalCoverage = EffectiveSetsEngine.rolling7DayGlobalCoverage(sessions: sessions, goals: goals)
         }
-    }
-
-    private var topPriority: ParentMuscleProgress? {
-        progress.sorted { $0.remaining > $1.remaining }.first
-    }
-
-    private func compactSummary(topPriority: ParentMuscleProgress) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(Int((globalCoverage * 100).rounded()))% couvert")
-                    .font(.headline.weight(.bold))
-                Text("7 jours")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(topPriority.parent.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.red)
-                Text("\(Int(ceil(topPriority.remaining))) restants")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 4)
     }
 }
 
@@ -144,13 +113,13 @@ struct ParentMuscleCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 16, cornerRadius: 20) {
-            VStack(spacing: 12) {
+        GlassCard(padding: 14, cornerRadius: 18) {
+            VStack(spacing: 10) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 5) {
                             Text(progress.parent.displayName)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.callout.weight(.semibold))
                             Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 8))
                                 .foregroundStyle(.tertiary)
@@ -158,15 +127,15 @@ struct ParentMuscleCard: View {
 
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("\(Int(progress.effectiveSets.rounded()))")
-                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                .font(.system(size: 22, weight: .bold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(statusColor)
                             Text("/ \(Int(progress.goalSets.rounded()))")
-                                .font(.callout.monospacedDigit())
+                                .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
                         
                         Text(progress.remaining <= 0 ? "Couvert" : "\(Int(ceil(progress.remaining))) restants")
-                            .font(.caption2.weight(.medium))
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
 
@@ -182,7 +151,7 @@ struct ParentMuscleCard: View {
 
                 ProgressBar(
                     progress: Double(progress.percentDisplay),
-                    height: 8,
+                    height: 7,
                     accentColor: statusColor
                 )
             }
