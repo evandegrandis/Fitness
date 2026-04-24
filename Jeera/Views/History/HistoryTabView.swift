@@ -271,12 +271,12 @@ struct HistoryRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
+        GlassCard(padding: 11, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(session.date.relativeDay)
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
                         Text(session.date.shortTime)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.tertiary)
@@ -297,7 +297,7 @@ struct HistoryRow: View {
                     Label(session.durationFormatted, systemImage: "clock")
                     Label("\(session.orderedExercises.count) exos", systemImage: "dumbbell")
                 }
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
 
                 Text(exerciseNames)
