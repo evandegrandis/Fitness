@@ -28,12 +28,12 @@ struct ExerciseCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            GlassCard(padding: 0, cornerRadius: 26) {
+            GlassCard(padding: 0, cornerRadius: 22) {
                 VStack(spacing: 0) {
                     cardHeader
                         .padding(.horizontal, 14)
-                        .padding(.top, 9)
-                        .padding(.bottom, 4)
+                        .padding(.top, 8)
+                        .padding(.bottom, 3)
 
                     Divider().background(.white.opacity(0.06))
 
@@ -43,13 +43,13 @@ struct ExerciseCard: View {
 
                     inlineEditSection
                         .padding(.horizontal, 14)
-                        .padding(.top, 5)
-                        .padding(.bottom, 7)
+                        .padding(.top, 4)
+                        .padding(.bottom, 6)
                 }
             }
             .overlay {
                 if isArmed {
-                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(Color.accentColor.opacity(0.7), lineWidth: 1.5)
                         .transition(.opacity)
                 }
@@ -204,7 +204,7 @@ struct ExerciseCard: View {
             Spacer(minLength: 4)
 
             validerButton
-                .frame(minWidth: 104)
+                .frame(minWidth: 92)
         }
     }
 
@@ -229,7 +229,7 @@ struct ExerciseCard: View {
     // MARK: - Inline Edit Section (steppers only, no Valider)
 
     private var inlineEditSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             HStack(alignment: .center, spacing: 7) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
@@ -347,7 +347,7 @@ struct ExerciseCard: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .bold))
-                .frame(width: 30, height: 30)
+                .frame(width: 28, height: 28)
                 .background(Color.white.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)
@@ -368,8 +368,8 @@ struct ExerciseCard: View {
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
                     .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -421,7 +421,7 @@ struct CompactSetRow: View {
                 Spacer()
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(highlight ? .yellow.opacity(0.10) : .clear)

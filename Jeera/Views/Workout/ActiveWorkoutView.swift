@@ -25,15 +25,14 @@ struct ActiveWorkoutView: View {
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 0, trailing: 16))
 
                     WeeklyPrioritySection(
-                        liveSession: viewModel.activeSession,
-                        title: "À couvrir"
+                        liveSession: viewModel.activeSession
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 2, trailing: 0))
                 }
 
                 if let session = viewModel.activeSession {
@@ -268,14 +267,14 @@ struct WorkoutHeaderView: View {
     var mode: WorkoutViewModel.WorkoutMode = .normal
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 24) {
-            VStack(spacing: 8) {
+        GlassCard(padding: 12, cornerRadius: 20) {
+            VStack(spacing: 6) {
                 Text(sessionTitle)
-                    .font(.headline.weight(.bold))
+                    .font(.subheadline.weight(.bold))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     workoutMetric(elapsedFormatted, icon: "clock")
                     workoutMetric("\(totalSets) sets", icon: "checkmark.circle")
                 }
@@ -285,22 +284,15 @@ struct WorkoutHeaderView: View {
     }
 
     private var sessionTitle: String {
-        switch mode {
-        case .normal:
-            return "Séance"
-        case .beast:
-            return "Séance Beast"
-        case .monk:
-            return "Séance Monk"
-        }
+        "Séance"
     }
 
     private func workoutMetric(_ value: String, icon: String) -> some View {
         Label(value, systemImage: icon)
-            .font(.caption2.weight(.medium))
+            .font(.system(size: 11, weight: .medium, design: .rounded))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
             .background(Color.white.opacity(0.05), in: Capsule())
     }
 }

@@ -42,7 +42,7 @@ struct QuickStartView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                WeeklyPrioritySection(title: "7 jours")
+                WeeklyPrioritySection()
                     .padding(.top, 12)
 
                 VStack(spacing: 10) {
