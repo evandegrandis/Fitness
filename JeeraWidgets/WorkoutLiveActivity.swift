@@ -219,7 +219,7 @@ private func workoutNextSummary(state: WorkoutContentState) -> String {
     let preview = state.nextSetPreview.trimmingCharacters(in: .whitespacesAndNewlines)
     if name.isEmpty { return preview }
     if preview.isEmpty { return name }
-    return "\(name) • \(preview)"
+    return "\(name) \(preview)"
 }
 
 @available(iOS 17.0, *)

@@ -41,11 +41,11 @@ struct QuickStartView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 14) {
                 WeeklyPrioritySection()
-                    .padding(.top, 12)
+                    .padding(.top, 10)
 
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     modePickerRow
 
                     if let recommended = recommendedTemplate {
@@ -78,7 +78,7 @@ struct QuickStartView: View {
                 }
 
                 // Templates
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Templates")
                             .font(.caption.weight(.semibold))
@@ -141,7 +141,7 @@ struct QuickStartView: View {
                             .opacity(phase.isIdentity ? 1 : 0.72)
                     }
 
-                Spacer(minLength: 60)
+                Spacer(minLength: 48)
             }
         }
         .alert("Nouveau template", isPresented: $showNewTemplate) {
@@ -232,7 +232,7 @@ struct QuickStartView: View {
                 }
             }
         }
-        .padding(6)
+        .padding(5)
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -367,22 +367,22 @@ struct QuickStartButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(color.opacity(0.18))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 38, height: 38)
                     Image(systemName: icon)
-                        .font(.title3.weight(.bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(color)
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.headline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                     if !subtitle.isEmpty {
                         Text(subtitle)
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
@@ -394,9 +394,9 @@ struct QuickStartButton: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .glassCard(cornerRadius: 22, padding: 16)
+            .glassCard(cornerRadius: 20, padding: 14)
             .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(color.opacity(0.15), lineWidth: 1)
             }
         }
@@ -422,7 +422,7 @@ struct ModeSelectorCard: View {
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
+            .padding(.vertical, 9)
             .background {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
@@ -475,17 +475,17 @@ struct TemplateRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(template.name)
-                        .font(.headline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                     Text("\(template.templateExercises.count) exercices")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Image(systemName: "play.circle.fill")
-                    .font(.body)
+                    .font(.subheadline)
                     .foregroundStyle(Color.accentColor)
             }
-            .glassCard(cornerRadius: 22, padding: 16)
+            .glassCard(cornerRadius: 20, padding: 14)
         }
         .buttonStyle(LiftButtonStyle(scale: 0.99))
     }
@@ -587,7 +587,7 @@ struct AchievementRow: View {
     let achievement: Achievement
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 16) {
+        GlassCard(padding: 10, cornerRadius: 14) {
             HStack(spacing: 10) {
                 Image(systemName: "star.fill")
                     .font(.caption)
@@ -595,10 +595,12 @@ struct AchievementRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(achievement.exerciseName)
-                        .font(.headline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
                     Text(recordDescription)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
 
                 Spacer()
@@ -606,6 +608,7 @@ struct AchievementRow: View {
                 Text(achievement.date.relativeDay)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
         }
     }

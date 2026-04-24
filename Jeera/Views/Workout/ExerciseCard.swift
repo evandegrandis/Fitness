@@ -255,8 +255,8 @@ struct ExerciseCard: View {
                                     .font(.caption2.weight(.semibold).monospacedDigit())
                             }
                             .foregroundStyle(.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
                             .background(Color.white.opacity(0.08), in: Capsule())
                         }
                         .buttonStyle(.plain)
@@ -267,22 +267,22 @@ struct ExerciseCard: View {
                         editWeight = cachedSuggestion.weight
                         editReps = cachedSuggestion.reps
                         HapticManager.selection()
-                    } label: {
-                        HStack(spacing: 3) {
+                        } label: {
+                        HStack(spacing: 2) {
                             Image(systemName: "sparkles")
-                                .font(.system(size: 9))
-                            Text("Suggéré")
-                                .font(.caption2.weight(.medium))
+                                .font(.system(size: 8))
+                            Text(cachedSuggestion.weight > 0 ? "\(cachedSuggestion.weight.cleanWeight)×\(cachedSuggestion.reps)" : "BW×\(cachedSuggestion.reps)")
+                                .font(.caption2.weight(.medium).monospacedDigit())
                         }
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
                         .background(Color.white.opacity(0.08), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .frame(height: 24)
+            .frame(height: 22)
         }
     }
 
