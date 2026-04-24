@@ -170,7 +170,7 @@ struct ExerciseCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(exercise?.name ?? "Unknown")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.callout.weight(.semibold))
                         .lineLimit(1)
 
                     if loggedExercise.isLinkedToNext {
@@ -190,7 +190,7 @@ struct ExerciseCard: View {
             Spacer(minLength: 4)
 
             validerButton
-                .frame(minWidth: 92)
+                .frame(minWidth: 86)
         }
     }
 

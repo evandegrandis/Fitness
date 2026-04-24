@@ -271,12 +271,12 @@ struct HistoryRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 11, cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 6) {
+        GlassCard(padding: 10, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(session.date.relativeDay)
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
                         Text(session.date.shortTime)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.tertiary)
@@ -284,10 +284,10 @@ struct HistoryRow: View {
                     Spacer()
                     if recordCount > 0 {
                         Label(recordCount > 1 ? "PR ×\(recordCount)" : "PR", systemImage: "star.fill")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
                             .foregroundStyle(.yellow)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
                             .background(.yellow.opacity(0.10), in: Capsule())
                     }
                 }

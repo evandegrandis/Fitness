@@ -20,13 +20,8 @@ struct WorkoutLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(context.state.exerciseName)
-                            .font(.headline)
+                            .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                        if !context.state.lastSetSummary.isEmpty {
-                            Text(context.state.lastSetSummary)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -89,13 +84,6 @@ private struct LockScreenView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-            }
-
-            if !state.lastSetSummary.isEmpty, state.nextSetPreview.isEmpty {
-                Text(state.lastSetSummary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
             }
 
             if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
