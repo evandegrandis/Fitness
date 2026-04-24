@@ -56,20 +56,6 @@ struct ExerciseCard: View {
             }
             .padding(.horizontal, 16)
             .animation(.easeInOut(duration: 0.2), value: isArmed)
-
-            if loggedExercise.isLinkedToNext {
-                HStack(spacing: 6) {
-                    Rectangle()
-                        .fill(Color.accentColor.opacity(0.45))
-                        .frame(width: 2, height: 14)
-                    Text("Superset")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.accentColor.opacity(0.75))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 30)
-                .padding(.top, 2)
-            }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
@@ -181,7 +167,7 @@ struct ExerciseCard: View {
 
     private var cardHeader: some View {
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(exercise?.name ?? "Unknown")
                         .font(.subheadline.weight(.semibold))
@@ -229,7 +215,7 @@ struct ExerciseCard: View {
     // MARK: - Inline Edit Section (steppers only, no Valider)
 
     private var inlineEditSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             HStack(alignment: .center, spacing: 7) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
@@ -284,7 +270,7 @@ struct ExerciseCard: View {
                     }
                 }
             }
-            .frame(height: 22)
+            .frame(height: shouldShowSuggestionChip || loggedExercise.lastCompletedSet != nil ? 22 : 0)
         }
     }
 

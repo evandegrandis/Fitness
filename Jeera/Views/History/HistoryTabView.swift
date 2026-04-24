@@ -272,7 +272,7 @@ struct HistoryRow: View {
 
     var body: some View {
         GlassCard(padding: 11, cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(session.date.relativeDay)
@@ -284,15 +284,15 @@ struct HistoryRow: View {
                     Spacer()
                     if recordCount > 0 {
                         Label(recordCount > 1 ? "PR ×\(recordCount)" : "PR", systemImage: "star.fill")
-                            .font(.caption2.weight(.bold))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
                             .foregroundStyle(.yellow)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
                             .background(.yellow.opacity(0.10), in: Capsule())
                     }
                 }
 
-                HStack(spacing: 10) {
+                HStack(spacing: 9) {
                     Label("\(session.totalWorkSets) sets", systemImage: "checkmark.circle")
                     Label(session.durationFormatted, systemImage: "clock")
                     Label("\(session.orderedExercises.count) exos", systemImage: "dumbbell")
@@ -307,7 +307,7 @@ struct HistoryRow: View {
             }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(isHighlighted ? .red.opacity(0.45) : .clear, lineWidth: 1.2)
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isHighlighted)

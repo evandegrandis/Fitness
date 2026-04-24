@@ -62,7 +62,7 @@ private struct LockScreenView: View {
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.accentColor)
                     Text(state.exerciseName)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.bold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
@@ -82,7 +82,7 @@ private struct LockScreenView: View {
                         .font(.caption2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.72)
                 } else if !state.nextExerciseName.isEmpty {
                     Text(state.nextExerciseName)
                         .font(.caption2.weight(.semibold))
@@ -113,7 +113,7 @@ private struct LockScreenView: View {
                         .frame(maxWidth: .infinity)
 
                         secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                            .frame(width: 78)
+                            .frame(width: 72)
                     }
                 }
             }
