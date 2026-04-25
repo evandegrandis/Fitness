@@ -243,7 +243,9 @@ struct HistoryRow: View {
     var isHighlighted = false
 
     private var exerciseNames: String {
-        let names = session.orderedExercises.compactMap { $0.exercise?.name }
+        let names = session.orderedExercises
+            .filter { !$0.completedWorkSets.isEmpty }
+            .compactMap { $0.exercise?.name }
         if names.count <= 3 {
             return names.joined(separator: ", ")
         }
@@ -261,11 +263,7 @@ struct HistoryRow: View {
                 .filter { $0.date <= session.date }
                 .flatMap { s in s.loggedExercises.filter { $0.exercise?.id == exercise.id } }
                 .flatMap(\.completedWorkSets)
-            for set in logged.completedWorkSets {
-                if RecordsEngine.isRecordSet(set, among: allSets, exercise: exercise) {
-                    count += 1
-                }
-            }
+            count += RecordsEngine.displayedRecordSetIDs(in: logged, among: allSets, exercise: exercise).count
         }
         return count
     }
@@ -292,7 +290,7 @@ struct HistoryRow: View {
                     }
                 }
 
-                Text("\(session.totalWorkSets) sets · \(session.durationFormatted) · \(session.orderedExercises.count) exos")
+                Text("\(session.totalWorkSets) sets · \(session.durationFormatted) · \(session.orderedExercises.filter { !$0.completedWorkSets.isEmpty }.count) exos")
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
 

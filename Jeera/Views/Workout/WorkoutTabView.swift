@@ -89,6 +89,10 @@ private struct PostWorkoutSummarySheet: View {
                     VStack(spacing: 10) {
                         heroSummaryCard
 
+                        if !snapshot.topMuscles.isEmpty || !snapshot.prHighlights.isEmpty {
+                            sessionReadCard
+                        }
+
                         GlassCard(padding: 12, cornerRadius: 18) {
                             VStack(alignment: .leading, spacing: 8) {
                                 dayCard(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
@@ -175,6 +179,52 @@ private struct PostWorkoutSummarySheet: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .background(.ultraThinMaterial)
+    }
+
+    private var sessionReadCard: some View {
+        GlassCard(padding: 14, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: 12) {
+                if !snapshot.topMuscles.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Avancée musculaire")
+                            .font(.subheadline.weight(.bold))
+                        HStack(spacing: 8) {
+                            ForEach(snapshot.topMuscles) { impact in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(impact.parent.shortName)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text("+\(impact.sets)")
+                                        .font(.headline.weight(.heavy).monospacedDigit())
+                                        .foregroundStyle(.accent)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                        }
+                    }
+                }
+
+                if !snapshot.prHighlights.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("PR de séance")
+                            .font(.subheadline.weight(.bold))
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(snapshot.prHighlights, id: \.self) { name in
+                                    Text(name)
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(Color.yellow.opacity(0.14), in: Capsule())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func statTile(_ label: String, value: String) -> some View {

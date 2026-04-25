@@ -108,7 +108,7 @@ private struct GlobalProgressView: View {
             switch self {
             case .creatine: return "Créa"
             case .protein: return "Prot"
-            case .sleep: return "Sommeil"
+            case .sleep: return "Som."
             }
         }
 
@@ -383,7 +383,7 @@ private struct GlobalProgressView: View {
                 Circle()
                     .fill(metric.color)
                     .frame(width: 8, height: 8)
-                Text(metric.title)
+                Text(metric.shortTitle)
                     .font(.caption.weight(.semibold))
             }
             .foregroundStyle(isSelected ? .white : .secondary)

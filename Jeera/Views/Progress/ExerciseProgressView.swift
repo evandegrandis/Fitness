@@ -70,6 +70,7 @@ struct ExerciseProgressRow: View {
     var isSelected: Bool = false
     let namespace: Namespace.ID
     private let rollingWindowSessions = 4
+    @AppStorage("user_body_weight_kg") private var userBodyWeightKg = 78.0
 
     private var history: [ExerciseDataPoint] {
         sessions.compactMap { session in
@@ -92,7 +93,7 @@ struct ExerciseProgressRow: View {
             // metric next to the exercise name — not the curve.
             let benchmarkSets = workSets.filter { $0.reps >= 7 }
             let bestWeightAt7Plus = benchmarkSets.map(\.weight).max() ?? 0
-            let bestE1RM = ProgressionEngine.bestE1RM(from: workSets)?.e1rm ?? 0
+            let bestE1RM = bestEstimatedOneRM(from: workSets)
             let bestBWReps = workSets.map(\.reps).max() ?? 0
 
             return ExerciseDataPoint(
@@ -116,6 +117,29 @@ struct ExerciseProgressRow: View {
 
     private var latestPoint: ExerciseDataPoint? {
         history.last
+    }
+
+    private var recentEstimatedOneRM: Double? {
+        let recentLogged = sessions
+            .compactMap { session in
+                session.loggedExercises.first(where: { $0.exercise?.id == exercise.id })
+            }
+            .prefix(3)
+
+        let secondSetCandidates = recentLogged.compactMap { logged in
+            logged.completedWorkSets.first(where: { $0.setSlotIndex == 1 })
+        }
+        .compactMap { estimatedOneRM(for: $0) }
+
+        if let bestSecondSet = secondSetCandidates.max() {
+            return bestSecondSet
+        }
+
+        let allCandidates = recentLogged
+            .flatMap(\.completedWorkSets)
+            .compactMap { estimatedOneRM(for: $0) }
+
+        return allCandidates.max()
     }
 
     private var showsSecondaryRepChart: Bool {
@@ -447,8 +471,10 @@ struct ExerciseProgressRow: View {
     }
 
     private var e1rmDisplay: String {
-        guard let bestValidated, exercise.setPatternMode != .bodyweight, bestValidated.bestE1RM > 0 else { return "--" }
-        return "\(Int(bestValidated.bestE1RM.rounded())) kg"
+        guard exercise.setPatternMode != .bodyweight,
+              let displayedOneRM = recentEstimatedOneRM ?? bestValidated?.bestE1RM,
+              displayedOneRM > 0 else { return "--" }
+        return "\(Int(displayedOneRM.rounded())) kg"
     }
 
     private var bestDisplay: String? {
@@ -467,6 +493,25 @@ struct ExerciseProgressRow: View {
             return .orange
         }
         return exercise.benchmarkLow == nil ? .blue : .green
+    }
+
+    private func estimatedOneRM(for set: LoggedSet) -> Double? {
+        guard set.completed, set.reps > 0, set.reps <= 15 else { return nil }
+
+        switch exercise.setPatternMode {
+        case .weightedBodyweight:
+            let totalLoad = max(0, userBodyWeightKg + set.weight)
+            guard let totalOneRM = ProgressionEngine.estimated1RM(weight: totalLoad, reps: set.reps) else { return nil }
+            return max(0, totalOneRM - userBodyWeightKg)
+        case .assistedBodyweight:
+            return nil
+        default:
+            return ProgressionEngine.estimated1RM(weight: set.weight, reps: set.reps)
+        }
+    }
+
+    private func bestEstimatedOneRM(from sets: [LoggedSet]) -> Double {
+        sets.compactMap { estimatedOneRM(for: $0) }.max() ?? 0
     }
 }
 

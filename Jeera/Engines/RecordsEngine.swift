@@ -188,4 +188,50 @@ struct RecordsEngine {
 
         return false
     }
+
+    /// For history UI we don't want to star every intermediate PR that was
+    /// immediately superseded later in the same session. Keep only the record
+    /// sets that still matter after the whole session finished:
+    /// - strongest validated weighted set
+    /// - strongest bodyweight rep PR
+    /// - strongest absolute weighted PR below validation, if distinct
+    static func displayedRecordSetIDs(
+        in loggedExercise: LoggedExercise,
+        among allSets: [LoggedSet],
+        exercise: Exercise
+    ) -> Set<UUID> {
+        let candidates = loggedExercise.completedWorkSets.filter {
+            isRecordSet($0, among: allSets, exercise: exercise)
+        }
+        guard !candidates.isEmpty else { return [] }
+
+        var kept: [LoggedSet] = []
+
+        if let bestValidatedWeighted = candidates
+            .filter({ $0.weight > 0 && $0.reps >= exercise.repTargetMin })
+            .max(by: { lhs, rhs in
+                if lhs.weight != rhs.weight { return lhs.weight < rhs.weight }
+                return lhs.reps < rhs.reps
+            }) {
+            kept.append(bestValidatedWeighted)
+        }
+
+        if let bestBodyweight = candidates
+            .filter({ $0.weight == 0 })
+            .max(by: { $0.reps < $1.reps }) {
+            kept.append(bestBodyweight)
+        }
+
+        if let bestAbsoluteWeighted = candidates
+            .filter({ $0.weight > 0 })
+            .max(by: { lhs, rhs in
+                if lhs.weight != rhs.weight { return lhs.weight < rhs.weight }
+                return lhs.reps < rhs.reps
+            }),
+           !kept.contains(where: { $0.id == bestAbsoluteWeighted.id }) {
+            kept.append(bestAbsoluteWeighted)
+        }
+
+        return Set(kept.map(\.id))
+    }
 }

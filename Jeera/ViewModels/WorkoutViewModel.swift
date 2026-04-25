@@ -65,12 +65,21 @@ class WorkoutViewModel {
     }
 
     struct FinishedWorkoutSnapshot: Identifiable, Equatable {
+        struct MuscleImpact: Identifiable, Equatable {
+            let parent: MuscleParent
+            let sets: Int
+
+            var id: String { parent.rawValue }
+        }
+
         let id = UUID()
         let duration: String
         let setCount: Int
         let exerciseCount: Int
         let prCount: Int
         let progressionSignal: String
+        let topMuscles: [MuscleImpact]
+        let prHighlights: [String]
     }
 
     private struct SupersetPoint {
@@ -368,6 +377,32 @@ class WorkoutViewModel {
             .filter { justHitRecord[$0.id] != nil }
             .count
         let progressionSignal = prCount > 0 ? "Haussier" : (sets >= 12 ? "Stable+" : "Stable")
+        var muscleTotals: [MuscleParent: Double] = [:]
+        for logged in session.loggedExercises {
+            for (parent, value) in EffectiveSetsEngine.parentSets(for: logged) {
+                muscleTotals[parent, default: 0] += value
+            }
+        }
+        let topMuscles = muscleTotals
+            .filter { $0.value > 0 }
+            .sorted {
+                if abs($0.value - $1.value) > 0.01 {
+                    return $0.value > $1.value
+                }
+                return $0.key.displayName < $1.key.displayName
+            }
+            .prefix(3)
+            .map { FinishedWorkoutSnapshot.MuscleImpact(parent: $0.key, sets: Int($0.value.rounded())) }
+
+        let prHighlights = Array(NSOrderedSet(array: session.loggedExercises.compactMap { logged in
+            guard let exercise = logged.exercise else { return nil }
+            let hasDisplayedPR = !RecordsEngine.displayedRecordSetIDs(
+                in: logged,
+                among: logged.completedWorkSets,
+                exercise: exercise
+            ).isEmpty
+            return hasDisplayedPR ? exercise.name : nil
+        })) as? [String] ?? []
         cancelRestTimerNotifications()
         restTimer.reset()
         stopWorkoutTimer()
@@ -384,7 +419,9 @@ class WorkoutViewModel {
             setCount: sets,
             exerciseCount: session.loggedExercises.filter { !$0.completedWorkSets.isEmpty }.count,
             prCount: prCount,
-            progressionSignal: progressionSignal
+            progressionSignal: progressionSignal,
+            topMuscles: topMuscles,
+            prHighlights: prHighlights
         )
     }
 
@@ -768,7 +805,9 @@ class WorkoutViewModel {
             lastLoggedSet: set,
             lastLoggedExercise: loggedExercise
         )
-        liveActivityPreviewExerciseID = nil
+        if let session = activeSession {
+            liveActivityPreviewExerciseID = nextExerciseInSessionContext(session: session, current: loggedExercise)?.id ?? loggedExercise.id
+        }
 
         // Reorder after validate: move this exercise card to after the last-logged one.
         applyReorderAfterValidate(loggedExercise)
@@ -1359,6 +1398,33 @@ class WorkoutViewModel {
         return (exercise.name, preview)
     }
 
+    private func resolvedLiveActivityTarget(in session: WorkoutSession) -> LoggedExercise? {
+        let ordered = session.orderedExercises
+        guard !ordered.isEmpty else { return nil }
+
+        if let previewID = liveActivityPreviewExerciseID,
+           let preview = ordered.first(where: { $0.id == previewID }) {
+            return preview
+        }
+
+        if let activeSupersetMember = ordered.first(where: { exercise in
+            guard let group = exercise.supersetGroup else { return false }
+            let members = group.orderedMembers
+            let counts = members.map(\.completedWorkSets.count)
+            let minCount = counts.min() ?? 0
+            let maxCount = counts.max() ?? 0
+            return maxCount - minCount > 0 && exercise.completedWorkSets.count == minCount
+        }) {
+            return activeSupersetMember
+        }
+
+        if let nextUnstarted = ordered.first(where: { $0.completedWorkSets.isEmpty }) {
+            return nextUnstarted
+        }
+
+        return ordered.first
+    }
+
     /// End the Live Activity. Called on finish/discard.
     private func endLiveActivity() {
         Task { @MainActor in
@@ -1443,31 +1509,7 @@ class WorkoutViewModel {
     /// the ExerciseCard.
     private func handleValidateFromLiveActivity() {
         guard let session = activeSession else { return }
-        let ordered = session.orderedExercises
-
-        // Find the exercise the user should validate next.
-        // If the rest timer is running, the "next" is the exercise we just
-        // logged to (still has slots) or the following one.
-        let target: LoggedExercise? = {
-            if let previewID = liveActivityPreviewExerciseID {
-                return ordered.first(where: { $0.id == previewID })
-            }
-            // Try: first exercise that still has fewer work sets than the
-            // typical target (3), preferring earlier orderIndex.
-            if let current = ordered.first(where: { logEx in
-                guard let ex = logEx.exercise else { return false }
-                let done = logEx.completedWorkSets.count
-                let targetSets = max(3, ex.repTargetMax > 0 ? 3 : 3)
-                return done < targetSets
-            }) {
-                return current
-            }
-            // Fall back to the first exercise entirely.
-            return ordered.first
-        }()
-
-        guard let exo = target else { return }
-        liveActivityPreviewExerciseID = nil
+        guard let exo = resolvedLiveActivityTarget(in: session) else { return }
         let sug = suggestion(for: exo)
         let adjustedWeight = max(0, sug.weight + liveActivityWeightDelta)
         let adjustedReps = max(1, sug.reps + liveActivityRepsDelta)
@@ -1478,12 +1520,7 @@ class WorkoutViewModel {
 
     private func handleNextExerciseFromLiveActivity() {
         guard let session = activeSession else { return }
-        let ordered = session.orderedExercises
-        guard !ordered.isEmpty else { return }
-
-        let current = liveActivityPreviewExerciseID
-            .flatMap { id in ordered.first(where: { $0.id == id }) }
-            ?? ordered.first
+        guard let current = resolvedLiveActivityTarget(in: session) else { return }
 
         if let next = nextExerciseInSessionContext(session: session, current: current) {
             liveActivityPreviewExerciseID = next.id

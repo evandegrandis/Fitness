@@ -25,14 +25,14 @@ struct ActiveWorkoutView: View {
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 0, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
 
                     WeeklyPrioritySection(
                         liveSession: viewModel.activeSession
                     )
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 2, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
                 }
 
                 if let session = viewModel.activeSession {
@@ -84,7 +84,7 @@ struct ActiveWorkoutView: View {
 
                 // Bottom breathing room so the rest timer / toast don't collide.
                 Color.clear
-                    .frame(height: viewModel.restTimer.isRunning ? 100 : 40)
+                    .frame(height: viewModel.restTimer.isRunning ? 138 : 86)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }

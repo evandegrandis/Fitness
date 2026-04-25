@@ -33,7 +33,7 @@ struct ExerciseCard: View {
                     cardHeader
                         .padding(.horizontal, 14)
                         .padding(.top, 7)
-                        .padding(.bottom, 2)
+                        .padding(.bottom, 4)
 
                     Divider().background(.white.opacity(0.06))
 
@@ -44,7 +44,7 @@ struct ExerciseCard: View {
                     inlineEditSection
                         .padding(.horizontal, 14)
                         .padding(.top, 3)
-                        .padding(.bottom, 5)
+                        .padding(.bottom, 10)
                 }
             }
             .overlay {
@@ -216,14 +216,14 @@ struct ExerciseCard: View {
 
     private var inlineEditSection: some View {
         VStack(spacing: 7) {
-            HStack(alignment: .center, spacing: 7) {
+            HStack(alignment: .center, spacing: 10) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 0)
                 }
 
                 repsStepper
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -282,7 +282,7 @@ struct ExerciseCard: View {
     // MARK: - Stepper subviews
 
     private var weightStepper: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             stepperButton(systemImage: "minus") {
                 editWeight = max(0, editWeight - (exercise?.smallestIncrement ?? 2.5))
                 HapticManager.tap()
@@ -295,7 +295,7 @@ struct ExerciseCard: View {
                 Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .lineLimit(1)
-                    .frame(minWidth: 46)
+                    .frame(minWidth: 52)
                     .padding(.vertical, 5)
                     .padding(.horizontal, 6)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
@@ -310,7 +310,7 @@ struct ExerciseCard: View {
     }
 
     private var repsStepper: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             stepperButton(systemImage: "minus") {
                 editReps = max(1, editReps - 1)
                 HapticManager.tap()
@@ -322,7 +322,7 @@ struct ExerciseCard: View {
             } label: {
                 Text("\(editReps)")
                     .font(.callout.weight(.bold).monospacedDigit())
-                    .frame(minWidth: 34)
+                    .frame(minWidth: 48)
                     .padding(.vertical, 5)
                     .padding(.horizontal, 6)
                     .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))

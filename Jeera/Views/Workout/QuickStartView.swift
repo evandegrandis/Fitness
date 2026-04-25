@@ -252,6 +252,10 @@ struct WorkoutDetailView: View {
         order: .reverse
     ) private var allSessions: [WorkoutSession]
 
+    private var performedExercises: [LoggedExercise] {
+        session.orderedExercises.filter { !$0.completedWorkSets.isEmpty }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -272,7 +276,7 @@ struct WorkoutDetailView: View {
                 .padding(.horizontal)
 
                 // Exercises
-                ForEach(session.orderedExercises) { loggedExercise in
+                ForEach(performedExercises) { loggedExercise in
                     HistoryExerciseCard(
                         loggedExercise: loggedExercise,
                         allSessions: allSessions,
@@ -305,16 +309,31 @@ struct HistoryExerciseCard: View {
     }
 
     private func isRecord(_ set: LoggedSet) -> Bool {
-        guard let exercise = loggedExercise.exercise else { return false }
-        return RecordsEngine.isRecordSet(set, among: allHistoricalSets, exercise: exercise)
+        return displayedRecordSetIDs.contains(set.id)
+    }
+
+    private var displayedRecordSetIDs: Set<UUID> {
+        guard let exercise = loggedExercise.exercise else { return [] }
+        return RecordsEngine.displayedRecordSetIDs(
+            in: loggedExercise,
+            among: allHistoricalSets,
+            exercise: exercise
+        )
     }
 
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(loggedExercise.exercise?.name ?? "Unknown")
-                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 6) {
+                        Text(loggedExercise.exercise?.name ?? "Unknown")
+                            .font(.subheadline.weight(.semibold))
+                        if loggedExercise.supersetGroup != nil {
+                            Image(systemName: "link")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Color.accentColor.opacity(0.8))
+                        }
+                    }
                     Spacer()
                     Text("\(loggedExercise.completedWorkSets.count) sets")
                         .font(.caption2)
@@ -327,6 +346,13 @@ struct HistoryExerciseCard: View {
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.tertiary)
                             .frame(width: 18, alignment: .leading)
+
+                        if let round = set.supersetRoundIndex {
+                            Text("r\(round)")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18, alignment: .leading)
+                        }
 
                         if set.weight > 0 {
                             Text("\(set.weight.cleanWeight) x \(set.reps)")

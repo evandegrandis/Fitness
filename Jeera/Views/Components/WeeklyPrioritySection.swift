@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Compact horizontally-scrolling strip of rolling 7-day priority chips.
+/// Compact all-groups overview for rolling 7-day remaining sets.
 struct WeeklyPrioritySection: View {
     @Query(
         filter: #Predicate<WorkoutSession> { !$0.isActive },
@@ -21,32 +21,44 @@ struct WeeklyPrioritySection: View {
             hasher.combine(g.weeklyGoalSets)
         }
         hasher.combine(finishedSessions.count)
+        if let liveSession {
+            hasher.combine(liveSession.loggedExercises.reduce(0) { $0 + $1.completedWorkSets.count })
+        }
         return hasher.finalize()
     }
 
     var body: some View {
         Group {
             if !chips.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(chips, id: \.0) { parent, remaining in
-                            PriorityChip(
-                                label: parent.shortName,
-                                remaining: remaining
-                            )
-                        }
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 6), count: 4),
+                    alignment: .leading,
+                    spacing: 6
+                ) {
+                    ForEach(chips, id: \.0) { parent, remaining in
+                        PriorityChip(
+                            label: parent.shortName,
+                            remaining: remaining
+                        )
                     }
-                    .padding(.horizontal, 16)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 2)
             }
         }
         .task(id: goalFingerprint) {
-            chips = EffectiveSetsEngine.rollingPriorities(
+            chips = EffectiveSetsEngine.rolling7DayProgress(
                 sessions: finishedSessions,
                 goals: goals,
                 liveSession: liveSession
             )
-            .map { ($0.0, Int($0.1.rounded())) }
+            .sorted {
+                if abs($0.remaining - $1.remaining) > 0.01 {
+                    return $0.remaining > $1.remaining
+                }
+                return $0.parent.displayName < $1.parent.displayName
+            }
+            .map { ($0.parent, Int($0.remaining.rounded(.up))) }
         }
     }
 }
@@ -56,31 +68,34 @@ private struct PriorityChip: View {
     let remaining: Int
 
     private var accent: Color {
+        if remaining == 0 { return .green }
         if remaining >= 10 { return .red }
         if remaining >= 5 { return .orange }
         return Color.accentColor
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             Text(label)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.primary)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(remaining == 0 ? .secondary : .primary)
                 .lineLimit(1)
-                .fixedSize()
+                .minimumScaleFactor(0.75)
+
+            Spacer(minLength: 0)
 
             Text("\(remaining)")
-                .font(.system(size: 11, weight: .heavy, design: .rounded).monospacedDigit())
+                .font(.system(size: 10, weight: .heavy, design: .rounded).monospacedDigit())
                 .foregroundStyle(accent)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
         .background {
-            Capsule()
-                .fill(Color.white.opacity(0.07))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.06))
         }
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(accent.opacity(0.25), lineWidth: 0.6)
         }
     }
