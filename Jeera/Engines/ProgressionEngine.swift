@@ -396,6 +396,30 @@ struct ProgressionEngine {
         let harderLoad = stepLoad(last.weight, by: increment, for: exercise.setPatternMode, towardHarder: true)
         let easierLoad = stepLoad(last.weight, by: increment, for: exercise.setPatternMode, towardHarder: false)
 
+        if doneToday.count == 1 {
+            if last.reps >= exercise.repTargetMax + 4,
+               shouldStepLoad(exercise.setPatternMode, from: last.weight, towardHarder: true) {
+                let aggressiveRaise = Candidate(
+                    load: harderLoad,
+                    reps: clamp(last.reps - Int(max(2.0, baseDrop)), min: exercise.repTargetMin, max: exercise.repTargetMax),
+                    mode: .transitionMode,
+                    reasonCodes: ["first_set_far_overshoot_raise_now"]
+                )
+                return [aggressiveRaise]
+            }
+
+            if last.reps <= max(1, exercise.repTargetMin - 3),
+               shouldStepLoad(exercise.setPatternMode, from: last.weight, towardHarder: false) {
+                let aggressiveDrop = Candidate(
+                    load: easierLoad,
+                    reps: clamp(last.reps + 2, min: exercise.repTargetMin, max: exercise.repTargetMax),
+                    mode: .fallbackHypertrophy,
+                    reasonCodes: ["first_set_far_undershoot_drop_now"]
+                )
+                return [aggressiveDrop]
+            }
+        }
+
         var result: [Candidate] = [
             Candidate(load: last.weight, reps: holdReps, mode: .recordAttempt, reasonCodes: ["predicted_drop_same_load"]),
             Candidate(load: easierLoad, reps: backoffReps, mode: .fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"])

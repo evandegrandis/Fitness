@@ -1081,11 +1081,17 @@ class WorkoutViewModel {
             currentSessionSets: loggedExercise.completedWorkSets
         )
 
-        if activeWorkoutMode == .beast, currentSetIndex == 1, suggestion.weight > 0 {
+        if activeWorkoutMode == .beast,
+           currentSetIndex == 1,
+           suggestion.weight > 0,
+           suggestion.mode != .fallbackHypertrophy {
             let bump = max(1, exercise.smallestIncrement)
+            let bumpedReps = suggestion.mode == .plateauBreak
+                ? suggestion.reps
+                : max(exercise.repTargetMin, suggestion.reps - 1)
             suggestion = SetSuggestion(
                 weight: suggestion.weight + bump,
-                reps: suggestion.reps,
+                reps: bumpedReps,
                 setType: suggestion.setType,
                 explanation: "Beast mode: \(suggestion.explanation)",
                 confidence: suggestion.confidence,
