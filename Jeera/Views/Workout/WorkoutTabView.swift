@@ -158,12 +158,15 @@ private struct PostWorkoutSummarySheet: View {
                 persistRecoveryCheckins()
                 onSave()
             } label: {
-                ZStack {
-                    Text("Save & close")
-                        .font(.subheadline.weight(.semibold))
+                HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.subheadline)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .opacity(0)
+                    Text("Save & close")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.subheadline)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -302,7 +305,7 @@ private struct PostWorkoutSummarySheet: View {
         protein: Binding<Bool>,
         sleep: Binding<Double>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text(title)
                     .font(.caption.weight(.semibold))
@@ -317,15 +320,21 @@ private struct PostWorkoutSummarySheet: View {
                 compactToggle(title: "Protéine", icon: "fork.knife", isOn: protein)
             }
 
-            HStack {
-                Text("Sommeil")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Sommeil")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(sleep.wrappedValue, format: .number.precision(.fractionLength(1))) + Text("h")
+                }
+                .font(.caption.monospacedDigit())
+
                 Slider(value: sleep, in: 3...11, step: 0.5)
             }
         }
-        .padding(8)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(10)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func compactToggle(title: String, icon: String, isOn: Binding<Bool>) -> some View {
@@ -356,7 +365,7 @@ private struct PostWorkoutSummarySheet: View {
                 }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(isOn.wrappedValue ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.03))

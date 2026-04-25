@@ -577,11 +577,15 @@ struct QuickStartButton: View {
                         .fill(accentColor.opacity(0.18))
                         .frame(width: 38, height: 38)
 
-                    Circle()
-                        .fill(accentColor.opacity(0.18))
-                        .frame(width: 26, height: 26)
-                        .blur(radius: animateAccent ? 8 : 3)
-                        .opacity(activeMode == .normal ? 0 : (animateAccent ? 0.95 : 0.42))
+                    if let activeMode, activeMode != .normal {
+                        Circle()
+                            .fill(accentColor.opacity(0.18))
+                            .frame(width: 26, height: 26)
+                            .blur(radius: animateAccent ? 8 : 3)
+                            .opacity(animateAccent ? 0.95 : 0.42)
+
+                        ambientOrbit(mode: activeMode)
+                    }
 
                     Image(systemName: displayIcon)
                         .font(.subheadline.weight(.bold))
@@ -637,6 +641,31 @@ struct QuickStartButton: View {
             return animateAccent ? 1.08 : 0.94
         case .monk:
             return animateAccent ? 1.04 : 0.97
+        }
+    }
+
+    @ViewBuilder
+    private func ambientOrbit(mode: WorkoutViewModel.WorkoutMode) -> some View {
+        switch mode {
+        case .normal:
+            EmptyView()
+        case .beast:
+            ZStack {
+                Circle()
+                    .fill(accentColor.opacity(0.26))
+                    .frame(width: 6, height: 6)
+                    .offset(x: animateAccent ? 10 : 3, y: animateAccent ? -11 : -4)
+                Circle()
+                    .fill(accentColor.opacity(0.18))
+                    .frame(width: 4, height: 4)
+                    .offset(x: animateAccent ? -9 : -3, y: animateAccent ? -8 : -2)
+            }
+        case .monk:
+            Capsule()
+                .fill(accentColor.opacity(0.18))
+                .frame(width: 18, height: 6)
+                .rotationEffect(.degrees(animateAccent ? -18 : 14))
+                .offset(x: animateAccent ? 8 : -6, y: animateAccent ? 11 : 7)
         }
     }
 

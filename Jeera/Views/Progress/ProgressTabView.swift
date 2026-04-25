@@ -197,9 +197,8 @@ private struct GlobalProgressView: View {
 
                                 HStack(spacing: 10) {
                                     globalMetric("Som.", value: sleepValueText(selected.sleepScore), tint: SecondaryMetric.sleep.color)
-                                    globalMetric("C↔S", value: correlationLabel(for: .creatine), tint: correlationColor(for: .creatine))
-                                    globalMetric("P↔S", value: correlationLabel(for: .protein), tint: correlationColor(for: .protein))
-                                    globalMetric("N↔S", value: correlationLabel(for: .sleep), tint: correlationColor(for: .sleep))
+                                    globalMetric("Moy.", value: "\(Int(averageSets.rounded()))", tint: .orange)
+                                    globalMetric("Best", value: bestWeekLabel, tint: .white)
                                 }
                             }
 
@@ -234,7 +233,7 @@ private struct GlobalProgressView: View {
                                 recoveryOverview
                             }
 
-                            compactInsights
+                            correlationBoard
                         }
                     }
                     .padding(.horizontal)
@@ -332,7 +331,7 @@ private struct GlobalProgressView: View {
                                 .frame(height: max(8, CGFloat(metricValue(metric, in: item) / 100) * 34))
                                 .frame(maxHeight: 36, alignment: .bottom)
 
-                            Text(item.weekStart.weekLabel)
+                            Text(item.weekStart.shortDate)
                                 .font(.system(size: 8, weight: .medium, design: .rounded))
                                 .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .primary : .tertiary)
                                 .lineLimit(1)
@@ -431,17 +430,45 @@ private struct GlobalProgressView: View {
         weekly.min { abs($0.weekStart.timeIntervalSince(date)) < abs($1.weekStart.timeIntervalSince(date)) }?.weekStart
     }
 
-    private var compactInsights: some View {
+    private var correlationBoard: some View {
         VStack(spacing: 8) {
+            Text("Lecture récupération ↔ volume")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             HStack(spacing: 8) {
-                insightTile("Créa ↔ sets", value: correlationLabel(for: .creatine), tint: correlationColor(for: .creatine))
-                insightTile("Prot ↔ sets", value: correlationLabel(for: .protein), tint: correlationColor(for: .protein))
-            }
-            HStack(spacing: 8) {
-                insightTile("Som. ↔ sets", value: correlationLabel(for: .sleep), tint: correlationColor(for: .sleep))
-                insightTile("Meilleure sem.", value: bestWeekLabel, tint: .white)
+                correlationTile(metric: .creatine)
+                correlationTile(metric: .protein)
+                correlationTile(metric: .sleep)
             }
         }
+    }
+
+    private func correlationTile(metric: SecondaryMetric) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(metric.color)
+                    .frame(width: 8, height: 8)
+                Text(metric.title)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(correlationLabel(for: metric))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(correlationColor(for: metric))
+
+            Text(correlationHint(for: metric))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func percentText(_ value: Double) -> String {
@@ -450,5 +477,16 @@ private struct GlobalProgressView: View {
 
     private func sleepValueText(_ value: Double) -> String {
         "\(String(format: "%.0f", value))"
+    }
+
+    private func correlationHint(for metric: SecondaryMetric) -> String {
+        switch metric {
+        case .creatine:
+            return "récup suppl."
+        case .protein:
+            return "apport hebdo"
+        case .sleep:
+            return "récup sommeil"
+        }
     }
 }
