@@ -202,7 +202,7 @@ private struct GlobalProgressView: View {
                         .padding(.top, 24)
                 } else {
                     GlassCard(padding: 16, cornerRadius: 22) {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
                             if let selected = selectedPoint {
                                 HStack(spacing: 10) {
                                     globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
@@ -211,60 +211,74 @@ private struct GlobalProgressView: View {
                                 }
                             }
 
-                            Chart {
-                                ForEach(weekly) { item in
-                                    BarMark(
-                                        x: .value("Week", item.weekStart),
-                                        y: .value("Performance", item.performanceChartValue),
-                                        width: .fixed(20)
-                                    )
-                                    .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .orange : .orange.opacity(0.35))
-                                    .cornerRadius(6)
-                                }
+                            VStack(spacing: 10) {
+                                chartSectionLabel("Sets / semaine", tint: .orange)
 
-                                ForEach(weekly) { item in
-                                    LineMark(
-                                        x: .value("Week", item.weekStart),
-                                        y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
-                                    )
-                                    .foregroundStyle(selectedSecondaryMetric.color)
-                                    .interpolationMethod(.linear)
-                                    .lineStyle(secondaryLineStyle)
-
-                                    PointMark(
-                                        x: .value("Week", item.weekStart),
-                                        y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
-                                    )
-                                    .foregroundStyle(selectedSecondaryMetric.color)
-                                    .symbolSize(item.weekStart == selectedPoint?.weekStart ? 28 : 18)
-                                }
-
-                                if let selected = selectedPoint {
-                                    RuleMark(x: .value("Selected week", selected.weekStart))
-                                        .foregroundStyle(.white.opacity(0.35))
-                                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                }
-                            }
-                            .frame(height: 250)
-                            .chartYScale(domain: 0...100)
-                            .chartOverlay { proxy in
-                                GeometryReader { geo in
-                                    Rectangle()
-                                        .fill(.clear)
-                                        .contentShape(Rectangle())
-                                        .gesture(
-                                            DragGesture(minimumDistance: 0)
-                                                .onChanged { value in
-                                                    if let plotFrame = proxy.plotFrame {
-                                                        let plotOrigin = geo[plotFrame].origin
-                                                        let x = value.location.x - plotOrigin.x
-                                                        if let date: Date = proxy.value(atX: x) {
-                                                            selectedWeek = nearestWeekStart(to: date)
-                                                        }
-                                                    }
-                                                }
-                                                .onEnded { _ in }
+                                Chart {
+                                    ForEach(weekly) { item in
+                                        BarMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value("Sets", item.performanceDisplay),
+                                            width: .fixed(18)
                                         )
+                                        .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .orange : .orange.opacity(0.38))
+                                        .cornerRadius(5)
+
+                                        if let selected = selectedPoint, item.weekStart == selected.weekStart {
+                                            RuleMark(x: .value("Selected week", selected.weekStart))
+                                                .foregroundStyle(.white.opacity(0.28))
+                                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                                        }
+                                    }
+                                }
+                                .frame(height: 135)
+                                .chartYAxis {
+                                    AxisMarks(position: .trailing)
+                                }
+                                .chartOverlay { proxy in
+                                    chartSelectionOverlay(proxy: proxy)
+                                }
+
+                                chartSectionLabel(selectedSecondaryMetric.title, tint: selectedSecondaryMetric.color)
+
+                                Chart {
+                                    ForEach(weekly) { item in
+                                        AreaMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
+                                        )
+                                        .foregroundStyle(selectedSecondaryMetric.color.opacity(0.12))
+                                        .interpolationMethod(.linear)
+
+                                        LineMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
+                                        )
+                                        .foregroundStyle(selectedSecondaryMetric.color)
+                                        .interpolationMethod(.linear)
+                                        .lineStyle(StrokeStyle(lineWidth: 2))
+
+                                        PointMark(
+                                            x: .value("Week", item.weekStart),
+                                            y: .value(selectedSecondaryMetric.title, secondaryValue(for: item))
+                                        )
+                                        .foregroundStyle(selectedSecondaryMetric.color)
+                                        .symbolSize(item.weekStart == selectedPoint?.weekStart ? 24 : 16)
+
+                                        if let selected = selectedPoint, item.weekStart == selected.weekStart {
+                                            RuleMark(x: .value("Selected week", selected.weekStart))
+                                                .foregroundStyle(.white.opacity(0.28))
+                                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                                        }
+                                    }
+                                }
+                                .frame(height: 120)
+                                .chartYScale(domain: 0...100)
+                                .chartYAxis {
+                                    AxisMarks(position: .trailing)
+                                }
+                                .chartOverlay { proxy in
+                                    chartSelectionOverlay(proxy: proxy)
                                 }
                             }
 
@@ -303,6 +317,37 @@ private struct GlobalProgressView: View {
                     metricPill(metric)
                 }
             }
+        }
+    }
+
+    private func chartSectionLabel(_ title: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .fill(tint)
+                .frame(width: 10, height: 4)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func chartSelectionOverlay(proxy: ChartProxy) -> some View {
+        GeometryReader { geo in
+            Rectangle()
+                .fill(.clear)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if let plotFrame = proxy.plotFrame {
+                                let plotOrigin = geo[plotFrame].origin
+                                let x = value.location.x - plotOrigin.x
+                                if let date: Date = proxy.value(atX: x) {
+                                    selectedWeek = nearestWeekStart(to: date)
+                                }
+                            }
+                        }
+                )
         }
     }
 
@@ -370,15 +415,6 @@ private struct GlobalProgressView: View {
             return "\(String(format: "%.0f", secondaryValue(for: point)))%"
         case .sleep:
             return String(format: "%.0f", secondaryValue(for: point))
-        }
-    }
-
-    private var secondaryLineStyle: StrokeStyle {
-        switch selectedSecondaryMetric {
-        case .creatine, .protein:
-            return StrokeStyle(lineWidth: 2)
-        case .sleep:
-            return StrokeStyle(lineWidth: 1.5, dash: [5, 4])
         }
     }
 
