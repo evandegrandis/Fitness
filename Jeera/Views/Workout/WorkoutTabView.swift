@@ -86,8 +86,8 @@ private struct PostWorkoutSummarySheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(spacing: 8) {
-                        compactSummaryRow
+                    VStack(spacing: 10) {
+                        heroSummaryCard
 
                         GlassCard(padding: 12, cornerRadius: 18) {
                             VStack(alignment: .leading, spacing: 8) {
@@ -112,6 +112,7 @@ private struct PostWorkoutSummarySheet: View {
                             persistRecoveryCheckins()
                             onSave()
                         }
+                        .font(.subheadline.weight(.medium))
                     }
                 }
 
@@ -120,18 +121,29 @@ private struct PostWorkoutSummarySheet: View {
         }
     }
 
-    private var compactSummaryRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                statTile("Durée", value: snapshot.duration)
-                statTile("Sets", value: "\(snapshot.setCount)")
-                statTile("Exos", value: "\(snapshot.exerciseCount)")
-                statTile("PR", value: "\(snapshot.prCount)")
-            }
+    private var heroSummaryCard: some View {
+        GlassCard(padding: 14, cornerRadius: 20) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Bilan express")
+                            .font(.title3.weight(.heavy))
+                        Text("Clôture rapide, sans saisie inutile.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
 
-            HStack {
-                trendPill
-                Spacer()
+                    Spacer(minLength: 8)
+                    trendPill
+                }
+
+                HStack(spacing: 8) {
+                    statTile("Durée", value: snapshot.duration)
+                    statTile("Sets", value: "\(snapshot.setCount)")
+                    statTile("Exos", value: "\(snapshot.exerciseCount)")
+                    statTile("PR", value: "\(snapshot.prCount)")
+                }
             }
         }
     }
@@ -150,14 +162,18 @@ private struct PostWorkoutSummarySheet: View {
                         .font(.subheadline)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
+                .padding(.vertical, 12)
                 .padding(.horizontal, 16)
             }
             .buttonStyle(.borderedProminent)
+
+            Text("Skip enregistre les valeurs affichées.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .background(.ultraThinMaterial)
     }
 
@@ -232,7 +248,7 @@ private struct PostWorkoutSummarySheet: View {
                 Slider(value: sleep, in: 3...11, step: 0.5)
             }
         }
-        .padding(9)
+        .padding(8)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 

@@ -50,7 +50,7 @@ private struct LockScreenView: View {
     let state: WorkoutContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center, spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "dumbbell.fill")
@@ -69,76 +69,64 @@ private struct LockScreenView: View {
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 7) {
-                compactRestBadge
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 7) {
+                    compactRestBadge
 
-                if !state.nextSetPreview.isEmpty {
-                    Text(nextSummary)
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.92))
+                    Text(primaryPreviewLine)
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.94))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                } else if !state.nextExerciseName.isEmpty {
-                    Text(state.nextExerciseName)
-                        .font(.caption2.weight(.semibold))
+                        .minimumScaleFactor(0.76)
+                }
+
+                if !secondaryPreviewLine.isEmpty {
+                    Text(secondaryPreviewLine)
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .padding(.leading, 2)
                 }
             }
 
             if #available(iOS 17.0, *), !state.nextSetPreview.isEmpty {
-                VStack(spacing: 6) {
-                    primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
+                HStack(spacing: 6) {
+                    primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.4)
                         .frame(maxWidth: .infinity)
 
-                    HStack(spacing: 6) {
-                        HStack(spacing: 6) {
-                            nudgeButton("-k", intent: DecreaseWeightIntent())
-                            nudgeButton("+k", intent: IncreaseWeightIntent())
-                            nudgeButton("-r", intent: DecreaseRepsIntent())
-                            nudgeButton("+r", intent: IncreaseRepsIntent())
-                        }
-                        .frame(maxWidth: .infinity)
-
-                        secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                            .frame(width: 72)
-                    }
+                    secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                        .frame(width: 70)
                 }
+
+                HStack(spacing: 6) {
+                    nudgeButton("-kg", intent: DecreaseWeightIntent())
+                    nudgeButton("+kg", intent: IncreaseWeightIntent())
+                    nudgeButton("-rep", intent: DecreaseRepsIntent())
+                    nudgeButton("+rep", intent: IncreaseRepsIntent())
+                }
+                .frame(maxWidth: .infinity)
+            } else if #available(iOS 17.0, *), !state.nextExerciseName.isEmpty {
+                secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                    .frame(width: 84)
             }
         }
     }
 
-    @ViewBuilder
-    private var compactRestBadge: some View {
-        if let endsAt = state.restEndsAt, endsAt > Date() {
-            HStack(spacing: 8) {
-                Image(systemName: "timer")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.accentColor)
-                Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
-                    .font(.system(size: 15, weight: .heavy, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color.accentColor)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color.accentColor.opacity(0.10), in: Capsule())
-        } else {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 9, height: 9)
-                Text("GO")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(.green)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(.green.opacity(0.10), in: Capsule())
+    private var primaryPreviewLine: String {
+        if !state.nextSetPreview.isEmpty {
+            return state.nextSetPreview
         }
+        if !state.nextExerciseName.isEmpty {
+            return state.nextExerciseName
+        }
+        return "Prêt"
     }
 
-    private var nextSummary: String {
-        workoutNextSummary(state: state)
+    private var secondaryPreviewLine: String {
+        if !state.nextSetPreview.isEmpty, !state.nextExerciseName.isEmpty {
+            return state.nextExerciseName
+        }
+        return ""
     }
 }
 
@@ -175,56 +163,50 @@ private struct NextSetRow: View {
             VStack(spacing: 6) {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(nextSummary)
+                        Text(state.nextSetPreview)
                             .font(.subheadline.weight(.bold).monospacedDigit())
                             .lineLimit(1)
+                        if !state.nextExerciseName.isEmpty {
+                            Text(state.nextExerciseName)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                     Spacer()
                     RestOrReadyBadge(state: state)
                 }
 
                 if #available(iOS 17.0, *) {
-                    VStack(spacing: 6) {
+                    HStack(spacing: 6) {
                         primaryActionButton("Valider", intent: ValidateNextSetIntent(), emphasis: 1.35)
+                        secondaryActionButton("Suiv.", intent: NextExerciseIntent())
+                            .frame(width: 72)
+                    }
 
-                        HStack(spacing: 6) {
-                            nudgeButton("-k", intent: DecreaseWeightIntent())
-                            nudgeButton("+k", intent: IncreaseWeightIntent())
-                            nudgeButton("-r", intent: DecreaseRepsIntent())
-                            nudgeButton("+r", intent: IncreaseRepsIntent())
-                            secondaryActionButton("Suiv.", intent: NextExerciseIntent())
-                                .frame(width: 72)
-                        }
+                    HStack(spacing: 6) {
+                        nudgeButton("-kg", intent: DecreaseWeightIntent())
+                        nudgeButton("+kg", intent: IncreaseWeightIntent())
+                        nudgeButton("-r", intent: DecreaseRepsIntent())
+                        nudgeButton("+r", intent: IncreaseRepsIntent())
                     }
                 }
             }
         }
     }
-
-    private var nextSummary: String {
-        workoutNextSummary(state: state)
-    }
-}
-
-private func workoutNextSummary(state: WorkoutContentState) -> String {
-    let name = state.nextExerciseName.trimmingCharacters(in: .whitespacesAndNewlines)
-    let preview = state.nextSetPreview.trimmingCharacters(in: .whitespacesAndNewlines)
-    if name.isEmpty { return preview }
-    if preview.isEmpty { return name }
-    return "\(name) \(preview)"
 }
 
 @available(iOS 17.0, *)
 private func nudgeButton<I: LiveActivityIntent>(_ title: String, intent: I) -> some View {
     Button(intent: intent) {
         Text(title)
-            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .font(.system(size: 10, weight: .bold, design: .rounded))
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 6)
             .background(.white.opacity(0.10))
             .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
     .buttonStyle(.plain)
 }
@@ -260,6 +242,37 @@ private func secondaryActionButton<I: LiveActivityIntent>(_ title: String, inten
             .foregroundStyle(.white)
     }
     .buttonStyle(.plain)
+}
+
+private extension LockScreenView {
+    @ViewBuilder
+    var compactRestBadge: some View {
+        if let endsAt = state.restEndsAt, endsAt > Date() {
+            HStack(spacing: 8) {
+                Image(systemName: "timer")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.accentColor)
+                Text(timerInterval: Date()...endsAt, countsDown: true, showsHours: false)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.accentColor)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.accentColor.opacity(0.10), in: Capsule())
+        } else {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 9, height: 9)
+                Text("GO")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.green)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.green.opacity(0.10), in: Capsule())
+        }
+    }
 }
 
 // MARK: - Compact trailing
