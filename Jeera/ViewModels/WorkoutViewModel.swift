@@ -1431,13 +1431,24 @@ class WorkoutViewModel {
         let sug = suggestion(for: exo)
         let adjustedWeight = max(0, sug.weight + liveActivityWeightDelta)
         let adjustedReps = max(1, sug.reps + liveActivityRepsDelta)
-        let preview: String
+        let setSummary: String
         if adjustedWeight > 0 {
-            preview = "\(adjustedWeight.cleanWeight) kg × \(adjustedReps)"
+            setSummary = "\(adjustedWeight.cleanWeight) kg × \(adjustedReps)"
         } else {
-            preview = "BW × \(adjustedReps)"
+            setSummary = "BW × \(adjustedReps)"
         }
-        return (liveActivityLabel(for: exo, exerciseName: exercise.name), preview)
+        let preview: String
+        if afterExercise?.id == exo.id {
+            preview = setSummary
+        } else {
+            preview = "\(exercise.name) · \(setSummary)"
+        }
+
+        let nextLabel = nextExerciseInSessionContext(session: session, current: exo).map {
+            liveActivityLabel(for: $0, exerciseName: $0.exercise?.name ?? "")
+        } ?? ""
+
+        return (nextLabel, preview)
     }
 
     private func liveActivityLabel(for loggedExercise: LoggedExercise, exerciseName: String) -> String {
@@ -1596,11 +1607,18 @@ class WorkoutViewModel {
             if !members.isEmpty {
                 let counts = members.map { ($0, $0.completedWorkSets.count) }
                 let minCount = counts.map(\.1).min() ?? 0
-                if let candidate = counts.first(where: { $0.1 == minCount })?.0 {
+                let maxCount = counts.map(\.1).max() ?? 0
+                if minCount < maxCount,
+                   let candidate = counts.first(where: { $0.1 == minCount })?.0 {
                     return candidate
                 }
             }
-            return members.first ?? ordered.first
+            if let lastMember = members.last,
+               let lastIdx = ordered.firstIndex(where: { $0.id == lastMember.id }),
+               lastIdx + 1 < ordered.count {
+                return ordered[lastIdx + 1]
+            }
+            return ordered.first
         }
 
         if let idx = ordered.firstIndex(where: { $0.id == current.id }), idx + 1 < ordered.count {

@@ -50,7 +50,7 @@ struct HistoryTabView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.horizontal, 14)
                         .padding(.top, 10)
                         .padding(.bottom, 80)
                     }
@@ -107,7 +107,7 @@ private struct HistoryOverviewCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 20) {
+        GlassCard(padding: 10, cornerRadius: 18) {
             HStack(spacing: 8) {
                 metric("Séances", value: "\(min(sessions.count, 8))")
                 metric("Sets", value: "\(totalSets)")
@@ -126,8 +126,8 @@ private struct HistoryOverviewCard: View {
                 .font(.subheadline.weight(.bold))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
@@ -185,7 +185,7 @@ struct WeeklyHistorySection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Text(weekLabel)
                     .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -201,7 +201,7 @@ struct WeeklyHistorySection: View {
             }
             .padding(.horizontal, 4)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 7) {
                 ForEach(sessions) { session in
                     NavigationLink {
                         WorkoutDetailView(session: session)
@@ -267,8 +267,8 @@ struct HistoryRow: View {
     }
 
     var body: some View {
-        GlassCard(padding: 10, cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 5) {
+        GlassCard(padding: 9, cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(session.date.relativeDay)

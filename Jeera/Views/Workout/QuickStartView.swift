@@ -288,7 +288,7 @@ struct WorkoutDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(spacing: 10) {
                 // Session info
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -303,7 +303,7 @@ struct WorkoutDetailView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 14)
 
                 // Exercises
                 ForEach(detailBlocks) { block in
@@ -324,9 +324,9 @@ struct WorkoutDetailView: View {
                     }
                 }
 
-                Spacer(minLength: 40)
+                Spacer(minLength: 28)
             }
-            .padding(.top, 8)
+            .padding(.top, 6)
         }
         .background { BackgroundGradient() }
         .navigationBarTitleDisplayMode(.inline)
@@ -346,8 +346,8 @@ struct HistorySupersetBlock: View {
     }
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 10) {
+        GlassCard(padding: 12, cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     HStack(spacing: 6) {
                         Image(systemName: "link")
@@ -375,7 +375,7 @@ struct HistorySupersetBlock: View {
                             sessionDate: sessionDate
                         )
                     }
-                    .padding(.top, loggedExercise.id == members.first?.id ? 0 : 2)
+                    .padding(.top, loggedExercise.id == members.first?.id ? 0 : 1)
                 }
             }
         }
@@ -470,8 +470,8 @@ struct HistoryExerciseCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 14, cornerRadius: 16) {
-            VStack(alignment: .leading, spacing: 6) {
+        GlassCard(padding: 12, cornerRadius: 15) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack {
                     HStack(spacing: 6) {
                         Text(loggedExercise.exercise?.name ?? "Unknown")

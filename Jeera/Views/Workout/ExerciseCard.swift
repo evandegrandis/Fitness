@@ -57,7 +57,7 @@ struct ExerciseCard: View {
             .padding(.horizontal, 16)
             .animation(.easeInOut(duration: 0.2), value: isArmed)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(role: .destructive) {
                 withAnimation { viewModel.removeExercise(loggedExercise) }
             } label: {
@@ -74,6 +74,13 @@ struct ExerciseCard: View {
                 )
             }
             .tint(loggedExercise.isLinkedToNext ? .red : .blue)
+
+            Button {
+                viewModel.duplicateExercise(loggedExercise)
+            } label: {
+                Label("Dupliquer", systemImage: "doc.on.doc")
+            }
+            .tint(.orange)
         }
         .onAppear {
             if !hasLoadedSuggestion {
