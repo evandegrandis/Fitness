@@ -183,6 +183,10 @@ struct ExerciseProgressRow: View {
                             .font(.system(size: 18, weight: .bold, design: .rounded))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
+
+                        if isSelected {
+                            headerMetaRow
+                        }
                     }
 
                     Spacer()
@@ -460,6 +464,26 @@ struct ExerciseProgressRow: View {
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
+    private var headerMetaRow: some View {
+        HStack(spacing: 6) {
+            if let band = benchmarkBandLabel {
+                miniMetaPill(band, tint: .green)
+            }
+            if let pr = bestDisplay {
+                miniMetaPill("PR \(pr)", tint: .orange)
+            }
+        }
+    }
+
+    private func miniMetaPill(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.10), in: Capsule())
+    }
+
     private func chartBlock<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             content()
@@ -497,6 +521,16 @@ struct ExerciseProgressRow: View {
         }
         if bestValidated.validatedWeight > 0, bestValidated.validatedReps > 0 {
             return "\(bestValidated.validatedWeight.cleanWeight)x\(bestValidated.validatedReps)"
+        }
+        return nil
+    }
+
+    private var benchmarkBandLabel: String? {
+        if let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
+            return "\(low.cleanWeight)-\(high.cleanWeight) kg"
+        }
+        if let repRange = repBenchmarkRange {
+            return "\(Int(repRange.lowerBound))-\(Int(repRange.upperBound)) reps"
         }
         return nil
     }
