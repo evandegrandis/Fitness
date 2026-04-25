@@ -17,6 +17,23 @@ struct Achievement: Identifiable {
 }
 
 struct AchievementsEngine {
+    private struct AchievementKey: Hashable {
+        let exerciseName: String
+        let sessionDay: Date
+    }
+
+    private static func rank(for kind: RecordKind) -> Int {
+        switch kind {
+        case .heaviestWeight:
+            return 4
+        case .estimated1RM:
+            return 3
+        case .repsAtWeight:
+            return 2
+        case .bodyweightReps:
+            return 1
+        }
+    }
 
     /// Extract recent achievements from the last `maxSessions` finished sessions.
     /// Each set is tested against all PRIOR history to see if it was a record when logged.
@@ -64,11 +81,32 @@ struct AchievementsEngine {
             }
         }
 
-        // Sort newest first, then by kind (weight PR first).
-        return results.sorted { a, b in
+        var deduped: [AchievementKey: Achievement] = [:]
+
+        for achievement in results {
+            let key = AchievementKey(
+                exerciseName: achievement.exerciseName,
+                sessionDay: Calendar.current.startOfDay(for: achievement.date)
+            )
+
+            if let existing = deduped[key] {
+                let newRank = rank(for: achievement.kind)
+                let oldRank = rank(for: existing.kind)
+
+                if newRank > oldRank ||
+                    (newRank == oldRank && achievement.reps > existing.reps) ||
+                    (newRank == oldRank && achievement.reps == existing.reps && achievement.weight > existing.weight) {
+                    deduped[key] = achievement
+                }
+            } else {
+                deduped[key] = achievement
+            }
+        }
+
+        // Sort newest first, then strongest record first.
+        return deduped.values.sorted { a, b in
             if a.date != b.date { return a.date > b.date }
-            if a.kind == .heaviestWeight && b.kind != .heaviestWeight { return true }
-            return false
+            return rank(for: a.kind) > rank(for: b.kind)
         }
     }
 }

@@ -616,14 +616,14 @@ struct AchievementRow: View {
     private var recordDescription: String {
         switch achievement.kind {
         case .heaviestWeight:
-            return "Nouveau record : \(achievement.weight.cleanWeight) kg x \(achievement.reps)"
+            return "\(achievement.weight.cleanWeight) kg × \(achievement.reps)"
         case .repsAtWeight:
-            return "\(achievement.reps) reps @ \(achievement.weight.cleanWeight) kg — record"
+            return "\(achievement.reps) reps @ \(achievement.weight.cleanWeight) kg"
         case .bodyweightReps:
-            return "BW x \(achievement.reps) — record reps"
+            return "BW × \(achievement.reps)"
         case .estimated1RM:
             let e1rm = ProgressionEngine.estimated1RM(weight: achievement.weight, reps: achievement.reps) ?? 0
-            return "e1RM \(Int(e1rm)) kg (via \(achievement.weight.cleanWeight) x \(achievement.reps))"
+            return "e1RM \(Int(e1rm)) kg"
         }
     }
 }
