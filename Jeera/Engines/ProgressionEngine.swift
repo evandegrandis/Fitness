@@ -105,6 +105,16 @@ struct ProgressionEngine {
             )
         }
 
+        if exercise.setPatternMode == .ramping {
+            return suggestRamping(
+                exercise: exercise,
+                doneToday: doneToday,
+                derived: derived,
+                increment: increment,
+                fatigueConfirmed: fatigueConfirmed
+            )
+        }
+
         return suggestGeneric(
             exercise: exercise,
             doneToday: doneToday,
@@ -261,6 +271,83 @@ struct ProgressionEngine {
         }
 
         return render(keepBackoff, confidence: 0.82, setTypeOverride: .backoff)
+    }
+
+    private static func suggestRamping(
+        exercise: Exercise,
+        doneToday: [LoggedSet],
+        derived: DerivedExerciseState,
+        increment: Double,
+        fatigueConfirmed: Bool
+    ) -> SetSuggestion {
+        let targetLoad = derived.targetLoad
+        let firstRampLoad = rampStartLoad(targetLoad: targetLoad, increment: increment, for: exercise)
+
+        if doneToday.isEmpty {
+            let opener = Candidate(
+                load: firstRampLoad,
+                reps: exercise.repTargetMax,
+                mode: .recordAttempt,
+                reasonCodes: ["ramp_opener"]
+            )
+            return render(opener, confidence: fatigueConfirmed ? 0.74 : 0.9)
+        }
+
+        guard let last = doneToday.last else {
+            return render(
+                Candidate(load: firstRampLoad, reps: exercise.repTargetMax, mode: .recordAttempt, reasonCodes: ["ramp_fallback"]),
+                confidence: 0.65
+            )
+        }
+
+        let currentEffort = effectiveLoad(last.weight, for: exercise.setPatternMode)
+        let targetEffort = effectiveLoad(targetLoad, for: exercise.setPatternMode)
+        let belowTarget = currentEffort + 0.01 < targetEffort
+
+        if belowTarget {
+            let nextRampLoad = minHarderStepTowardTarget(
+                from: last.weight,
+                target: targetLoad,
+                increment: increment,
+                mode: exercise.setPatternMode
+            )
+
+            if last.reps >= exercise.repTargetMax {
+                let rampUp = Candidate(
+                    load: nextRampLoad,
+                    reps: max(exercise.repTargetMin, exercise.repTargetMax - 1),
+                    mode: .transitionMode,
+                    reasonCodes: ["ramp_up_after_easy_set"]
+                )
+                return render(rampUp, confidence: 0.88)
+            }
+
+            if last.reps >= exercise.repTargetMin + 1 {
+                let gentleRamp = Candidate(
+                    load: nextRampLoad,
+                    reps: clamp(last.reps - 1, min: exercise.repTargetMin, max: exercise.repTargetMax),
+                    mode: .transitionMode,
+                    reasonCodes: ["ramp_up_after_solid_set"]
+                )
+                return render(gentleRamp, confidence: 0.83)
+            }
+
+            let holdRamp = Candidate(
+                load: last.weight,
+                reps: clamp(last.reps, min: exercise.repTargetMin, max: exercise.repTargetMax),
+                mode: .fallbackHypertrophy,
+                reasonCodes: ["hold_ramp_until_target_ready"]
+            )
+            return render(holdRamp, confidence: 0.78)
+        }
+
+        return suggestGeneric(
+            exercise: exercise,
+            doneToday: doneToday,
+            derived: derived,
+            increment: increment,
+            fatigueConfirmed: fatigueConfirmed
+        )
     }
 
     private static func suggestGeneric(
@@ -482,6 +569,31 @@ struct ProgressionEngine {
         default:
             return load
         }
+    }
+
+    private static func rampStartLoad(
+        targetLoad: Double,
+        increment: Double,
+        for exercise: Exercise
+    ) -> Double {
+        let steps: Double = exercise.fatigueClass == .heavy ? 2.0 : 1.0
+        let start = stepLoad(targetLoad, by: increment * steps, for: exercise.setPatternMode, towardHarder: false)
+        return max(0, start)
+    }
+
+    private static func minHarderStepTowardTarget(
+        from currentLoad: Double,
+        target: Double,
+        increment: Double,
+        mode: SetPatternMode
+    ) -> Double {
+        let stepped = stepLoad(currentLoad, by: increment, for: mode, towardHarder: true)
+        let steppedEffort = effectiveLoad(stepped, for: mode)
+        let targetEffort = effectiveLoad(target, for: mode)
+        if steppedEffort > targetEffort {
+            return target
+        }
+        return stepped
     }
 
     private static func stepLoad(
