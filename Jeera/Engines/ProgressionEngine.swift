@@ -221,6 +221,34 @@ struct ProgressionEngine {
             Candidate(load: max(0, last.weight - increment), reps: backoffReps, mode: .fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"])
         ]
 
+        if last.weight > 0, last.reps >= exercise.repTargetMax + 2 {
+            let raisedLoad = last.weight + increment
+            let raisedReps = clamp(
+                Int((Double(last.reps) - max(1, baseDrop)).rounded()),
+                min: exercise.repTargetMin,
+                max: exercise.repTargetMax
+            )
+            result.append(
+                Candidate(
+                    load: raisedLoad,
+                    reps: raisedReps,
+                    mode: .transitionMode,
+                    reasonCodes: ["overshot_target_raise_load_next_set"]
+                )
+            )
+        }
+
+        if last.weight > 0, last.reps <= max(1, exercise.repTargetMin - 2) {
+            result.append(
+                Candidate(
+                    load: max(0, last.weight - increment),
+                    reps: max(exercise.repTargetMin, last.reps + 1),
+                    mode: .fallbackHypertrophy,
+                    reasonCodes: ["undershot_target_drop_load_next_set"]
+                )
+            )
+        }
+
         if derived.plateauCounter >= 3 {
             result.append(
                 Candidate(load: last.weight + increment, reps: max(5, exercise.repTargetMin - 1), mode: .plateauBreak, reasonCodes: ["plateau_policy_test_heavier"])
