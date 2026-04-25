@@ -718,42 +718,35 @@ struct ProgressionEngine {
         justLogged: LoggedSet,
         previousBestSets: [LoggedSet]
     ) -> Achievement? {
-        guard justLogged.weight > 0, justLogged.completed else { return nil }
+        guard justLogged.completed else { return nil }
 
-        let prevBestE1RM = bestE1RM(from: previousBestSets)
-
-        if justLogged.reps >= exercise.repTargetMin {
-            let prevValidated = previousBestSets
-                .filter { $0.completed && $0.reps >= exercise.repTargetMin && $0.weight > 0 }
-                .max(by: { $0.weight < $1.weight })
-
-            if let prev = prevValidated, justLogged.weight > prev.weight {
-                return Achievement(
-                    title: "Nouveau record",
-                    detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps) validé"
-                )
-            }
+        let priorRecords = RecordsEngine.buildRecords(for: exercise, historicalSets: previousBestSets)
+        guard let kind = RecordsEngine.classify(set: justLogged, exercise: exercise, priorRecords: priorRecords) else {
+            return nil
         }
 
-        if let newE1RM = estimated1RM(weight: justLogged.weight, reps: justLogged.reps),
-           let oldBest = prevBestE1RM,
-           newE1RM > oldBest.e1rm * 1.02 {
+        switch kind {
+        case .heaviestWeight:
+            return Achievement(
+                title: "Nouveau record",
+                detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps)"
+            )
+        case .estimated1RM:
+            let newE1RM = estimated1RM(weight: justLogged.weight, reps: justLogged.reps) ?? 0
             return Achievement(
                 title: "Nouveau 1RM estimé",
                 detail: "\(Int(newE1RM))kg (via \(justLogged.weight.cleanWeight)x\(justLogged.reps))"
             )
-        }
-
-        let sameWeightSets = previousBestSets.filter { $0.weight == justLogged.weight && $0.completed }
-        if let bestReps = sameWeightSets.map(\.reps).max(),
-           justLogged.reps > bestReps,
-           justLogged.reps >= exercise.repTargetMin {
+        case .repsAtWeight:
             return Achievement(
                 title: "Record de reps",
-                detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps) (avant: x\(bestReps))"
+                detail: "\(justLogged.weight.cleanWeight)kg x\(justLogged.reps)"
+            )
+        case .bodyweightReps:
+            return Achievement(
+                title: "Record de reps",
+                detail: "BW x\(justLogged.reps)"
             )
         }
-
-        return nil
     }
 }
