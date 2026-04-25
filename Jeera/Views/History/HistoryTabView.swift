@@ -143,9 +143,7 @@ private struct HistoryOverviewCard: View {
                 }
                 .flatMap(\.completedWorkSets)
 
-            for set in logged.completedWorkSets where RecordsEngine.isRecordSet(set, among: allSets, exercise: exercise) {
-                count += 1
-            }
+            count += RecordsEngine.displayedRecordSetIDs(in: logged, among: allSets, exercise: exercise).count
         }
 
         return count

@@ -73,19 +73,29 @@ private struct LockScreenView: View {
                 HStack(spacing: 7) {
                     compactRestBadge
 
-                    Text(primaryPreviewLine)
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.94))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.76)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("À faire")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text(primaryPreviewLine)
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.94))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.76)
+                    }
                 }
 
                 if !secondaryPreviewLine.isEmpty {
-                    Text(secondaryPreviewLine)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .padding(.leading, 2)
+                    HStack(spacing: 5) {
+                        Text("Ensuite")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text(secondaryPreviewLine)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .padding(.leading, 2)
                 }
             }
 
@@ -163,11 +173,14 @@ private struct NextSetRow: View {
             VStack(spacing: 6) {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
+                        Text("À faire")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
                         Text(state.nextSetPreview)
                             .font(.subheadline.weight(.bold).monospacedDigit())
                             .lineLimit(1)
                         if !state.nextExerciseName.isEmpty {
-                            Text(state.nextExerciseName)
+                            Text("Ensuite · \(state.nextExerciseName)")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)

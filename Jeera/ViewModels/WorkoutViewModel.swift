@@ -72,6 +72,13 @@ class WorkoutViewModel {
             var id: String { parent.rawValue }
         }
 
+        struct RecordHighlight: Identifiable, Equatable {
+            let title: String
+            let detail: String
+
+            var id: String { "\(title)-\(detail)" }
+        }
+
         let id = UUID()
         let duration: String
         let setCount: Int
@@ -79,7 +86,8 @@ class WorkoutViewModel {
         let prCount: Int
         let progressionSignal: String
         let topMuscles: [MuscleImpact]
-        let prHighlights: [String]
+        let remainingMuscles: [MuscleImpact]
+        let prHighlights: [RecordHighlight]
     }
 
     private struct SupersetPoint {
@@ -394,15 +402,48 @@ class WorkoutViewModel {
             .prefix(3)
             .map { FinishedWorkoutSnapshot.MuscleImpact(parent: $0.key, sets: Int($0.value.rounded())) }
 
-        let prHighlights = Array(NSOrderedSet(array: session.loggedExercises.compactMap { logged in
-            guard let exercise = logged.exercise else { return nil }
-            let hasDisplayedPR = !RecordsEngine.displayedRecordSetIDs(
+        let prHighlights = session.loggedExercises.flatMap { logged -> [FinishedWorkoutSnapshot.RecordHighlight] in
+            guard let exercise = logged.exercise else { return [] }
+            let keptIDs = RecordsEngine.displayedRecordSetIDs(
                 in: logged,
                 among: logged.completedWorkSets,
                 exercise: exercise
-            ).isEmpty
-            return hasDisplayedPR ? exercise.name : nil
-        })) as? [String] ?? []
+            )
+            let keptSets = logged.completedWorkSets.filter { keptIDs.contains($0.id) }
+            return keptSets.map { set in
+                let detail: String
+                if set.weight > 0 {
+                    detail = "\(set.weight.cleanWeight)×\(set.reps)"
+                } else {
+                    detail = "BW×\(set.reps)"
+                }
+                return FinishedWorkoutSnapshot.RecordHighlight(title: exercise.name, detail: detail)
+            }
+        }
+
+        let remainingMuscles: [FinishedWorkoutSnapshot.MuscleImpact] = {
+            guard let context = modelContext else { return [] }
+            let goalDescriptor = FetchDescriptor<MuscleGoal>()
+            let sessionDescriptor = FetchDescriptor<WorkoutSession>()
+            guard let goals = try? context.fetch(goalDescriptor),
+                  let finishedSessions = try? context.fetch(sessionDescriptor)
+            else { return [] }
+            let progress = EffectiveSetsEngine.rolling7DayProgress(
+                sessions: finishedSessions,
+                goals: goals,
+                referenceDate: session.date
+            )
+            return progress
+                .filter { $0.remaining > 0 }
+                .sorted {
+                    if abs($0.remaining - $1.remaining) > 0.01 {
+                        return $0.remaining > $1.remaining
+                    }
+                    return $0.parent.displayName < $1.parent.displayName
+                }
+                .prefix(3)
+                .map { FinishedWorkoutSnapshot.MuscleImpact(parent: $0.parent, sets: Int($0.remaining.rounded(.up))) }
+        }()
         cancelRestTimerNotifications()
         restTimer.reset()
         stopWorkoutTimer()
@@ -421,6 +462,7 @@ class WorkoutViewModel {
             prCount: prCount,
             progressionSignal: progressionSignal,
             topMuscles: topMuscles,
+            remainingMuscles: remainingMuscles,
             prHighlights: prHighlights
         )
     }
@@ -1395,7 +1437,15 @@ class WorkoutViewModel {
         } else {
             preview = "BW × \(adjustedReps)"
         }
-        return (exercise.name, preview)
+        return (liveActivityLabel(for: exo, exerciseName: exercise.name), preview)
+    }
+
+    private func liveActivityLabel(for loggedExercise: LoggedExercise, exerciseName: String) -> String {
+        guard let group = loggedExercise.supersetGroup else { return exerciseName }
+        let members = group.orderedMembers
+        guard members.count > 1 else { return exerciseName }
+        let round = loggedExercise.completedWorkSets.count + 1
+        return "SS\(round) · \(exerciseName)"
     }
 
     private func resolvedLiveActivityTarget(in session: WorkoutSession) -> LoggedExercise? {

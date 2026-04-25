@@ -256,6 +256,36 @@ struct WorkoutDetailView: View {
         session.orderedExercises.filter { !$0.completedWorkSets.isEmpty }
     }
 
+    private struct DetailBlock: Identifiable {
+        let id: UUID
+        let members: [LoggedExercise]
+
+        var isSuperset: Bool { members.count > 1 }
+    }
+
+    private var detailBlocks: [DetailBlock] {
+        var blocks: [DetailBlock] = []
+        var consumed: Set<UUID> = []
+
+        for exercise in performedExercises {
+            guard !consumed.contains(exercise.id) else { continue }
+
+            if let group = exercise.supersetGroup {
+                let members = group.orderedMembers.filter { !$0.completedWorkSets.isEmpty }
+                if members.count > 1 {
+                    blocks.append(DetailBlock(id: group.id, members: members))
+                    members.forEach { consumed.insert($0.id) }
+                    continue
+                }
+            }
+
+            blocks.append(DetailBlock(id: exercise.id, members: [exercise]))
+            consumed.insert(exercise.id)
+        }
+
+        return blocks
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
@@ -276,13 +306,22 @@ struct WorkoutDetailView: View {
                 .padding(.horizontal)
 
                 // Exercises
-                ForEach(performedExercises) { loggedExercise in
-                    HistoryExerciseCard(
-                        loggedExercise: loggedExercise,
-                        allSessions: allSessions,
-                        sessionDate: session.date
-                    )
-                    .padding(.horizontal)
+                ForEach(detailBlocks) { block in
+                    if block.isSuperset {
+                        HistorySupersetBlock(
+                            members: block.members,
+                            allSessions: allSessions,
+                            sessionDate: session.date
+                        )
+                        .padding(.horizontal)
+                    } else if let loggedExercise = block.members.first {
+                        HistoryExerciseCard(
+                            loggedExercise: loggedExercise,
+                            allSessions: allSessions,
+                            sessionDate: session.date
+                        )
+                        .padding(.horizontal)
+                    }
                 }
 
                 Spacer(minLength: 40)
@@ -291,6 +330,115 @@ struct WorkoutDetailView: View {
         }
         .background { BackgroundGradient() }
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct HistorySupersetBlock: View {
+    let members: [LoggedExercise]
+    var allSessions: [WorkoutSession] = []
+    var sessionDate: Date = Date()
+
+    private var roundCount: Int {
+        members
+            .flatMap(\.completedWorkSets)
+            .compactMap(\.supersetRoundIndex)
+            .max() ?? 0
+    }
+
+    var body: some View {
+        GlassCard(padding: 14, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "link")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(members.compactMap { $0.exercise?.name }.joined(separator: " · "))
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Text("\(roundCount) rounds")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(members) { loggedExercise in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(loggedExercise.exercise?.name ?? "Unknown")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        HistorySetLines(
+                            loggedExercise: loggedExercise,
+                            allSessions: allSessions,
+                            sessionDate: sessionDate
+                        )
+                    }
+                    .padding(.top, loggedExercise.id == members.first?.id ? 0 : 2)
+                }
+            }
+        }
+    }
+}
+
+private struct HistorySetLines: View {
+    let loggedExercise: LoggedExercise
+    var allSessions: [WorkoutSession] = []
+    var sessionDate: Date = Date()
+
+    /// All historical sets for this exercise up to and including this session.
+    private var allHistoricalSets: [LoggedSet] {
+        guard let exercise = loggedExercise.exercise else { return [] }
+        return allSessions
+            .filter { $0.date <= sessionDate }
+            .flatMap { s in s.loggedExercises.filter { $0.exercise?.id == exercise.id } }
+            .flatMap(\.completedWorkSets)
+    }
+
+    private var displayedRecordSetIDs: Set<UUID> {
+        guard let exercise = loggedExercise.exercise else { return [] }
+        return RecordsEngine.displayedRecordSetIDs(
+            in: loggedExercise,
+            among: allHistoricalSets,
+            exercise: exercise
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(loggedExercise.orderedSets) { set in
+                HStack(spacing: 6) {
+                    Text("#\(set.setSlotIndex + 1)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 18, alignment: .leading)
+
+                    if let round = set.supersetRoundIndex {
+                        Text("r\(round)")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, alignment: .leading)
+                    }
+
+                    if set.weight > 0 {
+                        Text("\(set.weight.cleanWeight) x \(set.reps)")
+                            .font(.caption.weight(.medium).monospacedDigit())
+                    } else {
+                        Text("BW x \(set.reps)")
+                            .font(.caption.weight(.medium).monospacedDigit())
+                    }
+
+                    if displayedRecordSetIDs.contains(set.id) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.yellow)
+                    }
+
+                    Spacer()
+                }
+            }
+        }
     }
 }
 
@@ -328,11 +476,6 @@ struct HistoryExerciseCard: View {
                     HStack(spacing: 6) {
                         Text(loggedExercise.exercise?.name ?? "Unknown")
                             .font(.subheadline.weight(.semibold))
-                        if loggedExercise.supersetGroup != nil {
-                            Image(systemName: "link")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(Color.accentColor.opacity(0.8))
-                        }
                     }
                     Spacer()
                     Text("\(loggedExercise.completedWorkSets.count) sets")

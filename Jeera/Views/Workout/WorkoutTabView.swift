@@ -89,7 +89,7 @@ private struct PostWorkoutSummarySheet: View {
                     VStack(spacing: 10) {
                         heroSummaryCard
 
-                        if !snapshot.topMuscles.isEmpty || !snapshot.prHighlights.isEmpty {
+                        if !snapshot.topMuscles.isEmpty || !snapshot.prHighlights.isEmpty || !snapshot.remainingMuscles.isEmpty {
                             sessionReadCard
                         }
 
@@ -206,19 +206,49 @@ private struct PostWorkoutSummarySheet: View {
                     }
                 }
 
+                if !snapshot.remainingMuscles.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("À finir de couvrir")
+                            .font(.subheadline.weight(.bold))
+                        HStack(spacing: 8) {
+                            ForEach(snapshot.remainingMuscles) { impact in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(impact.parent.shortName)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text("\(impact.sets) restants")
+                                        .font(.caption.weight(.bold).monospacedDigit())
+                                        .foregroundStyle(.orange)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                        }
+                    }
+                }
+
                 if !snapshot.prHighlights.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("PR de séance")
                             .font(.subheadline.weight(.bold))
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(snapshot.prHighlights, id: \.self) { name in
-                                    Text(name)
+                        VStack(spacing: 6) {
+                            ForEach(snapshot.prHighlights) { highlight in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "star.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.yellow)
+                                    Text(highlight.title)
                                         .font(.caption.weight(.semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(Color.yellow.opacity(0.14), in: Capsule())
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(highlight.detail)
+                                        .font(.caption.weight(.bold).monospacedDigit())
+                                        .foregroundStyle(.yellow)
                                 }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(Color.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                         }
                     }
