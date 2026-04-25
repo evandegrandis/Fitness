@@ -215,14 +215,16 @@ struct ProgressionEngine {
         let predicted = Int((Double(last.reps) - baseDrop).rounded())
         let holdReps = clamp(predicted, min: max(1, exercise.repTargetMin - 1), max: exercise.repTargetMax)
         let backoffReps = Int((Double(exercise.repTargetMin + exercise.repTargetMax) / 2).rounded(.up))
+        let harderLoad = stepLoad(last.weight, by: increment, for: exercise.setPatternMode, towardHarder: true)
+        let easierLoad = stepLoad(last.weight, by: increment, for: exercise.setPatternMode, towardHarder: false)
 
         var result: [Candidate] = [
             Candidate(load: last.weight, reps: holdReps, mode: .recordAttempt, reasonCodes: ["predicted_drop_same_load"]),
-            Candidate(load: max(0, last.weight - increment), reps: backoffReps, mode: .fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"])
+            Candidate(load: easierLoad, reps: backoffReps, mode: .fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"])
         ]
 
-        if last.weight > 0, last.reps >= exercise.repTargetMax + 2 {
-            let raisedLoad = last.weight + increment
+        if shouldStepLoad(exercise.setPatternMode, from: last.weight, towardHarder: true),
+           last.reps >= exercise.repTargetMax + 2 {
             let raisedReps = clamp(
                 Int((Double(last.reps) - max(1, baseDrop)).rounded()),
                 min: exercise.repTargetMin,
@@ -230,7 +232,7 @@ struct ProgressionEngine {
             )
             result.append(
                 Candidate(
-                    load: raisedLoad,
+                    load: harderLoad,
                     reps: raisedReps,
                     mode: .transitionMode,
                     reasonCodes: ["overshot_target_raise_load_next_set"]
@@ -238,10 +240,11 @@ struct ProgressionEngine {
             )
         }
 
-        if last.weight > 0, last.reps <= max(1, exercise.repTargetMin - 2) {
+        if shouldStepLoad(exercise.setPatternMode, from: last.weight, towardHarder: false),
+           last.reps <= max(1, exercise.repTargetMin - 2) {
             result.append(
                 Candidate(
-                    load: max(0, last.weight - increment),
+                    load: easierLoad,
                     reps: max(exercise.repTargetMin, last.reps + 1),
                     mode: .fallbackHypertrophy,
                     reasonCodes: ["undershot_target_drop_load_next_set"]
@@ -251,7 +254,7 @@ struct ProgressionEngine {
 
         if derived.plateauCounter >= 3 {
             result.append(
-                Candidate(load: last.weight + increment, reps: max(5, exercise.repTargetMin - 1), mode: .plateauBreak, reasonCodes: ["plateau_policy_test_heavier"])
+                Candidate(load: harderLoad, reps: max(5, exercise.repTargetMin - 1), mode: .plateauBreak, reasonCodes: ["plateau_policy_test_heavier"])
             )
         }
         return result
@@ -272,15 +275,18 @@ struct ProgressionEngine {
         case .transitionMode: score += 30
         }
 
-        if abs(candidate.load - derived.targetLoad) < 0.01 { score += 15 }
-        if candidate.load > derived.targetLoad { score += 8 }
-        if candidate.load < derived.targetLoad { score -= 5 }
+        let candidateEffort = effectiveLoad(candidate.load, for: exercise.setPatternMode)
+        let targetEffort = effectiveLoad(derived.targetLoad, for: exercise.setPatternMode)
+
+        if abs(candidateEffort - targetEffort) < 0.01 { score += 15 }
+        if candidateEffort > targetEffort { score += 8 }
+        if candidateEffort < targetEffort { score -= 5 }
 
         if fatigueConfirmed && candidate.mode == .recordAttempt { score -= 18 }
         if fatigueConfirmed && candidate.mode == .fallbackHypertrophy { score += 12 }
 
-        if derived.progressVelocity > 0.75 && candidate.load > derived.targetLoad { score += 5 }
-        if derived.progressVelocity < 0.25 && candidate.load > derived.targetLoad { score -= 6 }
+        if derived.progressVelocity > 0.75 && candidateEffort > targetEffort { score += 5 }
+        if derived.progressVelocity < 0.25 && candidateEffort > targetEffort { score -= 6 }
 
         if let last = doneToday.last {
             if last.reps <= max(1, exercise.repTargetMin - 2) && candidate.mode == .recordAttempt { score -= 20 }
@@ -375,6 +381,44 @@ struct ProgressionEngine {
             return 20
         default:
             return 20
+        }
+    }
+
+    private static func effectiveLoad(_ load: Double, for mode: SetPatternMode) -> Double {
+        switch mode {
+        case .assistedBodyweight:
+            return -load
+        default:
+            return load
+        }
+    }
+
+    private static func stepLoad(
+        _ load: Double,
+        by increment: Double,
+        for mode: SetPatternMode,
+        towardHarder: Bool
+    ) -> Double {
+        switch mode {
+        case .assistedBodyweight:
+            return towardHarder ? max(0, load - increment) : load + increment
+        default:
+            return towardHarder ? load + increment : max(0, load - increment)
+        }
+    }
+
+    private static func shouldStepLoad(
+        _ mode: SetPatternMode,
+        from load: Double,
+        towardHarder: Bool
+    ) -> Bool {
+        switch mode {
+        case .assistedBodyweight:
+            return towardHarder ? load > 0 : true
+        case .bodyweight:
+            return false
+        default:
+            return towardHarder ? load > 0 : true
         }
     }
 
