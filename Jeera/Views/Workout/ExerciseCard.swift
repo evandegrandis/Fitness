@@ -26,6 +26,17 @@ struct ExerciseCard: View {
     private var supersetAccent: Color {
         loggedExercise.isLinkedToNext || supersetGroup != nil ? .orange : .clear
     }
+    private var supersetMemberCount: Int {
+        supersetGroup?.orderedMembers.count ?? 0
+    }
+    private var supersetMemberIndex: Int? {
+        guard let group = supersetGroup else { return nil }
+        return group.orderedMembers.firstIndex(where: { $0.id == loggedExercise.id }).map { $0 + 1 }
+    }
+    private var isSupersetLeader: Bool {
+        guard let group = supersetGroup else { return false }
+        return group.orderedMembers.first?.id == loggedExercise.id
+    }
     private var supersetRoundLabel: String? {
         guard let group = supersetGroup else { return nil }
         let round = loggedExercise.completedWorkSets.count + 1
@@ -46,6 +57,12 @@ struct ExerciseCard: View {
                         .padding(.bottom, 4)
 
                     Divider().background(.white.opacity(0.06))
+
+                    if supersetGroup != nil {
+                        supersetBanner
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
+                    }
 
                     if !loggedExercise.orderedSets.isEmpty {
                         setsSection
@@ -265,6 +282,42 @@ struct ExerciseCard: View {
 
     // MARK: - Sets List
 
+    private var supersetBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "link")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.orange)
+
+            Text("Superset")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.orange)
+
+            if let index = supersetMemberIndex, supersetMemberCount > 0 {
+                Text("\(index)/\(supersetMemberCount)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
+
+            Spacer()
+
+            if let supersetRoundLabel {
+                Text(supersetRoundLabel.replacingOccurrences(of: "SS · ", with: ""))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.orange.opacity(isSupersetLeader ? 0.16 : 0.10))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(.orange.opacity(0.28), lineWidth: 0.8)
+        }
+    }
+
     private var setsSection: some View {
         VStack(spacing: 0) {
             ForEach(loggedExercise.orderedSets) { set in
@@ -285,8 +338,8 @@ struct ExerciseCard: View {
     // MARK: - Inline Edit Section (steppers only, no Valider)
 
     private var inlineEditSection: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
+        VStack(spacing: 7) {
+            HStack(alignment: .center, spacing: 6) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
                 }
@@ -351,7 +404,7 @@ struct ExerciseCard: View {
     // MARK: - Stepper subviews
 
     private var weightStepper: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             stepperButton(systemImage: "minus") {
                 editWeight = max(0, editWeight - (exercise?.smallestIncrement ?? 2.5))
                 HapticManager.tap()
@@ -364,9 +417,9 @@ struct ExerciseCard: View {
                 Text(editWeight > 0 ? editWeight.cleanWeight : "BW")
                     .font(.callout.weight(.bold).monospacedDigit())
                     .lineLimit(1)
-                    .frame(minWidth: 58)
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 8)
+                    .frame(minWidth: 54)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 7)
                     .background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
@@ -379,7 +432,7 @@ struct ExerciseCard: View {
     }
 
     private var repsStepper: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             stepperButton(systemImage: "minus") {
                 editReps = max(1, editReps - 1)
                 HapticManager.tap()
@@ -391,9 +444,9 @@ struct ExerciseCard: View {
             } label: {
                 Text("\(editReps)")
                     .font(.callout.weight(.bold).monospacedDigit())
-                    .frame(minWidth: 54)
-                    .padding(.vertical, 7)
-                    .padding(.horizontal, 8)
+                    .frame(minWidth: 50)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 7)
                     .background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
@@ -409,7 +462,7 @@ struct ExerciseCard: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .bold))
-                .frame(width: 30, height: 30)
+                .frame(width: 28, height: 28)
                 .background(Color.white.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)

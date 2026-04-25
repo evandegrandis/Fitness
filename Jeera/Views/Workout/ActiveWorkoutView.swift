@@ -85,7 +85,7 @@ struct ActiveWorkoutView: View {
 
                 // Bottom breathing room so the rest timer / toast don't collide.
                 Color.clear
-                    .frame(height: viewModel.restTimer.isRunning ? 170 : 98)
+                    .frame(height: viewModel.restTimer.isRunning ? 210 : 98)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -101,7 +101,7 @@ struct ActiveWorkoutView: View {
                 ) {
                     viewModel.skipRest()
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 

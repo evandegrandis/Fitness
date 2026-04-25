@@ -77,8 +77,8 @@ struct RestTimerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 14) {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
                 ZStack {
                     Circle()
                         .stroke(Color.accentColor.opacity(0.15), lineWidth: 3)
@@ -95,7 +95,7 @@ struct RestTimerView: View {
                         .font(.caption2.weight(.bold).monospacedDigit())
                         .foregroundStyle(timer.isComplete ? .green : .primary)
                 }
-                .frame(width: 42, height: 42)
+                .frame(width: 40, height: 40)
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
@@ -121,8 +121,8 @@ struct RestTimerView: View {
                     Text(timer.isComplete ? "GO" : "Skip")
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(timer.isComplete ? .white : .primary)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 9)
                         .background(
                             timer.isComplete ? Color.green : Color.white.opacity(0.10),
                             in: Capsule()
@@ -136,19 +136,29 @@ struct RestTimerView: View {
                 .buttonStyle(.plain)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.06))
-                    Capsule()
-                        .fill(timer.isComplete ? Color.green : Color.accentColor)
-                        .frame(width: max(18, geo.size.width * timer.progress))
+            HStack(spacing: 10) {
+                Text(timer.elapsedFormatted)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.06))
+                        Capsule()
+                            .fill(timer.isComplete ? Color.green : Color.accentColor)
+                            .frame(width: max(18, geo.size.width * timer.progress))
+                    }
                 }
+                .frame(height: 6)
+
+                Text(timer.isComplete ? "prêt" : statusLabel.lowercased())
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(timer.isComplete ? .green : .secondary)
             }
-            .frame(height: 6)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 13)
+        .padding(.vertical, 11)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(red: 0.12, green: 0.13, blue: 0.19).opacity(0.98))

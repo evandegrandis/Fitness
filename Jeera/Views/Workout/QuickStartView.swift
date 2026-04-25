@@ -289,7 +289,7 @@ struct WorkoutDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
+            LazyVStack(spacing: 8) {
                 // Session info
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -325,7 +325,7 @@ struct WorkoutDetailView: View {
                     }
                 }
 
-                Spacer(minLength: 28)
+                Spacer(minLength: 24)
             }
             .padding(.top, 6)
         }
@@ -347,8 +347,8 @@ struct HistorySupersetBlock: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 16) {
-            VStack(alignment: .leading, spacing: 8) {
+        GlassCard(padding: 11, cornerRadius: 16) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack {
                     HStack(spacing: 6) {
                         Image(systemName: "link")
@@ -367,7 +367,7 @@ struct HistorySupersetBlock: View {
                 ForEach(members) { loggedExercise in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(loggedExercise.exercise?.name ?? "Unknown")
-                            .font(.caption.weight(.semibold))
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
 
                         HistorySetLines(
@@ -411,37 +411,12 @@ private struct HistorySetLines: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
             ForEach(loggedExercise.orderedSets) { set in
-                HStack(spacing: 6) {
-                    Text("#\(set.setSlotIndex + 1)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 18, alignment: .leading)
-
-                    if let round = set.supersetRoundIndex {
-                        Text("r\(round)")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18, alignment: .leading)
-                    }
-
-                    if set.weight > 0 {
-                        Text("\(set.weight.cleanWeight) x \(set.reps)")
-                            .font(.caption.weight(.medium).monospacedDigit())
-                    } else {
-                        Text("BW x \(set.reps)")
-                            .font(.caption.weight(.medium).monospacedDigit())
-                    }
-
-                    if displayedRecordSetIDs.contains(set.id) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.yellow)
-                    }
-
-                    Spacer()
-                }
+                HistorySetChip(
+                    set: set,
+                    isRecord: displayedRecordSetIDs.contains(set.id)
+                )
             }
         }
     }
@@ -475,8 +450,8 @@ struct HistoryExerciseCard: View {
     }
 
     var body: some View {
-        GlassCard(padding: 12, cornerRadius: 15) {
-            VStack(alignment: .leading, spacing: 5) {
+        GlassCard(padding: 11, cornerRadius: 15) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     HStack(spacing: 6) {
                         Text(loggedExercise.exercise?.name ?? "Unknown")
@@ -488,41 +463,12 @@ struct HistoryExerciseCard: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ForEach(loggedExercise.orderedSets) { set in
-                    HStack(spacing: 6) {
-                        Text("#\(set.setSlotIndex + 1)")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                            .frame(width: 18, alignment: .leading)
-
-                        if let round = set.supersetRoundIndex {
-                            Text("r\(round)")
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 18, alignment: .leading)
-                        }
-
-                        if set.weight > 0 {
-                            Text("\(set.weight.cleanWeight) x \(set.reps)")
-                                .font(.caption.weight(.medium).monospacedDigit())
-                        } else {
-                            Text("BW x \(set.reps)")
-                                .font(.caption.weight(.medium).monospacedDigit())
-                        }
-
-                        if set.setType != .work {
-                            Text(set.setType.shortLabel)
-                                .font(.system(size: 9).weight(.bold))
-                                .foregroundStyle(set.setType == .topSet ? .orange : .blue)
-                        }
-
-                        if isRecord(set) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.yellow)
-                        }
-
-                        Spacer()
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: 6)], spacing: 6) {
+                    ForEach(loggedExercise.orderedSets) { set in
+                        HistorySetChip(
+                            set: set,
+                            isRecord: isRecord(set)
+                        )
                     }
                 }
             }
@@ -533,6 +479,53 @@ struct HistoryExerciseCard: View {
                     .stroke(.orange.opacity(0.18), lineWidth: 0.8)
             }
         }
+    }
+}
+
+private struct HistorySetChip: View {
+    let set: LoggedSet
+    let isRecord: Bool
+
+    private var valueText: String {
+        if set.weight > 0 {
+            return "\(set.weight.cleanWeight)×\(set.reps)"
+        }
+        return "BW×\(set.reps)"
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text("#\(set.setSlotIndex + 1)")
+                .font(.system(size: 9, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.tertiary)
+
+            if let round = set.supersetRoundIndex {
+                Text("r\(round)")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(valueText)
+                .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                .lineLimit(1)
+
+            if set.setType != .work {
+                Text(set.setType.shortLabel)
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundStyle(set.setType == .topSet ? .orange : .blue)
+            }
+
+            if isRecord {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.yellow)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 
