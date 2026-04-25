@@ -95,6 +95,16 @@ struct ProgressionEngine {
             )
         }
 
+        if exercise.setPatternMode == .topSetBackoff {
+            return suggestTopSetBackoff(
+                exercise: exercise,
+                doneToday: doneToday,
+                derived: derived,
+                increment: increment,
+                fatigueConfirmed: fatigueConfirmed
+            )
+        }
+
         return suggestGeneric(
             exercise: exercise,
             doneToday: doneToday,
@@ -170,6 +180,87 @@ struct ProgressionEngine {
             Candidate(load: max(0, derived.targetLoad - 5), reps: exercise.repTargetMin, mode: .fallbackHypertrophy, reasonCodes: ["intermediate_fallback"]),
             confidence: 0.86
         )
+    }
+
+    private static func suggestTopSetBackoff(
+        exercise: Exercise,
+        doneToday: [LoggedSet],
+        derived: DerivedExerciseState,
+        increment: Double,
+        fatigueConfirmed: Bool
+    ) -> SetSuggestion {
+        if doneToday.isEmpty {
+            let topSet = Candidate(
+                load: derived.targetLoad,
+                reps: exercise.repTargetMin,
+                mode: .recordAttempt,
+                reasonCodes: ["top_set_anchor"]
+            )
+            return render(topSet, confidence: fatigueConfirmed ? 0.72 : 0.92, setTypeOverride: .topSet)
+        }
+
+        guard let last = doneToday.last else {
+            return render(
+                Candidate(load: derived.targetLoad, reps: exercise.repTargetMin, mode: .recordAttempt, reasonCodes: ["top_set_fallback"]),
+                confidence: 0.7,
+                setTypeOverride: .topSet
+            )
+        }
+
+        let isFirstFollowup = doneToday.count == 1
+        let dropSteps = last.reps <= max(1, exercise.repTargetMin - 2) ? 2.0 : 1.0
+        let baseBackoffLoad = max(0, last.weight - increment * dropSteps)
+        let baseBackoffReps = clamp(
+            max(last.reps + 1, Int((Double(exercise.repTargetMin + exercise.repTargetMax) / 2.0).rounded(.up))),
+            min: exercise.repTargetMin,
+            max: exercise.repTargetMax
+        )
+
+        if isFirstFollowup {
+            let firstBackoff = Candidate(
+                load: baseBackoffLoad,
+                reps: baseBackoffReps,
+                mode: .fallbackHypertrophy,
+                reasonCodes: ["top_set_to_backoff_transition"]
+            )
+            return render(firstBackoff, confidence: 0.9, setTypeOverride: .backoff)
+        }
+
+        let baseDrop = exercise.fatigueClass.baseRepDrop
+        let predictedReps = clamp(
+            Int((Double(last.reps) - max(1.0, baseDrop - 0.5)).rounded()),
+            min: exercise.repTargetMin,
+            max: exercise.repTargetMax
+        )
+
+        let keepBackoff = Candidate(
+            load: last.weight,
+            reps: predictedReps,
+            mode: .fallbackHypertrophy,
+            reasonCodes: ["backoff_same_load_prediction"]
+        )
+
+        if last.reps >= exercise.repTargetMax + 2 {
+            let heavierBackoff = Candidate(
+                load: stepLoad(last.weight, by: increment, for: exercise.setPatternMode, towardHarder: true),
+                reps: clamp(predictedReps - 1, min: exercise.repTargetMin, max: exercise.repTargetMax),
+                mode: .transitionMode,
+                reasonCodes: ["backoff_overshot_raise_load"]
+            )
+            return render(heavierBackoff, confidence: 0.84, setTypeOverride: .backoff)
+        }
+
+        if last.reps <= max(1, exercise.repTargetMin - 2) {
+            let lighterBackoff = Candidate(
+                load: stepLoad(last.weight, by: increment, for: exercise.setPatternMode, towardHarder: false),
+                reps: clamp(last.reps + 2, min: exercise.repTargetMin, max: exercise.repTargetMax),
+                mode: .fallbackHypertrophy,
+                reasonCodes: ["backoff_under_target_drop_load"]
+            )
+            return render(lighterBackoff, confidence: 0.88, setTypeOverride: .backoff)
+        }
+
+        return render(keepBackoff, confidence: 0.82, setTypeOverride: .backoff)
     }
 
     private static func suggestGeneric(
@@ -422,12 +513,16 @@ struct ProgressionEngine {
         }
     }
 
-    private static func render(_ candidate: Candidate, confidence: Double) -> SetSuggestion {
+    private static func render(
+        _ candidate: Candidate,
+        confidence: Double,
+        setTypeOverride: SetType? = nil
+    ) -> SetSuggestion {
         let modeLabel = candidate.mode.rawValue.replacingOccurrences(of: "_", with: " ")
         return SetSuggestion(
             weight: candidate.load,
             reps: candidate.reps,
-            setType: candidate.mode == .fallbackHypertrophy ? .backoff : .work,
+            setType: setTypeOverride ?? (candidate.mode == .fallbackHypertrophy ? .backoff : .work),
             explanation: "\(modeLabel): \(candidate.load.cleanWeight)x\(candidate.reps).",
             confidence: min(1, max(0, confidence)),
             reasonCodes: candidate.reasonCodes,
