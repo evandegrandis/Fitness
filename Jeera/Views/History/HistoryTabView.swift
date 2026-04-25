@@ -244,10 +244,10 @@ struct HistoryRow: View {
         let names = session.orderedExercises
             .filter { !$0.completedWorkSets.isEmpty }
             .compactMap { $0.exercise?.name }
-        if names.count <= 3 {
+        if names.count <= 2 {
             return names.joined(separator: ", ")
         }
-        return names.prefix(3).joined(separator: ", ") + " +\(names.count - 3)"
+        return names.prefix(2).joined(separator: ", ") + " +\(names.count - 2)"
     }
 
     /// Count how many record sets this session contains.
@@ -288,7 +288,7 @@ struct HistoryRow: View {
                     }
                 }
 
-                Text("\(session.totalWorkSets) sets · \(session.durationFormatted) · \(session.orderedExercises.filter { !$0.completedWorkSets.isEmpty }.count) exos")
+                Text(metadataLine)
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
 
@@ -303,5 +303,14 @@ struct HistoryRow: View {
                 .stroke(isHighlighted ? .red.opacity(0.45) : .clear, lineWidth: 1.2)
         }
         .animation(.spring(response: 0.32, dampingFraction: 0.82), value: isHighlighted)
+    }
+
+    private var metadataLine: String {
+        let performed = session.orderedExercises.filter { !$0.completedWorkSets.isEmpty }.count
+        let supersetCount = session.supersetGroups.filter { !$0.orderedMembers.isEmpty }.count
+        if supersetCount > 0 {
+            return "\(session.totalWorkSets) sets · \(session.durationFormatted) · \(performed) exos · \(supersetCount) SS"
+        }
+        return "\(session.totalWorkSets) sets · \(session.durationFormatted) · \(performed) exos"
     }
 }

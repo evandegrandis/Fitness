@@ -68,61 +68,87 @@ struct RestTimerView: View {
     var suggestedSeconds: Int = 120
     var onReady: () -> Void
 
+    private var contextLabel: String {
+        suggestedSeconds >= 150 ? "gros exo" : "exo court"
+    }
+
+    private var statusLabel: String {
+        timer.isComplete ? "Prêt" : "Repos"
+    }
+
     var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .stroke(Color.accentColor.opacity(0.15), lineWidth: 3)
+        VStack(spacing: 10) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(Color.accentColor.opacity(0.15), lineWidth: 3)
 
-                Circle()
-                    .trim(from: 0, to: timer.progress)
-                    .stroke(
-                        timer.isComplete ? Color.green : Color.accentColor,
-                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
+                    Circle()
+                        .trim(from: 0, to: timer.progress)
+                        .stroke(
+                            timer.isComplete ? Color.green : Color.accentColor,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
 
-                Text(timer.remainingFormatted)
-                    .font(.caption2.weight(.bold).monospacedDigit())
-                    .foregroundStyle(timer.isComplete ? .green : .primary)
-            }
-            .frame(width: 42, height: 42)
+                    Text(timer.remainingFormatted)
+                        .font(.caption2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(timer.isComplete ? .green : .primary)
+                }
+                .frame(width: 42, height: 42)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(timer.isComplete ? "Rest complete" : "Resting")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(timer.isComplete ? .green : Color.accentColor)
-                Text(suggestedSeconds >= 150 ? "Big exercise · \(suggestedSeconds)s" : "Small exercise · \(suggestedSeconds)s")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button {
-                timer.reset()
-                onReady()
-                HapticManager.impact(.medium)
-            } label: {
-                Text(timer.isComplete ? "GO" : "Skip")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(timer.isComplete ? .white : .primary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(
-                        timer.isComplete ? Color.green : Color.white.opacity(0.10),
-                        in: Capsule()
-                    )
-                    .overlay {
-                        if !timer.isComplete {
-                            Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5)
-                        }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(statusLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(timer.isComplete ? .green : Color.accentColor)
+                        Text("· \(contextLabel)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
                     }
+                    Text("\(suggestedSeconds)s")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button {
+                    timer.reset()
+                    onReady()
+                    HapticManager.impact(.medium)
+                } label: {
+                    Text(timer.isComplete ? "GO" : "Skip")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(timer.isComplete ? .white : .primary)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(
+                            timer.isComplete ? Color.green : Color.white.opacity(0.10),
+                            in: Capsule()
+                        )
+                        .overlay {
+                            if !timer.isComplete {
+                                Capsule().stroke(.white.opacity(0.15), lineWidth: 0.5)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.06))
+                    Capsule()
+                        .fill(timer.isComplete ? Color.green : Color.accentColor)
+                        .frame(width: max(18, geo.size.width * timer.progress))
+                }
+            }
+            .frame(height: 6)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 13)
         .background {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(red: 0.12, green: 0.13, blue: 0.19).opacity(0.98))

@@ -22,6 +22,15 @@ struct ExerciseCard: View {
 
     private var exercise: Exercise? { loggedExercise.exercise }
     private var isArmed: Bool { viewModel.armedSupersetExerciseID == loggedExercise.id }
+    private var supersetGroup: SupersetGroup? { loggedExercise.supersetGroup }
+    private var supersetAccent: Color {
+        loggedExercise.isLinkedToNext || supersetGroup != nil ? .orange : .clear
+    }
+    private var supersetRoundLabel: String? {
+        guard let group = supersetGroup else { return nil }
+        let round = loggedExercise.completedWorkSets.count + 1
+        return "SS · r\(round) · \(group.orderedMembers.count)"
+    }
 
     private func refreshSuggestion() {
         cachedSuggestion = viewModel.suggestion(for: loggedExercise)
@@ -46,6 +55,21 @@ struct ExerciseCard: View {
                         .padding(.horizontal, 14)
                         .padding(.top, 4)
                         .padding(.bottom, 12)
+                }
+            }
+            .overlay(alignment: .leading) {
+                if supersetGroup != nil {
+                    RoundedRectangle(cornerRadius: 999, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [supersetAccent.opacity(0.9), supersetAccent.opacity(0.3)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 4)
+                        .padding(.vertical, 14)
+                        .padding(.leading, 8)
                 }
             }
             .overlay {
@@ -222,6 +246,13 @@ struct ExerciseCard: View {
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+
+                    if let supersetRoundLabel {
+                        Text(supersetRoundLabel)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                    }
                 }
             }
 
@@ -239,7 +270,8 @@ struct ExerciseCard: View {
             ForEach(loggedExercise.orderedSets) { set in
                 CompactSetRow(
                     set: set,
-                    isRecord: viewModel.justHitRecord[set.id] != nil
+                    isRecord: viewModel.justHitRecord[set.id] != nil,
+                    isSuperset: supersetGroup != nil
                 ) {
                     editingSet = set
                     editSetWeight = set.weight > 0 ? set.weight.cleanWeight : "0"
@@ -411,6 +443,7 @@ struct ExerciseCard: View {
 struct CompactSetRow: View {
     let set: LoggedSet
     var isRecord: Bool = false
+    var isSuperset: Bool = false
     var onTap: () -> Void = {}
     @State private var highlight = false
     @State private var starScale: CGFloat = 0.7
@@ -460,6 +493,9 @@ struct CompactSetRow: View {
                 if isRecord {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(.yellow.opacity(highlight ? 0.45 : 0.18), lineWidth: 1)
+                } else if isSuperset {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(.orange.opacity(0.12), lineWidth: 0.8)
                 }
             }
         }

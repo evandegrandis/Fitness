@@ -361,7 +361,7 @@ struct HistorySupersetBlock: View {
                     Spacer()
                     Text("\(roundCount) rounds")
                         .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.orange)
                 }
 
                 ForEach(members) { loggedExercise in
@@ -379,6 +379,10 @@ struct HistorySupersetBlock: View {
                     .padding(.top, loggedExercise.id == members.first?.id ? 0 : 1)
                 }
             }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.orange.opacity(0.22), lineWidth: 1)
         }
     }
 }
@@ -521,6 +525,12 @@ struct HistoryExerciseCard: View {
                         Spacer()
                     }
                 }
+            }
+        }
+        .overlay {
+            if loggedExercise.supersetGroup != nil {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(.orange.opacity(0.18), lineWidth: 0.8)
             }
         }
     }
