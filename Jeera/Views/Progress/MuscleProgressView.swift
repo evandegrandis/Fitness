@@ -46,16 +46,7 @@ struct MuscleProgressView: View {
                         }
 
                         if selectedParent == item.parent {
-                            LeafBreakdownCard(
-                                parent: item.parent,
-                                sessions: sessions
-                            )
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
-                                removal: .opacity
-                            ))
-
-                            ParentHistoryChart(
+                            ParentDetailCard(
                                 parent: item.parent,
                                 sessions: sessions,
                                 goals: goals
@@ -167,7 +158,7 @@ struct ParentMuscleCard: View {
 
 // MARK: - Parent History Chart (calendar-week bars for history browsing)
 
-struct ParentHistoryChart: View {
+struct ParentDetailCard: View {
     let parent: MuscleParent
     let sessions: [WorkoutSession]
     let goals: [MuscleGoal]
@@ -177,7 +168,6 @@ struct ParentHistoryChart: View {
     }
 
     private var weeklyData: [(weekStart: Date, sets: Double)] {
-        // Last 8 weeks of calendar data.
         let calendar = Calendar.current
         let today = Date()
         var data: [(Date, Double)] = []
@@ -194,72 +184,6 @@ struct ParentHistoryChart: View {
         return data
     }
 
-    var body: some View {
-        GlassCard(padding: 14, cornerRadius: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Historique (8 semaines)")
-                    .font(.caption.weight(.semibold))
-
-                if weeklyData.allSatisfy({ $0.sets == 0 }) {
-                    Text("Pas encore d'historique")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(height: 100)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Chart {
-                        ForEach(weeklyData, id: \.weekStart) { item in
-                            BarMark(
-                                x: .value("Week", item.weekStart, unit: .weekOfYear),
-                                y: .value("Sets", item.sets)
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.45)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .cornerRadius(6)
-                        }
-
-                        if goalValue > 0 {
-                            RuleMark(y: .value("Goal", goalValue))
-                                .foregroundStyle(.green.opacity(0.5))
-                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                        }
-                    }
-                    .frame(height: 130)
-                    .chartXAxis {
-                        AxisMarks(values: .stride(by: .weekOfYear)) { value in
-                            AxisValueLabel {
-                                if let date = value.as(Date.self) {
-                                    Text(date.weekLabel)
-                                        .font(.system(size: 9))
-                                }
-                            }
-                        }
-                    }
-                    .chartYAxis {
-                        AxisMarks { _ in
-                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
-                                .foregroundStyle(.white.opacity(0.08))
-                            AxisValueLabel()
-                                .font(.system(size: 9))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Leaf Breakdown Card
-
-struct LeafBreakdownCard: View {
-    let parent: MuscleParent
-    let sessions: [WorkoutSession]
-
     private var breakdown: [(leaf: MuscleGroup, sets: Double)] {
         EffectiveSetsEngine.rolling7DayLeafBreakdown(sessions: sessions, parent: parent)
     }
@@ -271,32 +195,91 @@ struct LeafBreakdownCard: View {
     var body: some View {
         GlassCard(padding: 14, cornerRadius: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Détail par sous-groupe")
-                    .font(.caption.weight(.semibold))
+                if !breakdown.isEmpty {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("Sous-groupes")
+                            .font(.caption.weight(.semibold))
 
-                ForEach(breakdown, id: \.leaf) { item in
-                    HStack(spacing: 8) {
-                        Text(item.leaf.displayName)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 110, alignment: .leading)
-                            .lineLimit(1)
+                        ForEach(breakdown, id: \.leaf) { item in
+                            HStack(spacing: 8) {
+                                Text(item.leaf.displayName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 104, alignment: .leading)
+                                    .lineLimit(1)
 
-                        GeometryReader { geo in
-                            let barWidth = maxSets > 0
-                                ? CGFloat(item.sets / maxSets) * geo.size.width
-                                : 0
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.accentColor.opacity(0.6))
-                                .frame(width: max(barWidth, 0), height: 6)
-                                .frame(maxHeight: .infinity, alignment: .center)
+                                GeometryReader { geo in
+                                    let barWidth = maxSets > 0
+                                        ? CGFloat(item.sets / maxSets) * geo.size.width
+                                        : 0
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Color.accentColor.opacity(0.6))
+                                        .frame(width: max(barWidth, 0), height: 5)
+                                        .frame(maxHeight: .infinity, alignment: .center)
+                                }
+                                .frame(height: 10)
+
+                                Text(item.sets > 0 ? String(format: "%.1f", item.sets) : "—")
+                                    .font(.caption2.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(item.sets > 0 ? .primary : .tertiary)
+                                    .frame(width: 28, alignment: .trailing)
+                            }
                         }
-                        .frame(height: 12)
+                    }
+                }
 
-                        Text(item.sets > 0 ? String(format: "%.1f", item.sets) : "—")
-                            .font(.caption2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(item.sets > 0 ? .primary : .tertiary)
-                            .frame(width: 30, alignment: .trailing)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Historique")
+                        .font(.caption.weight(.semibold))
+
+                    if weeklyData.allSatisfy({ $0.sets == 0 }) {
+                        Text("Pas encore d'historique")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(height: 90)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Chart {
+                            ForEach(weeklyData, id: \.weekStart) { item in
+                                BarMark(
+                                    x: .value("Week", item.weekStart, unit: .weekOfYear),
+                                    y: .value("Sets", item.sets)
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.45)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .cornerRadius(5)
+                            }
+
+                            if goalValue > 0 {
+                                RuleMark(y: .value("Goal", goalValue))
+                                    .foregroundStyle(.green.opacity(0.5))
+                                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            }
+                        }
+                        .frame(height: 110)
+                        .chartXAxis {
+                            AxisMarks(values: .stride(by: .weekOfYear)) { value in
+                                AxisValueLabel {
+                                    if let date = value.as(Date.self) {
+                                        Text(date.weekLabel)
+                                            .font(.system(size: 9))
+                                    }
+                                }
+                            }
+                        }
+                        .chartYAxis {
+                            AxisMarks { _ in
+                                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                                    .foregroundStyle(.white.opacity(0.08))
+                                AxisValueLabel()
+                                    .font(.system(size: 9))
+                            }
+                        }
                     }
                 }
             }

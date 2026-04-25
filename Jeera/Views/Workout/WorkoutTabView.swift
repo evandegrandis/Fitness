@@ -86,21 +86,19 @@ private struct PostWorkoutSummarySheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         compactSummaryRow
 
-                        GlassCard(padding: 14, cornerRadius: 20) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Récupération")
-                                    .font(.subheadline.weight(.semibold))
+                        GlassCard(padding: 12, cornerRadius: 18) {
+                            VStack(alignment: .leading, spacing: 8) {
                                 dayCard(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
                                 dayCard(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
                             }
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 120)
+                    .padding(.top, 10)
+                    .padding(.bottom, 112)
                 }
                 .background(BackgroundGradient().ignoresSafeArea())
                 .navigationTitle("Bilan séance")
@@ -123,11 +121,18 @@ private struct PostWorkoutSummarySheet: View {
     }
 
     private var compactSummaryRow: some View {
-        HStack(spacing: 8) {
-            statTile("Durée", value: snapshot.duration)
-            statTile("Sets", value: "\(snapshot.setCount)")
-            statTile("Exos", value: "\(snapshot.exerciseCount)")
-            statTile("PR", value: "\(snapshot.prCount)")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                statTile("Durée", value: snapshot.duration)
+                statTile("Sets", value: "\(snapshot.setCount)")
+                statTile("Exos", value: "\(snapshot.exerciseCount)")
+                statTile("PR", value: "\(snapshot.prCount)")
+            }
+
+            HStack {
+                trendPill
+                Spacer()
+            }
         }
     }
 
@@ -139,13 +144,13 @@ private struct PostWorkoutSummarySheet: View {
             } label: {
                 HStack {
                     Text("Save & close")
-                        .font(.headline.weight(.semibold))
+                        .font(.subheadline.weight(.semibold))
                     Spacer()
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.headline)
+                        .font(.subheadline)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, 13)
                 .padding(.horizontal, 16)
             }
             .buttonStyle(.borderedProminent)
@@ -170,13 +175,42 @@ private struct PostWorkoutSummarySheet: View {
         .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    private var trendPill: some View {
+        let label = snapshot.progressionSignal
+        let lower = label.lowercased()
+        let color: Color
+        let symbol: String
+
+        if lower.contains("haus") {
+            color = .orange
+            symbol = "waveform.path.ecg"
+        } else if lower.contains("bais") {
+            color = .red
+            symbol = "arrow.down.right"
+        } else {
+            color = .blue
+            symbol = "equal"
+        }
+
+        return HStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.caption2.weight(.bold))
+            Text(label)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(color.opacity(0.12), in: Capsule())
+    }
+
     private func dayCard(
         title: String,
         creatine: Binding<Bool>,
         protein: Binding<Bool>,
         sleep: Binding<Double>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(title)
                     .font(.caption.weight(.semibold))
@@ -198,7 +232,7 @@ private struct PostWorkoutSummarySheet: View {
                 Slider(value: sleep, in: 3...11, step: 0.5)
             }
         }
-        .padding(10)
+        .padding(9)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
