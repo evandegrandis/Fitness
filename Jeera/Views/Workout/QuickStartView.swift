@@ -53,7 +53,8 @@ struct QuickStartView: View {
                             title: recommended.name,
                             subtitle: startSubtitle(for: recommended),
                             icon: "star.circle.fill",
-                            color: .orange
+                            color: .orange,
+                            mode: viewModel.selectedStartMode
                         ) {
                             viewModel.startFromTemplate(recommended, mode: viewModel.selectedStartMode)
                         }
@@ -532,18 +533,62 @@ struct QuickStartButton: View {
     let subtitle: String
     let icon: String
     let color: Color
+    var mode: WorkoutViewModel.WorkoutMode? = nil
     let action: () -> Void
+    @State private var animateAccent = false
+
+    private var activeMode: WorkoutViewModel.WorkoutMode? {
+        mode
+    }
+
+    private var displayIcon: String {
+        guard let activeMode else { return icon }
+        return activeMode.symbolName
+    }
+
+    private var accentColor: Color {
+        activeMode?.accentColor ?? color
+    }
+
+    private var panelGradient: LinearGradient {
+        guard let activeMode else {
+            return LinearGradient(
+                colors: [Color.white.opacity(0.04), Color.white.opacity(0.02)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
+        return LinearGradient(
+            colors: [
+                activeMode.secondaryColor.opacity(activeMode == .normal ? 0.18 : 0.26),
+                activeMode.accentColor.opacity(activeMode == .normal ? 0.08 : 0.14)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(color.opacity(0.18))
+                        .fill(accentColor.opacity(0.18))
                         .frame(width: 38, height: 38)
-                    Image(systemName: icon)
+
+                    Circle()
+                        .fill(accentColor.opacity(0.18))
+                        .frame(width: 26, height: 26)
+                        .blur(radius: animateAccent ? 8 : 3)
+                        .opacity(activeMode == .normal ? 0 : (animateAccent ? 0.95 : 0.42))
+
+                    Image(systemName: displayIcon)
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(color)
+                        .foregroundStyle(accentColor)
+                        .scaleEffect(iconScale)
+                        .rotationEffect(iconRotation)
+                        .offset(y: iconYOffset)
                 }
 
                 VStack(alignment: .leading, spacing: 1) {
@@ -564,12 +609,71 @@ struct QuickStartButton: View {
                     .foregroundStyle(.tertiary)
             }
             .glassCard(cornerRadius: 20, padding: 14)
+            .background(panelGradient, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(color.opacity(0.15), lineWidth: 1)
+                    .stroke(accentColor.opacity(activeMode == nil ? 0.15 : 0.28), lineWidth: 1)
             }
         }
         .buttonStyle(LiftButtonStyle())
+        .onAppear {
+            animateAccent = true
+        }
+        .onChange(of: mode?.rawValue) { _, _ in
+            animateAccent = false
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
+                animateAccent = true
+            }
+        }
+        .animation(animationStyle, value: animateAccent)
+    }
+
+    private var iconScale: CGFloat {
+        guard let activeMode else { return 1 }
+        switch activeMode {
+        case .normal:
+            return 1
+        case .beast:
+            return animateAccent ? 1.08 : 0.94
+        case .monk:
+            return animateAccent ? 1.04 : 0.97
+        }
+    }
+
+    private var iconRotation: Angle {
+        guard let activeMode else { return .zero }
+        switch activeMode {
+        case .normal:
+            return .zero
+        case .beast:
+            return .degrees(animateAccent ? -6 : 5)
+        case .monk:
+            return .degrees(animateAccent ? -3 : 3)
+        }
+    }
+
+    private var iconYOffset: CGFloat {
+        guard let activeMode else { return 0 }
+        switch activeMode {
+        case .normal:
+            return 0
+        case .beast:
+            return animateAccent ? -1 : 1
+        case .monk:
+            return animateAccent ? 1 : -1
+        }
+    }
+
+    private var animationStyle: Animation {
+        guard let activeMode else { return .default }
+        switch activeMode {
+        case .normal:
+            return .spring(response: 0.28, dampingFraction: 0.82)
+        case .beast:
+            return .easeInOut(duration: 0.48).repeatForever(autoreverses: true)
+        case .monk:
+            return .easeInOut(duration: 1.1).repeatForever(autoreverses: true)
+        }
     }
 }
 

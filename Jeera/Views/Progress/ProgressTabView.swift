@@ -121,7 +121,6 @@ private struct GlobalProgressView: View {
         }
     }
 
-    @State private var selectedSecondaryMetric: SecondaryMetric = .protein
     @State private var selectedWeek: Date?
 
     private struct WeeklyPoint: Identifiable {
@@ -192,8 +191,15 @@ private struct GlobalProgressView: View {
                                 HStack(spacing: 10) {
                                     globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
                                     globalMetric("Sets", value: String(format: "%.0f", selected.performanceDisplay), tint: .orange)
-                                    globalMetric(selectedSecondaryMetric.shortTitle, value: secondaryValueText(for: selected), tint: selectedSecondaryMetric.color)
-                                    globalMetric("Lien", value: correlationLabel, tint: correlationColor)
+                                    globalMetric("Créa", value: percentText(selected.creatinePct), tint: SecondaryMetric.creatine.color)
+                                    globalMetric("Prot", value: percentText(selected.proteinPct), tint: SecondaryMetric.protein.color)
+                                }
+
+                                HStack(spacing: 10) {
+                                    globalMetric("Som.", value: sleepValueText(selected.sleepScore), tint: SecondaryMetric.sleep.color)
+                                    globalMetric("C↔S", value: correlationLabel(for: .creatine), tint: correlationColor(for: .creatine))
+                                    globalMetric("P↔S", value: correlationLabel(for: .protein), tint: correlationColor(for: .protein))
+                                    globalMetric("N↔S", value: correlationLabel(for: .sleep), tint: correlationColor(for: .sleep))
                                 }
                             }
 
@@ -225,12 +231,10 @@ private struct GlobalProgressView: View {
                                     chartSelectionOverlay(proxy: proxy)
                                 }
 
-                                chartSectionLabel(selectedSecondaryMetric.title, tint: selectedSecondaryMetric.color)
-                                recoveryTimeline
+                                recoveryOverview
                             }
 
-                            insightsRow
-                            flowLegend
+                            compactInsights
                         }
                     }
                     .padding(.horizontal)
@@ -255,17 +259,6 @@ private struct GlobalProgressView: View {
                 .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var flowLegend: some View {
-        ViewThatFits(in: .vertical) {
-            HStack(spacing: 8) {
-                perfPill
-                ForEach(SecondaryMetric.allCases) { metric in
-                    metricPill(metric)
-                }
-            }
-        }
     }
 
     private func chartSectionLabel(_ title: String, tint: Color) -> some View {
@@ -299,102 +292,58 @@ private struct GlobalProgressView: View {
         }
     }
 
-    private var recoveryTimeline: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+    private var recoveryOverview: some View {
+        VStack(spacing: 10) {
+            recoveryRow(for: .creatine)
+            recoveryRow(for: .protein)
+            recoveryRow(for: .sleep)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func recoveryRow(for metric: SecondaryMetric) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(metric.color)
+                        .frame(width: 8, height: 8)
+                    Text(metric.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let selected = selectedPoint {
+                    Text(metricValueText(metricValue(metric, in: selected), metric: metric))
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(metric.color)
+                }
+            }
+
             HStack(spacing: 8) {
                 ForEach(weekly) { item in
                     Button {
                         selectedWeek = item.weekStart
                     } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(item.weekStart.shortDate)
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                            Text(secondaryValueText(for: item))
-                                .font(.caption.weight(.bold).monospacedDigit())
-                                .foregroundStyle(selectedSecondaryMetric.color)
-                            Capsule()
-                                .fill(selectedSecondaryMetric.color.opacity(0.20))
-                                .overlay(alignment: .leading) {
-                                    Capsule()
-                                        .fill(selectedSecondaryMetric.color)
-                                        .frame(width: max(10, CGFloat(secondaryValue(for: item) / 100) * 52))
-                                }
-                                .frame(width: 52, height: 6)
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(item.weekStart == selectedPoint?.weekStart ? metric.color.opacity(0.95) : metric.color.opacity(0.24))
+                                .frame(height: max(8, CGFloat(metricValue(metric, in: item) / 100) * 34))
+                                .frame(maxHeight: 36, alignment: .bottom)
+
+                            Text(item.weekStart.weekLabel)
+                                .font(.system(size: 8, weight: .medium, design: .rounded))
+                                .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .primary : .tertiary)
+                                .lineLimit(1)
                         }
-                        .frame(width: 74, alignment: .leading)
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(item.weekStart == selectedPoint?.weekStart ? selectedSecondaryMetric.color.opacity(0.12) : Color.white.opacity(0.04))
-                        )
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(item.weekStart == selectedPoint?.weekStart ? selectedSecondaryMetric.color.opacity(0.45) : .white.opacity(0.06), lineWidth: 1)
-                        }
+                        .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            .frame(height: 52, alignment: .bottom)
         }
-    }
-
-    private var insightsRow: some View {
-        HStack(spacing: 8) {
-            insightTile("Lien volume/\(selectedSecondaryMetric.shortTitle)", value: correlationLabel, tint: correlationColor)
-            insightTile("Moyenne sets", value: "\(Int(averageSets.rounded()))", tint: .orange)
-            insightTile("Meilleure sem.", value: bestWeekLabel, tint: .white)
-        }
-    }
-
-    private var perfPill: some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(.orange)
-                .frame(width: 8, height: 8)
-            Text("Sets")
-                .font(.caption.weight(.semibold))
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 999, style: .continuous)
-                .fill(Color.orange.opacity(0.20))
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 999, style: .continuous)
-                .stroke(Color.orange.opacity(0.55), lineWidth: 1)
-        }
-    }
-
-    private func metricPill(_ metric: SecondaryMetric) -> some View {
-        let isSelected = selectedSecondaryMetric == metric
-        return Button {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                selectedSecondaryMetric = metric
-            }
-        } label: {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(metric.color)
-                    .frame(width: 8, height: 8)
-                Text(metric.shortTitle)
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(isSelected ? .white : .secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 999, style: .continuous)
-                    .fill(isSelected ? metric.color.opacity(0.20) : Color.white.opacity(0.05))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 999, style: .continuous)
-                    .stroke(isSelected ? metric.color.opacity(0.55) : .white.opacity(0.08), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private func insightTile(_ title: String, value: String, tint: Color) -> some View {
@@ -414,20 +363,20 @@ private struct GlobalProgressView: View {
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func secondaryValue(for point: WeeklyPoint) -> Double {
-        switch selectedSecondaryMetric {
+    private func metricValue(_ metric: SecondaryMetric, in point: WeeklyPoint) -> Double {
+        switch metric {
         case .creatine: return point.creatinePct
         case .protein: return point.proteinPct
         case .sleep: return point.sleepScore
         }
     }
 
-    private func secondaryValueText(for point: WeeklyPoint) -> String {
-        switch selectedSecondaryMetric {
+    private func metricValueText(_ value: Double, metric: SecondaryMetric) -> String {
+        switch metric {
         case .creatine, .protein:
-            return "\(String(format: "%.0f", secondaryValue(for: point)))%"
+            return percentText(value)
         case .sleep:
-            return String(format: "%.0f", secondaryValue(for: point))
+            return sleepValueText(value)
         }
     }
 
@@ -441,9 +390,9 @@ private struct GlobalProgressView: View {
         return best.weekStart.shortDate
     }
 
-    private var correlationScore: Double {
+    private func correlationScore(for metric: SecondaryMetric) -> Double {
         let xs = weekly.map(\.performanceDisplay)
-        let ys = weekly.map(secondaryValue(for:))
+        let ys = weekly.map { metricValue(metric, in: $0) }
         guard xs.count >= 3 else { return 0 }
 
         let xMean = xs.reduce(0, +) / Double(xs.count)
@@ -457,8 +406,8 @@ private struct GlobalProgressView: View {
         return numerator / sqrt(xVariance * yVariance)
     }
 
-    private var correlationLabel: String {
-        let score = correlationScore
+    private func correlationLabel(for metric: SecondaryMetric) -> String {
+        let score = correlationScore(for: metric)
         if score >= 0.55 { return "lié +" }
         if score >= 0.25 { return "léger +" }
         if score <= -0.55 { return "inverse" }
@@ -466,8 +415,8 @@ private struct GlobalProgressView: View {
         return "faible"
     }
 
-    private var correlationColor: Color {
-        let score = correlationScore
+    private func correlationColor(for metric: SecondaryMetric) -> Color {
+        let score = correlationScore(for: metric)
         if score >= 0.25 { return .green }
         if score <= -0.25 { return .orange }
         return .secondary
@@ -480,5 +429,26 @@ private struct GlobalProgressView: View {
 
     private func nearestWeekStart(to date: Date) -> Date? {
         weekly.min { abs($0.weekStart.timeIntervalSince(date)) < abs($1.weekStart.timeIntervalSince(date)) }?.weekStart
+    }
+
+    private var compactInsights: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                insightTile("Créa ↔ sets", value: correlationLabel(for: .creatine), tint: correlationColor(for: .creatine))
+                insightTile("Prot ↔ sets", value: correlationLabel(for: .protein), tint: correlationColor(for: .protein))
+            }
+            HStack(spacing: 8) {
+                insightTile("Som. ↔ sets", value: correlationLabel(for: .sleep), tint: correlationColor(for: .sleep))
+                insightTile("Meilleure sem.", value: bestWeekLabel, tint: .white)
+            }
+        }
+    }
+
+    private func percentText(_ value: Double) -> String {
+        "\(String(format: "%.0f", value))%"
+    }
+
+    private func sleepValueText(_ value: Double) -> String {
+        "\(String(format: "%.0f", value))"
     }
 }

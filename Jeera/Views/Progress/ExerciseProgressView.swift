@@ -142,8 +142,21 @@ struct ExerciseProgressRow: View {
         return allCandidates.max()
     }
 
+    private var hasWeightedHistory: Bool {
+        sessions.contains { session in
+            session.loggedExercises.contains { logged in
+                logged.exercise?.id == exercise.id &&
+                logged.completedWorkSets.contains(where: { $0.weight > 0 })
+            }
+        }
+    }
+
+    private var usesPrimaryRepChart: Bool {
+        exercise.setPatternMode == .bodyweight || !hasWeightedHistory
+    }
+
     private var showsSecondaryRepChart: Bool {
-        exercise.setPatternMode != .bodyweight &&
+        !usesPrimaryRepChart &&
         (exercise.setPatternMode == .weightedBodyweight || repBenchmarkRange != nil)
     }
 
@@ -238,7 +251,7 @@ struct ExerciseProgressRow: View {
 
     private var chartHeader: some View {
         HStack(alignment: .center, spacing: 8) {
-            Text(exercise.setPatternMode == .bodyweight ? "Courbe reps" : "Meilleure charge 7+")
+            Text(usesPrimaryRepChart ? "Courbe reps" : "Meilleure charge 7+")
                 .font(.system(size: 10).weight(.medium))
                 .foregroundStyle(.secondary)
 
@@ -247,7 +260,7 @@ struct ExerciseProgressRow: View {
     }
 
     private var exerciseChart: some View {
-        let isBodyweight = exercise.setPatternMode == .bodyweight
+        let isBodyweight = usesPrimaryRepChart
 
         // Rolling "best so far in the last N sessions for this exercise".
         // With N=4 this stays mostly flat/up while still allowing rare drops
@@ -461,7 +474,7 @@ struct ExerciseProgressRow: View {
 
     private var latestDisplay: String {
         guard let latestPoint else { return "--" }
-        if exercise.setPatternMode == .bodyweight {
+        if usesPrimaryRepChart {
             return "BW x \(latestPoint.bestBWReps)"
         }
         if latestPoint.bestWeightAt7Plus > 0 {
@@ -471,7 +484,7 @@ struct ExerciseProgressRow: View {
     }
 
     private var e1rmDisplay: String {
-        guard exercise.setPatternMode != .bodyweight,
+        guard hasWeightedHistory || exercise.setPatternMode == .weightedBodyweight,
               let displayedOneRM = recentEstimatedOneRM ?? bestValidated?.bestE1RM,
               displayedOneRM > 0 else { return "--" }
         return "\(Int(displayedOneRM.rounded())) kg"

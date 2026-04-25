@@ -102,7 +102,7 @@ private struct PostWorkoutSummarySheet: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
-                    .padding(.bottom, 112)
+                    .padding(.bottom, 92)
                 }
                 .background(BackgroundGradient().ignoresSafeArea())
                 .navigationTitle("Bilan séance")
@@ -153,31 +153,27 @@ private struct PostWorkoutSummarySheet: View {
     }
 
     private var footerBar: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             Button {
                 persistRecoveryCheckins()
                 onSave()
             } label: {
-                HStack {
+                ZStack {
                     Text("Save & close")
                         .font(.subheadline.weight(.semibold))
-                    Spacer()
                     Image(systemName: "checkmark.circle.fill")
                         .font(.subheadline)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)
             }
             .buttonStyle(.borderedProminent)
-
-            Text("Skip enregistre les valeurs affichées.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.bottom, 12)
         .background(.ultraThinMaterial)
     }
 
@@ -317,8 +313,8 @@ private struct PostWorkoutSummarySheet: View {
             }
             .font(.caption.monospacedDigit())
             HStack(spacing: 12) {
-                compactToggle(title: "Créatine", isOn: creatine)
-                compactToggle(title: "Protéine", isOn: protein)
+                compactToggle(title: "Créatine", icon: "bolt.fill", isOn: creatine)
+                compactToggle(title: "Protéine", icon: "fork.knife", isOn: protein)
             }
 
             HStack {
@@ -332,15 +328,41 @@ private struct PostWorkoutSummarySheet: View {
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func compactToggle(title: String, isOn: Binding<Bool>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Toggle(title, isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
+    private func compactToggle(title: String, icon: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+            HapticManager.selection()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(isOn.wrappedValue ? .white : .secondary)
+                    .frame(width: 18, height: 18)
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isOn.wrappedValue ? .white : .secondary)
+
+                Spacer(minLength: 0)
+
+                ZStack {
+                    Capsule()
+                        .fill(isOn.wrappedValue ? Color.accentColor.opacity(0.26) : Color.white.opacity(0.08))
+                        .frame(width: 38, height: 22)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 16, height: 16)
+                        .offset(x: isOn.wrappedValue ? 8 : -8)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isOn.wrappedValue ? Color.accentColor.opacity(0.16) : Color.white.opacity(0.03))
+            )
         }
+        .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

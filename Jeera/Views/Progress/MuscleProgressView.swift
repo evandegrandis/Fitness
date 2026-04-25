@@ -162,6 +162,7 @@ struct ParentDetailCard: View {
     let parent: MuscleParent
     let sessions: [WorkoutSession]
     let goals: [MuscleGoal]
+    @State private var selectedWeekStart: Date?
 
     private var goalValue: Double {
         goals.first(where: { $0.parent == parent })?.weeklyGoalSets ?? 0
@@ -190,6 +191,31 @@ struct ParentDetailCard: View {
 
     private var maxSets: Double {
         breakdown.map(\.sets).max() ?? 1
+    }
+
+    private var selectedWeekContributions: [(name: String, sets: Double)] {
+        guard let selectedWeekStart else { return [] }
+        let calendar = Calendar.current
+        let weekEnd = calendar.date(byAdding: .day, value: 7, to: selectedWeekStart) ?? selectedWeekStart
+        var contributions: [String: Double] = [:]
+
+        for session in sessions where session.date >= selectedWeekStart && session.date < weekEnd {
+            for logged in session.loggedExercises {
+                guard let exercise = logged.exercise else { continue }
+                let contribution = EffectiveSetsEngine.parentSets(for: logged)[parent] ?? 0
+                guard contribution > 0 else { continue }
+                contributions[exercise.name, default: 0] += contribution
+            }
+        }
+
+        return contributions
+            .map { ($0.key, $0.value) }
+            .sorted {
+                if abs($0.sets - $1.sets) > 0.01 {
+                    return $0.sets > $1.sets
+                }
+                return $0.name < $1.name
+            }
     }
 
     var body: some View {
@@ -280,9 +306,60 @@ struct ParentDetailCard: View {
                                     .font(.system(size: 9))
                             }
                         }
+                        .chartOverlay { proxy in
+                            GeometryReader { geo in
+                                Rectangle()
+                                    .fill(.clear)
+                                    .contentShape(Rectangle())
+                                    .gesture(
+                                        DragGesture(minimumDistance: 0)
+                                            .onEnded { value in
+                                                guard let plotFrame = proxy.plotFrame else { return }
+                                                let plotOrigin = geo[plotFrame].origin
+                                                let x = value.location.x - plotOrigin.x
+                                                if let date: Date = proxy.value(atX: x) {
+                                                    selectedWeekStart = nearestWeekStart(to: date)
+                                                    HapticManager.selection()
+                                                }
+                                            }
+                                    )
+                            }
+                        }
+                    }
+                }
+
+                if let selectedWeekStart, !selectedWeekContributions.isEmpty {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack {
+                            Text("Détail \(selectedWeekStart.weekLabel)")
+                                .font(.caption.weight(.semibold))
+                            Spacer()
+                            Text("\(Int(selectedWeekContributions.reduce(0) { $0 + $1.sets }.rounded())) séries")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(selectedWeekContributions.prefix(5), id: \.name) { item in
+                            HStack(spacing: 8) {
+                                Text(item.name)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(String(format: "%.1f", item.sets))
+                                    .font(.caption2.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.accent)
+                            }
+                            .padding(.vertical, 3)
+                        }
                     }
                 }
             }
         }
+    }
+
+    private func nearestWeekStart(to date: Date) -> Date? {
+        weeklyData.min {
+            abs($0.weekStart.timeIntervalSince(date)) < abs($1.weekStart.timeIntervalSince(date))
+        }?.weekStart
     }
 }

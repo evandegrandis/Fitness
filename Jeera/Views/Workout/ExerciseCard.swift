@@ -74,13 +74,6 @@ struct ExerciseCard: View {
                 )
             }
             .tint(loggedExercise.isLinkedToNext ? .red : .blue)
-
-            Button {
-                viewModel.duplicateExercise(loggedExercise)
-            } label: {
-                Label("Dupliquer", systemImage: "doc.on.doc")
-            }
-            .tint(.orange)
         }
         .onAppear {
             if !hasLoadedSuggestion {
