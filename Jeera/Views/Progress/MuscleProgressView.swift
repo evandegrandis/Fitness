@@ -3,6 +3,22 @@ import SwiftData
 import Charts
 
 struct MuscleProgressView: View {
+    private enum SortMode: String, CaseIterable, Identifiable {
+        case deficit
+        case completion
+        case alphabetical
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .deficit: return "Déficit"
+            case .completion: return "Complétion"
+            case .alphabetical: return "A-Z"
+            }
+        }
+    }
+
     @Query(
         filter: #Predicate<WorkoutSession> { !$0.isActive },
         sort: \WorkoutSession.startTime,
@@ -12,6 +28,35 @@ struct MuscleProgressView: View {
     @State private var selectedParent: MuscleParent?
     @State private var progress: [ParentMuscleProgress] = []
     @State private var globalCoverage: Double = 0
+    @AppStorage("muscle_progress_sort_mode") private var sortModeRawValue = SortMode.deficit.rawValue
+
+    private var sortMode: SortMode {
+        get { SortMode(rawValue: sortModeRawValue) ?? .deficit }
+        nonmutating set { sortModeRawValue = newValue.rawValue }
+    }
+
+    private var sortedProgress: [ParentMuscleProgress] {
+        switch sortMode {
+        case .alphabetical:
+            return progress.sorted { $0.parent.displayName.localizedCaseInsensitiveCompare($1.parent.displayName) == .orderedAscending }
+        case .deficit:
+            return progress.sorted {
+                if abs($0.remaining - $1.remaining) > 0.01 {
+                    return $0.remaining > $1.remaining
+                }
+                return $0.parent.displayName.localizedCaseInsensitiveCompare($1.parent.displayName) == .orderedAscending
+            }
+        case .completion:
+            return progress.sorted {
+                let a = $0.coverage
+                let b = $1.coverage
+                if abs(a - b) > 0.001 {
+                    return a > b
+                }
+                return $0.parent.displayName.localizedCaseInsensitiveCompare($1.parent.displayName) == .orderedAscending
+            }
+        }
+    }
 
     /// Hash of goal values + session count so `.task(id:)` re-fires when
     /// goals are edited in Settings or new sessions finish.
@@ -28,7 +73,10 @@ struct MuscleProgressView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 8) {
-                ForEach(progress) { item in
+                sortControl
+                    .padding(.horizontal)
+
+                ForEach(sortedProgress) { item in
                     VStack(spacing: 5) {
                         ParentMuscleCard(
                             progress: item,
@@ -84,6 +132,39 @@ struct MuscleProgressView: View {
                 .filter { $0.goalSets > 0 || $0.effectiveSets > 0 }
                 .sorted { $0.goalSets > $1.goalSets }
             globalCoverage = EffectiveSetsEngine.rolling7DayGlobalCoverage(sessions: sessions, goals: goals)
+        }
+    }
+
+    private var sortControl: some View {
+        HStack(spacing: 8) {
+            Text("Trier")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ForEach(SortMode.allCases) { mode in
+                Button {
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.88)) {
+                        sortMode = mode
+                    }
+                } label: {
+                    Text(mode.label)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(sortMode == mode ? .primary : .secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule()
+                                .fill(sortMode == mode ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
+                        )
+                        .overlay {
+                            Capsule()
+                                .stroke(sortMode == mode ? .white.opacity(0.12) : .white.opacity(0.05), lineWidth: 0.8)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
         }
     }
 }
