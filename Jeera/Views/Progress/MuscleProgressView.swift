@@ -125,7 +125,7 @@ struct MuscleProgressView: View {
 
                 Spacer(minLength: 80)
             }
-            .padding(.top, 8)
+            .padding(.top, 10)
         }
         .task(id: dataFingerprint) {
             progress = EffectiveSetsEngine.rolling7DayProgress(sessions: sessions, goals: goals)
@@ -136,11 +136,7 @@ struct MuscleProgressView: View {
     }
 
     private var sortControl: some View {
-        HStack(spacing: 8) {
-            Text("Trier")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
+        HStack(spacing: 6) {
             ForEach(SortMode.allCases) { mode in
                 Button {
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.88)) {
@@ -163,8 +159,13 @@ struct MuscleProgressView: View {
                 }
                 .buttonStyle(.plain)
             }
-
-            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(4)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.06), lineWidth: 0.8)
         }
     }
 }

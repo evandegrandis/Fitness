@@ -18,6 +18,7 @@ struct ExerciseProgressView: View {
                 session.loggedExercises.contains { $0.exercise?.id == ex.id }
             }
         }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
@@ -57,7 +58,7 @@ struct ExerciseProgressView: View {
 
                 Spacer(minLength: 80)
             }
-            .padding(.top, 12)
+            .padding(.top, 10)
         }
     }
 }
