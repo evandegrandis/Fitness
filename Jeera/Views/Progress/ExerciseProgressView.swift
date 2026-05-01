@@ -3,22 +3,6 @@ import SwiftData
 import Charts
 
 struct ExerciseProgressView: View {
-    private enum SortMode: String, CaseIterable, Identifiable {
-        case deficit
-        case completion
-        case alphabetical
-
-        var id: String { rawValue }
-
-        var label: String {
-            switch self {
-            case .deficit: return "Déficit"
-            case .completion: return "Complétion"
-            case .alphabetical: return "A-Z"
-            }
-        }
-    }
-
     @Query(sort: \Exercise.name) private var exercises: [Exercise]
     @Query(
         filter: #Predicate<WorkoutSession> { !$0.isActive },
@@ -26,58 +10,12 @@ struct ExerciseProgressView: View {
         order: .reverse
     ) private var sessions: [WorkoutSession]
     @State private var selectedExercise: Exercise?
-    @AppStorage("exercise_progress_sort_mode") private var sortModeRawValue = SortMode.deficit.rawValue
     @Namespace private var selectionNamespace
 
-    private var sortMode: SortMode {
-        get { SortMode(rawValue: sortModeRawValue) ?? .deficit }
-        nonmutating set { sortModeRawValue = newValue.rawValue }
-    }
-
-    private struct ExerciseSortMetric {
-        let current: Double?
-        let target: Double?
-
-        var deficit: Double {
-            guard let current, let target else { return -.greatestFiniteMagnitude }
-            return max(0, target - current)
-        }
-
-        var completion: Double {
-            guard let current, let target, target > 0 else { return -.greatestFiniteMagnitude }
-            return current / target
-        }
-    }
-
     private var usedExercises: [Exercise] {
-        let used = exercises.filter { ex in
+        exercises.filter { ex in
             sessions.contains { session in
                 session.loggedExercises.contains { $0.exercise?.id == ex.id }
-            }
-        }
-
-        switch sortMode {
-        case .alphabetical:
-            return used.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        case .deficit:
-            return used.sorted {
-                let a = sortMetric(for: $0)
-                let b = sortMetric(for: $1)
-                if abs(a.deficit - b.deficit) > 0.001 {
-                    return a.deficit > b.deficit
-                }
-                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-
-        case .completion:
-            return used.sorted {
-                let a = sortMetric(for: $0)
-                let b = sortMetric(for: $1)
-                if abs(a.completion - b.completion) > 0.001 {
-                    return a.completion > b.completion
-                }
-                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
         }
     }
@@ -85,9 +23,6 @@ struct ExerciseProgressView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 10) {
-                sortControl
-                    .padding(.horizontal)
-
                 ForEach(usedExercises) { exercise in
                     ExerciseProgressRow(
                         exercise: exercise,
@@ -124,84 +59,6 @@ struct ExerciseProgressView: View {
             }
             .padding(.top, 12)
         }
-    }
-
-    private var sortControl: some View {
-        HStack(spacing: 8) {
-            Text("Trier")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ForEach(SortMode.allCases) { mode in
-                Button {
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.88)) {
-                        sortMode = mode
-                    }
-                } label: {
-                    Text(mode.label)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(sortMode == mode ? .primary : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(
-                            Capsule()
-                                .fill(sortMode == mode ? Color.white.opacity(0.10) : Color.white.opacity(0.04))
-                        )
-                        .overlay {
-                            Capsule()
-                                .stroke(sortMode == mode ? .white.opacity(0.12) : .white.opacity(0.05), lineWidth: 0.8)
-                        }
-                }
-                .buttonStyle(.plain)
-            }
-
-            Spacer()
-        }
-    }
-
-    private func sortMetric(for exercise: Exercise) -> ExerciseSortMetric {
-        let history = sessions.compactMap { session -> ExerciseDataPoint? in
-            guard let logged = session.loggedExercises.first(where: { $0.exercise?.id == exercise.id }) else {
-                return nil
-            }
-            let workSets = logged.completedWorkSets
-            guard !workSets.isEmpty else { return nil }
-
-            let validatedSets = workSets.filter { $0.reps >= exercise.repTargetMin }
-            let bestValidated = validatedSets.max(by: { $0.weight < $1.weight })
-            let benchmarkSets = workSets.filter { $0.reps >= 7 }
-            let bestWeightAt7Plus = benchmarkSets.map(\.weight).max() ?? 0
-            let bestBWReps = workSets.map(\.reps).max() ?? 0
-
-            return ExerciseDataPoint(
-                date: session.date,
-                validatedWeight: bestValidated?.weight ?? 0,
-                validatedReps: bestValidated?.reps ?? 0,
-                bestE1RM: 0,
-                bestWeightAt7Plus: bestWeightAt7Plus,
-                bestBWReps: bestBWReps,
-                topSetSummary: "",
-                isBodyweight: exercise.setPatternMode == .bodyweight
-            )
-        }
-        .sorted { $0.date < $1.date }
-
-        guard let latest = history.last else {
-            return ExerciseSortMetric(current: nil, target: nil)
-        }
-
-        let hasWeightedHistory = sessions.contains { session in
-            session.loggedExercises.contains { logged in
-                logged.exercise?.id == exercise.id &&
-                logged.completedWorkSets.contains(where: { $0.weight > 0 })
-            }
-        }
-
-        let usesRepMetric = exercise.setPatternMode == .bodyweight || !hasWeightedHistory
-        let current = usesRepMetric ? Double(latest.bestBWReps) : latest.bestWeightAt7Plus
-        let target = exercise.benchmarkLow
-
-        return ExerciseSortMetric(current: current > 0 ? current : nil, target: target)
     }
 }
 
