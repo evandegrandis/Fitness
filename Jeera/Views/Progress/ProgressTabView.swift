@@ -88,35 +88,30 @@ private struct GlobalProgressView: View {
         sort: \WorkoutSession.startTime
     ) private var sessions: [WorkoutSession]
     @Query(sort: \RecoveryCheckin.date) private var checkins: [RecoveryCheckin]
+    @Query private var goals: [MuscleGoal]
 
     private enum SecondaryMetric: String, CaseIterable, Identifiable {
-        case creatine
-        case protein
-        case sleep
-
+        case sleep, creatine, protein
         var id: String { rawValue }
-
         var title: String {
             switch self {
             case .creatine: return "Créatine"
-            case .protein: return "Protéine"
-            case .sleep: return "Sommeil"
+            case .protein:  return "Protéines"
+            case .sleep:    return "Sommeil"
             }
         }
-
         var shortTitle: String {
             switch self {
             case .creatine: return "Créa"
-            case .protein: return "Prot"
-            case .sleep: return "Som."
+            case .protein:  return "Prot"
+            case .sleep:    return "Som."
             }
         }
-
         var color: Color {
             switch self {
             case .creatine: return .green
-            case .protein: return .blue
-            case .sleep: return .mint
+            case .protein:  return .blue
+            case .sleep:    return .mint
             }
         }
     }
@@ -130,6 +125,8 @@ private struct GlobalProgressView: View {
         let creatinePct: Double
         let proteinPct: Double
         let sleepScore: Double
+        let avgSleepHours: Double
+        let parentSets: [MuscleParent: Double]
     }
 
     private var weekly: [WeeklyPoint] {
@@ -139,39 +136,38 @@ private struct GlobalProgressView: View {
             checkins.map { calendar.dateInterval(of: .weekOfYear, for: $0.date)?.start }
         ).compactMap { $0 }.sorted()
 
-        let rawTuples: [(Date, Double, Double, Double, Double)] = weekStarts.map { weekStart in
+        return weekStarts.map { weekStart in
             let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
-            let weekSessions = sessions.filter { $0.date >= weekStart && $0.date < weekEnd }
-            let weekCheckins = checkins.filter { $0.date >= weekStart && $0.date < weekEnd }
+            let wSessions = sessions.filter { $0.date >= weekStart && $0.date < weekEnd }
+            let wCheckins = checkins.filter { $0.date >= weekStart && $0.date < weekEnd }
 
-            let rawPerformance = weekSessions.isEmpty
-                ? 0
-                : weekSessions.reduce(0.0) { $0 + Double($1.totalWorkSets) }
+            let sets = wSessions.reduce(0.0) { $0 + Double($1.totalWorkSets) }
+            let parentSets = EffectiveSetsEngine.parentTotals(
+                sessions: wSessions,
+                windowStart: weekStart,
+                windowEnd: weekEnd
+            )
 
-            let creatinePct = weekCheckins.isEmpty
-                ? 0
-                : (Double(weekCheckins.filter(\.tookCreatine).count) / Double(weekCheckins.count)) * 100
+            let creatinePct = wCheckins.isEmpty ? 0 :
+                Double(wCheckins.filter(\.tookCreatine).count) / Double(wCheckins.count) * 100
 
-            let proteinPct = weekCheckins.isEmpty
-                ? 0
-                : (Double(weekCheckins.filter(\.proteinTargetMet).count) / Double(weekCheckins.count)) * 100
+            let proteinPct = wCheckins.isEmpty ? 0 :
+                Double(wCheckins.filter(\.proteinTargetMet).count) / Double(wCheckins.count) * 100
 
-            let avgSleep = weekCheckins.isEmpty ? 0 : weekCheckins.reduce(0.0) { $0 + $1.sleepHours } / Double(weekCheckins.count)
-            let consistencyPenalty = weekCheckins.isEmpty
-                ? 0
-                : weekCheckins.reduce(0.0) { $0 + abs($1.sleepHours - avgSleep) } / Double(weekCheckins.count)
-            let sleepScore = max(0, min(100, ((avgSleep / 9.0) * 100) - (consistencyPenalty * 8)))
+            let avgSleep = wCheckins.isEmpty ? 0.0 :
+                wCheckins.reduce(0.0) { $0 + $1.sleepHours } / Double(wCheckins.count)
+            let penalty = wCheckins.isEmpty ? 0.0 :
+                wCheckins.reduce(0.0) { $0 + abs($1.sleepHours - avgSleep) } / Double(wCheckins.count)
+            let sleepScore = max(0, min(100, (avgSleep / 9.0) * 100 - penalty * 8))
 
-            return (weekStart, rawPerformance, creatinePct, proteinPct, sleepScore)
-        }
-
-        return rawTuples.enumerated().map { idx, tuple in
             return WeeklyPoint(
-                weekStart: tuple.0,
-                performanceDisplay: tuple.1,
-                creatinePct: tuple.2,
-                proteinPct: tuple.3,
-                sleepScore: tuple.4
+                weekStart: weekStart,
+                performanceDisplay: sets,
+                creatinePct: creatinePct,
+                proteinPct: proteinPct,
+                sleepScore: sleepScore,
+                avgSleepHours: avgSleep,
+                parentSets: parentSets
             )
         }
     }
@@ -180,65 +176,27 @@ private struct GlobalProgressView: View {
         ScrollView {
             VStack(spacing: 12) {
                 if weekly.isEmpty {
-                    Text("Pas assez de données hebdo")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 24)
-                } else {
-                    GlassCard(padding: 16, cornerRadius: 22) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            if let selected = selectedPoint {
-                                HStack(spacing: 10) {
-                                    globalMetric("Sem.", value: selected.weekStart.shortDate, tint: .white)
-                                    globalMetric("Sets", value: String(format: "%.0f", selected.performanceDisplay), tint: .orange)
-                                    globalMetric("Créa", value: percentText(selected.creatinePct), tint: SecondaryMetric.creatine.color)
-                                    globalMetric("Prot", value: percentText(selected.proteinPct), tint: SecondaryMetric.protein.color)
-                                }
-
-                                HStack(spacing: 10) {
-                                    globalMetric("Som.", value: sleepValueText(selected.sleepScore), tint: SecondaryMetric.sleep.color)
-                                    globalMetric("Moy.", value: "\(Int(averageSets.rounded()))", tint: .orange)
-                                    globalMetric("Best", value: bestWeekLabel, tint: .white)
-                                }
-                            }
-
-                            VStack(spacing: 10) {
-                                chartSectionLabel("Sets / semaine", tint: .orange)
-
-                                Chart {
-                                    ForEach(weekly) { item in
-                                        BarMark(
-                                            x: .value("Week", item.weekStart),
-                                            y: .value("Sets", item.performanceDisplay),
-                                            width: .fixed(18)
-                                        )
-                                        .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .orange : .orange.opacity(0.38))
-                                        .cornerRadius(5)
-
-                                        if let selected = selectedPoint, item.weekStart == selected.weekStart {
-                                            RuleMark(x: .value("Selected week", selected.weekStart))
-                                                .foregroundStyle(.white.opacity(0.28))
-                                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                                        }
-                                    }
-                                }
-                                .frame(height: 135)
-                                .chartYAxis {
-                                    AxisMarks(position: .trailing)
-                                }
-                                .chartOverlay { proxy in
-                                    chartSelectionOverlay(proxy: proxy)
-                                }
-
-                                recoveryOverview
-                            }
-
-                            correlationBoard
-                        }
+                    VStack(spacing: 12) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.largeTitle)
+                            .foregroundStyle(.tertiary)
+                        Text("Pas encore de données")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal)
+                    .padding(.top, 60)
+                } else {
+                    volumeChartCard
+                    if let selectedPoint {
+                        muscleRadarCard(point: selectedPoint)
+                    }
+                    recoveryCard
+                    if weekly.count >= 3 {
+                        insightsCard
+                    }
                 }
             }
+            .padding(.horizontal)
             .padding(.top, 10)
         }
         .onAppear {
@@ -248,217 +206,270 @@ private struct GlobalProgressView: View {
         }
     }
 
-    private func globalMetric(_ title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.weight(.bold).monospacedDigit())
-                .foregroundStyle(tint)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    // MARK: - Volume Chart Card
 
-    private func chartSectionLabel(_ title: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Capsule()
-                .fill(tint)
-                .frame(width: 10, height: 4)
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
+    private var volumeChartCard: some View {
+        GlassCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("VOLUME · SETS / SEMAINE")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                        if let sel = selectedPoint {
+                            Text("Sem. \(sel.weekStart.shortDate)")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .transition(.opacity)
+                                .id(sel.weekStart)
+                        }
+                    }
+                    Spacer()
+                    HStack(spacing: 18) {
+                        if let sel = selectedPoint {
+                            bigStat("\(Int(sel.performanceDisplay))", sub: "sets", tint: .orange)
+                        }
+                        bigStat("\(Int(averageSets.rounded()))", sub: "moy.", tint: .white.opacity(0.55))
+                    }
+                }
 
-    private func chartSelectionOverlay(proxy: ChartProxy) -> some View {
-        GeometryReader { geo in
-            Rectangle()
-                .fill(.clear)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if let plotFrame = proxy.plotFrame {
-                                let plotOrigin = geo[plotFrame].origin
-                                let x = value.location.x - plotOrigin.x
-                                if let date: Date = proxy.value(atX: x) {
-                                    selectedWeek = nearestWeekStart(to: date)
-                                }
+                Chart {
+                    ForEach(weekly) { item in
+                        BarMark(
+                            x: .value("Sem.", item.weekStart),
+                            y: .value("Sets", item.performanceDisplay),
+                            width: .ratio(0.55)
+                        )
+                        .foregroundStyle(
+                            item.weekStart == selectedPoint?.weekStart
+                                ? Color.orange
+                                : Color.orange.opacity(0.22)
+                        )
+                        .cornerRadius(6)
+                    }
+
+                    if let sel = selectedPoint {
+                        RuleMark(x: .value("Sél.", sel.weekStart))
+                            .foregroundStyle(.white.opacity(0.18))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                            .annotation(position: .top, alignment: .center, spacing: 4) {
+                                Text("\(Int(sel.performanceDisplay))")
+                                    .font(.system(size: 11, weight: .heavy).monospacedDigit())
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                            }
+                    }
+                }
+                .frame(height: 120)
+                .chartYAxis {
+                    AxisMarks(position: .trailing) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                            .foregroundStyle(.white.opacity(0.07))
+                        AxisValueLabel()
+                            .font(.system(size: 9))
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .automatic(desiredCount: min(weekly.count, 6))) { value in
+                        AxisValueLabel {
+                            if let date = value.as(Date.self) {
+                                Text(date.shortDate)
+                                    .font(.system(size: 9))
                             }
                         }
-                )
+                    }
+                }
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle()
+                            .fill(.clear)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { val in
+                                        if let frame = proxy.plotFrame {
+                                            let x = val.location.x - geo[frame].origin.x
+                                            if let date: Date = proxy.value(atX: x) {
+                                                selectedWeek = nearestWeekStart(to: date)
+                                            }
+                                        }
+                                    }
+                            )
+                    }
+                }
+            }
         }
     }
 
-    private var recoveryOverview: some View {
-        VStack(spacing: 10) {
-            recoveryRow(for: .creatine)
-            recoveryRow(for: .protein)
-            recoveryRow(for: .sleep)
+    // MARK: - Recovery Card
+
+    private var recoveryCard: some View {
+        GlassCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("RÉCUPÉRATION")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    if let sel = selectedPoint {
+                        Text("Sem. \(sel.weekStart.shortDate)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .id(sel.weekStart)
+                    }
+                }
+
+                VStack(spacing: 10) {
+                    ForEach(SecondaryMetric.allCases) { metric in
+                        recoveryMetricRow(metric)
+                        if metric != SecondaryMetric.allCases.last {
+                            Divider().background(.white.opacity(0.06))
+                        }
+                    }
+                }
+            }
         }
-        .padding(12)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private func recoveryRow(for metric: SecondaryMetric) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(metric.color)
-                        .frame(width: 8, height: 8)
-                    Text(metric.title)
-                        .font(.caption.weight(.semibold))
+    // MARK: - Muscle Radar Card
+
+    private func muscleRadarCard(point: WeeklyPoint) -> some View {
+        let orderedParents = goals
+            .filter { $0.weeklyGoalSets > 0 }
+            .sorted { $0.parent.displayName < $1.parent.displayName }
+            .map(\.parent)
+
+        let values: [(parent: MuscleParent, sets: Double, goal: Double, ratio: Double)] = orderedParents.map { parent in
+            let goal = goals.first(where: { $0.parent == parent })?.weeklyGoalSets ?? 0
+            let sets = point.parentSets[parent] ?? 0
+            let ratio = goal > 0 ? min(1.0, sets / goal) : 0
+            return (parent, sets, goal, ratio)
+        }
+
+        return GlassCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("RÉPARTITION MUSCULAIRE")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                        Text("Sem. \(point.weekStart.shortDate)")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text("\(values.filter { $0.sets > 0.1 }.count) groupes touchés")
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
-                if let selected = selectedPoint {
-                    Text(metricValueText(metricValue(metric, in: selected), metric: metric))
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .foregroundStyle(metric.color)
-                }
-            }
 
-            HStack(spacing: 8) {
-                ForEach(weekly) { item in
-                    Button {
-                        selectedWeek = item.weekStart
-                    } label: {
-                        VStack(spacing: 4) {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(item.weekStart == selectedPoint?.weekStart ? metric.color.opacity(0.95) : metric.color.opacity(0.24))
-                                .frame(height: max(8, CGFloat(metricValue(metric, in: item) / 100) * 34))
-                                .frame(maxHeight: 36, alignment: .bottom)
-
-                            Text(item.weekStart.shortDate)
-                                .font(.system(size: 8, weight: .medium, design: .rounded))
-                                .foregroundStyle(item.weekStart == selectedPoint?.weekStart ? .primary : .tertiary)
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(height: 52, alignment: .bottom)
-        }
-    }
-
-    private func insightTile(_ title: String, value: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Text(value)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private func metricValue(_ metric: SecondaryMetric, in point: WeeklyPoint) -> Double {
-        switch metric {
-        case .creatine: return point.creatinePct
-        case .protein: return point.proteinPct
-        case .sleep: return point.sleepScore
-        }
-    }
-
-    private func metricValueText(_ value: Double, metric: SecondaryMetric) -> String {
-        switch metric {
-        case .creatine, .protein:
-            return percentText(value)
-        case .sleep:
-            return sleepValueText(value)
-        }
-    }
-
-    private var averageSets: Double {
-        guard !weekly.isEmpty else { return 0 }
-        return weekly.reduce(0.0) { $0 + $1.performanceDisplay } / Double(weekly.count)
-    }
-
-    private var bestWeekLabel: String {
-        guard let best = weekly.max(by: { $0.performanceDisplay < $1.performanceDisplay }) else { return "--" }
-        return best.weekStart.shortDate
-    }
-
-    private func correlationScore(for metric: SecondaryMetric) -> Double {
-        let xs = weekly.map(\.performanceDisplay)
-        let ys = weekly.map { metricValue(metric, in: $0) }
-        guard xs.count >= 3 else { return 0 }
-
-        let xMean = xs.reduce(0, +) / Double(xs.count)
-        let yMean = ys.reduce(0, +) / Double(ys.count)
-        let numerator = zip(xs, ys).reduce(0.0) { acc, pair in
-            acc + (pair.0 - xMean) * (pair.1 - yMean)
-        }
-        let xVariance = xs.reduce(0.0) { $0 + pow($1 - xMean, 2) }
-        let yVariance = ys.reduce(0.0) { $0 + pow($1 - yMean, 2) }
-        guard xVariance > 0, yVariance > 0 else { return 0 }
-        return numerator / sqrt(xVariance * yVariance)
-    }
-
-    private func correlationLabel(for metric: SecondaryMetric) -> String {
-        let score = correlationScore(for: metric)
-        if score >= 0.55 { return "lié +" }
-        if score >= 0.25 { return "léger +" }
-        if score <= -0.55 { return "inverse" }
-        if score <= -0.25 { return "léger -" }
-        return "faible"
-    }
-
-    private func correlationColor(for metric: SecondaryMetric) -> Color {
-        let score = correlationScore(for: metric)
-        if score >= 0.25 { return .green }
-        if score <= -0.25 { return .orange }
-        return .secondary
-    }
-
-    private var selectedPoint: WeeklyPoint? {
-        guard let selectedWeek else { return nil }
-        return weekly.min { abs($0.weekStart.timeIntervalSince(selectedWeek)) < abs($1.weekStart.timeIntervalSince(selectedWeek)) }
-    }
-
-    private func nearestWeekStart(to date: Date) -> Date? {
-        weekly.min { abs($0.weekStart.timeIntervalSince(date)) < abs($1.weekStart.timeIntervalSince(date)) }?.weekStart
-    }
-
-    private var correlationBoard: some View {
-        VStack(spacing: 8) {
-            Text("Lecture récupération ↔ volume")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 8) {
-                correlationTile(metric: .creatine)
-                correlationTile(metric: .protein)
-                correlationTile(metric: .sleep)
+                MuscleRadarChart(values: values)
+                    .frame(height: 280)
             }
         }
     }
 
-    private func correlationTile(metric: SecondaryMetric) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func recoveryMetricRow(_ metric: SecondaryMetric) -> some View {
+        let point = selectedPoint
+        let value = point.map { metricValue(metric, in: $0) } ?? 0
+        let ratio = min(1.0, max(0, value / 100.0))
+        let displayText: String = {
+            guard let pt = point else { return "—" }
+            switch metric {
+            case .sleep:
+                return pt.avgSleepHours > 0 ? String(format: "%.1fh", pt.avgSleepHours) : "—"
+            case .creatine, .protein:
+                return "\(Int(value.rounded()))%"
+            }
+        }()
+        return HStack(spacing: 12) {
             HStack(spacing: 6) {
                 Circle()
                     .fill(metric.color)
                     .frame(width: 8, height: 8)
                 Text(metric.title)
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 80, alignment: .leading)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(metric.color.opacity(0.10))
+                    Capsule()
+                        .fill(LinearGradient(
+                            colors: [metric.color.opacity(0.65), metric.color],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: max(0, geo.size.width * ratio))
+                        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: ratio)
+                }
+            }
+            .frame(height: 7)
+
+            Text(displayText)
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(metric.color)
+                .frame(width: 40, alignment: .trailing)
+                .animation(.spring(response: 0.3), value: displayText)
+        }
+    }
+
+    // MARK: - Insights / Correlation Card
+
+    private var insightsCard: some View {
+        GlassCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("CORRÉLATIONS")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                    Text("Récupération ↔ volume · \(weekly.count) semaines")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(SecondaryMetric.allCases) { metric in
+                        correlationTile(metric: metric)
+                    }
+                }
+            }
+        }
+    }
+
+    private func correlationTile(metric: SecondaryMetric) -> some View {
+        let score = correlationScore(for: metric)
+        let tint = correlationColor(for: metric)
+        let barRatio = min(1.0, abs(score))
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(metric.color)
+                    .frame(width: 7, height: 7)
+                Text(metric.shortTitle)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(tint.opacity(0.10))
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(tint)
+                        .frame(width: max(0, geo.size.width * barRatio))
+                }
+            }
+            .frame(height: 4)
+
             Text(correlationLabel(for: metric))
                 .font(.caption.weight(.bold))
-                .foregroundStyle(correlationColor(for: metric))
+                .foregroundStyle(tint)
 
             Text(correlationHint(for: metric))
                 .font(.caption2)
@@ -467,26 +478,184 @@ private struct GlobalProgressView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.vertical, 10)
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private func percentText(_ value: Double) -> String {
-        "\(String(format: "%.0f", value))%"
+    // MARK: - Stat display helper
+
+    private func bigStat(_ value: String, sub: String, tint: Color) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+            Text(sub)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
     }
 
-    private func sleepValueText(_ value: Double) -> String {
-        "\(String(format: "%.0f", value))"
+    // MARK: - Data helpers
+
+    private func metricValue(_ metric: SecondaryMetric, in point: WeeklyPoint) -> Double {
+        switch metric {
+        case .creatine: return point.creatinePct
+        case .protein:  return point.proteinPct
+        case .sleep:    return point.sleepScore
+        }
+    }
+
+    private var averageSets: Double {
+        guard !weekly.isEmpty else { return 0 }
+        return weekly.reduce(0.0) { $0 + $1.performanceDisplay } / Double(weekly.count)
+    }
+
+    private var selectedPoint: WeeklyPoint? {
+        guard let selectedWeek else { return nil }
+        return weekly.min {
+            abs($0.weekStart.timeIntervalSince(selectedWeek)) < abs($1.weekStart.timeIntervalSince(selectedWeek))
+        }
+    }
+
+    private func nearestWeekStart(to date: Date) -> Date? {
+        weekly.min {
+            abs($0.weekStart.timeIntervalSince(date)) < abs($1.weekStart.timeIntervalSince(date))
+        }?.weekStart
+    }
+
+    private func correlationScore(for metric: SecondaryMetric) -> Double {
+        let xs = weekly.map(\.performanceDisplay)
+        let ys = weekly.map { metricValue(metric, in: $0) }
+        guard xs.count >= 3 else { return 0 }
+        let xMean = xs.reduce(0, +) / Double(xs.count)
+        let yMean = ys.reduce(0, +) / Double(ys.count)
+        let num = zip(xs, ys).reduce(0.0) { $0 + ($1.0 - xMean) * ($1.1 - yMean) }
+        let xVar = xs.reduce(0.0) { $0 + pow($1 - xMean, 2) }
+        let yVar = ys.reduce(0.0) { $0 + pow($1 - yMean, 2) }
+        guard xVar > 0, yVar > 0 else { return 0 }
+        return num / sqrt(xVar * yVar)
+    }
+
+    private func correlationLabel(for metric: SecondaryMetric) -> String {
+        let s = correlationScore(for: metric)
+        if s >= 0.55 { return "lié +" }
+        if s >= 0.25 { return "léger +" }
+        if s <= -0.55 { return "inverse" }
+        if s <= -0.25 { return "léger -" }
+        return "faible"
+    }
+
+    private func correlationColor(for metric: SecondaryMetric) -> Color {
+        let s = correlationScore(for: metric)
+        if s >= 0.25 { return .green }
+        if s <= -0.25 { return .orange }
+        return .secondary
     }
 
     private func correlationHint(for metric: SecondaryMetric) -> String {
         switch metric {
-        case .creatine:
-            return "récup suppl."
-        case .protein:
-            return "apport hebdo"
-        case .sleep:
-            return "récup sommeil"
+        case .creatine: return "récup. suppl."
+        case .protein:  return "apport hebdo"
+        case .sleep:    return "récup. sommeil"
         }
+    }
+}
+
+private struct MuscleRadarChart: View {
+    let values: [(parent: MuscleParent, sets: Double, goal: Double, ratio: Double)]
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = min(geo.size.width, geo.size.height)
+            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let radius = size * 0.31
+            let ringLevels = [0.25, 0.5, 0.75, 1.0]
+
+            ZStack {
+                ForEach(ringLevels, id: \.self) { level in
+                    RadarPolygonShape(points: radarPoints(for: values.map { _ in level }, center: center, radius: radius))
+                        .stroke(Color.white.opacity(level == 1.0 ? 0.12 : 0.06), style: StrokeStyle(lineWidth: level == 1.0 ? 1 : 0.6))
+                }
+
+                ForEach(Array(values.enumerated()), id: \.offset) { index, item in
+                    Path { path in
+                        path.move(to: center)
+                        path.addLine(to: point(at: index, total: values.count, center: center, radius: radius))
+                    }
+                    .stroke(Color.white.opacity(0.06), lineWidth: 0.6)
+
+                    let labelPoint = point(at: index, total: values.count, center: center, radius: radius + 28)
+                    VStack(spacing: 1) {
+                        Text(item.parent.shortName)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Text("\(Int(item.sets.rounded()))")
+                            .font(.system(size: 10, weight: .heavy, design: .rounded).monospacedDigit())
+                            .foregroundStyle(item.ratio >= 1 ? .green : item.ratio >= 0.5 ? .orange : .primary)
+                    }
+                    .position(labelPoint)
+                }
+
+                RadarPolygonShape(points: radarPoints(for: values.map(\.ratio), center: center, radius: radius))
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.26), Color.mint.opacity(0.10)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                RadarPolygonShape(points: radarPoints(for: values.map(\.ratio), center: center, radius: radius))
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.accentColor, Color.mint],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 2, lineJoin: .round)
+                    )
+
+                ForEach(Array(values.enumerated()), id: \.offset) { index, item in
+                    let valuePoint = point(at: index, total: values.count, center: center, radius: radius * item.ratio)
+                    Circle()
+                        .fill(item.ratio >= 1 ? Color.green : Color.accentColor)
+                        .frame(width: 7, height: 7)
+                        .overlay {
+                            Circle().stroke(Color.white.opacity(0.7), lineWidth: 1)
+                        }
+                        .position(valuePoint)
+                }
+            }
+        }
+    }
+
+    private func radarPoints(for ratios: [Double], center: CGPoint, radius: CGFloat) -> [CGPoint] {
+        ratios.enumerated().map { index, ratio in
+            point(at: index, total: ratios.count, center: center, radius: radius * ratio)
+        }
+    }
+
+    private func point(at index: Int, total: Int, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let angle = (Double(index) / Double(max(total, 1))) * .pi * 2 - .pi / 2
+        return CGPoint(
+            x: center.x + cos(angle) * radius,
+            y: center.y + sin(angle) * radius
+        )
+    }
+}
+
+private struct RadarPolygonShape: Shape {
+    let points: [CGPoint]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard let first = points.first else { return path }
+        path.move(to: first)
+        for point in points.dropFirst() {
+            path.addLine(to: point)
+        }
+        path.closeSubpath()
+        return path
     }
 }
