@@ -175,7 +175,7 @@ private struct GlobalProgressView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 if weekly.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "waveform.path.ecg")
@@ -194,14 +194,13 @@ private struct GlobalProgressView: View {
                             radarContributionCard(point: selectedPoint, parent: selectedRadarParent)
                         }
                     }
-                    recoveryCard
                     if weekly.count >= 3 {
                         insightsCard
                     }
                 }
             }
             .padding(.horizontal)
-            .padding(.top, 10)
+            .padding(.top, 8)
         }
         .onAppear {
             if selectedWeek == nil {
@@ -229,12 +228,7 @@ private struct GlobalProgressView: View {
                         }
                     }
                     Spacer()
-                    HStack(spacing: 18) {
-                        if let sel = selectedPoint {
-                            bigStat("\(Int(sel.performanceDisplay))", sub: "sets", tint: .orange)
-                        }
-                        bigStat("\(Int(averageSets.rounded()))", sub: "moy.", tint: .white.opacity(0.55))
-                    }
+                    bigStat("\(Int(averageSets.rounded()))", sub: "moy.", tint: .white.opacity(0.55))
                 }
 
                 Chart {
@@ -266,7 +260,7 @@ private struct GlobalProgressView: View {
                             }
                     }
                 }
-                .frame(height: 120)
+                .frame(height: 112)
                 .chartYAxis {
                     AxisMarks(position: .trailing) { _ in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -303,35 +297,9 @@ private struct GlobalProgressView: View {
                             )
                     }
                 }
-            }
-        }
-    }
 
-    // MARK: - Recovery Card
-
-    private var recoveryCard: some View {
-        GlassCard(padding: 16, cornerRadius: 22) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("RÉCUPÉRATION")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    if let sel = selectedPoint {
-                        Text("Sem. \(sel.weekStart.shortDate)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .id(sel.weekStart)
-                    }
-                }
-
-                VStack(spacing: 10) {
-                    ForEach(SecondaryMetric.allCases) { metric in
-                        recoveryMetricRow(metric)
-                        if metric != SecondaryMetric.allCases.last {
-                            Divider().background(.white.opacity(0.06))
-                        }
-                    }
+                if let sel = selectedPoint {
+                    weekSnapshotStrip(point: sel)
                 }
             }
         }
@@ -374,7 +342,7 @@ private struct GlobalProgressView: View {
                         selectedRadarParent = parent
                     }
                 }
-                    .frame(height: 280)
+                    .frame(height: 248)
                     .onChange(of: point.weekStart) { _, _ in
                         selectedRadarParent = nil
                     }
@@ -428,29 +396,26 @@ private struct GlobalProgressView: View {
         }
     }
 
-    private func recoveryMetricRow(_ metric: SecondaryMetric) -> some View {
-        let point = selectedPoint
-        let value = point.map { metricValue(metric, in: $0) } ?? 0
+    private func recoveryMetricCard(_ metric: SecondaryMetric, point: WeeklyPoint) -> some View {
+        let value = metricValue(metric, in: point)
         let ratio = min(1.0, max(0, value / 100.0))
         let displayText: String = {
-            guard let pt = point else { return "—" }
             switch metric {
             case .sleep:
-                return pt.avgSleepHours > 0 ? String(format: "%.1fh", pt.avgSleepHours) : "—"
+                return point.avgSleepHours > 0 ? String(format: "%.1fh", point.avgSleepHours) : "—"
             case .creatine, .protein:
                 return "\(Int(value.rounded()))%"
             }
         }()
-        return HStack(spacing: 12) {
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Circle()
                     .fill(metric.color)
                     .frame(width: 8, height: 8)
-                Text(metric.title)
-                    .font(.caption.weight(.semibold))
+                Text(metric.shortTitle)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 80, alignment: .leading)
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -468,11 +433,33 @@ private struct GlobalProgressView: View {
             }
             .frame(height: 7)
 
-            Text(displayText)
-                .font(.caption.weight(.bold).monospacedDigit())
-                .foregroundStyle(metric.color)
-                .frame(width: 40, alignment: .trailing)
-                .animation(.spring(response: 0.3), value: displayText)
+            HStack {
+                Text(displayText)
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(metric.color)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func weekSnapshotStrip(point: WeeklyPoint) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                snapshotPill(label: "Sets", value: "\(Int(point.performanceDisplay))", tint: .orange)
+                snapshotPill(label: "Créa", value: "\(Int(point.creatinePct.rounded()))%", tint: .green)
+                snapshotPill(label: "Prot", value: "\(Int(point.proteinPct.rounded()))%", tint: .blue)
+                snapshotPill(label: "Som.", value: point.avgSleepHours > 0 ? String(format: "%.1fh", point.avgSleepHours) : "—", tint: .mint)
+            }
+
+            HStack(spacing: 8) {
+                ForEach(SecondaryMetric.allCases) { metric in
+                    recoveryMetricCard(metric, point: point)
+                }
+            }
         }
     }
 
@@ -550,6 +537,21 @@ private struct GlobalProgressView: View {
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func snapshotPill(label: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - Data helpers
