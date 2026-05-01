@@ -117,6 +117,7 @@ private struct GlobalProgressView: View {
     }
 
     @State private var selectedWeek: Date?
+    @State private var selectedRadarParent: MuscleParent?
 
     private struct WeeklyPoint: Identifiable {
         let id = UUID()
@@ -189,6 +190,9 @@ private struct GlobalProgressView: View {
                     volumeChartCard
                     if let selectedPoint {
                         muscleRadarCard(point: selectedPoint)
+                        if let selectedRadarParent {
+                            radarContributionCard(point: selectedPoint, parent: selectedRadarParent)
+                        }
                     }
                     recoveryCard
                     if weekly.count >= 3 {
@@ -365,8 +369,61 @@ private struct GlobalProgressView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                MuscleRadarChart(values: values)
+                MuscleRadarChart(values: values) { parent in
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        selectedRadarParent = parent
+                    }
+                }
                     .frame(height: 280)
+                    .onChange(of: point.weekStart) { _, _ in
+                        selectedRadarParent = nil
+                    }
+            }
+        }
+    }
+
+    private func radarContributionCard(point: WeeklyPoint, parent: MuscleParent) -> some View {
+        let items = exerciseContributions(for: parent, weekStart: point.weekStart)
+
+        return GlassCard(padding: 16, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(parent.displayName)
+                            .font(.subheadline.weight(.bold))
+                        Text("Détail sem. \(point.weekStart.shortDate)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        selectedRadarParent = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if items.isEmpty {
+                    Text("Aucune contribution")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(items.prefix(6).enumerated()), id: \.element.name) { _, item in
+                        HStack(spacing: 8) {
+                            Text(item.name)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                            Spacer()
+                            Text(String(format: "%.1f", item.sets))
+                                .font(.caption.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(Color.accentColor)
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
             }
         }
     }
@@ -559,10 +616,34 @@ private struct GlobalProgressView: View {
         case .sleep:    return "récup. sommeil"
         }
     }
+
+    private func exerciseContributions(for parent: MuscleParent, weekStart: Date) -> [(name: String, sets: Double)] {
+        let weekEnd = Calendar.current.date(byAdding: .day, value: 7, to: weekStart) ?? weekStart
+        var contributions: [String: Double] = [:]
+
+        for session in sessions where session.date >= weekStart && session.date < weekEnd {
+            for logged in session.loggedExercises {
+                guard let exercise = logged.exercise else { continue }
+                let contribution = EffectiveSetsEngine.parentSets(for: logged)[parent] ?? 0
+                guard contribution > 0 else { continue }
+                contributions[exercise.name, default: 0] += contribution
+            }
+        }
+
+        return contributions
+            .map { ($0.key, $0.value) }
+            .sorted {
+                if abs($0.sets - $1.sets) > 0.01 {
+                    return $0.sets > $1.sets
+                }
+                return $0.name < $1.name
+            }
+    }
 }
 
 private struct MuscleRadarChart: View {
     let values: [(parent: MuscleParent, sets: Double, goal: Double, ratio: Double)]
+    var onSelectParent: ((MuscleParent) -> Void)?
 
     var body: some View {
         GeometryReader { geo in
@@ -595,6 +676,15 @@ private struct MuscleRadarChart: View {
                             .foregroundStyle(item.ratio >= 1 ? .green : item.ratio >= 0.5 ? .orange : .primary)
                     }
                     .position(labelPoint)
+
+                    Circle()
+                        .fill(.clear)
+                        .frame(width: 48, height: 48)
+                        .contentShape(Circle())
+                        .position(labelPoint)
+                        .onTapGesture {
+                            onSelectParent?(item.parent)
+                        }
                 }
 
                 RadarPolygonShape(points: radarPoints(for: values.map(\.ratio), center: center, radius: radius))
@@ -625,6 +715,10 @@ private struct MuscleRadarChart: View {
                             Circle().stroke(Color.white.opacity(0.7), lineWidth: 1)
                         }
                         .position(valuePoint)
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            onSelectParent?(item.parent)
+                        }
                 }
             }
         }
