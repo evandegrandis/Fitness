@@ -7,6 +7,10 @@ struct SeedData {
         let benchmarkHigh: Double?
     }
 
+    private struct MusclePreset {
+        let mappings: [(MuscleGroup, Double)]
+    }
+
     private static let canonicalWeeklyGoals: [(MuscleParent, Double)] = [
         (.pectoraux, 18),
         (.dosHaut, 14),
@@ -39,17 +43,37 @@ struct SeedData {
         guard let exercises = try? context.fetch(descriptor), !exercises.isEmpty else { return }
 
         let presets = canonicalBenchmarkPresets
+        let musclePresets = canonicalMusclePresets
         var didMutate = false
 
         for exercise in exercises {
-            guard let preset = presets[exercise.name] else { continue }
-            if exercise.benchmarkLow != preset.benchmarkLow {
-                exercise.benchmarkLow = preset.benchmarkLow
-                didMutate = true
+            if let preset = presets[exercise.name] {
+                if exercise.benchmarkLow != preset.benchmarkLow {
+                    exercise.benchmarkLow = preset.benchmarkLow
+                    didMutate = true
+                }
+                if exercise.benchmarkHigh != preset.benchmarkHigh {
+                    exercise.benchmarkHigh = preset.benchmarkHigh
+                    didMutate = true
+                }
             }
-            if exercise.benchmarkHigh != preset.benchmarkHigh {
-                exercise.benchmarkHigh = preset.benchmarkHigh
-                didMutate = true
+
+            if let musclePreset = musclePresets[exercise.name] {
+                let current = Dictionary(uniqueKeysWithValues: exercise.muscleMappings.map { ($0.muscleGroup, $0.coefficient) })
+                let canonical = Dictionary(uniqueKeysWithValues: musclePreset.mappings)
+                if current != canonical {
+                    for mapping in exercise.muscleMappings {
+                        context.delete(mapping)
+                    }
+                    exercise.muscleMappings.removeAll()
+                    for (muscle, coeff) in musclePreset.mappings {
+                        let mapping = MuscleMapping(muscleGroup: muscle, coefficient: coeff)
+                        context.insert(mapping)
+                        mapping.exercise = exercise
+                        exercise.muscleMappings.append(mapping)
+                    }
+                    didMutate = true
+                }
             }
         }
 
@@ -65,12 +89,7 @@ struct SeedData {
         var didMutate = false
 
         for (parent, sets) in canonicalWeeklyGoals {
-            if let goal = goalByParent[parent] {
-                if goal.weeklyGoalSets != sets {
-                    goal.weeklyGoalSets = sets
-                    didMutate = true
-                }
-            } else {
+            if goalByParent[parent] == nil {
                 context.insert(MuscleGoal(parent: parent, weeklyGoalSets: sets))
                 didMutate = true
             }
@@ -114,6 +133,23 @@ struct SeedData {
         "Crunch déclinés": .init(benchmarkLow: 60, benchmarkHigh: 135),
         "Crunch déclinés lesté": .init(benchmarkLow: 60, benchmarkHigh: 135),
         "Relevé de jambes chaise romaine": .init(benchmarkLow: 32.2, benchmarkHigh: 94.5)
+    ]
+
+    private static let tirageVerticalMuscleUpMappings: [(MuscleGroup, Double)] = [
+        (.latInf, 0.6),
+        (.latSup, 0.4),
+        (.tricepsLong, 0.5),
+        (.trapInf, 0.3),
+        (.deltPost, 0.2),
+        (.pectStern, 0.2),
+        (.trapMid, 0.15),
+        (.rhomboides, 0.1),
+        (.transverse, 0.1)
+    ]
+
+    private static let canonicalMusclePresets: [String: MusclePreset] = [
+        "Tirage vertical muscle up": .init(mappings: tirageVerticalMuscleUpMappings),
+        "Tirage vertical muscle-up grip": .init(mappings: tirageVerticalMuscleUpMappings)
     ]
 
     // MARK: - Exercises
@@ -195,7 +231,7 @@ struct SeedData {
 
         make("Tirage vertical muscle up", category: "Pull", mode: .straight, repMin: 8, repMax: 12, increment: 2.5, rest: 120,
              benchmarkLow: 60, benchmarkHigh: 105, fatigueClass: .medium,
-             muscles: [(.latSup, 1.0), (.latInf, 1.0), (.trapInf, 0.3), (.trapMid, 0.3), (.rhomboides, 0.3), (.deltPost, 0.3), (.bracchial, 0.3), (.brachioradial, 0.3), (.bicepsLong, 0.1), (.bicepsCourt, 0.1), (.flechisseurs, 0.1), (.transverse, 0.1)])
+             muscles: tirageVerticalMuscleUpMappings)
 
         // ========== CHEST ==========
         make("Chest Press", category: "Push", mode: .straight, repMin: 6, repMax: 10, increment: 2.5, rest: 150, favorite: true,
