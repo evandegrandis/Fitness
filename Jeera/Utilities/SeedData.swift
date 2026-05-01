@@ -136,14 +136,13 @@ struct SeedData {
     ]
 
     private static let tirageVerticalMuscleUpMappings: [(MuscleGroup, Double)] = [
-        (.latInf, 0.6),
-        (.latSup, 0.4),
-        (.tricepsLong, 0.5),
-        (.trapInf, 0.3),
-        (.deltPost, 0.2),
-        (.pectStern, 0.2),
-        (.trapMid, 0.15),
-        (.rhomboides, 0.1),
+        (.tricepsLong, 0.7),
+        (.latInf, 0.35),
+        (.latSup, 0.2),
+        (.pectStern, 0.25),
+        (.trapInf, 0.2),
+        (.deltPost, 0.1),
+        (.trapMid, 0.1),
         (.transverse, 0.1)
     ]
 
