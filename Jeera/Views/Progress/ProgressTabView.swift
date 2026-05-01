@@ -139,6 +139,12 @@ private struct GlobalProgressView: View {
         let sleepHours: Double
     }
 
+    private struct RadarSummary {
+        let topParent: MuscleParent?
+        let weakestParent: MuscleParent?
+        let touchedCount: Int
+    }
+
     private var weekly: [WeeklyPoint] {
         let calendar = Calendar.current
         let weekStarts = Set(
@@ -329,6 +335,7 @@ private struct GlobalProgressView: View {
             let ratio = goal > 0 ? min(1.0, sets / goal) : 0
             return (parent, sets, goal, ratio)
         }
+        let summary = radarSummary(from: values)
 
         return GlassCard(padding: 16, cornerRadius: 22) {
             VStack(alignment: .leading, spacing: 12) {
@@ -356,6 +363,12 @@ private struct GlobalProgressView: View {
                     .onChange(of: point.weekStart) { _, _ in
                         selectedRadarParent = nil
                     }
+
+                HStack(spacing: 8) {
+                    radarSummaryPill(label: "dominant", value: summary.topParent?.shortName ?? "—", tint: .accentColor)
+                    radarSummaryPill(label: "faible", value: summary.weakestParent?.shortName ?? "—", tint: .orange)
+                    radarSummaryPill(label: "touchés", value: "\(summary.touchedCount)", tint: .secondary)
+                }
             }
         }
     }
@@ -540,6 +553,7 @@ private struct GlobalProgressView: View {
                         miniMetric(label: "C", value: "\(Int(row.creatinePct.rounded()))%", tint: .green)
                         miniMetric(label: "P", value: "\(Int(row.proteinPct.rounded()))%", tint: .blue)
                         miniMetric(label: "Som", value: row.sleepHours > 0 ? String(format: "%.1fh", row.sleepHours) : "—", tint: .mint)
+                        weekRelationPill(for: row)
 
                         Spacer(minLength: 0)
                     }
@@ -628,6 +642,32 @@ private struct GlobalProgressView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func radarSummaryPill(label: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Text(label)
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func weekRelationPill(for row: RecoveryWeekSnapshot) -> some View {
+        let relation = weekRelation(for: row)
+        return Text(relation.label)
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .foregroundStyle(relation.tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(relation.tint.opacity(0.12), in: Capsule())
     }
 
     private func snapshotPill(label: String, value: String, tint: Color) -> some View {
@@ -731,6 +771,37 @@ private struct GlobalProgressView: View {
                 }
                 return $0.name < $1.name
             }
+    }
+
+    private func weekRelation(for row: RecoveryWeekSnapshot) -> (label: String, tint: Color) {
+        let averageRecovery = (row.creatinePct + row.proteinPct + min(100, (row.sleepHours / 9.0) * 100)) / 3
+        let volumeBaseline = max(averageSets, 1)
+        let volumeRatio = min(1.4, row.sets / volumeBaseline)
+        let recoveryRatio = averageRecovery / 100
+        let gap = volumeRatio - recoveryRatio
+
+        if gap > 0.25 { return ("vol > récup", .orange) }
+        if gap < -0.20 { return ("récup > vol", .mint) }
+        return ("aligné", .green)
+    }
+
+    private func radarSummary(from values: [(parent: MuscleParent, sets: Double, goal: Double, ratio: Double)]) -> RadarSummary {
+        let touched = values.filter { $0.sets > 0.1 }
+        let top = touched.max { $0.sets < $1.sets }
+        let weakest = values
+            .filter { $0.goal > 0 }
+            .min {
+                if abs($0.ratio - $1.ratio) > 0.001 {
+                    return $0.ratio < $1.ratio
+                }
+                return $0.parent.displayName < $1.parent.displayName
+            }
+
+        return RadarSummary(
+            topParent: top?.parent,
+            weakestParent: weakest?.parent,
+            touchedCount: touched.count
+        )
     }
 }
 
