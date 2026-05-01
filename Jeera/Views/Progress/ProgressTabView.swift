@@ -130,6 +130,15 @@ private struct GlobalProgressView: View {
         let parentSets: [MuscleParent: Double]
     }
 
+    private struct RecoveryWeekSnapshot: Identifiable {
+        let id = UUID()
+        let weekStart: Date
+        let sets: Double
+        let creatinePct: Double
+        let proteinPct: Double
+        let sleepHours: Double
+    }
+
     private var weekly: [WeeklyPoint] {
         let calendar = Calendar.current
         let weekStarts = Set(
@@ -196,6 +205,7 @@ private struct GlobalProgressView: View {
                     }
                     if weekly.count >= 3 {
                         insightsCard
+                        weeklyCorrelationStrip
                     }
                 }
             }
@@ -352,6 +362,10 @@ private struct GlobalProgressView: View {
 
     private func radarContributionCard(point: WeeklyPoint, parent: MuscleParent) -> some View {
         let items = exerciseContributions(for: parent, weekStart: point.weekStart)
+        let goal = goals.first(where: { $0.parent == parent })?.weeklyGoalSets ?? 0
+        let sets = point.parentSets[parent] ?? 0
+        let completion = goal > 0 ? min(1.0, sets / goal) : 0
+        let remaining = max(0, goal - sets)
 
         return GlassCard(padding: 16, cornerRadius: 18) {
             VStack(alignment: .leading, spacing: 10) {
@@ -372,6 +386,13 @@ private struct GlobalProgressView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 8) {
+                    radarStatPill(label: "faits", value: "\(Int(sets.rounded()))", tint: .accentColor)
+                    radarStatPill(label: "objectif", value: "\(Int(goal.rounded()))", tint: .secondary)
+                    radarStatPill(label: "couv.", value: "\(Int((completion * 100).rounded()))%", tint: completion >= 1 ? .green : .orange)
+                    radarStatPill(label: "reste", value: "\(Int(remaining.rounded(.up)))", tint: remaining <= 0 ? .green : .primary)
                 }
 
                 if items.isEmpty {
@@ -486,6 +507,47 @@ private struct GlobalProgressView: View {
         }
     }
 
+    private var weeklyCorrelationStrip: some View {
+        let rows = weekly.map {
+            RecoveryWeekSnapshot(
+                weekStart: $0.weekStart,
+                sets: $0.performanceDisplay,
+                creatinePct: $0.creatinePct,
+                proteinPct: $0.proteinPct,
+                sleepHours: $0.avgSleepHours
+            )
+        }
+
+        return GlassCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SEMAINE PAR SEMAINE")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                    Text("Volume et récup côte à côte")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(rows) { row in
+                    HStack(spacing: 10) {
+                        Text(row.weekStart.shortDate)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 52, alignment: .leading)
+
+                        miniMetric(label: "S", value: "\(Int(row.sets.rounded()))", tint: .orange)
+                        miniMetric(label: "C", value: "\(Int(row.creatinePct.rounded()))%", tint: .green)
+                        miniMetric(label: "P", value: "\(Int(row.proteinPct.rounded()))%", tint: .blue)
+                        miniMetric(label: "Som", value: row.sleepHours > 0 ? String(format: "%.1fh", row.sleepHours) : "—", tint: .mint)
+
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+    }
+
     private func correlationTile(metric: SecondaryMetric) -> some View {
         let score = correlationScore(for: metric)
         let tint = correlationColor(for: metric)
@@ -537,6 +599,35 @@ private struct GlobalProgressView: View {
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private func miniMetric(label: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func radarStatPill(label: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func snapshotPill(label: String, value: String, tint: Color) -> some View {
