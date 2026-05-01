@@ -49,46 +49,70 @@ struct WeeklyPrioritySection: View {
         Group {
             if chips.isEmpty {
                 if style == .activeWorkout {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                        Text("Objectifs 7j atteints")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
+                    compactCompletionState
                 }
             } else {
-                VStack(alignment: .leading, spacing: style == .activeWorkout ? 6 : 4) {
+                Group {
                     if style == .activeWorkout {
-                        Text("Reste 7 jours")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundStyle(.tertiary)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                Text("7j")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 2)
+
+                                ForEach(chips, id: \.0) { parent, remaining in
+                                    PriorityChip(
+                                        label: parent.shortName,
+                                        remaining: remaining,
+                                        style: style
+                                    )
+                                }
+                            }
                             .padding(.horizontal, 16)
-                    }
-                    LazyVGrid(
-                        columns: Array(
-                            repeating: GridItem(.flexible(minimum: 0), spacing: style == .activeWorkout ? 6 : 6),
-                            count: style == .activeWorkout ? 4 : 4
-                        ),
-                        alignment: .leading,
-                        spacing: style == .activeWorkout ? 6 : 6
-                    ) {
-                        ForEach(chips, id: \.0) { parent, remaining in
-                            PriorityChip(
-                                label: style == .activeWorkout ? parent.displayName : parent.shortName,
-                                remaining: remaining,
-                                style: style
-                            )
+                        }
+                        .padding(.vertical, 2)
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            LazyVGrid(
+                                columns: Array(
+                                    repeating: GridItem(.flexible(minimum: 0), spacing: 6),
+                                    count: 4
+                                ),
+                                alignment: .leading,
+                                spacing: 6
+                            ) {
+                                ForEach(chips, id: \.0) { parent, remaining in
+                                    PriorityChip(
+                                        label: parent.shortName,
+                                        remaining: remaining,
+                                        style: style
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 16)
                         }
                     }
-                    .padding(.horizontal, 16)
                 }
-                .padding(.top, style == .activeWorkout ? 4 : 2)
+                .padding(.top, style == .activeWorkout ? 0 : 2)
             }
         }
+    }
+
+    private var compactCompletionState: some View {
+        HStack(spacing: 6) {
+            Text("7j")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Image(systemName: "checkmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.green)
+            Text("couvert")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
     }
 }
 
@@ -105,33 +129,42 @@ private struct PriorityChip: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: style == .activeWorkout ? 3 : 1) {
-            Text(label)
-                .font(.system(size: style == .activeWorkout ? 10 : 10, weight: .semibold, design: .rounded))
-                .foregroundStyle(remaining == 0 ? .secondary : .primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-
-            HStack(spacing: 4) {
-                Text("\(remaining)")
-                    .font(.system(size: style == .activeWorkout ? 11 : 10, weight: .heavy, design: .rounded).monospacedDigit())
-                    .foregroundStyle(accent)
-                if style == .activeWorkout {
-                    Text("r")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
+        Group {
+            if style == .activeWorkout {
+                HStack(spacing: 5) {
+                    Text(label)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(remaining == 0 ? .secondary : .primary)
+                        .lineLimit(1)
+                    Text("\(remaining)")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded).monospacedDigit())
+                        .foregroundStyle(accent)
                 }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+            } else {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(remaining == 0 ? .secondary : .primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    Text("\(remaining)")
+                        .font(.system(size: 10, weight: .heavy, design: .rounded).monospacedDigit())
+                        .foregroundStyle(accent)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, style == .activeWorkout ? 8 : 8)
-        .padding(.vertical, style == .activeWorkout ? 7 : 6)
         .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: style == .activeWorkout ? 999 : 12, style: .continuous)
                 .fill(Color.white.opacity(0.06))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: style == .activeWorkout ? 999 : 12, style: .continuous)
                 .stroke(accent.opacity(0.25), lineWidth: 0.6)
         }
     }

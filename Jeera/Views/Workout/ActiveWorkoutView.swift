@@ -173,8 +173,8 @@ struct ActiveWorkoutView: View {
                 liveSession: viewModel.activeSession,
                 style: .activeWorkout
             )
-            .padding(.top, 6)
-            .padding(.bottom, 8)
+            .padding(.top, 2)
+            .padding(.bottom, 4)
         }
         .background(
             Rectangle()
