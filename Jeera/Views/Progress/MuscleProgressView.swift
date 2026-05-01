@@ -271,9 +271,12 @@ struct ParentDetailCard: View {
                                     x: .value("Week", item.weekStart, unit: .weekOfYear),
                                     y: .value("Sets", item.sets)
                                 )
+                                .opacity(isSelectedWeek(item.weekStart) ? 1 : 0.72)
                                 .foregroundStyle(
                                     LinearGradient(
-                                        colors: [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.45)],
+                                        colors: isSelectedWeek(item.weekStart)
+                                            ? [Color.accentColor.opacity(1.0), Color.accentColor.opacity(0.65)]
+                                            : [Color.accentColor.opacity(0.95), Color.accentColor.opacity(0.45)],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
@@ -318,7 +321,12 @@ struct ParentDetailCard: View {
                                                 let plotOrigin = geo[plotFrame].origin
                                                 let x = value.location.x - plotOrigin.x
                                                 if let date: Date = proxy.value(atX: x) {
-                                                    selectedWeekStart = nearestWeekStart(to: date)
+                                                    let week = nearestWeekStart(to: date)
+                                                    if selectedWeekStart == week {
+                                                        selectedWeekStart = nil
+                                                    } else {
+                                                        selectedWeekStart = week
+                                                    }
                                                     HapticManager.selection()
                                                 }
                                             }
@@ -338,6 +346,10 @@ struct ParentDetailCard: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
+
+                        Text("Exercices qui ont compté pour \(parent.displayName.lowercased()) cette semaine")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
 
                         ForEach(selectedWeekContributions.prefix(5), id: \.name) { item in
                             HStack(spacing: 8) {
@@ -361,5 +373,10 @@ struct ParentDetailCard: View {
         weeklyData.min {
             abs($0.weekStart.timeIntervalSince(date)) < abs($1.weekStart.timeIntervalSince(date))
         }?.weekStart
+    }
+
+    private func isSelectedWeek(_ weekStart: Date) -> Bool {
+        guard let selectedWeekStart else { return false }
+        return Calendar.current.isDate(weekStart, equalTo: selectedWeekStart, toGranularity: .weekOfYear)
     }
 }
