@@ -26,14 +26,6 @@ struct ActiveWorkoutView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
-
-                    WeeklyPrioritySection(
-                        liveSession: viewModel.activeSession,
-                        style: .activeWorkout
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 6, trailing: 0))
                 }
 
                 if let session = viewModel.activeSession {
@@ -134,6 +126,9 @@ struct ActiveWorkoutView: View {
         .animation(.spring(response: 0.3), value: viewModel.showUndo)
         .animation(.spring(response: 0.4), value: viewModel.showAchievement)
         .animation(.spring(response: 0.55, dampingFraction: 0.82), value: viewModel.activeWorkoutMode)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            workoutPriorityDock
+        }
         .onAppear {
             modeAuraPulse = true
             triggerModeIntroIfNeeded()
@@ -169,6 +164,27 @@ struct ActiveWorkoutView: View {
             if let session = viewModel.activeSession {
                 Text("\(session.totalWorkSets) sets \u{2022} \(viewModel.workoutElapsedFormatted)")
             }
+        }
+    }
+
+    private var workoutPriorityDock: some View {
+        VStack(spacing: 0) {
+            WeeklyPrioritySection(
+                liveSession: viewModel.activeSession,
+                style: .activeWorkout
+            )
+            .padding(.top, 6)
+            .padding(.bottom, 8)
+        }
+        .background(
+            Rectangle()
+                .fill(Color.black.opacity(0.001))
+                .background(.ultraThinMaterial.opacity(0.72))
+        )
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.white.opacity(0.06))
+                .frame(height: 0.5)
         }
     }
 
@@ -359,7 +375,7 @@ struct UndoToast: View {
             Text(message)
                 .font(.caption.weight(.medium))
             Spacer()
-            Button("Undo") {
+            Button("Annuler") {
                 onUndo()
             }
             .font(.caption.weight(.bold))
