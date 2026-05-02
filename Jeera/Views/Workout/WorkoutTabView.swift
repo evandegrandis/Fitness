@@ -86,15 +86,19 @@ private struct PostWorkoutSummarySheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 12) {
                         heroSummaryCard
 
                         if !snapshot.topMuscles.isEmpty || !snapshot.prHighlights.isEmpty || !snapshot.remainingMuscles.isEmpty {
                             sessionReadCard
                         }
 
-                        GlassCard(padding: 12, cornerRadius: 18) {
-                            VStack(alignment: .leading, spacing: 8) {
+                        GlassCard(padding: 14, cornerRadius: 22) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                summarySectionHeader(
+                                    title: "Récupération",
+                                    subtitle: "Créatine, protéine et sommeil D-1 / D-2"
+                                )
                                 dayCard(title: "D-1", creatine: $creatineD1, protein: $proteinD1, sleep: $sleepD1)
                                 dayCard(title: "D-2", creatine: $creatineD2, protein: $proteinD2, sleep: $sleepD2)
                             }
@@ -102,7 +106,7 @@ private struct PostWorkoutSummarySheet: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
-                    .padding(.bottom, 92)
+                    .padding(.bottom, 84)
                 }
                 .background(BackgroundGradient().ignoresSafeArea())
                 .navigationTitle("Bilan séance")
@@ -126,14 +130,14 @@ private struct PostWorkoutSummarySheet: View {
     }
 
     private var heroSummaryCard: some View {
-        GlassCard(padding: 14, cornerRadius: 20) {
-            VStack(alignment: .leading, spacing: 12) {
+        GlassCard(padding: 16, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Bilan express")
-                            .font(.title3.weight(.heavy))
-                        Text("Clôture rapide, sans saisie inutile.")
-                            .font(.subheadline)
+                            .font(.title2.weight(.black))
+                        Text("Clôture rapide et lecture claire de la séance.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
@@ -143,10 +147,10 @@ private struct PostWorkoutSummarySheet: View {
                 }
 
                 HStack(spacing: 8) {
-                    statTile("Durée", value: snapshot.duration)
-                    statTile("Sets", value: "\(snapshot.setCount)")
-                    statTile("Exos", value: "\(snapshot.exerciseCount)")
-                    statTile("PR", value: "\(snapshot.prCount)")
+                    statTile("Durée", value: snapshot.duration, tint: .white)
+                    statTile("Sets", value: "\(snapshot.setCount)", tint: .orange)
+                    statTile("Exos", value: "\(snapshot.exerciseCount)", tint: .accentColor)
+                    statTile("PR", value: "\(snapshot.prCount)", tint: .yellow)
                 }
             }
         }
@@ -162,14 +166,14 @@ private struct PostWorkoutSummarySheet: View {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.subheadline)
                         .opacity(0)
-                    Text("Save & close")
-                        .font(.subheadline.weight(.semibold))
+                    Text("Sauvegarder & fermer")
+                        .font(.subheadline.weight(.bold))
                         .frame(maxWidth: .infinity, alignment: .center)
                     Image(systemName: "checkmark.circle.fill")
                         .font(.subheadline)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, 13)
                 .padding(.horizontal, 16)
             }
             .buttonStyle(.borderedProminent)
@@ -181,12 +185,16 @@ private struct PostWorkoutSummarySheet: View {
     }
 
     private var sessionReadCard: some View {
-        GlassCard(padding: 14, cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 12) {
+        GlassCard(padding: 14, cornerRadius: 22) {
+            VStack(alignment: .leading, spacing: 14) {
+                summarySectionHeader(
+                    title: "Lecture séance",
+                    subtitle: "Avancée, manques et records utiles"
+                )
+
                 if !snapshot.topMuscles.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Avancée musculaire")
-                            .font(.subheadline.weight(.bold))
+                        sectionMiniTitle("Avancée musculaire")
                         HStack(spacing: 8) {
                             ForEach(snapshot.topMuscles) { impact in
                                 VStack(alignment: .leading, spacing: 3) {
@@ -194,12 +202,12 @@ private struct PostWorkoutSummarySheet: View {
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                     Text("+\(impact.sets)")
-                                        .font(.headline.weight(.heavy).monospacedDigit())
+                                        .font(.title3.weight(.heavy).monospacedDigit())
                                         .foregroundStyle(.accent)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
-                                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .padding(11)
+                                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
                         }
                     }
@@ -207,8 +215,7 @@ private struct PostWorkoutSummarySheet: View {
 
                 if !snapshot.remainingMuscles.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("À finir de couvrir")
-                            .font(.subheadline.weight(.bold))
+                        sectionMiniTitle("À finir de couvrir")
                         HStack(spacing: 8) {
                             ForEach(snapshot.remainingMuscles) { impact in
                                 VStack(alignment: .leading, spacing: 3) {
@@ -220,7 +227,7 @@ private struct PostWorkoutSummarySheet: View {
                                         .foregroundStyle(.orange)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
+                                .padding(11)
                                 .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
                         }
@@ -229,8 +236,7 @@ private struct PostWorkoutSummarySheet: View {
 
                 if !snapshot.prHighlights.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("PR de séance")
-                            .font(.subheadline.weight(.bold))
+                        sectionMiniTitle("PR de séance")
                         VStack(spacing: 6) {
                             ForEach(snapshot.prHighlights) { highlight in
                                 HStack(spacing: 8) {
@@ -245,8 +251,8 @@ private struct PostWorkoutSummarySheet: View {
                                         .font(.caption.weight(.bold).monospacedDigit())
                                         .foregroundStyle(.yellow)
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
                                 .background(Color.yellow.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                         }
@@ -256,13 +262,14 @@ private struct PostWorkoutSummarySheet: View {
         }
     }
 
-    private func statTile(_ label: String, value: String) -> some View {
+    private func statTile(_ label: String, value: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label.uppercased())
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
@@ -305,16 +312,16 @@ private struct PostWorkoutSummarySheet: View {
         protein: Binding<Bool>,
         sleep: Binding<Double>
     ) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(sleep.wrappedValue, format: .number.precision(.fractionLength(1))) +
-                Text("h")
+                Text(sleep.wrappedValue, format: .number.precision(.fractionLength(1))) + Text("h")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            .font(.caption.monospacedDigit())
             HStack(spacing: 12) {
                 compactToggle(title: "Créatine", icon: "bolt.fill", isOn: creatine)
                 compactToggle(title: "Protéine", icon: "fork.knife", isOn: protein)
@@ -326,15 +333,15 @@ private struct PostWorkoutSummarySheet: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(sleep.wrappedValue, format: .number.precision(.fractionLength(1))) + Text("h")
+                    sleepGaugeLabel(for: sleep.wrappedValue)
                 }
-                .font(.caption.monospacedDigit())
 
                 Slider(value: sleep, in: 3...11, step: 0.5)
+                    .tint(Color.accentColor)
             }
         }
-        .padding(10)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(12)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func compactToggle(title: String, icon: String, isOn: Binding<Bool>) -> some View {
@@ -373,6 +380,45 @@ private struct PostWorkoutSummarySheet: View {
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func summarySectionHeader(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.subheadline.weight(.heavy))
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func sectionMiniTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.heavy))
+            .foregroundStyle(.secondary)
+    }
+
+    private func sleepGaugeLabel(for hours: Double) -> some View {
+        let text: String
+        let tint: Color
+
+        if hours >= 8 {
+            text = "haut"
+            tint = .green
+        } else if hours >= 6.5 {
+            text = "ok"
+            tint = .blue
+        } else {
+            text = "bas"
+            tint = .orange
+        }
+
+        return Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.12), in: Capsule())
     }
 
     private func hydrateSuggestedDefaults() {

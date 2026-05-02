@@ -542,20 +542,29 @@ private struct GlobalProgressView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ForEach(rows) { row in
+                ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        Text(row.weekStart.shortDate)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 52, alignment: .leading)
+                        ForEach(rows) { row in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(row.weekStart.shortDate)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Spacer(minLength: 0)
+                                    weekRelationPill(for: row)
+                                }
 
-                        miniMetric(label: "S", value: "\(Int(row.sets.rounded()))", tint: .orange)
-                        miniMetric(label: "C", value: "\(Int(row.creatinePct.rounded()))%", tint: .green)
-                        miniMetric(label: "P", value: "\(Int(row.proteinPct.rounded()))%", tint: .blue)
-                        miniMetric(label: "Som", value: row.sleepHours > 0 ? String(format: "%.1fh", row.sleepHours) : "—", tint: .mint)
-                        weekRelationPill(for: row)
-
-                        Spacer(minLength: 0)
+                                HStack(spacing: 6) {
+                                    miniMetric(label: "S", value: "\(Int(row.sets.rounded()))", tint: .orange)
+                                    miniMetric(label: "C", value: "\(Int(row.creatinePct.rounded()))%", tint: .green)
+                                    miniMetric(label: "P", value: "\(Int(row.proteinPct.rounded()))%", tint: .blue)
+                                    miniMetric(label: "Som", value: row.sleepHours > 0 ? String(format: "%.1fh", row.sleepHours) : "—", tint: .mint)
+                                }
+                            }
+                            .frame(width: 210, alignment: .leading)
+                            .padding(12)
+                            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
                     }
                 }
             }
