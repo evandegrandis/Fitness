@@ -6,6 +6,7 @@ struct AchievementOverlayView: View {
     @State private var opacity: Double = 0
     @State private var glowScale: CGFloat = 0.7
     @State private var spin = false
+    @State private var burst = false
 
     var body: some View {
         ZStack {
@@ -15,6 +16,21 @@ struct AchievementOverlayView: View {
                 .blur(radius: 20)
                 .scaleEffect(glowScale)
                 .opacity(opacity * 0.8)
+
+            ForEach(0..<8, id: \.self) { index in
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [.yellow.opacity(0.95), .orange.opacity(0.35)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 6, height: burst ? 28 : 10)
+                    .offset(y: burst ? -88 : -58)
+                    .rotationEffect(.degrees(Double(index) * 45))
+                    .opacity(burst ? 0 : opacity * 0.8)
+            }
 
             VStack(spacing: 10) {
                 ZStack {
@@ -86,6 +102,9 @@ struct AchievementOverlayView: View {
             }
             withAnimation(.linear(duration: 1.4)) {
                 spin = true
+            }
+            withAnimation(.easeOut(duration: 0.5)) {
+                burst = true
             }
         }
     }

@@ -112,14 +112,14 @@ struct ExerciseCard: View {
             .animation(.easeInOut(duration: 0.2), value: isArmed)
             .animation(.easeInOut(duration: 0.2), value: showQuickSwapHint)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 withAnimation { viewModel.removeExercise(loggedExercise) }
             } label: {
                 Label("Supprimer", systemImage: "trash")
             }
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
                 withAnimation { viewModel.handleSupersetLink(loggedExercise) }
             } label: {
@@ -137,6 +137,7 @@ struct ExerciseCard: View {
             }
             .tint(.gray)
         }
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onAppear {
             if !hasLoadedSuggestion {
                 refreshSuggestion()
@@ -335,7 +336,7 @@ struct ExerciseCard: View {
         }
     }
 
-    // MARK: - Inline Edit Section (steppers only, no Valider)
+    // MARK: - Inline Edit Section
 
     private var inlineEditSection: some View {
         VStack(spacing: 7) {
@@ -378,8 +379,14 @@ struct ExerciseCard: View {
                             HapticManager.selection()
                         } label: {
                             HStack(spacing: 2) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 8))
+                                if cachedSuggestion.setType == .warmup {
+                                    Text("W")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.yellow)
+                                } else {
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 8))
+                                }
                                 Text(cachedSuggestion.weight > 0 ? "\(cachedSuggestion.weight.cleanWeight)×\(cachedSuggestion.reps)" : "BW×\(cachedSuggestion.reps)")
                                     .font(.caption2.weight(.medium).monospacedDigit())
                             }
@@ -429,6 +436,9 @@ struct ExerciseCard: View {
                 HapticManager.tap()
             }
         }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var repsStepper: some View {
@@ -456,13 +466,16 @@ struct ExerciseCard: View {
                 HapticManager.tap()
             }
         }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func stepperButton(systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .bold))
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
                 .background(Color.white.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)
@@ -479,13 +492,24 @@ struct ExerciseCard: View {
                 )
             }
         } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .bold))
                 Text("Valider")
                     .font(.caption.weight(.heavy))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                LinearGradient(
+                    colors: [Color.accentColor, Color.accentColor.opacity(0.82)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
         }
         .buttonStyle(.plain)
     }

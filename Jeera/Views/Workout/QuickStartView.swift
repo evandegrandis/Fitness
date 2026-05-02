@@ -539,6 +539,7 @@ struct QuickStartButton: View {
     var mode: WorkoutViewModel.WorkoutMode? = nil
     let action: () -> Void
     @State private var animateAccent = false
+    @State private var flarePhase = false
 
     private var activeMode: WorkoutViewModel.WorkoutMode? {
         mode
@@ -583,9 +584,9 @@ struct QuickStartButton: View {
                     if let activeMode, activeMode != .normal {
                         Circle()
                             .fill(accentColor.opacity(0.18))
-                            .frame(width: 26, height: 26)
-                            .blur(radius: animateAccent ? 8 : 3)
-                            .opacity(animateAccent ? 0.95 : 0.42)
+                            .frame(width: flarePhase ? 32 : 22, height: flarePhase ? 32 : 22)
+                            .blur(radius: flarePhase ? 10 : 4)
+                            .opacity(flarePhase ? 0.98 : 0.38)
 
                         ambientOrbit(mode: activeMode)
                     }
@@ -621,18 +622,39 @@ struct QuickStartButton: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(accentColor.opacity(activeMode == nil ? 0.15 : 0.28), lineWidth: 1)
             }
+            .overlay(alignment: .topLeading) {
+                if let activeMode, activeMode != .normal {
+                    Capsule()
+                        .fill(activeMode.accentColor.opacity(0.12))
+                        .overlay {
+                            Text(activeMode.displayName.uppercased())
+                                .font(.system(size: 8, weight: .black, design: .rounded))
+                                .tracking(0.8)
+                                .foregroundStyle(activeMode.accentColor.opacity(0.95))
+                                .padding(.horizontal, 6)
+                        }
+                        .frame(height: 18)
+                        .padding(.leading, 12)
+                        .padding(.top, 10)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
         }
         .buttonStyle(LiftButtonStyle())
         .onAppear {
             animateAccent = true
+            flarePhase = true
         }
         .onChange(of: mode?.rawValue) { _, _ in
             animateAccent = false
+            flarePhase = false
             withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
                 animateAccent = true
+                flarePhase = true
             }
         }
         .animation(animationStyle, value: animateAccent)
+        .animation(animationStyle, value: flarePhase)
     }
 
     private var iconScale: CGFloat {
@@ -641,9 +663,9 @@ struct QuickStartButton: View {
         case .normal:
             return 1
         case .beast:
-            return animateAccent ? 1.08 : 0.94
+            return flarePhase ? 1.12 : 0.94
         case .monk:
-            return animateAccent ? 1.04 : 0.97
+            return flarePhase ? 1.05 : 0.97
         }
     }
 
@@ -657,18 +679,18 @@ struct QuickStartButton: View {
                 Circle()
                     .fill(accentColor.opacity(0.26))
                     .frame(width: 6, height: 6)
-                    .offset(x: animateAccent ? 10 : 3, y: animateAccent ? -11 : -4)
+                    .offset(x: flarePhase ? 10 : 3, y: flarePhase ? -11 : -4)
                 Circle()
                     .fill(accentColor.opacity(0.18))
                     .frame(width: 4, height: 4)
-                    .offset(x: animateAccent ? -9 : -3, y: animateAccent ? -8 : -2)
+                    .offset(x: flarePhase ? -9 : -3, y: flarePhase ? -8 : -2)
             }
         case .monk:
             Capsule()
                 .fill(accentColor.opacity(0.18))
                 .frame(width: 18, height: 6)
-                .rotationEffect(.degrees(animateAccent ? -18 : 14))
-                .offset(x: animateAccent ? 8 : -6, y: animateAccent ? 11 : 7)
+                .rotationEffect(.degrees(flarePhase ? -18 : 14))
+                .offset(x: flarePhase ? 8 : -6, y: flarePhase ? 11 : 7)
         }
     }
 
@@ -678,9 +700,9 @@ struct QuickStartButton: View {
         case .normal:
             return .zero
         case .beast:
-            return .degrees(animateAccent ? -6 : 5)
+            return .degrees(flarePhase ? -8 : 5)
         case .monk:
-            return .degrees(animateAccent ? -3 : 3)
+            return .degrees(flarePhase ? -4 : 3)
         }
     }
 
@@ -690,9 +712,9 @@ struct QuickStartButton: View {
         case .normal:
             return 0
         case .beast:
-            return animateAccent ? -1 : 1
+            return flarePhase ? -1 : 1
         case .monk:
-            return animateAccent ? 1 : -1
+            return flarePhase ? 1 : -1
         }
     }
 
