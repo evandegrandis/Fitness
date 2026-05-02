@@ -12,18 +12,22 @@ struct ExerciseProgressView: View {
     @State private var selectedExercise: Exercise?
     @Namespace private var selectionNamespace
 
+    private var usedExerciseIDs: Set<UUID> {
+        Set(
+            sessions
+                .flatMap(\.loggedExercises)
+                .compactMap { $0.exercise?.id }
+        )
+    }
+
     private var usedExercises: [Exercise] {
-        exercises.filter { ex in
-            sessions.contains { session in
-                session.loggedExercises.contains { $0.exercise?.id == ex.id }
-            }
-        }
+        exercises.filter { usedExerciseIDs.contains($0.id) }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 10) {
+            LazyVStack(spacing: 10) {
                 ForEach(usedExercises) { exercise in
                     ExerciseProgressRow(
                         exercise: exercise,
@@ -73,11 +77,32 @@ struct ExerciseProgressRow: View {
     private let rollingWindowSessions = 4
     @AppStorage("user_body_weight_kg") private var userBodyWeightKg = 78.0
 
-    private var history: [ExerciseDataPoint] {
+    private enum ChartDisplayMode {
+        case weightOnly
+        case repsOnly
+        case dual
+    }
+
+    private static let explicitRepBenchmarks: [String: ClosedRange<Double>] = [
+        "Tractions SN": 14...33,
+        "Crunch déclinés": 29...76,
+        "Crunch déclinés lesté": 29...76,
+        "Relevé de jambes chaise romaine": 18...46
+    ]
+
+    private var exerciseSessions: [(session: WorkoutSession, logged: LoggedExercise)] {
         sessions.compactMap { session in
             guard let logged = session.loggedExercises.first(where: { $0.exercise?.id == exercise.id }) else {
                 return nil
             }
+            return (session, logged)
+        }
+    }
+
+    private var history: [ExerciseDataPoint] {
+        exerciseSessions.compactMap { entry in
+            let session = entry.session
+            let logged = entry.logged
             let workSets = logged.completedWorkSets
             guard !workSets.isEmpty else { return nil }
 
@@ -121,10 +146,8 @@ struct ExerciseProgressRow: View {
     }
 
     private var recentEstimatedOneRM: Double? {
-        let recentLogged = sessions
-            .compactMap { session in
-                session.loggedExercises.first(where: { $0.exercise?.id == exercise.id })
-            }
+        let recentLogged = exerciseSessions
+            .map(\.logged)
             .prefix(3)
 
         let secondSetCandidates = recentLogged.compactMap { logged in
@@ -144,29 +167,30 @@ struct ExerciseProgressRow: View {
     }
 
     private var hasWeightedHistory: Bool {
-        sessions.contains { session in
-            session.loggedExercises.contains { logged in
-                logged.exercise?.id == exercise.id &&
-                logged.completedWorkSets.contains(where: { $0.weight > 0 })
-            }
+        exerciseSessions.contains { $0.logged.completedWorkSets.contains(where: { $0.weight > 0 }) }
+    }
+
+    private var displayMode: ChartDisplayMode {
+        if exercise.setPatternMode == .bodyweight || !hasWeightedHistory {
+            return .repsOnly
         }
+        if explicitRepBenchmarkRange != nil &&
+            (exercise.setPatternMode == .weightedBodyweight || exercise.name.localizedCaseInsensitiveContains("crunch")) {
+            return .dual
+        }
+        return .weightOnly
     }
 
     private var usesPrimaryRepChart: Bool {
-        exercise.setPatternMode == .bodyweight || !hasWeightedHistory
+        displayMode == .repsOnly
     }
 
     private var showsSecondaryRepChart: Bool {
-        !usesPrimaryRepChart &&
-        (exercise.setPatternMode == .weightedBodyweight || repBenchmarkRange != nil)
+        displayMode == .dual
     }
 
-    /// Rep benchmark band from the exercise model (low = beginner, high = elite).
-    private var repBenchmarkRange: ClosedRange<Double>? {
-        guard let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh, low < high else {
-            return nil
-        }
-        return low...high
+    private var explicitRepBenchmarkRange: ClosedRange<Double>? {
+        Self.explicitRepBenchmarks[exercise.name]
     }
 
     var body: some View {
@@ -351,7 +375,7 @@ struct ExerciseProgressRow: View {
             return (dp.date, value, value > 0)
         }
         var vals = chartData.filter(\.2).map(\.1)
-        if let band = repBenchmarkRange {
+        if let band = explicitRepBenchmarkRange {
             vals.append(band.lowerBound)
             vals.append(band.upperBound)
         }
@@ -363,7 +387,7 @@ struct ExerciseProgressRow: View {
 
         return VStack(alignment: .leading, spacing: 4) {
             Chart {
-                if let band = repBenchmarkRange {
+                if let band = explicitRepBenchmarkRange {
                     RectangleMark(
                         yStart: .value("Rep Bench Low", band.lowerBound),
                         yEnd: .value("Rep Bench High", band.upperBound)
@@ -521,11 +545,11 @@ struct ExerciseProgressRow: View {
     }
 
     private var benchmarkBandLabel: String? {
+        if usesPrimaryRepChart, let repRange = explicitRepBenchmarkRange {
+            return "\(Int(repRange.lowerBound))-\(Int(repRange.upperBound)) reps"
+        }
         if let low = exercise.benchmarkLow, let high = exercise.benchmarkHigh {
             return "\(low.cleanWeight)-\(high.cleanWeight) kg"
-        }
-        if let repRange = repBenchmarkRange {
-            return "\(Int(repRange.lowerBound))-\(Int(repRange.upperBound)) reps"
         }
         return nil
     }
