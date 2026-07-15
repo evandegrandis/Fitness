@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/*  JEERA — Design system « sombre premium »                           */
+/*  Fond noir bleuté · verre dépoli · accents cyan/violet              */
+/*  Thèmes de mode : Normal (cyan/violet) · Beast (orange) · Monk (émeraude) */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-manrope), sans-serif;
+
+  /* Surfaces (noir bleuté profond) */
+  --color-ink-950: #06070d;
+  --color-ink-900: #0a0b12;
+  --color-ink-800: #10121d;
+  --color-ink-700: #171a29;
+  --color-ink-600: #1f2335;
+
+  /* Texte */
+  --color-fg: #eef1fb;
+  --color-fg-muted: #9aa3c0;
+  --color-fg-faint: #616a86;
+
+  /* Accents de marque */
+  --color-cyan: #34e0ea;
+  --color-violet: #a78bfa;
+  --color-mint: #5eead4;
+  --color-amber: #fbbf24;
+  --color-rose: #fb7185;
+  --color-lime: #bef264;
+
+  /* Sémantique */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #fb7185;
+
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.75rem;
+}
+
+/* Variables runtime pilotées par le mode (surchargées via [data-mode]) */
+:root {
+  --accent: var(--color-cyan);
+  --accent-2: var(--color-violet);
+  --glow: 52 224 234; /* rgb du halo, pour rgba() */
+  --bg-top: #10131f;
+  --bg-bottom: #07080e;
+}
+
+[data-mode="beast"] {
+  --accent: #ff8a3d;
+  --accent-2: #ff4d4d;
+  --glow: 255 122 61;
+  --bg-top: #1c1210;
+  --bg-bottom: #0b0706;
+}
+
+[data-mode="monk"] {
+  --accent: #34d399;
+  --accent-2: #2dd4bf;
+  --glow: 52 211 153;
+  --bg-top: #0c1a16;
+  --bg-bottom: #060d0b;
+}
+
+html {
+  height: 100%;
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100%;
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(var(--glow) / 0.14), transparent 60%),
+    radial-gradient(90% 60% at 100% 0%, rgba(167, 139, 250, 0.08), transparent 55%),
+    linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.6s ease;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Composants réutilisables                                           */
+/* ------------------------------------------------------------------ */
+@layer components {
+  /* Carte en verre dépoli */
+  .glass {
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025));
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .glass-card {
+    border-radius: var(--radius-2xl);
+    padding: 1.1rem 1.15rem;
+  }
+  .glass-strong {
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.045));
+    border: 1px solid rgba(255, 255, 255, 0.13);
+  }
+
+  /* Halo d'accent */
+  .glow-accent {
+    box-shadow: 0 0 0 1px rgba(var(--glow) / 0.25), 0 12px 40px rgba(var(--glow) / 0.22);
+  }
+
+  /* Dégradé de texte accent */
+  .text-accent-gradient {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Pilule / chip */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Bouton d'accent principal */
+  .btn-accent {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    color: #06070d;
+    font-weight: 700;
+    border-radius: 999px;
+  }
+
+  /* Chiffres tabulaires (stats, poids, reps) */
+  .tnum {
+    font-family: var(--font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Scrollbars discrètes */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 999px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Respect des préférences de réduction de mouvement */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

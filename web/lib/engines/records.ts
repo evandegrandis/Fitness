@@ -1,0 +1,243 @@
+/**
+ * Records de force pour un exercice, miroir exact de
+ * `Jeera/Engines/RecordsEngine.swift`.
+ *
+ * Les records sont calculés à partir de séances TERMINÉES uniquement (jamais
+ * de la séance active — sinon chaque premier set de chaque séance
+ * ressemblerait à un "record"). On ne considère que les sets qui passent la
+ * validation : reps >= exercise.repTargetMin (sauf branche bodyweight).
+ */
+
+import { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
+import { completedWorkSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
+import { SetType } from "@/lib/models/enums";
+
+// ---------------------------------------------------------------------------
+// ExerciseRecords
+// ---------------------------------------------------------------------------
+
+/** Miroir de `ExerciseRecords` (Swift). */
+export interface ExerciseRecords {
+  /** Poids le plus lourd soulevé pour reps >= repTargetMin. */
+  heaviestValidated: number;
+  /** Reps à ce poids le plus lourd (affichage "85 kg x 6"). */
+  repsAtHeaviestValidated: number;
+  /** Poids le plus lourd jamais complété (tout nombre de reps). */
+  heaviestEver: number;
+  /** Pour chaque poids, le meilleur nombre de reps (sets validés uniquement). */
+  bestRepsByWeight: Record<number, number>;
+  /** Meilleur nombre de reps sur un set bodyweight pur (weight == 0). */
+  bestBodyweightReps: number;
+  /** Meilleur e1RM Epley parmi les sets validés. */
+  bestE1RM: number;
+  /** true si aucun historique préalable. */
+  isEmpty: boolean;
+}
+
+export const EMPTY_RECORDS: ExerciseRecords = {
+  heaviestValidated: 0,
+  repsAtHeaviestValidated: 0,
+  heaviestEver: 0,
+  bestRepsByWeight: {},
+  bestBodyweightReps: 0,
+  bestE1RM: 0,
+  isEmpty: true,
+};
+
+/** Miroir de `RecordKind` (Swift). */
+export type RecordKind = "heaviestWeight" | "estimated1RM" | "repsAtWeight" | "bodyweightReps";
+
+/**
+ * Marge minimale d'amélioration relative sur l'e1RM précédent pour compter
+ * comme un PR. Assez petite pour capter une vraie progression (80→82 = +2.5%)
+ * mais assez grande pour éviter de flaguer chaque variation d'un demi-kilo.
+ */
+const K_E1RM_PR_THRESHOLD = 1.02;
+
+const WORK_KINDS = new Set<string>([SetType.work, SetType.topSet, SetType.backoff]);
+
+export const RecordsEngine = {
+  /**
+   * Construit un résumé compact des records d'un exercice à partir de ses
+   * sets historiques. `historicalSets` ne doit PAS inclure les sets de la
+   * séance actuellement active.
+   */
+  buildRecords(exercise: Exercise, historicalSets: LoggedSet[]): ExerciseRecords {
+    const completedWork = historicalSets.filter((s) => s.completed && WORK_KINDS.has(s.setType));
+
+    // Records pondérés : reps validées (>= repTargetMin) ET poids > 0.
+    const weightedValidated = completedWork.filter((s) => s.weight > 0 && s.reps >= exercise.repTargetMin);
+
+    // Piste bodyweight : tout set BW complété compte (weight == 0). Pas de
+    // porte sur repTargetMin pour que les premières séances BW produisent
+    // déjà des PR.
+    const bwSets = completedWork.filter((s) => s.weight === 0);
+    const bestBWReps = bwSets.reduce((max, s) => Math.max(max, s.reps), 0);
+
+    // Piste e1RM : tous les sets pondérés validés.
+    const bestE1RMValue = bestE1RM(weightedValidated).e1rm;
+
+    const allWeighted = completedWork.filter((s) => s.weight > 0);
+    const heaviestEver = allWeighted.reduce((max, s) => Math.max(max, s.weight), 0);
+
+    if (weightedValidated.length === 0 && bestBWReps <= 0 && heaviestEver <= 0) {
+      return EMPTY_RECORDS;
+    }
+
+    const bestRepsByWeight: Record<number, number> = {};
+    for (const set of weightedValidated) {
+      const current = bestRepsByWeight[set.weight] ?? 0;
+      if (set.reps > current) {
+        bestRepsByWeight[set.weight] = set.reps;
+      }
+    }
+
+    let heaviest: LoggedSet | undefined;
+    for (const set of weightedValidated) {
+      if (!heaviest || set.weight > heaviest.weight) heaviest = set;
+    }
+
+    return {
+      heaviestValidated: heaviest?.weight ?? 0,
+      repsAtHeaviestValidated: heaviest?.reps ?? 0,
+      heaviestEver,
+      bestRepsByWeight,
+      bestBodyweightReps: bestBWReps,
+      bestE1RM: bestE1RMValue,
+      isEmpty: false,
+    };
+  },
+
+  /**
+   * Classifie si un set qui vient d'être loggé bat un record existant.
+   * Retourne null si le set n'est pas un record.
+   *
+   * L'ordre compte — le plus "impressionnant" gagne si plusieurs s'appliquent :
+   *   1. heaviestWeight (nouveau sommet)
+   *   2. estimated1RM (nouveau e1RM avec marge >= 2%, évite le flapping)
+   *   3. repsAtWeight (plus de reps à un poids déjà atteint)
+   *   4. bodyweightReps (exercices BW : plus de reps que jamais)
+   */
+  classify(set: LoggedSet, exercise: Exercise, priorRecords: ExerciseRecords): RecordKind | null {
+    if (!set.completed) return null;
+
+    // Branche bodyweight : PR de reps si strictement plus que tout précédent
+    // compte de reps BW. Pas de porte repTargetMin pour que le tout premier
+    // "meilleur" set BW compte déjà comme progression.
+    if (set.weight === 0) {
+      if (set.reps > priorRecords.bestBodyweightReps) {
+        return "bodyweightReps";
+      }
+      return null;
+    }
+
+    // Nouveau PR de poids : strictement plus lourd que tout ce qui a jamais
+    // été complété. Pas de porte de reps minimum — un nouveau record absolu
+    // EST un record.
+    if (set.weight > priorRecords.heaviestEver) {
+      return "heaviestWeight";
+    }
+
+    // Les records restants nécessitent des reps validées (assez de reps pour
+    // être un set de qualité).
+    if (set.reps < exercise.repTargetMin) return null;
+
+    // Nouveau PR e1RM avec une marge significative.
+    const newE1RM = estimated1RM(set.weight, set.reps);
+    if (priorRecords.bestE1RM > 0 && newE1RM > priorRecords.bestE1RM * K_E1RM_PR_THRESHOLD) {
+      return "estimated1RM";
+    }
+
+    // PR de reps à un poids déjà soulevé.
+    const prior = priorRecords.bestRepsByWeight[set.weight];
+    if (prior !== undefined && set.reps > prior) {
+      return "repsAtWeight";
+    }
+
+    return null;
+  },
+
+  /**
+   * Détermine si un set terminé dans l'historique doit être affiché avec une
+   * étoile de record. Appeler avec la liste COMPLÈTE des sets historiques (y
+   * compris le set lui-même). Un set gagne une étoile si le retirer de
+   * l'historique changerait le meilleur record à ce poids.
+   */
+  isRecordSet(set: LoggedSet, amongSets: LoggedSet[], exercise: Exercise): boolean {
+    if (!set.completed) return false;
+
+    const others = amongSets.filter((s) => s.id !== set.id);
+
+    if (set.weight === 0) {
+      const priorBWMax = others
+        .filter((s) => s.completed && s.weight === 0)
+        .reduce((max, s) => Math.max(max, s.reps), 0);
+      return set.reps > priorBWMax;
+    }
+
+    // Poids le plus lourd jamais atteint ailleurs — étoile quel que soit le
+    // nombre de reps.
+    const heaviestElsewhere = others
+      .filter((s) => s.completed && s.weight > 0)
+      .reduce((max, s) => Math.max(max, s.weight), 0);
+    if (set.weight > heaviestElsewhere) {
+      return true;
+    }
+
+    // PR de reps à un poids donné (sets validés uniquement).
+    if (set.reps < exercise.repTargetMin) return false;
+
+    const priorAtWeight = others
+      .filter((s) => s.completed && s.weight === set.weight && s.reps >= exercise.repTargetMin)
+      .reduce((max, s) => Math.max(max, s.reps), 0);
+
+    return set.reps > priorAtWeight;
+  },
+
+  /**
+   * Pour l'UI d'historique, on ne veut pas étoiler chaque PR intermédiaire
+   * immédiatement dépassé plus tard dans la même séance. On ne garde que les
+   * sets record qui comptent encore après la fin de toute la séance :
+   *   - le set pondéré validé le plus fort
+   *   - le PR de reps bodyweight le plus fort
+   *   - le PR pondéré absolu le plus fort sous validation, si distinct
+   */
+  displayedRecordSetIDs(loggedExercise: LoggedExercise, amongSets: LoggedSet[], exercise: Exercise): Set<string> {
+    const candidates = completedWorkSets(loggedExercise).filter((s) => RecordsEngine.isRecordSet(s, amongSets, exercise));
+    if (candidates.length === 0) return new Set();
+
+    const kept: LoggedSet[] = [];
+
+    const bestValidatedWeighted = candidates
+      .filter((s) => s.weight > 0 && s.reps >= exercise.repTargetMin)
+      .reduce<LoggedSet | undefined>((best, s) => {
+        if (!best) return s;
+        if (s.weight !== best.weight) return s.weight > best.weight ? s : best;
+        return s.reps > best.reps ? s : best;
+      }, undefined);
+    if (bestValidatedWeighted) kept.push(bestValidatedWeighted);
+
+    const bestBodyweight = candidates
+      .filter((s) => s.weight === 0)
+      .reduce<LoggedSet | undefined>((best, s) => (!best || s.reps > best.reps ? s : best), undefined);
+    if (bestBodyweight) kept.push(bestBodyweight);
+
+    const bestAbsoluteWeighted = candidates
+      .filter((s) => s.weight > 0)
+      .reduce<LoggedSet | undefined>((best, s) => {
+        if (!best) return s;
+        if (s.weight !== best.weight) return s.weight > best.weight ? s : best;
+        return s.reps > best.reps ? s : best;
+      }, undefined);
+    if (bestAbsoluteWeighted && !kept.some((s) => s.id === bestAbsoluteWeighted.id)) {
+      kept.push(bestAbsoluteWeighted);
+    }
+
+    return new Set(kept.map((s) => s.id));
+  },
+};
+
+export const buildRecords = RecordsEngine.buildRecords;
+export const classify = RecordsEngine.classify;
+export const isRecordSet = RecordsEngine.isRecordSet;
+export const displayedRecordSetIDs = RecordsEngine.displayedRecordSetIDs;

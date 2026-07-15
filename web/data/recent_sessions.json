@@ -1,0 +1,193 @@
+{
+  "_note": "13 séances récentes (22 mai → 14 juil. 2026) transcrites du carnet papier d'Evan, ABSENTES du backup officiel (qui s'arrête au 14 mai). À fusionner au seed après l'import du backup. Les exercices sont référencés par nom (résolution contre le catalogue importé). 'newExercises' contient les exercices à créer s'ils n'existent pas déjà. Sets = [poids_kg, reps]. Poids 0 = bodyweight.",
+  "newExercises": [
+    {
+      "name": "Ab roller debout",
+      "category": "Core",
+      "setPatternMode": "bodyweight",
+      "repTargetMin": 5,
+      "repTargetMax": 12,
+      "smallestIncrement": 0,
+      "suggestedRestSeconds": 60,
+      "fatigueClass": "L",
+      "isFavorite": false,
+      "muscleMappings": [
+        { "muscleGroup": "transverse", "coefficient": 1.0 },
+        { "muscleGroup": "abs_haut", "coefficient": 0.9 },
+        { "muscleGroup": "abs_bas", "coefficient": 0.9 },
+        { "muscleGroup": "oblique_ext", "coefficient": 0.3 },
+        { "muscleGroup": "oblique_int", "coefficient": 0.3 },
+        { "muscleGroup": "lat_inf", "coefficient": 0.2 },
+        { "muscleGroup": "lat_sup", "coefficient": 0.2 }
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "date": "2026-07-14",
+      "exercises": [
+        { "name": "HSPU", "sets": [[0, 10], [0, 7]] },
+        { "name": "Tractions SN", "sets": [[0, 10]] },
+        { "name": "Traction pronation large", "sets": [[0, 8]] },
+        { "name": "Ab roller debout", "sets": [[0, 3]] },
+        { "name": "Tirage vertical muscle up", "sets": [[40, 7], [35, 8], [35, 5]] },
+        { "name": "Pec deck", "sets": [[75, 8], [70, 9]] },
+        { "name": "Leg extension", "sets": [[80, 10], [80, 6]] },
+        { "name": "Lateral raises", "sets": [[14, 5], [12, 7]] },
+        { "name": "Shoulder press", "sets": [[70, 4], [70, 2]] },
+        { "name": "Leg curl", "sets": [[60, 8]] },
+        { "name": "Isolateral row", "sets": [[110, 6]] }
+      ]
+    },
+    {
+      "date": "2026-07-11",
+      "exercises": [
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 10]] },
+        { "name": "Tractions SN", "sets": [[0, 10]] },
+        { "name": "Traction pronation large", "sets": [[0, 8]] },
+        { "name": "Ab roller debout", "sets": [[0, 4]] },
+        { "name": "DC assisté", "sets": [[80, 10], [100, 3]] },
+        { "name": "Pec deck", "sets": [[75, 8]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 10], [40, 6], [40, 5]] },
+        { "name": "Lateral raises", "sets": [[12, 8]] }
+      ]
+    },
+    {
+      "date": "2026-07-08",
+      "exercises": [
+        { "name": "HSPU", "sets": [[0, 10], [0, 10]] },
+        { "name": "Tractions SN", "sets": [[0, 10], [0, 7]] },
+        { "name": "Dips", "sets": [[0, 10], [0, 10]] },
+        { "name": "Ab roller debout", "sets": [[0, 6], [0, 3]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 8], [35, 6]] },
+        { "name": "Lateral raises", "sets": [[12, 10], [12, 6]] },
+        { "name": "Pec deck", "sets": [[75, 10], [80, 4]] }
+      ]
+    },
+    {
+      "date": "2026-07-06",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10], [0, 9]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 10], [0, 6]] },
+        { "name": "Ab roller debout", "sets": [[0, 5], [0, 3]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 10], [40, 5]] },
+        { "name": "Isolateral row", "sets": [[80, 8], [80, 8]] },
+        { "name": "Lateral raises", "sets": [[12, 10], [12, 7]] },
+        { "name": "Chest Press", "sets": [[110, 10], [110, 7]] },
+        { "name": "Curl debout", "sets": [[20, 6]] }
+      ]
+    },
+    {
+      "date": "2026-07-01",
+      "exercises": [
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 6]] },
+        { "name": "Tractions SN", "sets": [[0, 10], [0, 9], [0, 7]] },
+        { "name": "Ab roller debout", "sets": [[0, 6], [0, 3]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 10], [40, 5], [30, 5]] },
+        { "name": "Lateral raises", "sets": [[12, 8], [12, 6]] },
+        { "name": "Pec deck", "sets": [[70, 10], [75, 5]] },
+        { "name": "Curl debout", "sets": [[18, 8]] }
+      ]
+    },
+    {
+      "date": "2026-06-29",
+      "exercises": [
+        { "name": "HSPU", "sets": [[0, 10], [0, 10]] },
+        { "name": "Tractions SN", "sets": [[0, 10], [0, 9]] },
+        { "name": "Ab roller debout", "sets": [[0, 6]] },
+        { "name": "Chest Press", "sets": [[120, 7], [100, 10], [100, 5]] },
+        { "name": "Lateral raises", "sets": [[12, 8], [12, 6]] },
+        { "name": "Tirage vertical muscle up", "sets": [[40, 8]] }
+      ]
+    },
+    {
+      "date": "2026-06-07",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 10]] },
+        { "name": "Ab roller debout", "sets": [[0, 10], [0, 7], [0, 7]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 8], [35, 5]] },
+        { "name": "Pec deck", "sets": [[70, 10], [75, 9]] }
+      ]
+    },
+    {
+      "date": "2026-06-05",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10], [0, 10]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 10]] },
+        { "name": "Crunch déclinés", "sets": [[50, 10], [50, 10]] },
+        { "name": "Pec deck", "sets": [[70, 10], [80, 4], [70, 4]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 10], [40, 5], [35, 7]] },
+        { "name": "Lateral raises", "sets": [[12, 10], [12, 7]] },
+        { "name": "Curl debout", "sets": [[20, 5]] },
+        { "name": "Chest Press", "sets": [[110, 10], [130, 4]] },
+        { "name": "Tirage horizontal large", "sets": [[60, 8], [60, 5]] }
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 11], [0, 10]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10]] },
+        { "name": "Ab roller debout", "sets": [[0, 10]] },
+        { "name": "Lateral raises", "sets": [[12, 10], [12, 6]] },
+        { "name": "Curl debout", "sets": [[20, 6], [20, 4]] },
+        { "name": "Chest Press", "sets": [[100, 10], [130, 6], [110, 7]] },
+        { "name": "Tirage horizontal large", "sets": [[50, 10], [60, 7], [55, 7]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 8], [40, 6]] }
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10], [20, 4], [0, 7]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10]] },
+        { "name": "Relevé de jambes chaise romaine", "sets": [[0, 10]] },
+        { "name": "Ab roller debout", "sets": [[0, 10]] },
+        { "name": "Isolateral row", "sets": [[120, 7], [100, 8]] },
+        { "name": "DC assisté", "sets": [[100, 6], [80, 8]] },
+        { "name": "Tirage vertical muscle up", "sets": [[35, 10], [35, 9], [35, 5]] },
+        { "name": "Pulley serré", "sets": [[45, 8], [45, 5]] }
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10], [20, 5], [0, 7]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 10]] },
+        { "name": "Relevé de jambes chaise romaine", "sets": [[0, 10], [0, 10]] },
+        { "name": "Chest Press", "sets": [[100, 10], [100, 5]] },
+        { "name": "Curl debout", "sets": [[20, 7]] },
+        { "name": "Pec deck", "sets": [[70, 10], [70, 5]] },
+        { "name": "Tirage vertical muscle up", "sets": [[30, 10], [35, 8]] },
+        { "name": "Pulley serré", "sets": [[50, 8]] }
+      ]
+    },
+    {
+      "date": "2026-05-25",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10], [0, 10]] },
+        { "name": "Ab roller debout", "sets": [[0, 10]] },
+        { "name": "Relevé de jambes chaise romaine", "sets": [[0, 10]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10]] },
+        { "name": "Chest Press", "sets": [[100, 10], [130, 6], [110, 6]] },
+        { "name": "Isolateral row", "sets": [[120, 8], [120, 7]] },
+        { "name": "Curl debout", "sets": [[18, 6]] },
+        { "name": "Pec deck", "sets": [[70, 8], [70, 5]] }
+      ]
+    },
+    {
+      "date": "2026-05-22",
+      "exercises": [
+        { "name": "Tractions SN", "sets": [[0, 10], [20, 4], [0, 8]] },
+        { "name": "HSPU", "sets": [[0, 10], [0, 10], [0, 10]] },
+        { "name": "Ab roller debout", "sets": [[0, 10]] },
+        { "name": "Chest Press", "sets": [[100, 10], [120, 4], [100, 5]] },
+        { "name": "Curl debout", "sets": [[20, 6], [18, 8]] },
+        { "name": "Lateral raises", "sets": [[12, 7]] },
+        { "name": "Isolateral row", "sets": [[120, 8], [120, 6]] },
+        { "name": "Extension triceps poulie", "sets": [[30, 10]] }
+      ]
+    }
+  ]
+}
