@@ -121,7 +121,6 @@ function buildNewExercise(data: RecentNewExercise, sortOrder: number): Exercise 
 // ---------------------------------------------------------------------------
 
 const SESSION_START_HOUR = 18;
-const SESSION_DURATION_MINUTES = 60;
 
 function resolveRecentSession(
   entry: RecentSessionEntry,
@@ -129,7 +128,9 @@ function resolveRecentSession(
 ): WorkoutSession {
   const [year, month, day] = entry.date.split("-").map(Number);
   const startTime = new Date(year, month - 1, day, SESSION_START_HOUR, 0, 0);
-  const endTime = new Date(startTime.getTime() + SESSION_DURATION_MINUTES * 60_000);
+  // Durée inconnue (transcription papier sans horaires) → endTime null : pas de
+  // durée inventée. La séance reste "terminée" (isActive=false).
+  const endTime: Date | null = null;
 
   const exercisesLogged: LoggedExercise[] = entry.exercises.map((exEntry, orderIndex) => {
     const exercise = exerciseByName.get(exEntry.name);

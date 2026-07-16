@@ -86,7 +86,9 @@ function resolveRecentSession(
   byName: Map<string, Exercise>,
 ): WorkoutSession {
   const date = new Date(`${session.date}T18:00:00Z`);
-  const endTime = new Date(date.getTime() + 60 * 60 * 1000);
+  // Durée inconnue (transcription papier sans horaires) → endTime null : on
+  // n'invente pas de durée. La séance reste "terminée" (isActive=false).
+  const endTime: Date | null = null;
 
   const exercises: LoggedExercise[] = session.exercises.map((ex, orderIndex) => {
     const catalogEx = byName.get(ex.name);

@@ -53,6 +53,16 @@ export function countRecordSetsInSession(session: WorkoutSession, allSessions: W
     const exercise = exerciseById.get(logged.exerciseId);
     if (!exercise) continue;
 
+    // Un "record" suppose un historique antérieur à battre : le tout premier
+    // passage d'un exercice n'est pas un PR (on ne bat pas un record inexistant).
+    const hadPriorHistory = allSessions.some(
+      (s) =>
+        s.id !== session.id &&
+        s.date < session.date &&
+        s.exercises.some((le) => le.exerciseId === logged.exerciseId),
+    );
+    if (!hadPriorHistory) continue;
+
     const setsForExercise: LoggedSet[] = [];
     for (const s of chronological) {
       for (const le of s.exercises) {
