@@ -7,21 +7,13 @@ import { fr } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { ChevronRight, Star, Trash2 } from "lucide-react";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
+import { sessionDurationLabel } from "./historyHelpers";
 import { cn } from "@/lib/utils";
 
 function relativeDay(date: Date): string {
   if (isToday(date)) return "Aujourd'hui";
   if (isYesterday(date)) return "Hier";
   return format(date, "EEEE d MMM", { locale: fr });
-}
-
-function durationLabel(session: WorkoutSession): string | null {
-  if (!session.endTime) return null;
-  const minutes = Math.round((session.endTime.getTime() - session.startTime.getTime()) / 60_000);
-  if (minutes < 60) return `${minutes} min`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m === 0 ? `${h} h` : `${h} h ${m}`;
 }
 
 /**
@@ -42,7 +34,7 @@ export function SessionRow({
 
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
   const totalSets = ordered.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
-  const duration = durationLabel(session);
+  const duration = sessionDurationLabel(session);
   const supersetCount = session.supersetGroups.length;
   const names = ordered.map((e) => e.exerciseName);
   const shown = names.slice(0, 2);
@@ -83,7 +75,7 @@ export function SessionRow({
             )}
           </div>
           <p className="mt-0.5 truncate text-xs text-[--color-fg-muted]">
-            {totalSets} sets{duration ? ` · ${duration}` : ""} · {ordered.length} exos
+            {totalSets} sets · {duration} · {ordered.length} exos
             {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
           </p>
           <p className="mt-1 truncate text-xs text-[--color-fg-faint]">

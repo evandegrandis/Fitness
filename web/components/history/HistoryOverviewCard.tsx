@@ -2,6 +2,7 @@
 
 import { StatTile } from "@/components/ui/StatTile";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
+import { sessionDurationMinutes } from "./historyHelpers";
 
 /**
  * Carte d'aperçu sticky de l'onglet Historique — totaux RÉELS sur tout
@@ -20,10 +21,7 @@ export function HistoryOverviewCard({
     0
   );
   const totalPRs = sessions.reduce((acc, s) => acc + (prCountBySessionId.get(s.id) ?? 0), 0);
-  const totalHours = sessions.reduce((acc, s) => {
-    if (!s.endTime) return acc;
-    return acc + (s.endTime.getTime() - s.startTime.getTime()) / 3_600_000;
-  }, 0);
+  const totalHours = sessions.reduce((acc, s) => acc + sessionDurationMinutes(s).minutes / 60, 0);
 
   return (
     <div className="sticky top-0 z-30 -mx-5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl bg-gradient-to-b from-[var(--bg-top)] via-[var(--bg-top)]/90 to-transparent">

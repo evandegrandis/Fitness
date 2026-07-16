@@ -5,7 +5,33 @@
  */
 
 import { displayedRecordSetIDs } from "@/lib/engines/records";
-import { orderedSets, type Exercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
+import { completedWorkSets, orderedSets, type Exercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
+
+/** ~3,5 min par série de travail (exécution + repos), moyenne réaliste toutes séries confondues. */
+const MINUTES_PER_SET_ESTIMATE = 3.5;
+
+/**
+ * Durée d'une séance : réelle si `endTime` connu, sinon ESTIMÉE depuis le
+ * nombre de séries de travail (séances transcrites du carnet, sans horaires).
+ * `estimated: true` → l'UI préfixe la durée d'un « ~ ».
+ */
+export function sessionDurationMinutes(session: WorkoutSession): { minutes: number; estimated: boolean } {
+  if (session.endTime) {
+    return { minutes: Math.round((session.endTime.getTime() - session.startTime.getTime()) / 60_000), estimated: false };
+  }
+  const sets = session.exercises.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
+  return { minutes: Math.round(sets * MINUTES_PER_SET_ESTIMATE), estimated: true };
+}
+
+/** Libellé court d'une durée de séance, avec « ~ » si estimée. Ex : « ~1 h 03 », « 45 min ». */
+export function sessionDurationLabel(session: WorkoutSession): string {
+  const { minutes, estimated } = sessionDurationMinutes(session);
+  const prefix = estimated ? "~" : "";
+  if (minutes < 60) return `${prefix}${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${prefix}${h} h` : `${prefix}${h} h ${String(m).padStart(2, "0")}`;
+}
 
 /** Lundi 00:00 de la semaine ISO contenant `date`. */
 export function startOfIsoWeek(date: Date): Date {
