@@ -80,7 +80,10 @@ export async function getSessions(): Promise<WorkoutSession[]> {
     .where(eq(workoutSessions.isActive, false))
     .orderBy(desc(workoutSessions.date));
 
-  const finished = sessionRows.filter((s) => s.endTime !== null);
+  // Une séance terminée = isActive false (déjà filtré). La durée (endTime) peut
+  // être inconnue (séances transcrites sans horaires) sans que la séance
+  // disparaisse de l'historique.
+  const finished = sessionRows;
   if (finished.length === 0) return [];
 
   const sessionIds = finished.map((s) => s.id);
