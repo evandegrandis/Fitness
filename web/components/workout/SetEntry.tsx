@@ -90,7 +90,9 @@ export function SetEntry({
             W échauffement
           </button>
         )}
-        {!useWarmup && (
+        {/* Chip "revenir à la suggestion" : utile UNIQUEMENT après un ajustement
+            manuel (sinon les steppers montrent déjà la suggestion → redondant). */}
+        {!useWarmup && (weight !== suggestion.weight || reps !== suggestion.reps) && (
           <button
             type="button"
             onClick={() => {
@@ -101,7 +103,7 @@ export function SetEntry({
             style={{ color: "var(--accent)" }}
           >
             <Sparkles size={11} />
-            suggestion
+            Suggestion {cleanWeight(suggestion.weight)}{suggestion.weight > 0 ? "kg" : ""}×{suggestion.reps}
           </button>
         )}
         {suggestion.sessionFatigueWarning && !useWarmup && (
