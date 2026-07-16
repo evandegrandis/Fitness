@@ -18,7 +18,8 @@ export default async function AppLayout({
     <ModeProvider>
       <StoreHydrator data={data} />
       <div className="flex-1 flex flex-col min-h-full">
-        <div className="flex-1">{children}</div>
+        {/* padding-bottom = hauteur de la TabBar sticky, pour que le contenu ne passe jamais dessous */}
+        <div className="flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">{children}</div>
         <TabBar />
       </div>
     </ModeProvider>
