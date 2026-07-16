@@ -91,7 +91,7 @@ export function SessionSupersetBlock({
   }, 0);
 
   return (
-    <div className={cn("glass glass-card border-l-2", "border-l-[--accent]")}>
+    <div className={cn("glass glass-card border-l-2", "border-l-[var(--accent)]")}>
       <div className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
         <Link2 size={13} style={{ color: "var(--accent)" }} />
         <span className="truncate">{members.map((m) => m.exerciseName).join(" + ")}</span>

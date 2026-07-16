@@ -24,7 +24,7 @@ export default async function LoginPage({
             inputMode="numeric"
             autoFocus
             placeholder="Code"
-            className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-center tnum text-lg outline-none focus:border-[--accent] transition"
+            className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-center tnum text-lg outline-none focus:border-[var(--accent)] transition"
           />
           {error && (
             <p className="text-sm text-[--color-danger]">Code incorrect</p>

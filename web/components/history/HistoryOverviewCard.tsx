@@ -28,7 +28,7 @@ export function HistoryOverviewCard({
   }, 0);
 
   return (
-    <div className="sticky top-0 z-30 -mx-5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl bg-gradient-to-b from-[--bg-top] via-[--bg-top]/90 to-transparent">
+    <div className="sticky top-0 z-30 -mx-5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl bg-gradient-to-b from-[var(--bg-top)] via-[var(--bg-top)]/90 to-transparent">
       <div className="grid grid-cols-4 gap-2">
         <StatTile value={recent.length} label="Séances" />
         <StatTile value={totalSets} label="Sets" />

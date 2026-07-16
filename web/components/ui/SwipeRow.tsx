@@ -76,7 +76,7 @@ export function SwipeRow({
         onClick={() => {
           if (open) close();
         }}
-        className="relative z-10 bg-[--bg-top]"
+        className="relative z-10 bg-[var(--bg-top)]"
       >
         {children}
       </motion.div>
