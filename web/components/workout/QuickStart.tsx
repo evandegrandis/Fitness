@@ -6,10 +6,12 @@ import { Settings } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { recentAchievements } from "@/lib/engines/achievements";
+import type { WorkoutSession } from "@/lib/models/types";
 import { WeeklyPriority } from "./WeeklyPriority";
 import { ModePicker } from "./ModePicker";
 import { QuickActions } from "./QuickActions";
 import { RecentAchievements } from "./RecentAchievements";
+import { RecentSessionChips } from "./RecentSessionChips";
 
 /** Écran d'accueil affiché quand aucune séance n'est active. */
 export function QuickStart() {
@@ -23,6 +25,7 @@ export function QuickStart() {
   const repeatLast = useWorkoutStore((s) => s.repeatLast);
   const startFromTemplate = useWorkoutStore((s) => s.startFromTemplate);
   const startEmpty = useWorkoutStore((s) => s.startEmpty);
+  const addExercise = useWorkoutStore((s) => s.addExercise);
 
   const priorities = useMemo(() => rollingPriorities(history, catalog, goals), [history, catalog, goals]);
   const achievements = useMemo(() => recentAchievements(history, catalog), [history, catalog]);
@@ -48,6 +51,17 @@ export function QuickStart() {
   }, [templates, priorities, catalog]);
 
   const greetingName = settings.userName ? `, ${settings.userName}` : "";
+
+  const handleStartFromSession = (chosen: WorkoutSession) => {
+    // "normal" évite le seeding automatique beast/monk (`startEmpty`) qui
+    // ajouterait des exercices en plus de ceux de la séance choisie — le but
+    // ici est de répliquer exactement cette séance, comme `repeatLast`.
+    startEmpty("normal");
+    const ordered = [...chosen.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
+    for (const e of ordered) {
+      addExercise(e.exerciseId);
+    }
+  };
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-5 pb-6 pt-8">
@@ -78,6 +92,8 @@ export function QuickStart() {
         onStartTemplate={startFromTemplate}
         onStartEmpty={startEmpty}
       />
+
+      <RecentSessionChips history={history} onStart={handleStartFromSession} />
 
       <RecentAchievements achievements={achievements} />
     </main>

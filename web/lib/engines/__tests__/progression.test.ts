@@ -77,9 +77,17 @@ describe("Promotion gate", () => {
     expect(s.weight).toBeCloseTo(102.5);
   });
 
-  it("Heavy ne promeut pas avec 1 seule séance qualifiante sur 3", () => {
+  it("ALGO_V2 §4.4 — avec 3 séances (S >= MIN_SESSIONS_FOR_PATTERN), le pattern STRAIGHT est détecté et la promotion devient RÉACTIVE (1 occurrence >= repMax suffit, quelle que soit la FatigueClass) — remplace la règle stricte Heavy 2/3 qui ne s'applique plus qu'au rôle 'amorce' de TOP_SET_BACKOFF (§4.4)", () => {
     const exercise = makeExercise({ fatigueClass: FatigueClass.heavy, repTargetMin: 6, repTargetMax: 10 });
     const history = [session(100, 10), session(100, 7), session(100, 7)];
+    const s = suggest({ exercise, currentSetIndex: 0, recentHistory: history, currentSessionSets: [] });
+    expect(s.reasonCodes).toContain("promotion_gate_passed");
+    expect(s.weight).toBeCloseTo(102.5);
+  });
+
+  it("Heavy strict 2/3 reste actif SOUS le seuil de détection de pattern (S < MIN_SESSIONS_FOR_PATTERN=3, ici 2 séances)", () => {
+    const exercise = makeExercise({ fatigueClass: FatigueClass.heavy, repTargetMin: 6, repTargetMax: 10 });
+    const history = [session(100, 10), session(100, 7)];
     const s = suggest({ exercise, currentSetIndex: 0, recentHistory: history, currentSessionSets: [] });
     expect(s.reasonCodes).not.toContain("promotion_gate_passed");
   });

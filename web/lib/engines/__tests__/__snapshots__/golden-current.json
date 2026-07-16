@@ -1,0 +1,218 @@
+{
+  "Chest Press": {
+    "exerciseName": "Chest Press",
+    "weight": 112.5,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "Curl debout": {
+    "exerciseName": "Curl debout",
+    "weight": 20,
+    "reps": 6,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "straight_ref_v2"
+    ]
+  },
+  "Tractions SN": {
+    "exerciseName": "Tractions SN",
+    "weight": 0,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "bw_rep_v2_first_set"
+    ]
+  },
+  "Pulley serré": {
+    "exerciseName": "Pulley serré",
+    "weight": 45,
+    "reps": 8,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "straight_ref_v2"
+    ]
+  },
+  "Lateral raises": {
+    "exerciseName": "Lateral raises",
+    "weight": 11,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "straight_ref_v2"
+    ]
+  },
+  "DC assisté": {
+    "exerciseName": "DC assisté",
+    "weight": 82.5,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "Dips machine": {
+    "exerciseName": "Dips machine",
+    "weight": 130,
+    "reps": 8,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "generic_first_anchor"
+    ]
+  },
+  "Shoulder press": {
+    "exerciseName": "Shoulder press",
+    "weight": 80,
+    "reps": 7,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "generic_first_anchor"
+    ]
+  },
+  "Isolateral row": {
+    "exerciseName": "Isolateral row",
+    "weight": 110,
+    "reps": 9,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "straight_ref_v2"
+    ]
+  },
+  "Crunch déclinés": {
+    "exerciseName": "Crunch déclinés",
+    "weight": 52.5,
+    "reps": 10,
+    "mode": "transition_mode",
+    "reasonCodes": [
+      "promotion_gate_passed"
+    ]
+  },
+  "Row uni": {
+    "exerciseName": "Row uni",
+    "weight": 80,
+    "reps": 11,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "generic_first_anchor"
+    ]
+  },
+  "Relevé de jambes chaise romaine": {
+    "exerciseName": "Relevé de jambes chaise romaine",
+    "weight": 0,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "bw_rep_v2_first_set"
+    ]
+  },
+  "Pec deck": {
+    "exerciseName": "Pec deck",
+    "weight": 70,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "HSPU": {
+    "exerciseName": "HSPU",
+    "weight": 0,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "bw_rep_v2_first_set"
+    ]
+  },
+  "Leg extension": {
+    "exerciseName": "Leg extension",
+    "weight": 82.5,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "Extension triceps poulie": {
+    "exerciseName": "Extension triceps poulie",
+    "weight": 30,
+    "reps": 11,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "generic_first_anchor"
+    ]
+  },
+  "Tirage vertical muscle up": {
+    "exerciseName": "Tirage vertical muscle up",
+    "weight": 37.5,
+    "reps": 9,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "Curl incliné": {
+    "exerciseName": "Curl incliné",
+    "weight": 16,
+    "reps": 9,
+    "mode": "transition_mode",
+    "reasonCodes": [
+      "promotion_gate_passed"
+    ]
+  },
+  "Tirage horizontal large": {
+    "exerciseName": "Tirage horizontal large",
+    "weight": 60,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "Leg curl": {
+    "exerciseName": "Leg curl",
+    "weight": 60,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "top_set_anchor_v2"
+    ]
+  },
+  "Traction pronation large": {
+    "exerciseName": "Traction pronation large",
+    "weight": 0,
+    "reps": 9,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "bw_only_wbw_first_set"
+    ]
+  },
+  "Ab roller genoux": {
+    "exerciseName": "Ab roller genoux",
+    "weight": 0,
+    "reps": 10,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "bw_rep_v2_first_set"
+    ]
+  },
+  "Dips": {
+    "exerciseName": "Dips",
+    "weight": 2.5,
+    "reps": 10,
+    "mode": "transition_mode",
+    "reasonCodes": [
+      "promotion_gate_passed"
+    ]
+  },
+  "Ab roller debout": {
+    "exerciseName": "Ab roller debout",
+    "weight": 0,
+    "reps": 4,
+    "mode": "record_attempt",
+    "reasonCodes": [
+      "bw_rep_v2_first_set"
+    ]
+  }
+}

@@ -14,10 +14,13 @@ import { ExercisePicker } from "./ExercisePicker";
 import { ExerciseActionsSheet } from "./ExerciseActionsSheet";
 import { EditSetSheet } from "./EditSetSheet";
 import { PostWorkoutSheet } from "./PostWorkoutSheet";
+import { SupersetLinkBanner } from "./SupersetLinkBanner";
 
 /** Écran de séance active : liste d'exercices, timer de repos, actions. */
 export function ActiveSession({ session }: { session: WorkoutSession }) {
   const catalog = useWorkoutStore((s) => s.catalog);
+  const history = useWorkoutStore((s) => s.history);
+  const goals = useWorkoutStore((s) => s.goals);
   const finish = useWorkoutStore((s) => s.finish);
   const discard = useWorkoutStore((s) => s.discard);
   const addExercise = useWorkoutStore((s) => s.addExercise);
@@ -28,6 +31,7 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
   const [actionsTarget, setActionsTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ loggedExerciseId: string; set: LoggedSet } | null>(null);
   const [snapshot, setSnapshot] = useState<FinishedWorkoutSnapshot | null>(null);
+  const [finishedSession, setFinishedSession] = useState<WorkoutSession | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
 
   const handleFinish = () => {
@@ -39,6 +43,7 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
     if (!result) return;
     void saveSession(result.session);
     setSnapshot(result.snapshot);
+    setFinishedSession(result.session);
     setSummaryOpen(true);
   };
 
@@ -68,6 +73,7 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
       <RestTimer />
       <UndoToast />
       <AchievementOverlay />
+      <SupersetLinkBanner />
 
       <ExercisePicker
         open={pickerOpen || replaceTarget !== null}
@@ -78,6 +84,8 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
         catalog={catalog}
         onPick={handlePickExercise}
         excludeIds={session.exercises.map((e) => e.exerciseId)}
+        history={history}
+        goals={goals}
       />
 
       <ExerciseActionsSheet
@@ -94,9 +102,11 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
       <PostWorkoutSheet
         open={summaryOpen}
         snapshot={snapshot}
+        session={finishedSession}
         onClose={() => {
           setSummaryOpen(false);
           setSnapshot(null);
+          setFinishedSession(null);
         }}
       />
     </main>

@@ -252,3 +252,42 @@ A global interactive graph with:
 4. Beast Mode weight-focused overlay on usual-workout base.
 5. Monk Mode adaptive peaceful session mode.
 6. Global weekly interactive perf/adherence graph.
+
+---
+
+## 9) Algo v2 — direction (16 juillet 2026)
+
+Spécification durcie : `web/ALGO_SPEC_HARDENED.md` (formules chiffrées, pseudocode, exemples validés
+sur les 33 séances réelles). On étend `web/lib/engines/progression.ts`, on ne le remplace pas.
+
+### Nouvelle approche
+- **Pattern détecté depuis l'historique** (fenêtre 10, ≥ 3 séances) : TOP_SET_BACKOFF / STRAIGHT /
+  BW_REP / WEIGHTED_BW_VARIABLE / ISOLATION_FINISHER. Prime sur `setPatternMode` figé — corrige
+  Chest Press, Leg extension, Tirage vertical, Pec deck, DC assisté (taggés `straight`, en réalité
+  top set + backoff).
+- **Références pondérées récence** (α = 0.6, cap +1 incrément/séance vers un vieux record) par RÔLE :
+  amorce (set 1 ~10 reps), top set (6–8 reps), backoff (≈ amorce), lest (Tractions). Clusters de
+  charge pour les machines multi-marques (Isolateral row → cible 110, pas 120).
+- **Modèle set-par-set** : amorce → top → backoff, recalibré par le set fait AUJOURD'HUI
+  (formDelta forme-du-jour, clamp [−3, +1]) + fatigue intra-séance graduée sur l'EXCÈS vs contexte
+  habituel + deload d'absence existant.
+- **Prédiction de reps empirique** : médiane par (rôle, poids) sur le cluster actif, pente
+  1 rep ≈ 7.5 % de charge effective (poids du corps inclus pour lesté/assisté) — validée sur
+  Chest Press, Tirage vertical, Pec deck, Tractions. Cap 10 reps sur tout set de travail.
+- **Progression/plateau** : promotion top/straight dès 1 occurrence ≥ 9 reps (« > 8 → poids
+  suivant ») ; amorce plus stricte (H 2/3) ; démotion seulement si < repMin − 2 (mauvais jour ≠
+  régression) ; plateau ≥ 3 → surcharge +1 incr ×5 ou rest-pause, cyclées, sur les 1–2 derniers
+  sets seulement ; surcharge échouée → −10 % pendant 2 séances (stateless).
+- **Cas particuliers** : Tractions SN (lest si frais — 4 conditions chiffrées — sinon 3×BW),
+  variantes BW dur/facile (`easierVariantId`, bascule si < 4 reps : Ab roller debout → genoux),
+  HSPU rep→sets sans jamais suggérer de lest, supersets = fatigue croisée via priorLoads.
+
+### Ce que ça remplace
+- L'ancienne règle `targetLoad = max(ancres sur 5 séances)` (biais sur-ambition : suggérait
+  132.5×8 en set 1 de Chest Press) → références par rôle, pondérées récence, par cluster.
+- Les suggestions de reps > 10 (12×11, 75×11, 100×11 dans le golden actuel) → cap `min(repMax, 10)`.
+- Le drop de reps fixe par FatigueClass reste uniquement en fallback quand aucun échantillon
+  empirique n'existe. La règle de courbe « 4-session best-ever » (section 1) n'est pas touchée
+  (affichage) ; les décisions de charge, elles, passent à la fenêtre 10 pondérée récence.
+
+API `suggest(params)` inchangée ; golden-test régénéré avec table de diffs attendus (§11 de la spec).

@@ -1,10 +1,14 @@
 "use client";
 
-import { Copy, Link2, Repeat, Trash2, Unlink } from "lucide-react";
+import { Repeat } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { useWorkoutStore } from "@/lib/store/workout";
 
-/** Feuille d'actions pour un exercice loggé : lier superset / remplacer / dupliquer / supprimer. */
+/**
+ * Feuille d'actions pour un exercice loggé. Superset (bouton lien sur la
+ * carte), Dupliquer/Supprimer (swipe sur la carte) ont été sortis d'ici pour
+ * réduire le nombre de taps — ce sheet ne garde que "Remplacer".
+ */
 export function ExerciseActionsSheet({
   loggedExerciseId,
   onClose,
@@ -15,15 +19,8 @@ export function ExerciseActionsSheet({
   onReplace: (loggedExerciseId: string) => void;
 }) {
   const active = useWorkoutStore((s) => s.active);
-  const handleSupersetLink = useWorkoutStore((s) => s.handleSupersetLink);
-  const detachFromSupersetGroup = useWorkoutStore((s) => s.detachFromSupersetGroup);
-  const duplicateExercise = useWorkoutStore((s) => s.duplicateExercise);
-  const removeExercise = useWorkoutStore((s) => s.removeExercise);
-  const armedSupersetExerciseId = useWorkoutStore((s) => s.armedSupersetExerciseId);
 
   const loggedExercise = active?.exercises.find((e) => e.id === loggedExerciseId);
-  const isLinked = loggedExercise?.supersetGroupId != null;
-  const isArmed = armedSupersetExerciseId === loggedExerciseId;
 
   return (
     <Sheet open={loggedExerciseId !== null} onClose={onClose}>
@@ -32,39 +29,10 @@ export function ExerciseActionsSheet({
           <h2 className="mb-1 font-display text-base font-bold text-[--color-fg]">{loggedExercise.exerciseName}</h2>
 
           <ActionRow
-            icon={isLinked ? Unlink : Link2}
-            label={isLinked ? "Détacher du superset" : isArmed ? "Annuler la liaison" : "Lier superset"}
-            onClick={() => {
-              if (isLinked) {
-                detachFromSupersetGroup(loggedExercise.id);
-              } else {
-                handleSupersetLink(loggedExercise.id);
-              }
-              onClose();
-            }}
-          />
-          <ActionRow
             icon={Repeat}
             label="Remplacer"
             onClick={() => {
               onReplace(loggedExercise.id);
-            }}
-          />
-          <ActionRow
-            icon={Copy}
-            label="Dupliquer"
-            onClick={() => {
-              duplicateExercise(loggedExercise.id);
-              onClose();
-            }}
-          />
-          <ActionRow
-            icon={Trash2}
-            label="Supprimer"
-            danger
-            onClick={() => {
-              removeExercise(loggedExercise.id);
-              onClose();
             }}
           />
         </div>

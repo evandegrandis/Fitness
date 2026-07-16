@@ -26,7 +26,7 @@ function SetLine({
         <span className="pill shrink-0 bg-white/8 text-[0.62rem]">R{set.supersetRoundIndex}</span>
       )}
       <span className="tnum flex-1 text-sm font-semibold text-[--color-fg]">
-        {set.weight > 0 ? `${cleanWeight(set.weight)} kg` : "BW"} × {set.reps}
+        {set.weight > 0 ? `${cleanWeight(set.weight)} kg` : "PDC"} × {set.reps}
       </span>
       {typeLabel && <span className="pill shrink-0 bg-white/8 text-[0.62rem]">{typeLabel}</span>}
       {isRecord && <Star size={14} className="shrink-0 text-amber-300" fill="currentColor" />}

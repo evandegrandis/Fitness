@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
+  Brush,
   CartesianGrid,
   Line,
   LineChart,
@@ -13,7 +14,8 @@ import {
   type MouseHandlerDataParam,
 } from "recharts";
 
-import { formatShortDate } from "@/components/progress/utils";
+import { formatShortDate, roundToIncrement } from "@/components/progress/utils";
+import { trendBadge } from "@/components/progress/trend";
 
 export interface ExercisePoint {
   date: Date;
@@ -22,10 +24,15 @@ export interface ExercisePoint {
   e1rm: number;
 }
 
+/** Nombre de points à partir duquel on affiche le Brush (zoom/pan) — en dessous, 10 points tiennent déjà à l'écran. */
+const ZOOM_THRESHOLD = 12;
+
 /**
  * Courbe principale poids meilleur set / séance avec scrub (survol/drag) et
  * bande de benchmark optionnelle. Échelle Y resserrée non-zéro. Une courbe
- * reps secondaire (orange) peut être superposée.
+ * reps secondaire (orange) peut être superposée. Badge de tendance dérivé de
+ * la série ("Plateau N séances" / "+X% ce mois"). Zoom (Brush) uniquement
+ * sur les séries longues.
  */
 export function ExerciseLineChart({
   points,
@@ -33,12 +40,15 @@ export function ExerciseLineChart({
   benchmarkHigh,
   showReps = false,
   height = 200,
+  smallestIncrement = 0.5,
 }: {
   points: ExercisePoint[];
   benchmarkLow?: number | null;
   benchmarkHigh?: number | null;
   showReps?: boolean;
   height?: number;
+  /** Incrément de charge de l'exercice — arrondit le poids "lissé" affiché en tête. */
+  smallestIncrement?: number;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
@@ -49,10 +59,12 @@ export function ExerciseLineChart({
         dateLabel: formatShortDate(p.date),
         weight: p.weight,
         reps: p.reps,
-        e1rm: Math.round(p.e1rm * 10) / 10,
+        e1rm: roundToIncrement(p.e1rm, smallestIncrement),
       })),
-    [points]
+    [points, smallestIncrement]
   );
+
+  const trend = useMemo(() => trendBadge(points.map((p) => ({ date: p.date, weight: p.weight }))), [points]);
 
   const weights = data.map((d) => d.weight);
   const minW = Math.min(...weights, benchmarkLow ?? Infinity);
@@ -69,16 +81,29 @@ export function ExerciseLineChart({
   const handleLeave = useCallback(() => setActiveIndex(null), []);
 
   const active = activeIndex !== null ? data[activeIndex] : data[data.length - 1];
+  const showZoom = data.length >= ZOOM_THRESHOLD;
 
   return (
     <div>
-      {active && (
-        <div className="mb-2 flex items-baseline gap-3">
-          <span className="tnum text-2xl font-bold text-[--color-fg]">{active.weight} kg</span>
-          <span className="tnum text-sm text-[--color-fg-muted]">{active.reps} reps</span>
-          <span className="tnum text-xs text-[--color-fg-faint]">{active.dateLabel}</span>
-        </div>
-      )}
+      <div className="mb-2 flex items-start justify-between gap-2">
+        {active && (
+          <div className="flex items-baseline gap-3">
+            <span className="tnum text-2xl font-bold text-[--color-fg]">{active.weight} kg</span>
+            <span className="tnum text-sm text-[--color-fg-muted]">{active.reps} reps</span>
+            <span className="tnum text-xs text-[--color-fg-faint]">{active.dateLabel}</span>
+          </div>
+        )}
+        {trend && (
+          <span
+            className="pill shrink-0"
+            style={{
+              color: trend.tone === "up" ? "var(--color-success)" : trend.tone === "down" ? "var(--color-danger)" : "var(--color-fg-muted)",
+            }}
+          >
+            {trend.label}
+          </span>
+        )}
+      </div>
       <div style={{ width: "100%", height }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} onMouseMove={handleMove} onMouseLeave={handleLeave} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
@@ -136,6 +161,17 @@ export function ExerciseLineChart({
                 strokeDasharray="3 3"
                 dot={{ r: 2, fill: "var(--color-warning)", strokeWidth: 0 }}
                 activeDot={{ r: 4, fill: "var(--color-warning)", stroke: "#06070d", strokeWidth: 2 }}
+              />
+            )}
+            {showZoom && (
+              <Brush
+                dataKey="dateLabel"
+                height={22}
+                travellerWidth={10}
+                stroke="var(--accent)"
+                fill="rgba(255,255,255,0.04)"
+                tickFormatter={() => ""}
+                startIndex={Math.max(0, data.length - Math.max(ZOOM_THRESHOLD, Math.ceil(data.length / 2)))}
               />
             )}
           </LineChart>

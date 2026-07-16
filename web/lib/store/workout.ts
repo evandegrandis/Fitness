@@ -16,7 +16,9 @@ import { buildRecords, classify, EMPTY_RECORDS, type ExerciseRecords, type Recor
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { suggest, type SetSuggestion, type SuggestParams } from "@/lib/engines/progression";
-import { SetType } from "@/lib/models/enums";
+import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
+import { HISTORY_WINDOW, RECORDS_HISTORY_WINDOW } from "@/lib/engines/constants";
+import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
 import type { MuscleParent } from "@/lib/models/muscles";
 import {
   completedWorkSets,
@@ -114,6 +116,21 @@ export interface WorkoutState extends ReferenceData {
   justHitRecord: Record<string, RecordKind>;
   recordsCache: Record<string, ExerciseRecords>;
 
+  /**
+   * WS4 — override "Je suis frais" : ensemble des `loggedExerciseId` (exercice DE LA SÉANCE
+   * ACTIVE, pas exercice du catalogue) pour lesquels l'utilisateur a explicitement annulé le
+   * deload d'absence pour cette séance. Réinitialisé à chaque `finish()`/`discard()` (scope =
+   * une séance). Consommé par `suggestion()` via `suggest({ freshOverride: true })`.
+   * Volontairement absent de `partialize` (non persisté dans localStorage) : un `Set` ne
+   * survit pas à la sérialisation JSON par défaut, et l'override n'a de sens que pour la
+   * session de navigation en cours (reload = redemander si besoin).
+   */
+  freshOverrides: Set<string>;
+  /** Active l'override "Je suis frais" pour cet exercice loggé, pour le reste de la séance active. */
+  setFreshOverride: (loggedExerciseId: string) => void;
+  /** Réactive le deload (annule l'override) pour cet exercice loggé. */
+  clearFreshOverride: (loggedExerciseId: string) => void;
+
   /** true une fois que le store a été réhydraté depuis localStorage côté client. */
   hasHydratedStorage: boolean;
   setHasHydratedStorage: (value: boolean) => void;
@@ -127,6 +144,14 @@ export interface WorkoutState extends ReferenceData {
   repeatLast: (mode?: WorkoutMode) => void;
   finish: () => { session: WorkoutSession; snapshot: FinishedWorkoutSnapshot } | null;
   discard: () => void;
+
+  /**
+   * Bilan post-séance intelligent (recalcul pur, voir `lib/engines/bilan.ts`).
+   * `session` n'a pas besoin d'être déjà dans `history` — appelable aussi bien
+   * juste avant `finish()` (session = `active`) que juste après (session =
+   * `finish().session`), tant que `history` ne contient pas déjà `session`.
+   */
+  sessionReview: (session: WorkoutSession) => SessionReview;
 
   // -- Exercises ---------------------------------------------------------
   addExercise: (exerciseId: string) => void;
@@ -197,7 +222,7 @@ function findLoggedExercise(session: WorkoutSession | null, loggedExerciseId: st
  * exercice donné, en cherchant dans `history` (déjà triée plus récent -> plus
  * ancien par convention du store).
  */
-function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId: string, maxSessions: number): LoggedSet[][] {
+export function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId: string, maxSessions: number): LoggedSet[][] {
   const found: LoggedSet[][] = [];
   for (const session of history) {
     for (const logged of session.exercises) {
@@ -212,21 +237,48 @@ function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId: string
 }
 
 /**
+ * WS4 — jours écoulés entre `now` et la DERNIÈRE séance contenant >= 1 work set COMPLÉTÉ de CET
+ * exercice exact (même `exerciseId`, aucune fusion de variantes). `history` est déjà triée du
+ * plus récent au plus ancien par convention du store. `null` si aucune séance historique ne
+ * contient cet exercice (premier essai jamais loggé) — l'appelant doit alors traiter le gap
+ * comme "inconnu" (pas de deload, comme si l'exercice était neuf).
+ */
+export function daysSinceLastExercise(history: WorkoutSession[], exerciseId: string, now: Date = new Date()): number | null {
+  for (const session of history) {
+    const hasCompletedWorkSet = session.exercises.some(
+      (logged) => logged.exerciseId === exerciseId && completedWorkSets(logged).length > 0
+    );
+    if (hasCompletedWorkSet) {
+      const diffMs = now.getTime() - session.date.getTime();
+      return Math.max(0, Math.floor(diffMs / 86_400_000));
+    }
+  }
+  return null;
+}
+
+/**
  * Miroir de `WorkoutViewModel.sessionFatigueContext(before:)` : accumule les
  * exercices déjà complétés avant `loggedExerciseId` dans l'ordre de la
- * séance active.
+ * séance active. ALGO_V2 §6.2 — inclut aussi les PARTENAIRES du groupe de
+ * superset EN COURS (même `supersetGroupId` que `loggedExerciseId`, sets déjà
+ * complétés dans les rounds précédents) : ils comptent l'un pour l'autre dans
+ * la fatigue intra-séance, round par round, en plus des exercices précédents
+ * dans l'ordre de la séance (déjà couvert par la boucle `ordered.slice(0, idx)`).
  */
 function buildSessionFatigueContext(
   session: WorkoutSession | null,
   catalog: Exercise[],
-  loggedExerciseId: string
+  loggedExerciseId: string,
+  baselines?: { baselineSystemicCost: number; baselineSameParentSets: number }
 ): SessionFatigueContext {
   if (!session) return SessionFatigueContext.empty;
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
   const idx = ordered.findIndex((e) => e.id === loggedExerciseId);
-  if (idx <= 0) return SessionFatigueContext.empty;
+  if (idx === -1) return SessionFatigueContext.empty;
 
+  const current = ordered[idx];
   const priorLoads: PriorLoad[] = [];
+
   for (const prior of ordered.slice(0, idx)) {
     const exercise = findExercise(catalog, prior.exerciseId);
     if (!exercise) continue;
@@ -236,7 +288,85 @@ function buildSessionFatigueContext(
     if (workSetsCompleted <= 0) continue;
     priorLoads.push({ primaryParent: parent, workSetsCompleted, fatigueClass: exercise.fatigueClass });
   }
-  return new SessionFatigueContext(priorLoads);
+
+  // §6.2 — partenaires du groupe de superset EN COURS (positionnés APRÈS `current` dans l'ordre,
+  // donc non couverts par la boucle ci-dessus) : leurs sets déjà complétés dans les rounds
+  // précédents comptent aussi pour la fatigue de `current`.
+  if (current?.supersetGroupId !== null && current?.supersetGroupId !== undefined) {
+    for (const partner of ordered.slice(idx + 1)) {
+      if (partner.supersetGroupId !== current.supersetGroupId) continue;
+      const exercise = findExercise(catalog, partner.exerciseId);
+      if (!exercise) continue;
+      const parent = primaryParent(exercise);
+      if (!parent) continue;
+      const workSetsCompleted = completedWorkSets(partner).length;
+      if (workSetsCompleted <= 0) continue;
+      priorLoads.push({ primaryParent: parent, workSetsCompleted, fatigueClass: exercise.fatigueClass });
+    }
+  }
+
+  return new SessionFatigueContext(priorLoads, baselines);
+}
+
+/**
+ * ALGO_V2 §6.1 — baselines de fatigue "habituelle" pour cet exercice : médiane du coût
+ * systémique / des sets sur le même parent, mesurés AVANT cet exercice, sur ses 5 dernières
+ * occurrences historiques. Sert à ne pénaliser que l'EXCÈS de fatigue (le profil empirique de
+ * `predictReps` intègre déjà la fatigue habituelle). `history` déjà triée plus récent -> plus
+ * ancien. Coûteux à calculer exactement (nécessiterait de rejouer position-par-position chaque
+ * séance passée) : approximé par la position moyenne de CET exercice dans les séances où il
+ * apparaît (nombre de sets des exercices précédents dans la séance, sommés par fatigueClass).
+ */
+function buildFatigueBaselines(
+  history: WorkoutSession[],
+  catalog: Exercise[],
+  exerciseId: string
+): { baselineSystemicCost: number; baselineSameParentSets: number } | undefined {
+  const targetExercise = findExercise(catalog, exerciseId);
+  const parent = targetExercise ? primaryParent(targetExercise) : null;
+  const systemicCosts: number[] = [];
+  const sameParentCounts: number[] = [];
+
+  let occurrences = 0;
+  for (const session of history) {
+    const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
+    const idx = ordered.findIndex((e) => e.exerciseId === exerciseId);
+    if (idx <= 0) continue; // premier exercice de la séance ou absent -> pas de contexte "avant"
+    occurrences += 1;
+    if (occurrences > 5) break;
+
+    let systemicCost = 0;
+    let sameParentSets = 0;
+    for (const prior of ordered.slice(0, idx)) {
+      const exercise = findExercise(catalog, prior.exerciseId);
+      if (!exercise) continue;
+      const workSetsCompleted = completedWorkSets(prior).length;
+      if (workSetsCompleted <= 0) continue;
+      systemicCost += workSetsCompleted * FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
+      if (parent && primaryParent(exercise) === parent) sameParentSets += workSetsCompleted;
+    }
+    systemicCosts.push(systemicCost);
+    sameParentCounts.push(sameParentSets);
+  }
+
+  if (systemicCosts.length === 0) return undefined;
+  const sortedCosts = [...systemicCosts].sort((a, b) => a - b);
+  const sortedParent = [...sameParentCounts].sort((a, b) => a - b);
+  const mid = Math.floor(sortedCosts.length / 2);
+  const medianOf = (arr: number[]): number =>
+    arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
+  return { baselineSystemicCost: medianOf(sortedCosts), baselineSameParentSets: medianOf(sortedParent) };
+}
+
+/** ALGO_V2 §5.1 — poids de corps utilisateur, même clé localStorage que `SettingsBodySection`. */
+const BODY_WEIGHT_STORAGE_KEY = "user_body_weight_kg";
+
+function readBodyweightKg(): number | undefined {
+  if (typeof window === "undefined") return undefined;
+  const raw = window.localStorage.getItem(BODY_WEIGHT_STORAGE_KEY);
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return !Number.isNaN(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 /** Miroir de `Double.cleanWeight` (Swift) : entier sans décimale, sinon 2 décimales max. */
@@ -570,6 +700,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       armedSupersetExerciseId: null,
       justHitRecord: {},
       recordsCache: {},
+      freshOverrides: new Set<string>(),
 
       hasHydratedStorage: false,
       setHasHydratedStorage: (value) => set({ hasHydratedStorage: value }),
@@ -584,7 +715,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         const state = get();
         const resolvedMode = mode ?? state.selectedStartMode;
         const session = seedSessionForMode(makeEmptySession(), resolvedMode, state);
-        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {} });
+        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {}, freshOverrides: new Set() });
       },
 
       startFromTemplate: (templateId, mode) => {
@@ -599,7 +730,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           .filter((e): e is Exercise => e !== undefined);
         let session = seedExercisesInto(makeEmptySession(template.name), exercises);
         session = applyModeOverlay(session, resolvedMode, state);
-        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {} });
+        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {}, freshOverrides: new Set() });
       },
 
       repeatLast: (mode) => {
@@ -611,7 +742,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         const exercises = ordered.map((e) => findExercise(state.catalog, e.exerciseId)).filter((e): e is Exercise => e !== undefined);
         let session = seedExercisesInto(makeEmptySession(lastSession.templateName), exercises);
         session = applyModeOverlay(session, resolvedMode, state);
-        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {} });
+        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {}, freshOverrides: new Set() });
       },
 
       finish: () => {
@@ -633,6 +764,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           justHitRecord: {},
           armedSupersetExerciseId: null,
           recordsCache: {},
+          freshOverrides: new Set(),
         });
         return { session: finishedSession, snapshot };
       },
@@ -643,7 +775,17 @@ export const useWorkoutStore = create<WorkoutState>()(
           activeMode: "normal",
           rest: null,
           armedSupersetExerciseId: null,
+          freshOverrides: new Set(),
         });
+      },
+
+      sessionReview: (session) => {
+        const state = get();
+        // `history` ne doit jamais contenir `session` elle-même (voir doc `buildSessionReview`) :
+        // filtre défensif au cas où l'appelant passe la séance juste finie (déjà en tête de `history`
+        // après `finish()`).
+        const history = state.history.filter((s) => s.id !== session.id);
+        return buildSessionReview(session, history, state.catalog, state.goals);
       },
 
       // -----------------------------------------------------------------
@@ -914,6 +1056,25 @@ export const useWorkoutStore = create<WorkoutState>()(
       },
 
       // -----------------------------------------------------------------
+      // WS4 — override deload "Je suis frais"
+      // -----------------------------------------------------------------
+
+      setFreshOverride: (loggedExerciseId) => {
+        const state = get();
+        const next = new Set(state.freshOverrides);
+        next.add(loggedExerciseId);
+        set({ freshOverrides: next });
+      },
+
+      clearFreshOverride: (loggedExerciseId) => {
+        const state = get();
+        if (!state.freshOverrides.has(loggedExerciseId)) return;
+        const next = new Set(state.freshOverrides);
+        next.delete(loggedExerciseId);
+        set({ freshOverrides: next });
+      },
+
+      // -----------------------------------------------------------------
       // Suggestions
       // -----------------------------------------------------------------
 
@@ -934,9 +1095,14 @@ export const useWorkoutStore = create<WorkoutState>()(
           } as SetSuggestion;
         }
 
-        const recentHistory = recentWorkSetsForExercise(state.history, exercise.id, 3);
+        const recentHistory = recentWorkSetsForExercise(state.history, exercise.id, HISTORY_WINDOW);
         const currentSessionSets = orderedSets(loggedExercise).filter((s) => s.completed);
-        const sessionFatigue = buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId);
+        const fatigueBaselines = buildFatigueBaselines(state.history, state.catalog, exercise.id);
+        const sessionFatigue = buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, fatigueBaselines);
+        // WS4 — gap daté sur CET exercice exact (pas de fusion de variantes), et override
+        // "Je suis frais" éventuellement armé par l'utilisateur pour cet exercice loggé.
+        const gapDays = daysSinceLastExercise(state.history, exercise.id) ?? undefined;
+        const freshOverride = state.freshOverrides.has(loggedExerciseId);
 
         const params: SuggestParams = {
           exercise,
@@ -944,6 +1110,10 @@ export const useWorkoutStore = create<WorkoutState>()(
           recentHistory,
           currentSessionSets,
           sessionFatigue,
+          gapDays,
+          freshOverride,
+          // ALGO_V2 §5.1 — poids de corps pour weighted/assisted bodyweight (predictReps).
+          bodyweightKg: readBodyweightKg(),
         };
         let result = suggest(params);
 
@@ -1003,7 +1173,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         const exercise = findExercise(state.catalog, exerciseId);
         if (!exercise) return EMPTY_RECORDS;
 
-        const sessions = recentWorkSetsForExerciseSessions(state.history, exerciseId, 20);
+        // Fenêtre volontairement plus large que HISTORY_WINDOW (10) : les records (PRs) doivent
+        // rester visibles même s'ils datent de plus de 10 séances, contrairement à la décision de
+        // charge/reps qui ne doit regarder que le passé récent. Ne pas aligner sur HISTORY_WINDOW.
+        const sessions = recentWorkSetsForExerciseSessions(state.history, exerciseId, RECORDS_HISTORY_WINDOW);
         const historicalSets = sessions.flat();
         const records = buildRecords(exercise, historicalSets);
         set({ recordsCache: { ...state.recordsCache, [exerciseId]: records } });

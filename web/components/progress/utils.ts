@@ -61,6 +61,22 @@ export function formatWeight(weight: number): string {
   return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
 }
 
+/**
+ * Arrondit un poids DÉRIVÉ (e1RM, moyenne, etc.) au plus proche multiple de
+ * `increment` (le `smallestIncrement` de l'exercice, ou 0.5 kg par défaut).
+ * Évite les affichages du type "133.33 kg" issus de calculs (Epley, moyennes)
+ * qui ne correspondent à aucun poids réellement chargeable.
+ */
+export function roundToIncrement(weight: number, increment = 0.5): number {
+  const step = increment > 0 ? increment : 0.5;
+  return Math.round(weight / step) * step;
+}
+
+/** Formate un poids dérivé : arrondi au `smallestIncrement` puis mis en forme sans décimale inutile. */
+export function formatDerivedWeight(weight: number, increment = 0.5): string {
+  return formatWeight(roundToIncrement(weight, increment));
+}
+
 /** Date courte "14/07" pour les axes de graphiques. */
 export function formatShortDate(date: Date): string {
   return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;

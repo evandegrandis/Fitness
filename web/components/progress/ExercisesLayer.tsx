@@ -11,8 +11,9 @@ import { estimated1RM } from "@/lib/engines/e1rm";
 import { buildRecords } from "@/lib/engines/records";
 import { completedWorkSets, type Exercise, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
-import { formatWeight } from "@/components/progress/utils";
+import { formatWeight, formatDerivedWeight } from "@/components/progress/utils";
 import { ExerciseLineChart, type ExercisePoint } from "@/components/progress/ExerciseLineChart";
+import { trendBadge } from "@/components/progress/trend";
 
 type SortMode = "recent" | "az";
 
@@ -122,33 +123,64 @@ function ExerciseCardRow({
 }) {
   const { exercise, points } = entry;
   const last = points[points.length - 1];
+  const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 0.5;
 
-  const records = useMemo(() => {
-    const historicalSets = history
-      .filter((s) => !s.isActive)
-      .flatMap((s) => s.exercises)
-      .filter((e) => e.exerciseId === exercise.id)
-      .flatMap((e) => e.sets);
-    return buildRecords(exercise, historicalSets);
-  }, [history, exercise]);
+  const historicalSets = useMemo(
+    () =>
+      history
+        .filter((s) => !s.isActive)
+        .flatMap((s) => s.exercises)
+        .filter((e) => e.exerciseId === exercise.id)
+        .flatMap((e) => e.sets),
+    [history, exercise]
+  );
+
+  const records = useMemo(() => buildRecords(exercise, historicalSets), [historicalSets, exercise]);
+
+  const trend = useMemo(() => trendBadge(points.map((p) => ({ date: p.date, weight: p.weight }))), [points]);
+
+  /** Date du set qui a établi le heaviestEver actuel — pour "record il y a X sem". */
+  const heaviestRecordAgeLabel = useMemo(() => {
+    if (records.heaviestEver <= 0) return null;
+    const matching = historicalSets
+      .filter((s) => s.completed && s.weight === records.heaviestEver)
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())[0];
+    if (!matching) return null;
+    return weeksAgoLabel(matching.timestamp);
+  }, [historicalSets, records.heaviestEver]);
 
   return (
     <GlassCard className="overflow-hidden !p-0">
       <button type="button" onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-[--color-fg]">{exercise.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate font-semibold text-[--color-fg]">{exercise.name}</p>
+            {trend && (
+              <span
+                className="pill shrink-0"
+                style={{
+                  color: trend.tone === "up" ? "var(--color-success)" : trend.tone === "down" ? "var(--color-danger)" : "var(--color-fg-muted)",
+                }}
+              >
+                {trend.label}
+              </span>
+            )}
+          </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             <span className="pill">
               Dernier <span className="tnum ml-1 text-[--color-fg]">{formatWeight(last.weight)}kg×{last.reps}</span>
             </span>
             {records.bestE1RM > 0 && (
               <span className="pill">
-                e1RM <span className="tnum ml-1 text-[--color-fg]">{formatWeight(records.bestE1RM)}kg</span>
+                e1RM <span className="tnum ml-1 text-[--color-fg]">{formatDerivedWeight(records.bestE1RM, increment)}kg</span>
               </span>
             )}
             {records.heaviestEver > 0 && (
               <span className="pill">
                 Best <span className="tnum ml-1 text-[--color-fg]">{formatWeight(records.heaviestEver)}kg</span>
+                {heaviestRecordAgeLabel && (
+                  <span className="ml-1 text-[--color-fg-faint]">· {heaviestRecordAgeLabel}</span>
+                )}
               </span>
             )}
           </div>
@@ -174,6 +206,7 @@ function ExerciseCardRow({
                 benchmarkLow={exercise.benchmarkLow}
                 benchmarkHigh={exercise.benchmarkHigh}
                 showReps={points.length > 1}
+                smallestIncrement={increment}
               />
               <p className="text-xs text-[--color-fg-faint]">
                 Dernière séance : {formatWeight(last.weight)}kg × {last.reps} reps
@@ -184,4 +217,12 @@ function ExerciseCardRow({
       </AnimatePresence>
     </GlassCard>
   );
+}
+
+/** "il y a 8 sem" / "cette semaine" — contexte temporel d'un record ancien. */
+function weeksAgoLabel(date: Date): string {
+  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
+  const weeks = Math.floor(days / 7);
+  if (weeks <= 0) return "cette semaine";
+  return `il y a ${weeks} sem`;
 }

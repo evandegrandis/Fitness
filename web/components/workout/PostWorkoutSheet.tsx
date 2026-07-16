@@ -1,15 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Star, TrendingUp } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { saveRecoveryCheckin } from "@/lib/db/actions";
-import { parentShortName } from "@/lib/models/muscles";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
-import type { RecoveryCheckin } from "@/lib/models/types";
+import type { RecoveryCheckin, WorkoutSession } from "@/lib/models/types";
 import { RecoveryCheckinRow, type RecoveryDraft } from "./RecoveryCheckinRow";
+import { BilanHero } from "./bilan/BilanHero";
+import { BilanPerformance } from "./bilan/BilanPerformance";
+import { BilanPlateaus } from "./bilan/BilanPlateaus";
+import { BilanCoverage } from "./bilan/BilanCoverage";
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -36,13 +38,17 @@ function draftFor(checkins: RecoveryCheckin[], date: Date): RecoveryDraft & { id
 export function PostWorkoutSheet({
   open,
   snapshot,
+  session,
   onClose,
 }: {
   open: boolean;
   snapshot: FinishedWorkoutSnapshot | null;
+  /** Séance terminée à analyser — sert au bilan intelligent (`sessionReview`). */
+  session: WorkoutSession | null;
   onClose: () => void;
 }) {
   const recoveryCheckins = useWorkoutStore((s) => s.recoveryCheckins);
+  const sessionReview = useWorkoutStore((s) => s.sessionReview);
   const referenceDate = useMemo(() => new Date(), [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const d1Date = useMemo(() => addDays(referenceDate, -1), [referenceDate]);
@@ -52,7 +58,9 @@ export function PostWorkoutSheet({
   const [d2, setD2] = useState<RecoveryDraft>(() => draftFor(recoveryCheckins, d2Date));
   const [saving, setSaving] = useState(false);
 
-  if (!snapshot) return null;
+  const review = useMemo(() => (session ? sessionReview(session) : null), [session, sessionReview]);
+
+  if (!snapshot || !review) return null;
 
   const handleSave = async () => {
     setSaving(true);
@@ -84,64 +92,24 @@ export function PostWorkoutSheet({
   return (
     <Sheet open={open} onClose={onClose} full>
       <div className="flex flex-col gap-5 pb-4">
-        <header className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Bilan express</p>
-            <h2 className="font-display text-2xl font-bold text-accent-gradient">Séance terminée</h2>
-          </div>
-          <span className="pill" style={{ color: "var(--accent)" }}>
-            <TrendingUp size={12} />
-            {snapshot.progressionSignal}
-          </span>
+        <header>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Bilan express</p>
+          <h2 className="font-display text-2xl font-bold text-accent-gradient">Séance terminée</h2>
         </header>
 
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <StatTile value={snapshot.duration} label="Durée" />
           <StatTile value={snapshot.setCount} label="Sets" />
           <StatTile value={snapshot.exerciseCount} label="Exos" />
-          <StatTile value={snapshot.prCount} label="PR" accent={snapshot.prCount > 0} />
         </div>
 
-        {snapshot.topMuscles.length > 0 && (
-          <div className="glass glass-card">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Avancée musculaire</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {snapshot.topMuscles.map((m) => (
-                <span key={m.parent} className="pill">
-                  {parentShortName[m.parent]} +{m.sets}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        <BilanHero review={review} />
 
-        {snapshot.remainingMuscles.length > 0 && (
-          <div className="glass glass-card">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">À couvrir</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {snapshot.remainingMuscles.map((m) => (
-                <span key={m.parent} className="pill" style={{ color: "#fbbf24" }}>
-                  {parentShortName[m.parent]} · {m.sets} restant{m.sets > 1 ? "s" : ""}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+        <BilanPerformance exercises={review.exercises} />
 
-        {snapshot.prHighlights.length > 0 && (
-          <div className="glass glass-card">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">PR de séance</p>
-            <ul className="mt-2 flex flex-col gap-1.5">
-              {snapshot.prHighlights.map((pr, i) => (
-                <li key={i} className="flex items-center gap-2 text-sm text-[--color-fg]">
-                  <Star size={14} className="shrink-0 text-amber-300" fill="currentColor" />
-                  <span className="font-medium">{pr.title}</span>
-                  <span className="text-[--color-fg-muted]">{pr.detail}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <BilanPlateaus review={review} />
+
+        <BilanCoverage review={review} />
 
         <div className="flex flex-col gap-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Récupération</p>

@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { GripVertical, Link2, MoreVertical } from "lucide-react";
+import { Copy, GripVertical, Link2, MoreVertical, Trash2, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { SwipeRow } from "@/components/ui/SwipeRow";
 import { buildRecords } from "@/lib/engines/records";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
@@ -54,6 +55,10 @@ export function ExerciseCard({
   const justHitRecord = useWorkoutStore((s) => s.justHitRecord);
   const history = useWorkoutStore((s) => s.history);
   const armedSupersetExerciseId = useWorkoutStore((s) => s.armedSupersetExerciseId);
+  const handleSupersetLink = useWorkoutStore((s) => s.handleSupersetLink);
+  const detachFromSupersetGroup = useWorkoutStore((s) => s.detachFromSupersetGroup);
+  const duplicateExercise = useWorkoutStore((s) => s.duplicateExercise);
+  const removeExercise = useWorkoutStore((s) => s.removeExercise);
 
   const [expanded, setExpanded] = useState(true);
 
@@ -87,83 +92,124 @@ export function ExerciseCard({
 
   if (!exercise) return null;
 
+  const isLinked = loggedExercise.supersetGroupId !== null;
+
   return (
     <div ref={setNodeRef} style={style}>
-      <GlassCard className={cn("flex flex-col gap-3", isArmed && "ring-1 ring-[color:var(--accent)]")}>
-        <div className="flex items-start justify-between gap-2">
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            className="mt-0.5 shrink-0 cursor-grab touch-none text-[--color-fg-faint] active:cursor-grabbing"
-            aria-label="Réordonner"
+      <div className="flex items-stretch gap-1.5">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="mt-0.5 shrink-0 cursor-grab touch-none px-0.5 text-[--color-fg-faint] active:cursor-grabbing"
+          aria-label="Réordonner"
+        >
+          <GripVertical size={18} />
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <SwipeRow
+            actions={[
+              { label: "Dupliquer", icon: Copy, onClick: () => duplicateExercise(loggedExercise.id) },
+              { label: "Supprimer", icon: Trash2, danger: true, onClick: () => removeExercise(loggedExercise.id) },
+            ]}
           >
-            <GripVertical size={18} />
-          </button>
-          <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded((v) => !v)}>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <h3 className="truncate font-display text-base font-bold text-[--color-fg]">{exercise.name}</h3>
-              {roundLabel && (
-                <span className="pill shrink-0" style={{ color: "#ff8a3d", background: "rgba(255,138,61,0.12)" }}>
-                  <Link2 size={11} />
-                  {roundLabel}
-                </span>
+            <GlassCard className={cn("flex flex-col gap-3", isArmed && "ring-1 ring-[color:var(--accent)]")}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded((v) => !v)}>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h3 className="truncate font-display text-base font-bold text-[--color-fg]">{exercise.name}</h3>
+                    {roundLabel && (
+                      <span className="pill shrink-0" style={{ color: "#ff8a3d", background: "rgba(255,138,61,0.12)" }}>
+                        <Link2 size={11} />
+                        {roundLabel}
+                      </span>
+                    )}
+                  </div>
+                  {exercise.machineSetting && (
+                    <p className="truncate text-xs text-[--color-fg-muted]">{exercise.machineSetting}</p>
+                  )}
+                  {lastSet && (
+                    <p className="truncate text-xs text-[--color-fg-faint]">
+                      Dernière séance : {lastSet.weight > 0 ? `${lastSet.weight}kg` : "BW"} × {lastSet.reps}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isLinked) {
+                      detachFromSupersetGroup(loggedExercise.id);
+                    } else {
+                      handleSupersetLink(loggedExercise.id);
+                    }
+                  }}
+                  aria-label={isLinked ? "Détacher du superset" : "Lier en superset"}
+                  aria-pressed={isArmed}
+                  className={cn(
+                    "shrink-0 grid h-8 w-8 place-items-center rounded-full transition active:scale-90",
+                    isLinked || isArmed
+                      ? "text-white"
+                      : "text-[--color-fg-muted]"
+                  )}
+                  style={
+                    isLinked || isArmed
+                      ? { background: "rgba(255,138,61,0.22)", color: "#ff8a3d" }
+                      : undefined
+                  }
+                >
+                  {isLinked ? <Unlink size={16} /> : <Link2 size={16} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenActions(loggedExercise.id)}
+                  className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-[--color-fg-muted] active:scale-90 transition"
+                  aria-label="Actions"
+                >
+                  <MoreVertical size={18} />
+                </button>
+              </div>
+
+              {sets.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {sets.map((set) => (
+                    <SetRow key={set.id} set={set} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />
+                  ))}
+                </div>
               )}
-            </div>
-            {exercise.machineSetting && (
-              <p className="truncate text-xs text-[--color-fg-muted]">{exercise.machineSetting}</p>
-            )}
-            {lastSet && (
-              <p className="truncate text-xs text-[--color-fg-faint]">
-                Dernière séance : {lastSet.weight > 0 ? `${lastSet.weight}kg` : "BW"} × {lastSet.reps}
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => onOpenActions(loggedExercise.id)}
-            className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-[--color-fg-muted] active:scale-90 transition"
-            aria-label="Actions"
-          >
-            <MoreVertical size={18} />
-          </button>
+
+              <AnimatePresence initial={false}>
+                {expanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="overflow-hidden"
+                  >
+                    <SetEntry
+                      key={completedWorkSets(loggedExercise).length}
+                      loggedExerciseId={loggedExercise.id}
+                      exercise={exercise}
+                      suggestion={currentSuggestion}
+                      warmup={currentWarmup}
+                      lastSessionSet={lastSet}
+                      onLogSet={(input) => logSet(loggedExercise.id, input)}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {!expanded && exerciseRecords && !exerciseRecords.isEmpty && (
+                <p className="text-xs text-[--color-fg-faint]">
+                  Record : {exerciseRecords.heaviestValidated}kg × {exerciseRecords.repsAtHeaviestValidated}
+                </p>
+              )}
+            </GlassCard>
+          </SwipeRow>
         </div>
-
-        {sets.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            {sets.map((set) => (
-              <SetRow key={set.id} set={set} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />
-            ))}
-          </div>
-        )}
-
-        <AnimatePresence initial={false}>
-          {expanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className="overflow-hidden"
-            >
-              <SetEntry
-                key={completedWorkSets(loggedExercise).length}
-                exercise={exercise}
-                suggestion={currentSuggestion}
-                warmup={currentWarmup}
-                lastSessionSet={lastSet}
-                onLogSet={(input) => logSet(loggedExercise.id, input)}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {!expanded && exerciseRecords && !exerciseRecords.isEmpty && (
-          <p className="text-xs text-[--color-fg-faint]">
-            Record : {exerciseRecords.heaviestValidated}kg × {exerciseRecords.repsAtHeaviestValidated}
-          </p>
-        )}
-      </GlassCard>
+      </div>
     </div>
   );
 }
