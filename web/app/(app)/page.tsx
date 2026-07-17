@@ -1,20 +1,26 @@
 "use client";
 
+import { useState } from "react";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { QuickStart } from "@/components/workout/QuickStart";
 import { ActiveSession } from "@/components/workout/ActiveSession";
+import { PostWorkoutSheet } from "@/components/workout/PostWorkoutSheet";
+import type { WorkoutSession } from "@/lib/models/types";
+import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 
 /**
- * Route "/" — bascule QuickStart ↔ Séance active selon l'état du store.
- *
- * `hasHydratedStorage` démarre à `false` côté serveur ET au premier rendu
- * client (persist middleware `skipHydration: true`, flip async via
- * `onRehydrateStorage`), donc ce flag suffit à éviter tout flash SSR/CSR sans
- * état "monté" séparé.
+ * Route "/" — bascule QuickStart ↔ Séance active. Le bilan post-séance vit ICI
+ * (niveau page, toujours monté) et NON dans ActiveSession : sinon il se
+ * démonterait à `finish()` (quand active repasse à null) et ne s'afficherait
+ * jamais.
  */
 export default function SeancePage() {
   const active = useWorkoutStore((s) => s.active);
   const hasHydratedStorage = useWorkoutStore((s) => s.hasHydratedStorage);
+  const [finished, setFinished] = useState<{
+    session: WorkoutSession;
+    snapshot: FinishedWorkoutSnapshot;
+  } | null>(null);
 
   if (!hasHydratedStorage) {
     return (
@@ -29,5 +35,15 @@ export default function SeancePage() {
     );
   }
 
-  return active ? <ActiveSession session={active} /> : <QuickStart />;
+  return (
+    <>
+      {active ? <ActiveSession session={active} onFinished={setFinished} /> : <QuickStart />}
+      <PostWorkoutSheet
+        open={finished !== null}
+        snapshot={finished?.snapshot ?? null}
+        session={finished?.session ?? null}
+        onClose={() => setFinished(null)}
+      />
+    </>
+  );
 }

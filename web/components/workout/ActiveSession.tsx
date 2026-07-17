@@ -13,11 +13,16 @@ import { AchievementOverlay } from "./AchievementOverlay";
 import { ExercisePicker } from "./ExercisePicker";
 import { ExerciseActionsSheet } from "./ExerciseActionsSheet";
 import { EditSetSheet } from "./EditSetSheet";
-import { PostWorkoutSheet } from "./PostWorkoutSheet";
 import { SupersetLinkBanner } from "./SupersetLinkBanner";
 
 /** Écran de séance active : liste d'exercices, timer de repos, actions. */
-export function ActiveSession({ session }: { session: WorkoutSession }) {
+export function ActiveSession({
+  session,
+  onFinished,
+}: {
+  session: WorkoutSession;
+  onFinished: (result: { session: WorkoutSession; snapshot: FinishedWorkoutSnapshot }) => void;
+}) {
   const catalog = useWorkoutStore((s) => s.catalog);
   const history = useWorkoutStore((s) => s.history);
   const goals = useWorkoutStore((s) => s.goals);
@@ -30,9 +35,6 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [actionsTarget, setActionsTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ loggedExerciseId: string; set: LoggedSet } | null>(null);
-  const [snapshot, setSnapshot] = useState<FinishedWorkoutSnapshot | null>(null);
-  const [finishedSession, setFinishedSession] = useState<WorkoutSession | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
   const [syncState, setSyncState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,21 +94,17 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
       finishing.current = false;
       return;
     }
-    setSnapshot(result.snapshot);
-    setFinishedSession(result.session);
-    setSummaryOpen(true);
+    // Affiche le bilan IMMÉDIATEMENT (au niveau page, survit au démontage).
+    onFinished(result);
 
     // Sauvegarde finale FIABLE (awaited + retry) : on ne perd pas une séance finie.
-    setSyncState("saving");
     try {
       await saveSession(result.session);
-      setSyncState("saved");
     } catch {
       try {
         await saveSession(result.session);
-        setSyncState("saved");
       } catch {
-        setSyncState("error");
+        /* la séance reste en base via l'autosave (isActive true) et en localStorage */
       }
     }
   };
@@ -162,17 +160,6 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
       />
 
       <EditSetSheet target={editTarget} onClose={() => setEditTarget(null)} />
-
-      <PostWorkoutSheet
-        open={summaryOpen}
-        snapshot={snapshot}
-        session={finishedSession}
-        onClose={() => {
-          setSummaryOpen(false);
-          setSnapshot(null);
-          setFinishedSession(null);
-        }}
-      />
     </main>
   );
 }
