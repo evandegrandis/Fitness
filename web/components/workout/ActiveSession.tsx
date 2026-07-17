@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { saveSession, deleteSession } from "@/lib/db/actions";
+import { enqueue, flush, pendingCount } from "@/lib/sync/outbox";
+import { useSyncStatus } from "@/lib/sync/status";
 import type { LoggedSet, WorkoutSession } from "@/lib/models/types";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 import { SessionHeader } from "./SessionHeader";
@@ -11,7 +13,6 @@ import { RestTimer } from "./RestTimer";
 import { UndoToast } from "./UndoToast";
 import { AchievementOverlay } from "./AchievementOverlay";
 import { ExercisePicker } from "./ExercisePicker";
-import { ExerciseActionsSheet } from "./ExerciseActionsSheet";
 import { EditSetSheet } from "./EditSetSheet";
 import { SupersetLinkBanner } from "./SupersetLinkBanner";
 
@@ -33,36 +34,43 @@ export function ActiveSession({
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
-  const [actionsTarget, setActionsTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ loggedExerciseId: string; set: LoggedSet } | null>(null);
-  const [syncState, setSyncState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  const setSyncStatus = useSyncStatus((s) => s.setStatus);
+  const setPending = useSyncStatus((s) => s.setPending);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishing = useRef(false);
 
+  const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+
   // Empreinte STABLE des sets : ne change QUE quand un set est ajouté/édité/
-  // supprimé (pas à chaque changement de référence de `session`). Évite que le
-  // debounce soit annulé en boucle → la sauvegarde part vraiment.
+  // supprimé (pas à chaque changement de référence de `session`).
   const setFingerprint = session.exercises
     .map((e) => `${e.id}:${e.sets.map((s) => `${s.id}=${s.weight}x${s.reps}:${s.completed ? 1 : 0}`).join(",")}`)
     .join("|");
   const totalSetsCount = session.exercises.reduce((acc, e) => acc + e.sets.length, 0);
 
-  // AUTOSAVE : écrit la séance en base (Neon) ~800 ms après tout changement de
-  // set (revalidate=false → pas de refetch complet). La séance n'est jamais
-  // "dans le vent" — elle vit en base, pas seulement en localStorage.
+  // AUTOSAVE (offline-first) : la séance en cours vit TOUJOURS en local
+  // (localStorage via persist) — jamais perdue à la salle, même sans réseau.
+  // On tente en plus une écriture base best-effort ~800 ms après un changement.
+  // Le statut est HONNÊTE : "offline" si pas de réseau, jamais un faux "saved".
   useEffect(() => {
     if (finishing.current || totalSetsCount === 0) return;
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    setSyncState("saving");
+    if (isOffline()) {
+      setSyncStatus("offline");
+      return;
+    }
+    setSyncStatus("saving");
     const snapshot = session;
     saveTimer.current = setTimeout(async () => {
       try {
         await saveSession(snapshot, false);
-        setSyncState("saved");
+        setSyncStatus("saved");
       } catch {
-        setSyncState("error");
+        setSyncStatus(isOffline() ? "offline" : "error");
       }
     }, 800);
 
@@ -94,19 +102,22 @@ export function ActiveSession({
       finishing.current = false;
       return;
     }
-    // Affiche le bilan IMMÉDIATEMENT (au niveau page, survit au démontage).
+
+    // OFFLINE-FIRST : la séance finie est mise en FILE LOCALE d'abord (opération
+    // localStorage, ne peut PAS échouer) → jamais perdue, même sans réseau.
+    // On affiche le bilan immédiatement, puis on tente de synchroniser.
+    enqueue(result.session);
+    setPending(pendingCount());
     onFinished(result);
 
-    // Sauvegarde finale FIABLE (awaited + retry) : on ne perd pas une séance finie.
-    try {
-      await saveSession(result.session);
-    } catch {
-      try {
-        await saveSession(result.session);
-      } catch {
-        /* la séance reste en base via l'autosave (isActive true) et en localStorage */
-      }
+    if (isOffline()) {
+      setSyncStatus("offline");
+      return;
     }
+    setSyncStatus("saving");
+    const remaining = await flush(saveSession);
+    setPending(remaining);
+    setSyncStatus(remaining === 0 ? "saved" : isOffline() ? "offline" : "error");
   };
 
   const handlePickExercise = (exerciseId: string) => {
@@ -120,12 +131,12 @@ export function ActiveSession({
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-5 pb-28 pt-6">
-      <SessionHeader session={session} onFinish={handleFinish} syncState={syncState} />
+      <SessionHeader session={session} onFinish={handleFinish} />
 
       <ExerciseList
         session={session}
         onEditSet={(loggedExerciseId, set) => setEditTarget({ loggedExerciseId, set })}
-        onOpenActions={setActionsTarget}
+        onReplace={setReplaceTarget}
         onAddExercise={() => {
           setReplaceTarget(null);
           setPickerOpen(true);
@@ -148,15 +159,6 @@ export function ActiveSession({
         excludeIds={session.exercises.map((e) => e.exerciseId)}
         history={history}
         goals={goals}
-      />
-
-      <ExerciseActionsSheet
-        loggedExerciseId={actionsTarget}
-        onClose={() => setActionsTarget(null)}
-        onReplace={(id) => {
-          setActionsTarget(null);
-          setReplaceTarget(id);
-        }}
       />
 
       <EditSetSheet target={editTarget} onClose={() => setEditTarget(null)} />

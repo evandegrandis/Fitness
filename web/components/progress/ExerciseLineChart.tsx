@@ -4,9 +4,11 @@ import { useCallback, useMemo, useState } from "react";
 import {
   Brush,
   CartesianGrid,
+  Label,
   Line,
   LineChart,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -36,15 +38,19 @@ const ZOOM_THRESHOLD = 12;
  */
 export function ExerciseLineChart({
   points,
-  benchmarkLow,
-  benchmarkHigh,
+  referenceBand,
   showReps = false,
   height = 200,
   smallestIncrement = 0.5,
 }: {
   points: ExercisePoint[];
-  benchmarkLow?: number | null;
-  benchmarkHigh?: number | null;
+  /**
+   * Bande avancé/élite déjà convertie dans l'unité du `weight` tracé ici
+   * (charge loggée, pas la charge totale) — voir
+   * `benchmarkBoundsForLoggedWeight` (lib/engines/benchmark.ts). `null`/
+   * absent si l'exercice n'a pas de benchmark.
+   */
+  referenceBand?: { low: number; high: number } | null;
   showReps?: boolean;
   height?: number;
   /** Incrément de charge de l'exercice — arrondit le poids "lissé" affiché en tête. */
@@ -67,8 +73,8 @@ export function ExerciseLineChart({
   const trend = useMemo(() => trendBadge(points.map((p) => ({ date: p.date, weight: p.weight }))), [points]);
 
   const weights = data.map((d) => d.weight);
-  const minW = Math.min(...weights, benchmarkLow ?? Infinity);
-  const maxW = Math.max(...weights, benchmarkHigh ?? -Infinity);
+  const minW = Math.min(...weights, referenceBand?.low ?? Infinity);
+  const maxW = Math.max(...weights, referenceBand?.high ?? -Infinity);
   const pad = Math.max(1, (maxW - minW) * 0.15);
   const yDomain: [number, number] = [Math.max(0, Math.floor(minW - pad)), Math.ceil(maxW + pad)];
 

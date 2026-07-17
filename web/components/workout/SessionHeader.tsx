@@ -1,28 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Cloud, CloudOff, Loader2 } from "lucide-react";
+import { Check, Cloud, CloudOff, Loader2, WifiOff } from "lucide-react";
 import type { WorkoutSession } from "@/lib/models/types";
 import { completedWorkSets } from "@/lib/models/types";
+import { useSyncStatus } from "@/lib/sync/status";
 
-type SyncState = "idle" | "saving" | "saved" | "error";
+/** Badge de synchronisation HONNÊTE : reflète l'état réel, jamais un faux « enregistré ». */
+function SyncBadge() {
+  const status = useSyncStatus((s) => s.status);
+  const pending = useSyncStatus((s) => s.pending);
 
-function SyncBadge({ state }: { state: SyncState }) {
-  if (state === "idle") return null;
-  if (state === "saving")
+  if (status === "idle") return null;
+  if (status === "saving")
     return (
       <span className="inline-flex items-center gap-1 text-[0.7rem] text-[--color-fg-faint]">
         <Loader2 size={12} className="animate-spin" /> enregistrement…
       </span>
     );
-  if (state === "error")
+  if (status === "offline")
+    return (
+      <span className="inline-flex items-center gap-1 text-[0.7rem]" style={{ color: "var(--color-warning)" }}>
+        <WifiOff size={12} /> en attente de réseau{pending > 1 ? ` (${pending})` : ""}
+      </span>
+    );
+  if (status === "error")
     return (
       <span className="inline-flex items-center gap-1 text-[0.7rem] text-[--color-danger]">
-        <CloudOff size={12} /> non enregistré
+        <CloudOff size={12} /> non synchronisé{pending > 1 ? ` (${pending})` : ""}
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-1 text-[0.7rem]" style={{ color: "#34d399" }}>
+    <span className="inline-flex items-center gap-1 text-[0.7rem]" style={{ color: "var(--color-success)" }}>
       <Cloud size={12} /> enregistré
     </span>
   );
@@ -42,11 +51,9 @@ function formatElapsed(startTime: Date, nowMs: number): string {
 export function SessionHeader({
   session,
   onFinish,
-  syncState = "idle",
 }: {
   session: WorkoutSession;
   onFinish: () => void;
-  syncState?: SyncState;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -64,7 +71,7 @@ export function SessionHeader({
         <p className="tnum font-display text-2xl font-bold text-[--color-fg]">{formatElapsed(session.startTime, nowMs)}</p>
         <div className="flex items-center gap-2 text-xs text-[--color-fg-muted]">
           <span>{totalSets} set{totalSets > 1 ? "s" : ""} loggué{totalSets > 1 ? "s" : ""}</span>
-          <SyncBadge state={syncState} />
+          <SyncBadge />
         </div>
       </div>
       <button

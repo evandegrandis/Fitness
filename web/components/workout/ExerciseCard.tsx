@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { Copy, GripVertical, Link2, MoreVertical, Trash2, Unlink } from "lucide-react";
+import { Copy, GripVertical, Link2, Repeat, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { SwipeRow } from "@/components/ui/SwipeRow";
 import { buildRecords } from "@/lib/engines/records";
@@ -40,15 +40,16 @@ export function ExerciseCard({
   exercise,
   session,
   onEditSet,
-  onOpenActions,
+  onReplace,
 }: {
   loggedExercise: LoggedExercise;
   exercise: Exercise | undefined;
   session: WorkoutSession;
   onEditSet: (set: LoggedSet) => void;
-  onOpenActions: (loggedExerciseId: string) => void;
+  onReplace: (loggedExerciseId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: loggedExercise.id });
+  const [handleArmed, setHandleArmed] = useState(false);
   const logSet = useWorkoutStore((s) => s.logSet);
   const suggestion = useWorkoutStore((s) => s.suggestion);
   const warmupSuggestion = useWorkoutStore((s) => s.warmupSuggestion);
@@ -102,8 +103,9 @@ export function ExerciseCard({
       <SwipeRow
         actions={[
           { label: "Dupliquer", icon: Copy, onClick: () => duplicateExercise(loggedExercise.id) },
-          { label: "Supprimer", icon: Trash2, danger: true, onClick: () => removeExercise(loggedExercise.id) },
+          { label: "Remplacer", icon: Repeat, onClick: () => onReplace(loggedExercise.id) },
         ]}
+        onDelete={() => removeExercise(loggedExercise.id)}
       >
         <GlassCard
           className={cn(
@@ -145,9 +147,19 @@ export function ExerciseCard({
                   type="button"
                   {...attributes}
                   {...listeners}
-                  onPointerDownCapture={(e) => e.stopPropagation()}
-                  className="shrink-0 grid h-8 w-8 cursor-grab touch-none place-items-center rounded-full text-[--color-fg-faint] active:cursor-grabbing"
-                  aria-label="Réordonner"
+                  data-drag-handle="true"
+                  onPointerDown={(e) => {
+                    setHandleArmed(true);
+                    listeners?.onPointerDown?.(e);
+                  }}
+                  onPointerUp={() => setHandleArmed(false)}
+                  onPointerLeave={() => setHandleArmed(false)}
+                  onPointerCancel={() => setHandleArmed(false)}
+                  className={cn(
+                    "shrink-0 grid h-8 w-8 touch-none place-items-center rounded-full text-[--color-fg-faint] transition",
+                    handleArmed ? "scale-90 cursor-grabbing text-[--color-fg]" : "cursor-grab"
+                  )}
+                  aria-label="Réordonner (appui maintenu)"
                 >
                   <GripVertical size={16} />
                 </button>
@@ -176,14 +188,6 @@ export function ExerciseCard({
                   }
                 >
                   {isLinked ? <Unlink size={16} /> : <Link2 size={16} />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpenActions(loggedExercise.id)}
-                  className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-[--color-fg-muted] active:scale-90 transition"
-                  aria-label="Actions"
-                >
-                  <MoreVertical size={18} />
                 </button>
               </div>
 

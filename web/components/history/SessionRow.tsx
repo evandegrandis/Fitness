@@ -8,7 +8,6 @@ import { motion } from "framer-motion";
 import { ChevronRight, Star, Trash2 } from "lucide-react";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
 import { sessionDurationLabel } from "./historyHelpers";
-import { cn } from "@/lib/utils";
 
 function relativeDay(date: Date): string {
   if (isToday(date)) return "Aujourd'hui";
@@ -50,14 +49,43 @@ export function SessionRow({
     onDelete(session.id);
   }
 
+  if (confirming) {
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, height: 0 }}
+        className="surface-solid glass-card flex items-center justify-between gap-3"
+      >
+        <p className="min-w-0 truncate text-sm font-semibold text-[--color-fg]">Supprimer cette séance ?</p>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setConfirming(false);
+            }}
+            className="pill"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            className="pill"
+            style={{ borderColor: "var(--color-danger)", color: "var(--color-danger)" }}
+          >
+            Confirmer la suppression
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, height: 0 }}
-      className="relative"
-    >
+    <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}>
       <Link
         href={`/historique/${session.id}`}
         className="glass glass-card flex items-center gap-3 transition active:scale-[0.99]"
@@ -87,44 +115,13 @@ export function SessionRow({
         <button
           type="button"
           onClick={handleDeleteClick}
-          className={cn(
-            "grid h-8 w-8 shrink-0 place-items-center rounded-full border transition",
-            confirming
-              ? "border-rose-400/50 bg-rose-400/15 text-rose-300"
-              : "border-white/10 bg-white/5 text-[--color-fg-faint]"
-          )}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5 text-[--color-fg-faint] transition"
           aria-label="Supprimer la séance"
         >
           <Trash2 size={14} />
         </button>
         <ChevronRight size={16} className="shrink-0 text-[--color-fg-faint]" />
       </Link>
-      {confirming && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute inset-x-3 -bottom-2 flex justify-end gap-2"
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setConfirming(false);
-            }}
-            className="pill bg-white/10 text-[10px]"
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={handleDeleteClick}
-            className="pill border-rose-400/50 bg-rose-400/20 text-[10px] text-rose-200"
-          >
-            Confirmer la suppression
-          </button>
-        </motion.div>
-      )}
     </motion.div>
   );
 }

@@ -15,6 +15,13 @@ function sleepTone(hours: number): { label: string; color: string } {
   return { label: "bas", color: "#fb7185" };
 }
 
+/** Formate en "7h" ou "7h30" — jamais de largeur variable type "7.5h". */
+function formatSleepHours(hours: number): string {
+  const wholeHours = Math.floor(hours);
+  const minutes = Math.round((hours - wholeHours) * 60);
+  return minutes === 0 ? `${wholeHours}h` : `${wholeHours}h${minutes}`;
+}
+
 /** Ligne de recovery checkin (J-1 ou J-2) : toggles Créatine/Protéine + slider sommeil. */
 export function RecoveryCheckinRow({
   label,
@@ -55,8 +62,11 @@ export function RecoveryCheckinRow({
           onChange={(e) => onChange({ ...value, sleepHours: Number(e.target.value) })}
           className="h-1.5 flex-1 appearance-none rounded-full bg-white/10 accent-[color:var(--accent)]"
         />
-        <span className="tnum shrink-0 text-sm font-semibold" style={{ color: tone.color }}>
-          {value.sleepHours}h · {tone.label}
+        <span
+          className="tnum block shrink-0 min-w-[4.5rem] text-right text-sm font-semibold"
+          style={{ color: tone.color }}
+        >
+          {formatSleepHours(value.sleepHours)} · {tone.label}
         </span>
       </div>
     </div>

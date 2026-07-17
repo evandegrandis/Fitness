@@ -2,7 +2,6 @@
 
 import { History, Plus, Sparkles } from "lucide-react";
 import type { WorkoutSession, WorkoutTemplate } from "@/lib/models/types";
-import type { WorkoutMode } from "@/lib/theme/modes";
 
 function formatSessionSummary(session: WorkoutSession): string {
   const names = [...new Set(session.exercises.map((e) => e.exerciseName))];
@@ -11,12 +10,18 @@ function formatSessionSummary(session: WorkoutSession): string {
   return `${names.slice(0, 3).join(" · ")} +${names.length - 3}`;
 }
 
-/** Actions rapides : répéter la dernière séance, templates, séance vide. */
+/**
+ * Actions rapides de l'accueil. Le template recommandé est l'action PRIMAIRE
+ * (carte mise en avant, halo d'accent) ; répéter la dernière séance et
+ * démarrer à vide restent disponibles mais en retrait.
+ *
+ * Les séances démarrent toujours en mode "normal" — le choix de mode a été
+ * retiré de l'accueil.
+ */
 export function QuickActions({
   lastSession,
   templates,
   recommendedTemplateId,
-  mode,
   onRepeatLast,
   onStartTemplate,
   onStartEmpty,
@@ -24,66 +29,84 @@ export function QuickActions({
   lastSession: WorkoutSession | undefined;
   templates: WorkoutTemplate[];
   recommendedTemplateId: string | null;
-  mode: WorkoutMode;
-  onRepeatLast: (mode: WorkoutMode) => void;
-  onStartTemplate: (templateId: string, mode: WorkoutMode) => void;
-  onStartEmpty: (mode: WorkoutMode) => void;
+  onRepeatLast: (mode: "normal") => void;
+  onStartTemplate: (templateId: string, mode: "normal") => void;
+  onStartEmpty: (mode: "normal") => void;
 }) {
+  const recommended = templates.find((t) => t.id === recommendedTemplateId);
+  const otherTemplates = templates.filter((t) => t.id !== recommendedTemplateId);
+
   return (
-    <div className="flex flex-col gap-2.5">
-      {lastSession && (
+    <div className="flex flex-col gap-4">
+      {recommended && (
         <button
           type="button"
-          onClick={() => onRepeatLast(mode)}
-          className="glass glass-card flex items-center gap-3 text-left active:scale-[0.98] transition"
+          onClick={() => onStartTemplate(recommended.id, "normal")}
+          className="glass glass-strong glass-card relative flex items-center gap-3.5 rounded-2xl py-5 text-left transition active:scale-[0.98]"
+          style={{
+            boxShadow: "0 0 0 1.5px var(--accent), 0 14px 34px color-mix(in srgb, var(--accent) 28%, transparent)",
+          }}
         >
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/8">
-            <History size={18} />
+          <div
+            className="grid h-12 w-12 shrink-0 place-items-center rounded-full"
+            style={{ background: "color-mix(in srgb, var(--accent) 16%, transparent)" }}
+          >
+            <Sparkles size={22} style={{ color: "var(--accent)" }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-[--color-fg]">Répéter la dernière</p>
-            <p className="truncate text-xs text-[--color-fg-muted]">{formatSessionSummary(lastSession)}</p>
+            <span className="pill" style={{ color: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 45%, transparent)" }}>
+              Recommandé
+            </span>
+            <p className="mt-1 truncate font-display text-lg font-semibold text-[--color-fg]">{recommended.name}</p>
+            <p className="truncate text-xs text-[--color-fg-muted]">{recommended.exercises.length} exercices</p>
           </div>
         </button>
       )}
 
-      {templates.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {templates.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onStartTemplate(t.id, mode)}
-              className="glass glass-card flex items-center gap-3 text-left active:scale-[0.98] transition"
-            >
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/8">
-                <Sparkles size={18} className={t.id === recommendedTemplateId ? "text-accent-gradient" : undefined} style={t.id === recommendedTemplateId ? { color: "var(--accent)" } : undefined} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-[--color-fg]">{t.name}</p>
-                  {t.id === recommendedTemplateId && (
-                    <span className="pill shrink-0" style={{ color: "var(--accent)" }}>
-                      Recommandé
-                    </span>
-                  )}
-                </div>
-                <p className="truncate text-xs text-[--color-fg-muted]">{t.exercises.length} exercices</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-col gap-2">
+        {otherTemplates.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onStartTemplate(t.id, "normal")}
+            className="glass glass-card flex items-center gap-3 text-left opacity-80 transition active:scale-[0.98]"
+          >
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/8">
+              <Sparkles size={16} className="text-[--color-fg-muted]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[--color-fg]">{t.name}</p>
+              <p className="truncate text-xs text-[--color-fg-muted]">{t.exercises.length} exercices</p>
+            </div>
+          </button>
+        ))}
 
-      <button
-        type="button"
-        onClick={() => onStartEmpty(mode)}
-        className="glass flex items-center justify-center gap-2 rounded-2xl border-dashed py-3.5 text-sm font-semibold text-[--color-fg-muted] active:scale-[0.98] transition"
-        style={{ borderStyle: "dashed" }}
-      >
-        <Plus size={16} />
-        Séance vide
-      </button>
+        {lastSession && (
+          <button
+            type="button"
+            onClick={() => onRepeatLast("normal")}
+            className="glass glass-card flex items-center gap-3 text-left opacity-80 transition active:scale-[0.98]"
+          >
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/8">
+              <History size={16} className="text-[--color-fg-muted]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[--color-fg]">Répéter la dernière</p>
+              <p className="truncate text-xs text-[--color-fg-muted]">{formatSessionSummary(lastSession)}</p>
+            </div>
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => onStartEmpty("normal")}
+          className="glass flex items-center justify-center gap-2 rounded-2xl border-dashed py-3 text-sm font-semibold text-[--color-fg-muted] opacity-80 transition active:scale-[0.98]"
+          style={{ borderStyle: "dashed" }}
+        >
+          <Plus size={16} />
+          Séance vide
+        </button>
+      </div>
     </div>
   );
 }

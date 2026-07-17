@@ -4,14 +4,11 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Settings } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { rollingPriorities } from "@/lib/engines/effective-sets";
+import { rolling7DayProgress } from "@/lib/engines/effective-sets";
 import { recentAchievements } from "@/lib/engines/achievements";
-import type { WorkoutSession } from "@/lib/models/types";
 import { WeeklyPriority } from "./WeeklyPriority";
-import { ModePicker } from "./ModePicker";
 import { QuickActions } from "./QuickActions";
 import { RecentAchievements } from "./RecentAchievements";
-import { RecentSessionChips } from "./RecentSessionChips";
 
 /** Écran d'accueil affiché quand aucune séance n'est active. */
 export function QuickStart() {
@@ -20,19 +17,25 @@ export function QuickStart() {
   const goals = useWorkoutStore((s) => s.goals);
   const settings = useWorkoutStore((s) => s.settings);
   const templates = useWorkoutStore((s) => s.templates);
-  const selectedStartMode = useWorkoutStore((s) => s.selectedStartMode);
-  const setSelectedStartMode = useWorkoutStore((s) => s.setSelectedStartMode);
   const repeatLast = useWorkoutStore((s) => s.repeatLast);
   const startFromTemplate = useWorkoutStore((s) => s.startFromTemplate);
   const startEmpty = useWorkoutStore((s) => s.startEmpty);
-  const addExercise = useWorkoutStore((s) => s.addExercise);
 
-  const priorities = useMemo(() => rollingPriorities(history, catalog, goals), [history, catalog, goals]);
+  // Miroir du filtre de `rollingPriorities` (effective-sets.ts) — on garde ici
+  // l'objet `ParentMuscleProgress` complet (coverage %, goalSets) pour l'affichage
+  // en relevé, plutôt que le tuple [parent, remaining] appauvri.
+  const priorities = useMemo(
+    () =>
+      rolling7DayProgress(history, catalog, goals)
+        .filter((p) => p.goalSets > 0 && p.remaining >= 0.5)
+        .sort((a, b) => b.remaining - a.remaining),
+    [history, catalog, goals]
+  );
   const achievements = useMemo(() => recentAchievements(history, catalog), [history, catalog]);
 
   const recommendedTemplateId = useMemo(() => {
     if (templates.length === 0) return null;
-    const priorityParents = new Set(priorities.slice(0, 3).map(([p]) => p));
+    const priorityParents = new Set(priorities.slice(0, 3).map((p) => p.parent));
     if (priorityParents.size === 0) return templates[0]?.id ?? null;
     const exerciseByName = new Map(catalog.map((e) => [e.name, e]));
     let best: { id: string; score: number } | null = null;
@@ -52,17 +55,6 @@ export function QuickStart() {
 
   const greetingName = settings.userName ? `, ${settings.userName}` : "";
 
-  const handleStartFromSession = (chosen: WorkoutSession) => {
-    // "normal" évite le seeding automatique beast/monk (`startEmpty`) qui
-    // ajouterait des exercices en plus de ceux de la séance choisie — le but
-    // ici est de répliquer exactement cette séance, comme `repeatLast`.
-    startEmpty("normal");
-    const ordered = [...chosen.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-    for (const e of ordered) {
-      addExercise(e.exerciseId);
-    }
-  };
-
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-5 pb-6 pt-8">
       <header className="flex items-center justify-between">
@@ -81,19 +73,14 @@ export function QuickStart() {
 
       <WeeklyPriority priorities={priorities} />
 
-      <ModePicker value={selectedStartMode} onChange={setSelectedStartMode} />
-
       <QuickActions
         lastSession={history[0]}
         templates={templates}
         recommendedTemplateId={recommendedTemplateId}
-        mode={selectedStartMode}
         onRepeatLast={repeatLast}
         onStartTemplate={startFromTemplate}
         onStartEmpty={startEmpty}
       />
-
-      <RecentSessionChips history={history} onStart={handleStartFromSession} />
 
       <RecentAchievements achievements={achievements} />
     </main>

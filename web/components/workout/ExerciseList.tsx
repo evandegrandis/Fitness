@@ -40,18 +40,21 @@ function buildListItems(ordered: LoggedExercise[], session: WorkoutSession): Lis
 export function ExerciseList({
   session,
   onEditSet,
-  onOpenActions,
+  onReplace,
   onAddExercise,
 }: {
   session: WorkoutSession;
   onEditSet: (loggedExerciseId: string, set: LoggedSet) => void;
-  onOpenActions: (loggedExerciseId: string) => void;
+  onReplace: (loggedExerciseId: string) => void;
   onAddExercise: () => void;
 }) {
   const catalog = useWorkoutStore((s) => s.catalog);
   const moveExercise = useWorkoutStore((s) => s.moveExercise);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // Activation par DÉLAI (appui maintenu ~220ms) plutôt que par distance :
+  // le swipe horizontal (SwipeRow, immédiat) reste au geste de la carte,
+  // tandis que le réordonnancement (poignée ⋮⋮) exige un geste délibéré.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 220, tolerance: 6 } }));
 
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
   const ids = ordered.map((e) => e.id);
@@ -75,7 +78,7 @@ export function ExerciseList({
         exercise={exercise}
         session={session}
         onEditSet={(set) => onEditSet(loggedExercise.id, set)}
-        onOpenActions={onOpenActions}
+        onReplace={onReplace}
       />
     );
   };

@@ -1,31 +1,35 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { coverageStatusAccent, type ParentMuscleProgress } from "@/lib/engines/effective-sets";
+import type { CoverageStatus, ParentMuscleProgress } from "@/lib/engines/effective-sets";
 import { parentShortName } from "@/lib/models/muscles";
-import { cn } from "@/lib/utils";
 
-const ACCENT_BORDER: Record<string, string> = {
-  green: "",
-  blue: "",
-  orange: "border-[color:rgba(216,178,106,0.4)]",
-  red: "border-[color:rgba(207,127,106,0.5)] text-[color:#d8b9a8]",
+const STATUS_COLOR: Record<CoverageStatus, string> = {
+  covered: "var(--color-fg-muted)",
+  onTrack: "var(--color-fg-muted)",
+  toStrengthen: "var(--color-warning)",
+  priority: "var(--color-danger)",
 };
 
+const MAX_ROWS = 6;
+
 /**
- * Bandeau compact des priorités 7 jours — chips par parent musculaire avec
- * sets restants, bord coloré selon l'urgence. Affiché sur QuickStart.
+ * Relevé compact des priorités 7 jours — style éditorial (labels mono,
+ * filets fins, valeur alignée à droite) plutôt que des chips empilées.
+ * Une ligne par muscle en déficit, triée par urgence, avec une fine barre
+ * de progression sous le nom. Affichée sur QuickStart.
  */
-export function WeeklyPriority({ priorities }: { priorities: [string, number][] }) {
+export function WeeklyPriority({ priorities }: { priorities: ParentMuscleProgress[] }) {
+  const rows = priorities.slice(0, MAX_ROWS);
   return (
     <div className="glass glass-card">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Objectifs 7 jours</p>
-      {priorities.length === 0 ? (
-        <p className="mt-2 text-sm text-[--color-fg]">Tous couverts ✓</p>
+      <p className="eyebrow">Objectifs 7 jours</p>
+      {rows.length === 0 ? (
+        <p className="mt-2.5 text-sm text-[--color-fg]">Tous couverts ✓</p>
       ) : (
-        <div className="mt-2.5 flex flex-wrap gap-2">
-          {priorities.map(([parent, remaining], i) => (
-            <PriorityChip key={parent} parent={parent} remaining={remaining} index={i} />
+        <div className="mt-3 flex flex-col">
+          {rows.map((p, i) => (
+            <PriorityRow key={p.parent} progress={p} index={i} isLast={i === rows.length - 1} />
           ))}
         </div>
       )}
@@ -33,18 +37,38 @@ export function WeeklyPriority({ priorities }: { priorities: [string, number][] 
   );
 }
 
-function PriorityChip({ parent, remaining, index }: { parent: string; remaining: number; index: number }) {
-  const status: ParentMuscleProgress["status"] = remaining >= 4 ? "priority" : remaining >= 2 ? "toStrengthen" : "onTrack";
-  const accent = coverageStatusAccent[status];
+function PriorityRow({
+  progress,
+  index,
+  isLast,
+}: {
+  progress: ParentMuscleProgress;
+  index: number;
+  isLast: boolean;
+}) {
+  const color = STATUS_COLOR[progress.status];
+  const label = parentShortName[progress.parent] ?? progress.parent;
+  const pct = Math.round(progress.coverage * 100);
   return (
-    <motion.span
-      initial={{ opacity: 0, y: 6 }}
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03, type: "spring", stiffness: 400, damping: 30 }}
-      className={cn("pill border", ACCENT_BORDER[accent])}
+      transition={{ delay: index * 0.03, type: "spring", stiffness: 400, damping: 32 }}
+      className="flex items-center gap-3 py-2"
+      style={!isLast ? { borderBottom: "1px solid var(--line)" } : undefined}
     >
-      {parentShortName[parent as keyof typeof parentShortName] ?? parent}
-      <span className="tnum text-[--color-fg-muted]">{Math.ceil(remaining)}</span>
-    </motion.span>
+      <div className="min-w-0 flex-1">
+        <span className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-[--color-fg]">{label}</span>
+        <div className="mt-1.5 h-[3px] w-full overflow-hidden rounded-full bg-white/8">
+          <div
+            className="h-full rounded-full transition-[width]"
+            style={{ width: `${Math.max(pct, 4)}%`, background: color }}
+          />
+        </div>
+      </div>
+      <span className="tnum shrink-0 text-sm font-semibold" style={{ color }}>
+        {Math.ceil(progress.remaining)}
+      </span>
+    </motion.div>
   );
 }
