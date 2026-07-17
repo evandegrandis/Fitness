@@ -21,6 +21,7 @@ import { aggregateCoefficient, completedWorkSets, type Exercise, type WorkoutSes
 import { cn } from "@/lib/utils";
 import { buildWeekBuckets, type WeekBucket } from "@/components/progress/utils";
 import { WeeklyBarChart, type WeekDatum } from "@/components/progress/WeeklyBarChart";
+import { ProgressInsights } from "@/components/progress/ProgressInsights";
 
 type SortMode = "deficit" | "completion" | "az";
 
@@ -30,9 +31,15 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: "az", label: "A-Z" },
 ];
 
+/**
+ * `--color-cyan` n'existe plus depuis le re-skin monochrome (globals.css) —
+ * "onTrack" (bleu) est remappé sur l'accent crème du thème pour rester
+ * visible et cohérent avec la palette éditoriale (au lieu de retomber sur
+ * la couleur de texte par défaut via une variable CSS inexistante).
+ */
 const ACCENT_COLOR: Record<string, string> = {
   green: "var(--color-success)",
-  blue: "var(--color-cyan)",
+  blue: "var(--accent)",
   orange: "var(--color-warning)",
   red: "var(--color-danger)",
 };
@@ -65,16 +72,20 @@ export function MusclesLayer() {
 
   if (progress.length === 0) {
     return (
-      <GlassCard className="text-center py-8">
-        <p className="text-sm text-[--color-fg-muted]">
-          Pas encore d&apos;objectifs configurés ou pas assez d&apos;historique.
-        </p>
-      </GlassCard>
+      <div>
+        <ProgressInsights />
+        <GlassCard className="text-center py-8">
+          <p className="text-sm text-[--color-fg-muted]">
+            Pas encore d&apos;objectifs configurés ou pas assez d&apos;historique.
+          </p>
+        </GlassCard>
+      </div>
     );
   }
 
   return (
     <div>
+      <ProgressInsights />
       <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={setSort} layoutId="muscles-sort" className="mb-4" />
 
       <div className="space-y-3">

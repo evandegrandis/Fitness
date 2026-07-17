@@ -9,10 +9,12 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { buildRecords } from "@/lib/engines/records";
+import { benchmarkBoundsForLoggedWeight, exerciseBenchmark } from "@/lib/engines/benchmark";
 import { completedWorkSets, type Exercise, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
 import { formatWeight, formatDerivedWeight } from "@/components/progress/utils";
 import { ExerciseLineChart, type ExercisePoint } from "@/components/progress/ExerciseLineChart";
+import { BenchmarkGauge } from "@/components/progress/BenchmarkGauge";
 import { trendBadge } from "@/components/progress/trend";
 
 type SortMode = "recent" | "az";
@@ -44,6 +46,7 @@ function bestSetOfSession(session: WorkoutSession, exercise: Exercise) {
 export function ExercisesLayer() {
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
+  const bodyWeightKg = useWorkoutStore((s) => s.settings.bodyWeightKg ?? undefined);
 
   const [sort, setSort] = useState<SortMode>("recent");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -104,6 +107,7 @@ export function ExercisesLayer() {
           expanded={expanded === entry.exercise.id}
           onToggle={() => setExpanded((cur) => (cur === entry.exercise.id ? null : entry.exercise.id))}
           history={history}
+          bodyWeightKg={bodyWeightKg}
         />
       ))}
     </div>
@@ -115,15 +119,26 @@ function ExerciseCardRow({
   expanded,
   onToggle,
   history,
+  bodyWeightKg,
 }: {
   entry: ExerciseHistory;
   expanded: boolean;
   onToggle: () => void;
   history: WorkoutSession[];
+  bodyWeightKg?: number;
 }) {
   const { exercise, points } = entry;
   const last = points[points.length - 1];
   const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 0.5;
+
+  const benchmark = useMemo(
+    () => exerciseBenchmark(exercise, last.weight, bodyWeightKg),
+    [exercise, last.weight, bodyWeightKg]
+  );
+  const referenceBand = useMemo(
+    () => benchmarkBoundsForLoggedWeight(exercise, bodyWeightKg),
+    [exercise, bodyWeightKg]
+  );
 
   const historicalSets = useMemo(
     () =>
@@ -203,11 +218,11 @@ function ExerciseCardRow({
             <div className="space-y-3 border-t border-white/8 px-4 pb-4 pt-3">
               <ExerciseLineChart
                 points={points}
-                benchmarkLow={exercise.benchmarkLow}
-                benchmarkHigh={exercise.benchmarkHigh}
+                referenceBand={referenceBand}
                 showReps={points.length > 1}
                 smallestIncrement={increment}
               />
+              {benchmark.hasBenchmark && <BenchmarkGauge benchmark={benchmark} increment={increment} />}
               <p className="text-xs text-[--color-fg-faint]">
                 Dernière séance : {formatWeight(last.weight)}kg × {last.reps} reps
               </p>

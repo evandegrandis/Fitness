@@ -132,17 +132,23 @@ export function ExerciseLineChart({
             {showReps && (
               <YAxis yAxisId="reps" orientation="right" hide domain={["dataMin - 2", "dataMax + 2"]} />
             )}
-            {benchmarkLow != null && benchmarkHigh != null && (
-              <ReferenceArea
-                yAxisId="weight"
-                y1={benchmarkLow}
-                y2={benchmarkHigh}
-                fill="var(--color-success)"
-                fillOpacity={0.08}
-                stroke="var(--color-success)"
-                strokeDasharray="4 4"
-                strokeOpacity={0.4}
-              />
+            {referenceBand && (
+              <>
+                <ReferenceArea
+                  yAxisId="weight"
+                  y1={referenceBand.low}
+                  y2={referenceBand.high}
+                  fill="var(--color-success)"
+                  fillOpacity={0.07}
+                  stroke="none"
+                />
+                <ReferenceLine yAxisId="weight" y={referenceBand.low} stroke="var(--color-warning)" strokeDasharray="4 4" strokeOpacity={0.55}>
+                  <Label value="Avancé" position="insideBottomLeft" fill="var(--color-warning)" fontSize={9} fontFamily="var(--font-mono)" />
+                </ReferenceLine>
+                <ReferenceLine yAxisId="weight" y={referenceBand.high} stroke="var(--color-success)" strokeDasharray="4 4" strokeOpacity={0.55}>
+                  <Label value="Élite" position="insideTopLeft" fill="var(--color-success)" fontSize={9} fontFamily="var(--font-mono)" />
+                </ReferenceLine>
+              </>
             )}
             <Tooltip
               cursor={{ stroke: "var(--color-fg-faint)", strokeWidth: 1, strokeDasharray: "3 3" }}
