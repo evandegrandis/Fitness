@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { format, isToday, isYesterday } from "date-fns";
 import { fr } from "date-fns/locale";
 import { motion } from "framer-motion";
-import { ChevronRight, Star, Trash2 } from "lucide-react";
+import { ChevronRight, Star } from "lucide-react";
+import { SwipeRow } from "@/components/ui/SwipeRow";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
 import { sessionDurationLabel } from "./historyHelpers";
 
@@ -18,7 +18,11 @@ function relativeDay(date: Date): string {
 /**
  * Ligne de séance cliquable (→ détail) : jour relatif + heure, badge ⭐ PR,
  * méta (N sets · durée · N exos · N supersets), 2 premiers exos + "+N".
- * Le geste "supprimer" est exposé via un bouton de suppression avec confirmation.
+ *
+ * Suppression UNIFORMISÉE avec la séance active : swipe DROITE = suppression
+ * directe (fond rouge "Supprimer"), sans bouton de confirmation superposé.
+ * L'annulation reste possible via le toast d'undo au niveau page
+ * (`historique/page.tsx`), donc le geste est réversible.
  */
 export function SessionRow({
   session,
@@ -29,8 +33,6 @@ export function SessionRow({
   prCount: number;
   onDelete: (id: string) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
-
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
   const totalSets = ordered.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
   const duration = sessionDurationLabel(session);
@@ -39,89 +41,40 @@ export function SessionRow({
   const shown = names.slice(0, 2);
   const extra = names.length - shown.length;
 
-  function handleDeleteClick(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!confirming) {
-      setConfirming(true);
-      return;
-    }
-    onDelete(session.id);
-  }
-
-  if (confirming) {
-    return (
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, height: 0 }}
-        className="surface-solid glass-card flex items-center justify-between gap-3"
-      >
-        <p className="min-w-0 truncate text-sm font-semibold text-[--color-fg]">Supprimer cette séance ?</p>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setConfirming(false);
-            }}
-            className="pill"
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={handleDeleteClick}
-            className="pill"
-            style={{ borderColor: "var(--color-danger)", color: "var(--color-danger)" }}
-          >
-            Confirmer la suppression
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
-
   return (
     <motion.div layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}>
-      <Link
-        href={`/historique/${session.id}`}
-        className="glass glass-card flex items-center gap-3 transition active:scale-[0.99]"
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate text-sm font-semibold text-[--color-fg]">
-              {relativeDay(session.date)} <span className="text-[--color-fg-faint]">· {format(session.startTime, "HH:mm")}</span>
-            </p>
-            {prCount > 0 && (
-              <span className="pill shrink-0 border-amber-400/40 bg-amber-400/10 text-amber-300">
-                <Star size={11} fill="currentColor" />
-                {prCount}
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 truncate text-xs text-[--color-fg-muted]">
-            {totalSets} sets · {duration} · {ordered.length} exos
-            {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
-          </p>
-          <p className="mt-1 truncate text-xs text-[--color-fg-faint]">
-            {shown.join(", ")}
-            {extra > 0 && ` +${extra}`}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleDeleteClick}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5 text-[--color-fg-faint] transition"
-          aria-label="Supprimer la séance"
+      <SwipeRow onDelete={() => onDelete(session.id)}>
+        <Link
+          href={`/historique/${session.id}`}
+          draggable={false}
+          className="glass glass-card flex items-center gap-3 transition active:scale-[0.99]"
         >
-          <Trash2 size={14} />
-        </button>
-        <ChevronRight size={16} className="shrink-0 text-[--color-fg-faint]" />
-      </Link>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-semibold text-[--color-fg]">
+                {relativeDay(session.date)}{" "}
+                <span className="text-[--color-fg-faint]">· {format(session.startTime, "HH:mm")}</span>
+              </p>
+              {prCount > 0 && (
+                <span className="pill shrink-0 border-amber-400/40 bg-amber-400/10 text-amber-300">
+                  <Star size={11} fill="currentColor" />
+                  {prCount}
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 truncate text-xs text-[--color-fg-muted]">
+              {totalSets} sets · {duration} · {ordered.length} exos
+              {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
+            </p>
+            <p className="mt-1 truncate text-xs text-[--color-fg-faint]">
+              {shown.join(", ")}
+              {extra > 0 && ` +${extra}`}
+            </p>
+          </div>
+
+          <ChevronRight size={16} className="shrink-0 text-[--color-fg-faint]" />
+        </Link>
+      </SwipeRow>
     </motion.div>
   );
 }

@@ -36,11 +36,12 @@ type SwipeAction = {
  */
 export function SwipeRow({
   children,
-  actions,
+  actions = [],
   onDelete,
 }: {
   children: React.ReactNode;
-  actions: SwipeAction[];
+  /** Actions secondaires révélées au swipe GAUCHE. Vide = seul le swipe droite (supprimer) est actif. */
+  actions?: SwipeAction[];
   onDelete: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,7 +94,8 @@ export function SwipeRow({
       return;
     }
 
-    const draggedLeft = info.offset.x < -OPEN_THRESHOLD || info.velocity.x < -OPEN_VELOCITY;
+    const draggedLeft =
+      revealWidth > 0 && (info.offset.x < -OPEN_THRESHOLD || info.velocity.x < -OPEN_VELOCITY);
     if (draggedLeft) {
       setOpen(true);
       animate(x, -revealWidth, { type: "spring", stiffness: 420, damping: 42 });
