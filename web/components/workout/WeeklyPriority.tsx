@@ -6,10 +6,10 @@ import { parentShortName } from "@/lib/models/muscles";
 import { cn } from "@/lib/utils";
 
 const ACCENT_BORDER: Record<string, string> = {
-  green: "border-emerald-400/40 bg-emerald-400/10",
-  blue: "border-sky-400/40 bg-sky-400/10",
-  orange: "border-amber-400/40 bg-amber-400/10",
-  red: "border-rose-400/40 bg-rose-400/10",
+  green: "",
+  blue: "",
+  orange: "border-[color:rgba(216,178,106,0.4)]",
+  red: "border-[color:rgba(207,127,106,0.5)] text-[color:#d8b9a8]",
 };
 
 /**
