@@ -74,9 +74,10 @@ export function MusclesLayer() {
   }
 
   return (
-    <div className="space-y-3">
-      <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={setSort} layoutId="muscles-sort" />
+    <div>
+      <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={setSort} layoutId="muscles-sort" className="mb-4" />
 
+      <div className="space-y-3">
       {sorted.map((p) => (
         <MuscleCard
           key={p.parent}
@@ -88,6 +89,7 @@ export function MusclesLayer() {
           active={active}
         />
       ))}
+      </div>
     </div>
   );
 }

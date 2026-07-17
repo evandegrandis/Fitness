@@ -16,7 +16,7 @@ export function TabBar() {
 
   return (
     <nav className="sticky bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
-      <div className="glass glass-strong flex items-center justify-around rounded-full px-2 py-1.5">
+      <div className="surface-solid flex items-center justify-around rounded-full px-2 py-1.5">
         {TABS.map(({ href, label, icon: Icon, match }) => {
           const active = match(pathname);
           return (

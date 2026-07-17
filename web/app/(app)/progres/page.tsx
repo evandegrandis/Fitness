@@ -35,7 +35,7 @@ export default function ProgresPage() {
         value={layer}
         onChange={setLayer}
         layoutId="progres-layer"
-        className="mb-5"
+        className="mb-2.5"
       />
 
       {!ready ? (

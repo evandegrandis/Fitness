@@ -58,7 +58,7 @@ function RestTimerCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 40, scale: 0.9 }}
       transition={{ type: "spring", stiffness: 340, damping: 28 }}
-      className="glass glass-strong fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md items-center gap-3 rounded-2xl px-4 py-3"
+      className="surface-solid fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md items-center gap-3 rounded-2xl px-4 py-3"
     >
       <svg width="52" height="52" viewBox="0 0 52 52" className="shrink-0 -rotate-90">
         <circle cx="26" cy="26" r={RADIUS} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />

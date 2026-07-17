@@ -25,7 +25,7 @@ export function SupersetLinkBanner() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 30 }}
           transition={{ type: "spring", stiffness: 340, damping: 28 }}
-          className={`glass glass-strong fixed inset-x-0 z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md items-center justify-between gap-3 rounded-2xl px-4 py-3 ${
+          className={`surface-solid fixed inset-x-0 z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md items-center justify-between gap-3 rounded-2xl px-4 py-3 ${
             restActive
               ? "bottom-[calc(9.5rem+env(safe-area-inset-bottom))]"
               : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"

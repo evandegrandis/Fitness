@@ -103,6 +103,16 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.13);
   }
 
+  /* Surface OPAQUE — éléments flottants/nav (timer de repos, barre d'onglets,
+     bandeaux) : le contenu derrière ne doit PAS transparaître. */
+  .surface-solid {
+    background: rgba(15, 18, 29, 0.97);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(10px) saturate(1.2);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  }
+
   /* Halo d'accent */
   .glow-accent {
     box-shadow: 0 0 0 1px rgba(var(--glow) / 0.25), 0 12px 40px rgba(var(--glow) / 0.22);

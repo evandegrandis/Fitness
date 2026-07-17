@@ -96,26 +96,14 @@ export function ExerciseCard({
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="flex items-stretch gap-1.5">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="mt-0.5 shrink-0 cursor-grab touch-none px-0.5 text-[--color-fg-faint] active:cursor-grabbing"
-          aria-label="Réordonner"
-        >
-          <GripVertical size={18} />
-        </button>
-
-        <div className="min-w-0 flex-1">
-          <SwipeRow
-            actions={[
-              { label: "Dupliquer", icon: Copy, onClick: () => duplicateExercise(loggedExercise.id) },
-              { label: "Supprimer", icon: Trash2, danger: true, onClick: () => removeExercise(loggedExercise.id) },
-            ]}
-          >
-            <GlassCard className={cn("flex flex-col gap-3", isArmed && "ring-1 ring-[color:var(--accent)]")}>
-              <div className="flex items-start justify-between gap-2">
+      <SwipeRow
+        actions={[
+          { label: "Dupliquer", icon: Copy, onClick: () => duplicateExercise(loggedExercise.id) },
+          { label: "Supprimer", icon: Trash2, danger: true, onClick: () => removeExercise(loggedExercise.id) },
+        ]}
+      >
+        <GlassCard className={cn("flex flex-col gap-3", isArmed && "ring-1 ring-[color:var(--accent)]")}>
+          <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded((v) => !v)}>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <h3 className="truncate font-display text-base font-bold text-[--color-fg]">{exercise.name}</h3>
@@ -135,6 +123,16 @@ export function ExerciseCard({
                     </p>
                   )}
                 </div>
+                <button
+                  type="button"
+                  {...attributes}
+                  {...listeners}
+                  onPointerDownCapture={(e) => e.stopPropagation()}
+                  className="shrink-0 grid h-8 w-8 cursor-grab touch-none place-items-center rounded-full text-[--color-fg-faint] active:cursor-grabbing"
+                  aria-label="Réordonner"
+                >
+                  <GripVertical size={16} />
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -208,8 +206,6 @@ export function ExerciseCard({
               )}
             </GlassCard>
           </SwipeRow>
-        </div>
-      </div>
     </div>
   );
 }
