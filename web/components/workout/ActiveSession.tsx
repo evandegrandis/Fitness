@@ -38,29 +38,37 @@ export function ActiveSession({ session }: { session: WorkoutSession }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finishing = useRef(false);
 
-  // AUTOSAVE : chaque modification de la séance (set validé/édité/supprimé) est
-  // écrite en base après ~1,2 s (debounce). La séance n'est jamais "dans le
-  // vent" — elle vit en base (Neon), pas seulement en localStorage.
+  // Empreinte STABLE des sets : ne change QUE quand un set est ajouté/édité/
+  // supprimé (pas à chaque changement de référence de `session`). Évite que le
+  // debounce soit annulé en boucle → la sauvegarde part vraiment.
+  const setFingerprint = session.exercises
+    .map((e) => `${e.id}:${e.sets.map((s) => `${s.id}=${s.weight}x${s.reps}:${s.completed ? 1 : 0}`).join(",")}`)
+    .join("|");
+  const totalSetsCount = session.exercises.reduce((acc, e) => acc + e.sets.length, 0);
+
+  // AUTOSAVE : écrit la séance en base (Neon) ~800 ms après tout changement de
+  // set (revalidate=false → pas de refetch complet). La séance n'est jamais
+  // "dans le vent" — elle vit en base, pas seulement en localStorage.
   useEffect(() => {
-    if (finishing.current) return;
-    const hasSets = session.exercises.some((e) => e.sets.length > 0);
-    if (!hasSets) return;
+    if (finishing.current || totalSetsCount === 0) return;
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSyncState("saving");
+    const snapshot = session;
     saveTimer.current = setTimeout(async () => {
       try {
-        await saveSession(session);
+        await saveSession(snapshot, false);
         setSyncState("saved");
       } catch {
         setSyncState("error");
       }
-    }, 1200);
+    }, 800);
 
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setFingerprint]);
 
   const handleFinish = async () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);

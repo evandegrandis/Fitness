@@ -72,7 +72,7 @@ function revalidateWorkoutData(): void {
 // logged_sets), puis on réinsère tout dans l'ordre parent -> enfants.
 // ---------------------------------------------------------------------------
 
-export async function saveSession(session: WorkoutSession): Promise<void> {
+export async function saveSession(session: WorkoutSession, revalidate = true): Promise<void> {
   const sessionRow = sessionToRow(session);
   await db
     .insert(workoutSessions)
@@ -102,7 +102,9 @@ export async function saveSession(session: WorkoutSession): Promise<void> {
     await db.insert(loggedSets).values(setRows);
   }
 
-  revalidateWorkoutData();
+  // L'autosave passe revalidate=false : écrire en base ne doit PAS déclencher un
+  // refetch complet de l'app à chaque set (sinon boucle de re-render / page jamais idle).
+  if (revalidate) revalidateWorkoutData();
 }
 
 // ---------------------------------------------------------------------------
