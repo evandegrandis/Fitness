@@ -19,6 +19,7 @@ import { LEAF_TO_PARENT, LEAVES_OF_PARENT, type MuscleParent } from "@/lib/model
 import type { Exercise, MuscleMapping } from "@/lib/models/types";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { MuscleMappingEditor, mappingsToParentLevel } from "@/components/exercise/MuscleMappingEditor";
+import { ExerciseGif } from "@/components/exercise/ExerciseGif";
 
 const FATIGUE_LABEL: Record<FatigueClass, string> = { heavy: "Lourd", medium: "Moyen", light: "Léger" };
 
@@ -157,6 +158,9 @@ function ExerciseEditorForm({
                 )}
               </div>
             </div>
+
+            {/* Démonstration animée (à la demande) — édition uniquement, sur le nom d'origine */}
+            {isEditing && exercise && <ExerciseGif exerciseName={exercise.name} />}
 
             {/* Catégorie */}
             <div>

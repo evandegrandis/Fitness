@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Sparkles, Star } from "lucide-react";
+import { Film, Search, Sparkles, Star } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
+import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
@@ -171,7 +172,12 @@ function ExerciseSection({
             className="glass flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left active:scale-[0.98] transition"
           >
             <span className={cn("text-sm font-medium text-[--color-fg]")}>{e.name}</span>
-            {e.isFavorite && <Star size={14} className="shrink-0 text-amber-300" fill="currentColor" />}
+            <span className="flex shrink-0 items-center gap-1.5">
+              {hasExerciseGif(e.name) && (
+                <Film size={13} className="text-[--color-fg-faint]" aria-label="Démo disponible" />
+              )}
+              {e.isFavorite && <Star size={14} className="text-amber-300" fill="currentColor" />}
+            </span>
           </button>
         ))}
       </div>
