@@ -259,6 +259,7 @@ export const userSettings = pgTable("user_settings", {
   defaultRepTargetMax: integer("default_rep_target_max").notNull().default(12),
   userName: text("user_name").notNull().default("Evan"),
   supersetRestSeconds: integer("superset_rest_seconds").notNull().default(180),
+  bodyWeightKg: doublePrecision("body_weight_kg"),
 });
 
 // ---------------------------------------------------------------------------

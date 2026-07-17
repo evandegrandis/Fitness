@@ -138,6 +138,8 @@ export interface UserSettings {
   defaultRepTargetMax: number;
   userName: string;
   supersetRestSeconds: number;
+  /** Poids de corps (kg) — utilisé par le moteur pour les exercices au poids du corps / lestés. */
+  bodyWeightKg: number | null;
 }
 
 export interface RecoveryCheckin {

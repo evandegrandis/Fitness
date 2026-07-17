@@ -148,6 +148,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   defaultRepTargetMax: 12,
   userName: "Evan",
   supersetRestSeconds: 180,
+    bodyWeightKg: null,
 };
 
 export async function getSettings(): Promise<UserSettings> {

@@ -1,0 +1,1 @@
+ALTER TABLE "user_settings" ADD COLUMN "body_weight_kg" double precision;

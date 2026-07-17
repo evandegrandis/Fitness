@@ -8,6 +8,13 @@
       "when": 1784065654024,
       "tag": "0000_opposite_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784305478198,
+      "tag": "0001_friendly_starbolt",
+      "breakpoints": true
     }
   ]
 }

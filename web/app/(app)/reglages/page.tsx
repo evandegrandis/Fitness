@@ -35,7 +35,7 @@ export default function ReglagesPage() {
       <div className="mt-4 flex flex-col gap-4">
         <SettingsExercisesSection catalog={catalog} />
         <SettingsGoalsSection goals={goals} />
-        <SettingsBodySection />
+        <SettingsBodySection settings={settings} />
         <SettingsPreferencesSection settings={settings} />
         <SettingsBackupSection />
       </div>

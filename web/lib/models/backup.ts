@@ -284,6 +284,7 @@ export function parseBackup(json: unknown): BackupData {
         defaultRepTargetMax: raw.settings.defaultRepTargetMax,
         userName: raw.settings.userName ?? "Evan",
         supersetRestSeconds: raw.settings.supersetRestSeconds ?? 180,
+        bodyWeightKg: null,
       }
     : {
         usesKilograms: true,
@@ -293,6 +294,7 @@ export function parseBackup(json: unknown): BackupData {
         defaultRepTargetMax: 12,
         userName: "Evan",
         supersetRestSeconds: 180,
+    bodyWeightKg: null,
       };
 
   // -- Templates ------------------------------------------------------------

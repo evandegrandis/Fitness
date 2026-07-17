@@ -102,6 +102,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   defaultRepTargetMax: 12,
   userName: "",
   supersetRestSeconds: 180,
+    bodyWeightKg: null,
 };
 
 export interface WorkoutState extends ReferenceData {
@@ -359,11 +360,11 @@ function buildFatigueBaselines(
 }
 
 /** ALGO_V2 §5.1 — poids de corps utilisateur, même clé localStorage que `SettingsBodySection`. */
-const BODY_WEIGHT_STORAGE_KEY = "user_body_weight_kg";
-
-function readBodyweightKg(): number | undefined {
+/** Poids de corps : source de vérité = `settings.bodyWeightKg` (base), avec repli localStorage legacy. */
+function readBodyweightKg(settings: UserSettings): number | undefined {
+  if (settings.bodyWeightKg && settings.bodyWeightKg > 0) return settings.bodyWeightKg;
   if (typeof window === "undefined") return undefined;
-  const raw = window.localStorage.getItem(BODY_WEIGHT_STORAGE_KEY);
+  const raw = window.localStorage.getItem("user_body_weight_kg");
   if (!raw) return undefined;
   const parsed = Number(raw);
   return !Number.isNaN(parsed) && parsed > 0 ? parsed : undefined;
@@ -1113,7 +1114,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           gapDays,
           freshOverride,
           // ALGO_V2 §5.1 — poids de corps pour weighted/assisted bodyweight (predictReps).
-          bodyweightKg: readBodyweightKg(),
+          bodyweightKg: readBodyweightKg(state.settings),
         };
         let result = suggest(params);
 

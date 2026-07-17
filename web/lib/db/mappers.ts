@@ -340,6 +340,7 @@ export function mapSettingsRow(row: UserSettingsRow): UserSettings {
     defaultRepTargetMax: row.defaultRepTargetMax,
     userName: row.userName,
     supersetRestSeconds: row.supersetRestSeconds,
+    bodyWeightKg: row.bodyWeightKg ?? null,
   };
 }
 
@@ -353,6 +354,7 @@ export function settingsToRow(settings: UserSettings): NewUserSettingsRow {
     defaultRepTargetMax: settings.defaultRepTargetMax,
     userName: settings.userName,
     supersetRestSeconds: settings.supersetRestSeconds,
+    bodyWeightKg: settings.bodyWeightKg,
   };
 }
 

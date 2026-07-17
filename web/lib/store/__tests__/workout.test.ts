@@ -66,6 +66,7 @@ const SETTINGS: UserSettingsType = {
   defaultRepTargetMax: 12,
   userName: "Evan",
   supersetRestSeconds: 180,
+  bodyWeightKg: null,
 };
 
 function resetStore() {
