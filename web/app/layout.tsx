@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope, Space_Grotesk } from "next/font/google";
+import { Manrope, Fraunces, Space_Mono } from "next/font/google";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -8,9 +8,17 @@ const manrope = Manrope({
   display: "swap",
 });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  display: "swap",
+  axes: ["SOFT", "WONK", "opsz"],
+});
+
+const spaceMono = Space_Mono({
+  variable: "--font-space-mono",
+  subsets: ["latin"],
+  weight: ["400", "700"],
   display: "swap",
 });
 
@@ -38,7 +46,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fr" className={`${manrope.variable} ${spaceGrotesk.variable} h-full`}>
+    <html lang="fr" className={`${manrope.variable} ${fraunces.variable} ${spaceMono.variable} h-full`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
