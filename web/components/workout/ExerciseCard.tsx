@@ -71,6 +71,9 @@ export function ExerciseCard({
   const sets = orderedSets(loggedExercise);
   const roundLabel = supersetRoundLabel(session, loggedExercise);
   const isArmed = armedSupersetExerciseId === loggedExercise.id;
+  // Un AUTRE exercice est armé → cette carte devient une cible de liaison :
+  // taper n'importe où dessus finalise le superset (agrandissement de cible).
+  const isLinkTarget = armedSupersetExerciseId !== null && !isArmed;
 
   // Dépend de `loggedExercise` (pas juste son id) pour recalculer après chaque set loggué.
   const currentSuggestion = useMemo(() => suggestion(loggedExercise.id), [suggestion, loggedExercise]);
@@ -102,7 +105,22 @@ export function ExerciseCard({
           { label: "Supprimer", icon: Trash2, danger: true, onClick: () => removeExercise(loggedExercise.id) },
         ]}
       >
-        <GlassCard className={cn("flex flex-col gap-3", isArmed && "ring-1 ring-[color:var(--accent)]")}>
+        <GlassCard
+          className={cn(
+            "flex flex-col gap-3",
+            isArmed && "ring-1 ring-[color:var(--accent)]",
+            isLinkTarget && "ring-1 ring-[color:#ff8a3d] animate-pulse cursor-pointer",
+          )}
+          {...(isLinkTarget
+            ? {
+                onClickCapture: (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleSupersetLink(loggedExercise.id);
+                },
+              }
+            : {})}
+        >
           <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setExpanded((v) => !v)}>
                   <div className="flex flex-wrap items-center gap-1.5">

@@ -183,6 +183,8 @@ export interface WorkoutState extends ReferenceData {
   // -- Rest timer --------------------------------------------------------------
   startRest: (exerciseId: string, seconds: number) => void;
   skipRest: () => void;
+  /** Ajoute (ou retire) des secondes au repos en cours. */
+  addRestSeconds: (delta: number) => void;
 
   // -- Misc ----------------------------------------------------------------------
   dismissAchievement: () => void;
@@ -1200,6 +1202,12 @@ export const useWorkoutStore = create<WorkoutState>()(
       },
 
       skipRest: () => set({ rest: null }),
+
+      addRestSeconds: (delta) => {
+        const rest = get().rest;
+        if (!rest) return;
+        set({ rest: { ...rest, targetSeconds: Math.max(5, rest.targetSeconds + delta) } });
+      },
 
       // -----------------------------------------------------------------
       // Misc
