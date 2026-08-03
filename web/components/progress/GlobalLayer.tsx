@@ -7,6 +7,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { parentTotals } from "@/lib/engines/effective-sets";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 import { completedWorkSets, aggregateCoefficient, type Exercise, type WorkoutSession } from "@/lib/models/types";
 import { MUSCLE_PARENTS, parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import { buildWeekBuckets, pearsonCorrelation, startOfDay, type WeekBucket } from "@/components/progress/utils";
@@ -26,15 +27,16 @@ export function GlobalLayer() {
   const [radarParent, setRadarParent] = useState<MuscleParent | null>(null);
 
   const finished = useMemo(() => history.filter((s) => !s.isActive), [history]);
+  const exerciseById = useMemo(() => new Map(catalog.map((exercise) => [exercise.id, exercise])), [catalog]);
 
   const weekVolumes: WeekDatum[] = useMemo(
     () =>
       buckets.map((b) => {
         const inRange = finished.filter((s) => s.date >= b.start && s.date < b.end);
-        const sets = inRange.reduce((acc, s) => acc + s.exercises.reduce((a, e) => a + completedWorkSets(e).length, 0), 0);
+        const sets = inRange.reduce((acc, session) => acc + effectiveSessionSets(session, exerciseById), 0);
         return { key: b.label, label: b.label, value: sets };
       }),
-    [buckets, finished]
+    [buckets, exerciseById, finished]
   );
 
   const avgVolume = useMemo(() => {
@@ -47,20 +49,28 @@ export function GlobalLayer() {
   const selectedSnapshot = useMemo(() => {
     if (!selectedBucket) return null;
     const inRange = finished.filter((s) => s.date >= selectedBucket.start && s.date < selectedBucket.end);
-    const sets = inRange.reduce((acc, s) => acc + s.exercises.reduce((a, e) => a + completedWorkSets(e).length, 0), 0);
+    const sets = inRange.reduce((acc, session) => acc + effectiveSessionSets(session, exerciseById), 0);
 
     const checkinsInRange = recoveryCheckins.filter((c) => c.date >= selectedBucket.start && c.date < selectedBucket.end);
     let creatinePct: number | null = null;
     let proteinPct: number | null = null;
     let sleepAvg: number | null = null;
+    let alcoholDays: number | null = null;
     if (checkinsInRange.length > 0) {
+      const checkinsWithoutAlcohol = checkinsInRange.filter((c) => !c.hadAlcohol);
       creatinePct = Math.round((checkinsInRange.filter((c) => c.tookCreatine).length / checkinsInRange.length) * 100);
       proteinPct = Math.round((checkinsInRange.filter((c) => c.proteinTargetMet).length / checkinsInRange.length) * 100);
-      sleepAvg = Math.round((checkinsInRange.reduce((a, c) => a + c.sleepHours, 0) / checkinsInRange.length) * 10) / 10;
+      alcoholDays = checkinsInRange.filter((c) => c.hadAlcohol).length;
+      if (checkinsWithoutAlcohol.length > 0) {
+        sleepAvg =
+          Math.round(
+            (checkinsWithoutAlcohol.reduce((a, c) => a + c.sleepHours, 0) / checkinsWithoutAlcohol.length) * 10
+          ) / 10;
+      }
     }
 
-    return { sets, sessionCount: inRange.length, creatinePct, proteinPct, sleepAvg };
-  }, [selectedBucket, finished, recoveryCheckins]);
+    return { sets, sessionCount: inRange.length, creatinePct, proteinPct, sleepAvg, alcoholDays };
+  }, [selectedBucket, finished, exerciseById, recoveryCheckins]);
 
   const radarData: RadarDatum[] = useMemo(() => {
     if (!selectedBucket) return [];
@@ -73,7 +83,10 @@ export function GlobalLayer() {
     return topContributingExercises(finished, catalog, radarParent, selectedBucket);
   }, [radarParent, selectedBucket, finished, catalog]);
 
-  const correlations = useMemo(() => buildCorrelations(finished, recoveryCheckins), [finished, recoveryCheckins]);
+  const correlations = useMemo(
+    () => buildCorrelations(finished, exerciseById, recoveryCheckins),
+    [finished, exerciseById, recoveryCheckins]
+  );
 
   return (
     <div className="space-y-4">
@@ -111,7 +124,10 @@ export function GlobalLayer() {
               <StatTile value={`${selectedSnapshot.proteinPct}%`} label="Protéines" />
             )}
             {selectedSnapshot.sleepAvg !== null && (
-              <StatTile value={`${selectedSnapshot.sleepAvg}h`} label="Sommeil moy." className="col-span-2" />
+              <StatTile value={`${selectedSnapshot.sleepAvg}h`} label="Sommeil sans alcool" />
+            )}
+            {selectedSnapshot.alcoholDays !== null && (
+              <StatTile value={`${selectedSnapshot.alcoholDays} j`} label="Alcool" />
             )}
           </div>
         </div>
@@ -161,10 +177,11 @@ export function GlobalLayer() {
           Corrélations récupération / volume
         </p>
         {correlations ? (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <CorrelationTile label="Créatine" r={correlations.creatine} />
             <CorrelationTile label="Protéines" r={correlations.protein} />
-            <CorrelationTile label="Sommeil" r={correlations.sleep} />
+            <CorrelationTile label="Sommeil sans alcool" r={correlations.sleep} />
+            <CorrelationTile label="Alcool" r={correlations.alcohol} />
           </div>
         ) : (
           <GlassCard className="text-center py-6">
@@ -194,7 +211,9 @@ function topContributingExercises(
       if (!exercise) continue;
       const coeff = aggregateCoefficient(exercise, parent);
       if (coeff <= 0) continue;
-      const completed = completedWorkSets(logged).length;
+      const completed = effectiveSetUnits(completedWorkSets(logged), {
+        increment: exercise.smallestIncrement,
+      });
       if (completed <= 0) continue;
       totals.set(logged.exerciseName, (totals.get(logged.exerciseName) ?? 0) + completed * coeff);
     }
@@ -210,30 +229,41 @@ interface Correlations {
   creatine: number | null;
   protein: number | null;
   sleep: number | null;
+  alcohol: number | null;
 }
 
 /**
  * Corrèle, jour par jour sur les 30 derniers jours avec check-in, le volume
  * (sets de travail complétés ce jour-là) avec créatine (0/1), protéines
- * (0/1) et sommeil (heures).
+ * (0/1), alcool (0/1) et sommeil (heures). La corrélation sommeil ignore les
+ * nuits avec alcool pour ne pas attribuer leur récupération atypique au sommeil.
  */
 function buildCorrelations(
   finished: WorkoutSession[],
-  recoveryCheckins: { date: Date; tookCreatine: boolean; proteinTargetMet: boolean; sleepHours: number }[]
+  exerciseById: Map<string, Exercise>,
+  recoveryCheckins: {
+    date: Date;
+    tookCreatine: boolean;
+    proteinTargetMet: boolean;
+    sleepHours: number;
+    hadAlcohol: boolean;
+  }[]
 ): Correlations | null {
   if (recoveryCheckins.length < 3) return null;
 
   const volumeByDay = new Map<string, number>();
   for (const session of finished) {
     const key = startOfDay(session.date).toISOString();
-    const sets = session.exercises.reduce((a, e) => a + completedWorkSets(e).length, 0);
+    const sets = effectiveSessionSets(session, exerciseById);
     volumeByDay.set(key, (volumeByDay.get(key) ?? 0) + sets);
   }
 
   const volumes: number[] = [];
   const creatine: number[] = [];
   const protein: number[] = [];
+  const alcohol: number[] = [];
   const sleep: number[] = [];
+  const sleepVolumes: number[] = [];
 
   for (const c of recoveryCheckins) {
     const key = startOfDay(c.date).toISOString();
@@ -241,12 +271,25 @@ function buildCorrelations(
     volumes.push(vol);
     creatine.push(c.tookCreatine ? 1 : 0);
     protein.push(c.proteinTargetMet ? 1 : 0);
-    sleep.push(c.sleepHours);
+    alcohol.push(c.hadAlcohol ? 1 : 0);
+    if (!c.hadAlcohol) {
+      sleep.push(c.sleepHours);
+      sleepVolumes.push(vol);
+    }
   }
 
   return {
     creatine: pearsonCorrelation(creatine, volumes),
     protein: pearsonCorrelation(protein, volumes),
-    sleep: pearsonCorrelation(sleep, volumes),
+    sleep: pearsonCorrelation(sleep, sleepVolumes),
+    alcohol: pearsonCorrelation(alcohol, volumes),
   };
+}
+
+function effectiveSessionSets(session: WorkoutSession, exerciseById: Map<string, Exercise>): number {
+  const total = session.exercises.reduce((sum, logged) => {
+    const increment = exerciseById.get(logged.exerciseId)?.smallestIncrement;
+    return sum + effectiveSetUnits(completedWorkSets(logged), { increment });
+  }, 0);
+  return Math.round(total * 10) / 10;
 }

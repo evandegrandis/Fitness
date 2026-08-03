@@ -15,6 +15,13 @@
       "when": 1784305478198,
       "tag": "0001_friendly_starbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785766254958,
+      "tag": "0002_dashing_tinkerer",
+      "breakpoints": true
     }
   ]
 }

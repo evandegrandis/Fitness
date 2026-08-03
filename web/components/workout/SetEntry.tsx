@@ -14,7 +14,15 @@ function cleanWeight(weight: number): string {
 }
 
 /** ReasonCodes signalant une escalade / un changement de méthode — affichés via `suggestion.explanation`. */
-const INTENSITY_REASON_CODES = ["overreach", "add_set", "rest_pause", "variation", "reactive_deload", "variant_switch"];
+const INTENSITY_REASON_CODES = [
+  "overreach",
+  "add_set",
+  "rest_pause",
+  "variation",
+  "reactive_deload",
+  "variant_switch",
+  "drop_set_completion",
+];
 
 /**
  * Zone de saisie d'un set : steppers poids/reps pré-remplis par la
@@ -150,7 +158,7 @@ export function SetEntry({
       <button
         type="button"
         onClick={() => {
-          onLogSet({ weight, reps, setType: useWarmup ? SetType.warmup : undefined });
+          onLogSet({ weight, reps, setType: useWarmup ? SetType.warmup : suggestion.setType });
           setUseWarmup(false);
         }}
         className="btn-accent flex w-full items-center justify-center gap-2 py-3.5 text-base active:scale-[0.97] transition"

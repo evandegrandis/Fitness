@@ -3,6 +3,7 @@ import {
   coverageForWeek,
   leafSets,
   liveParentImpact,
+  liveParentImpactForSets,
   parentSets,
   parentTotals,
   parentsWorkedInWeek,
@@ -117,6 +118,33 @@ describe("leafSets / parentSets", () => {
     const le = loggedExercise("ex-bench", [set({ completed: false })]);
     expect(leafSets(le, BENCH).size).toBe(0);
     expect(parentSets(le, BENCH).size).toBe(0);
+  });
+
+  it("compte un drop-set 4+6 très rapproché comme une seule série effective, pas deux", () => {
+    const started = new Date("2026-07-10T10:00:00.000Z");
+    const le = loggedExercise("ex-bench", [
+      set({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started }),
+      set({
+        weight: 75,
+        reps: 6,
+        setSlotIndex: 1,
+        timestamp: new Date(started.getTime() + 15_000),
+        setType: SetType.backoff,
+      }),
+    ]);
+
+    expect(parentSets(le, BENCH).get(MuscleParent.pectoraux)).toBeCloseTo(1);
+    expect(leafSets(le, BENCH).get(MuscleGroup.pectClav)).toBeCloseTo(0.8);
+  });
+
+  it("un composite sous 10 reps contribue proportionnellement mais ne vaut jamais une série pleine", () => {
+    const started = new Date("2026-07-10T10:00:00.000Z");
+    const le = loggedExercise("ex-bench", [
+      set({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started }),
+      set({ weight: 75, reps: 3, setSlotIndex: 1, timestamp: new Date(started.getTime() + 10_000) }),
+    ]);
+
+    expect(parentSets(le, BENCH).get(MuscleParent.pectoraux)).toBeCloseTo(0.7);
   });
 });
 
@@ -255,5 +283,15 @@ describe("rolling7DayLeafBreakdown et liveParentImpact", () => {
     const impact = liveParentImpact(BENCH, 3);
     expect(impact.get(MuscleParent.pectoraux)).toBeCloseTo(3.0);
     expect(impact.get(MuscleParent.triceps)).toBeCloseTo(0.9);
+  });
+
+  it("liveParentImpactForSets normalise les mini-blocs avant l'impact en direct", () => {
+    const started = new Date("2026-07-10T10:00:00.000Z");
+    const impact = liveParentImpactForSets(BENCH, [
+      set({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started }),
+      set({ weight: 75, reps: 6, setSlotIndex: 1, timestamp: new Date(started.getTime() + 10_000) }),
+    ]);
+    expect(impact.get(MuscleParent.pectoraux)).toBeCloseTo(1);
+    expect(impact.get(MuscleParent.triceps)).toBeCloseTo(0.3);
   });
 });

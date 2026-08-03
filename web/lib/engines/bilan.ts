@@ -21,6 +21,7 @@ import { buildRecords, classify, displayedRecordSetIDs, type RecordKind } from "
 import { deriveState, suggest, SuggestionMode, type SuggestionMode as SuggestionModeT } from "@/lib/engines/progression";
 import { coverageStatusLabel, rolling7DayProgress, type ParentMuscleProgress } from "@/lib/engines/effective-sets";
 import { HISTORY_WINDOW, RECORDS_HISTORY_WINDOW } from "@/lib/engines/constants";
+import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import {
   completedWorkSets,
@@ -54,7 +55,9 @@ function effectiveEffort(exercise: Exercise, weight: number): number {
  * "performed".
  */
 function bestSetOfSession(logged: LoggedExercise, exercise: Exercise): LoggedSet | null {
-  const sets = completedWorkSets(logged);
+  const sets = setsForNormalPrediction(completedWorkSets(logged), {
+    increment: exercise.smallestIncrement,
+  });
   if (sets.length === 0) return null;
   return sets.reduce((best, cur) => {
     const bestEffort = effectiveEffort(exercise, best.weight);
@@ -253,7 +256,7 @@ function buildExerciseReview(
   fullHistory: WorkoutSession[],
   increment: number
 ): ExerciseReview | null {
-  const workSetsToday = completedWorkSets(logged);
+  const workSetsToday = setsForNormalPrediction(completedWorkSets(logged), { increment });
   const parent = primaryParent(exercise);
 
   if (workSetsToday.length === 0) {

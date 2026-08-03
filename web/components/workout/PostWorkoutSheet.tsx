@@ -29,9 +29,15 @@ function draftFor(checkins: RecoveryCheckin[], date: Date): RecoveryDraft & { id
   const target = startOfDay(date).getTime();
   const existing = checkins.find((c) => startOfDay(c.date).getTime() === target);
   if (existing) {
-    return { id: existing.id, tookCreatine: existing.tookCreatine, proteinTargetMet: existing.proteinTargetMet, sleepHours: existing.sleepHours };
+    return {
+      id: existing.id,
+      tookCreatine: existing.tookCreatine,
+      proteinTargetMet: existing.proteinTargetMet,
+      sleepHours: existing.sleepHours,
+      hadAlcohol: existing.hadAlcohol,
+    };
   }
-  return { id: null, tookCreatine: false, proteinTargetMet: false, sleepHours: 7 };
+  return { id: null, tookCreatine: false, proteinTargetMet: false, sleepHours: 7, hadAlcohol: false };
 }
 
 /** Feuille plein écran de bilan post-séance, avec recovery checkin J-1/J-2. */
@@ -74,6 +80,7 @@ export function PostWorkoutSheet({
           tookCreatine: d1.tookCreatine,
           proteinTargetMet: d1.proteinTargetMet,
           sleepHours: d1.sleepHours,
+          hadAlcohol: d1.hadAlcohol,
         }),
         saveRecoveryCheckin({
           id: d2Existing.id ?? crypto.randomUUID(),
@@ -81,6 +88,7 @@ export function PostWorkoutSheet({
           tookCreatine: d2.tookCreatine,
           proteinTargetMet: d2.proteinTargetMet,
           sleepHours: d2.sleepHours,
+          hadAlcohol: d2.hadAlcohol,
         }),
       ]);
     } finally {

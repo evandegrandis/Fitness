@@ -119,7 +119,7 @@ export const RecordsEngine = {
    *   4. bodyweightReps (exercices BW : plus de reps que jamais)
    */
   classify(set: LoggedSet, exercise: Exercise, priorRecords: ExerciseRecords): RecordKind | null {
-    if (!set.completed) return null;
+    if (!set.completed || !WORK_KINDS.has(set.setType)) return null;
 
     // Branche bodyweight : PR de reps si strictement plus que tout précédent
     // compte de reps BW. Pas de porte repTargetMin pour que le tout premier
@@ -164,9 +164,9 @@ export const RecordsEngine = {
    * l'historique changerait le meilleur record à ce poids.
    */
   isRecordSet(set: LoggedSet, amongSets: LoggedSet[], exercise: Exercise): boolean {
-    if (!set.completed) return false;
+    if (!set.completed || !WORK_KINDS.has(set.setType)) return false;
 
-    const others = amongSets.filter((s) => s.id !== set.id);
+    const others = amongSets.filter((s) => s.id !== set.id && s.completed && WORK_KINDS.has(s.setType));
 
     if (set.weight === 0) {
       const priorBWMax = others

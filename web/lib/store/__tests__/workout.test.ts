@@ -69,6 +69,17 @@ const SETTINGS: UserSettingsType = {
   bodyWeightKg: null,
 };
 
+const DIPS: ExerciseType = {
+  ...BENCH,
+  id: "ex-dips",
+  name: "Dips",
+  setPatternMode: "bodyweight",
+  repTargetMin: 8,
+  repTargetMax: 15,
+  smallestIncrement: 1,
+  fatigueClass: "light",
+};
+
 function resetStore() {
   useWorkoutStore.setState({
     catalog: [],
@@ -232,5 +243,90 @@ describe("useWorkoutStore", () => {
     store.discard();
     expect(useWorkoutStore.getState().active).toBeNull();
     expect(useWorkoutStore.getState().history).toHaveLength(0);
+  });
+
+  it("propose de compléter immédiatement un mini-set sans le compter comme deux séries", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
+
+    store.logSet(loggedExerciseId, { weight: 100, reps: 4 });
+    const completion = useWorkoutStore.getState().suggestion(loggedExerciseId);
+
+    expect(completion.reasonCodes).toContain("drop_set_completion");
+    expect(completion.weight).toBe(97.5);
+    expect(completion.reps).toBe(6);
+    expect(completion.setType).toBe("backoff");
+  });
+
+  it("garde la continuation immédiate d'un drop-set dans le même round de superset", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    store.addExercise(DIPS.id);
+    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+    store.handleSupersetLink(benchLogged.id);
+    store.handleSupersetLink(dipsLogged.id);
+
+    store.logSet(benchLogged.id, { weight: 100, reps: 4 });
+    useWorkoutStore.setState((state) => ({
+      active: state.active
+        ? {
+            ...state.active,
+            exercises: state.active.exercises.map((logged) =>
+              logged.id === benchLogged.id
+                ? {
+                    ...logged,
+                    sets: logged.sets.map((loggedSet) => ({
+                      ...loggedSet,
+                      timestamp: new Date(Date.now() - 1_000),
+                    })),
+                  }
+                : logged
+            ),
+          }
+        : null,
+    }));
+    store.logSet(benchLogged.id, { weight: 97.5, reps: 6, setType: "backoff" });
+    store.logSet(benchLogged.id, { weight: 100, reps: 8 });
+
+    const sets = useWorkoutStore.getState().active!.exercises[0].sets;
+    expect(sets.map((loggedSet) => loggedSet.supersetRoundIndex)).toEqual([1, 1, 2]);
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(2);
+  });
+
+  it("marque automatiquement un gros set tardif de dips comme finisher", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    store.addExercise(DIPS.id);
+    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+
+    for (let index = 0; index < 5; index += 1) {
+      store.logSet(benchLogged.id, { weight: 80, reps: 8 });
+    }
+    store.logSet(dipsLogged.id, { weight: 0, reps: 16 });
+
+    const finisher = useWorkoutStore.getState().active!.exercises[1].sets[0];
+    expect(finisher.setType).toBe("finisher");
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(5);
+  });
+
+  it("ajoute et supprime le cardio sans créer de set de musculation", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+
+    store.addCardioEntry({ activityName: "Cardio", durationSeconds: 120, level: 10, distanceKm: 1 });
+    const entry = useWorkoutStore.getState().active!.cardioEntries![0];
+    expect(entry).toMatchObject({ activityName: "Cardio", durationSeconds: 120, level: 10, distanceKm: 1 });
+    expect(useWorkoutStore.getState().active!.exercises).toHaveLength(0);
+
+    store.deleteCardioEntry(entry.id);
+    expect(useWorkoutStore.getState().active!.cardioEntries).toEqual([]);
   });
 });

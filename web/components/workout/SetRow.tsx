@@ -14,6 +14,7 @@ const BADGE_STYLE: Record<string, string> = {
   [SetType.warmup]: "bg-amber-400/15 text-amber-300",
   [SetType.topSet]: "bg-violet-400/15 text-violet-300",
   [SetType.backoff]: "bg-sky-400/15 text-sky-300",
+  [SetType.finisher]: "bg-rose-400/15 text-rose-300",
   [SetType.work]: "bg-white/8 text-[--color-fg-muted]",
 };
 

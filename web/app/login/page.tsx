@@ -14,7 +14,7 @@ export default async function LoginPage({
           J
         </div>
         <h1 className="font-display text-2xl font-bold tracking-tight">Jeera</h1>
-        <p className="mt-1 text-sm text-[--color-fg-muted]">Entre ton code d'accès</p>
+        <p className="mt-1 text-sm text-[--color-fg-muted]">Entre ton code d&apos;accès</p>
 
         <form action={login} className="mt-6 space-y-3">
           <input type="hidden" name="from" value={from ?? "/"} />

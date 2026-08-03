@@ -26,6 +26,7 @@ import {
   exerciseToRow,
   goalToRow,
   recoveryCheckinToRow,
+  sessionToCardioEntryRows,
   sessionToLoggedExerciseRows,
   sessionToLoggedSetRows,
   sessionToRow,
@@ -35,6 +36,7 @@ import {
   templateToRow,
 } from "./mappers";
 import {
+  cardioEntries,
   exercises,
   loggedExercises,
   loggedSets,
@@ -51,7 +53,7 @@ import { parseBackup } from "@/lib/models/backup";
 import type {
   Exercise,
   MuscleGoal,
-  RecoveryCheckin,
+  RecoveryCheckinInput,
   UserSettings,
   WorkoutSession,
   WorkoutTemplate,
@@ -63,7 +65,7 @@ function revalidateWorkoutData(): void {
 
 // ---------------------------------------------------------------------------
 // saveSession — upsert complet d'une séance (logged_exercises, logged_sets,
-// superset_groups). Utilisé à la fin d'une séance ET pour l'import.
+// superset_groups, cardio_entries). Utilisé à la fin d'une séance ET pour l'import.
 //
 // Stratégie : delete-then-insert des enfants. On détache d'abord les
 // logged_exercises de leurs superset_groups (sinon la FK
@@ -78,6 +80,17 @@ export async function saveSession(session: WorkoutSession, revalidate = true): P
     .insert(workoutSessions)
     .values(sessionRow)
     .onConflictDoUpdate({ target: workoutSessions.id, set: sessionRow });
+
+  // `undefined` identifie une ancienne séance restaurée depuis localStorage :
+  // dans ce cas on préserve le cardio déjà en base. `[]` reste une demande
+  // explicite de supprimer toutes les entrées cardio de la séance.
+  if (session.cardioEntries !== undefined) {
+    await db.delete(cardioEntries).where(eq(cardioEntries.sessionId, session.id));
+    const cardioRows = sessionToCardioEntryRows(session);
+    if (cardioRows.length > 0) {
+      await db.insert(cardioEntries).values(cardioRows);
+    }
+  }
 
   await db
     .update(loggedExercises)
@@ -172,7 +185,7 @@ export async function updateSettings(settings: UserSettings): Promise<void> {
 // saveRecoveryCheckin
 // ---------------------------------------------------------------------------
 
-export async function saveRecoveryCheckin(checkin: RecoveryCheckin): Promise<void> {
+export async function saveRecoveryCheckin(checkin: RecoveryCheckinInput): Promise<void> {
   const row = recoveryCheckinToRow(checkin);
   await db
     .insert(recoveryCheckins)
@@ -220,6 +233,7 @@ export async function importBackup(json: unknown): Promise<void> {
   await db.update(loggedExercises).set({ supersetGroupId: null });
   await db.delete(supersetGroups);
   await db.delete(loggedExercises);
+  await db.delete(cardioEntries);
   await db.delete(workoutSessions);
   await db.delete(templateExercises);
   await db.delete(workoutTemplates);
@@ -257,6 +271,11 @@ export async function importBackup(json: unknown): Promise<void> {
 
   if (backup.sessions.length > 0) {
     await db.insert(workoutSessions).values(backup.sessions.map(sessionToRow));
+
+    const cardioRows = backup.sessions.flatMap(sessionToCardioEntryRows);
+    if (cardioRows.length > 0) {
+      await db.insert(cardioEntries).values(cardioRows);
+    }
 
     const supersetRows = backup.sessions.flatMap(sessionToSupersetRows);
     if (supersetRows.length > 0) {

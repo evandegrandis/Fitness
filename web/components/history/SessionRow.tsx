@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { ChevronRight, Star } from "lucide-react";
 import { SwipeRow } from "@/components/ui/SwipeRow";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 
 function relativeDay(date: Date): string {
@@ -33,8 +34,12 @@ export function SessionRow({
   prCount: number;
   onDelete: (id: string) => void;
 }) {
-  const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-  const totalSets = ordered.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
+  const ordered = session.exercises
+    .filter((exercise) => exercise.sets.some((set) => set.completed))
+    .sort((a, b) => a.orderIndex - b.orderIndex);
+  const totalSets = Math.round(
+    ordered.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0) * 10
+  ) / 10;
   const duration = sessionDurationLabel(session);
   const supersetCount = session.supersetGroups.length;
   const names = ordered.map((e) => e.exerciseName);
@@ -65,6 +70,7 @@ export function SessionRow({
             <p className="mt-0.5 truncate text-xs text-[--color-fg-muted]">
               {totalSets} sets · {duration} · {ordered.length} exos
               {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
+              {(session.cardioEntries?.length ?? 0) > 0 ? " · cardio" : ""}
             </p>
             <p className="mt-1 truncate text-xs text-[--color-fg-faint]">
               {shown.join(", ")}

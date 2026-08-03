@@ -99,6 +99,34 @@ export const workoutSessions = pgTable(
 export const workoutSessionsRelations = relations(workoutSessions, ({ many }) => ({
   loggedExercises: many(loggedExercises),
   supersetGroups: many(supersetGroups),
+  cardioEntries: many(cardioEntries),
+}));
+
+// ---------------------------------------------------------------------------
+// cardio_entries
+// ---------------------------------------------------------------------------
+
+export const cardioEntries = pgTable(
+  "cardio_entries",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => workoutSessions.id, { onDelete: "cascade" }),
+    activityName: text("activity_name").notNull().default(""),
+    durationSeconds: integer("duration_seconds").notNull().default(0),
+    level: integer("level"),
+    distanceKm: doublePrecision("distance_km"),
+    orderIndex: integer("order_index").notNull().default(0),
+  },
+  (table) => [index("cardio_entries_session_id_idx").on(table.sessionId)]
+);
+
+export const cardioEntriesRelations = relations(cardioEntries, ({ one }) => ({
+  session: one(workoutSessions, {
+    fields: [cardioEntries.sessionId],
+    references: [workoutSessions.id],
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -274,6 +302,7 @@ export const recoveryCheckins = pgTable(
     tookCreatine: boolean("took_creatine").notNull().default(false),
     proteinTargetMet: boolean("protein_target_met").notNull().default(false),
     sleepHours: doublePrecision("sleep_hours").notNull().default(0),
+    hadAlcohol: boolean("had_alcohol").notNull().default(false),
   },
   (table) => [index("recovery_checkins_date_idx").on(table.date)]
 );
@@ -290,6 +319,9 @@ export type NewMuscleMappingRow = InferInsertModel<typeof muscleMappings>;
 
 export type WorkoutSessionRow = InferSelectModel<typeof workoutSessions>;
 export type NewWorkoutSessionRow = InferInsertModel<typeof workoutSessions>;
+
+export type CardioEntryRow = InferSelectModel<typeof cardioEntries>;
+export type NewCardioEntryRow = InferInsertModel<typeof cardioEntries>;
 
 export type LoggedExerciseRow = InferSelectModel<typeof loggedExercises>;
 export type NewLoggedExerciseRow = InferInsertModel<typeof loggedExercises>;

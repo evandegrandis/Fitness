@@ -53,6 +53,7 @@ import {
   type AnchorLoad,
 } from "@/lib/engines/references";
 import { predictReps as predictRepsPure, type LoadMode, type PredictContext, type RepSample } from "@/lib/engines/predict";
+import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { easierVariantName } from "@/lib/engines/variants";
 
 export { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
@@ -246,7 +247,9 @@ function effectiveProgressionPolicy(exercise: Exercise): ProgressionPolicy {
  * targetLoad.
  */
 function classifyAnchor(session: LoggedSet[], exercise: Exercise): LoggedSet | null {
-  const completed = session.filter((s) => s.completed);
+  const completed = setsForNormalPrediction(session, {
+    increment: exercise.smallestIncrement,
+  });
   if (completed.length === 0) return null;
 
   const workSetsOnly = completed.filter(
@@ -405,10 +408,13 @@ function deriveState(
 
   const fallbackWeights: number[] = [];
   for (const session of comparable) {
-    const anchor = classifyAnchor(session, exercise);
+    const predictionSession = setsForNormalPrediction(session, {
+      increment,
+    });
+    const anchor = classifyAnchor(predictionSession, exercise);
     if (!anchor) continue;
     const anchorEffort = effectiveLoad(anchor.weight, exercise.setPatternMode);
-    const fallbacks = session.filter(
+    const fallbacks = predictionSession.filter(
       (s) =>
         s.completed &&
         s.setType !== ST.warmup &&
@@ -550,7 +556,12 @@ function deriveStateV2(
   todayFirstLoad: number | undefined
 ): DeriveStateV2Result {
   const pattern = detectPatternPure(exercise, rawHistory, positions);
-  const processedHistory = preprocessHistory(rawHistory, exercise, increment);
+  const processedHistory = preprocessHistory(rawHistory, exercise, increment, {
+    positions,
+    // Les données d'un exercice ISOLATION_FINISHER restent son profil dédié ; elles ne sont
+    // jamais réinjectées dans une ancre STRAIGHT/TOP_SET_BACKOFF normale.
+    preserveDedicatedFinishers: pattern === "ISOLATION_FINISHER",
+  });
 
   const reasonCodes: string[] = [];
 
@@ -1565,7 +1576,9 @@ function suggestWeightedBWVariableV2(
   parent: ReturnType<typeof primaryParent>
 ): SetSuggestion {
   const ctx: PredictContext = { ...predictCtx, samples: v2.repSamples };
-  const bwSetsToday = currentSessionSets.filter((s) => s.completed && s.setType !== ST.warmup && s.weight === 0);
+  const bwSetsToday = currentSessionSets.filter(
+    (s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher && s.weight === 0
+  );
   const weightedSetsToday = doneToday.filter((s) => s.weight > 0);
 
   if (bwSetsToday.length === 0 && weightedSetsToday.length === 0) {
@@ -1741,24 +1754,57 @@ export function suggest(params: SuggestParams): SetSuggestion {
   // doneToday ne contient que les sets sur lesquels le moteur doit raisonner pour prédire charge/reps.
   // hasPrimerToday indique aux branches qu'un primer a déjà été fait cette séance.
   const hasPrimerToday = currentSessionSets.some(
-    (s) => s.completed && (s.setType === ST.warmup || (s.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight))
+    (s) =>
+      s.completed &&
+      (s.setType === ST.warmup ||
+        (s.setType !== ST.finisher && s.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight))
   );
-  const doneToday = currentSessionSets.filter(
-    (s) => s.completed && s.setType !== ST.warmup && !(s.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight)
+  const rawDoneToday = currentSessionSets.filter(
+    (s) =>
+      s.completed &&
+      s.setType !== ST.warmup &&
+      s.setType !== ST.finisher &&
+      !(s.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight)
   );
 
-  const history = recentHistory.filter((session) => session.length > 0);
+  // ALGO_V2 §2 — détecte le pattern réel. `assisted_bodyweight` et `ramping` restent TOUJOURS
+  // sur le chemin v1 (verrou §2 étape 1, et ramping n'est jamais détecté §2 étape 2/11).
+  // On conserve l'alignement position/historique même si l'appelant a fourni une séance vide.
+  const historyEntries = recentHistory
+    .map((session, index) => ({ session, position: historyPositions?.[index] }))
+    .filter((entry) => entry.session.length > 0);
+  const rawHistory = historyEntries.map((entry) => entry.session);
+  const alignedPositions =
+    historyPositions && historyEntries.every((entry) => entry.position !== undefined)
+      ? historyEntries.map((entry) => entry.position as HistoryPosition)
+      : undefined;
+
+  const alwaysLegacy = exercise.setPatternMode === SPM.assistedBodyweight || exercise.setPatternMode === SPM.ramping;
+  const rawPattern = alwaysLegacy ? null : detectPatternPure(exercise, rawHistory, alignedPositions);
+  const preserveDedicatedFinisher = rawPattern === "ISOLATION_FINISHER";
+  const history = rawHistory
+    .map((session, index) =>
+      setsForNormalPrediction(session, {
+        increment,
+        position: alignedPositions?.[index],
+        preserveDedicatedFinisher,
+      })
+    )
+    .filter((session) => session.length > 0);
+
+  // Dans la séance courante on fusionne un composite en un seul bloc logique, mais on ne retire
+  // pas un finisher : il doit continuer à compter dans l'avancement de la séance déjà en cours.
+  const doneToday = setsForNormalPrediction(rawDoneToday, {
+    increment,
+    excludeFinishers: false,
+  });
   const derived = deriveState(exercise, history, increment, effectiveGapDays);
 
   const parent = primaryParent(exercise);
   // Fatigue confirmée si : chute intra-exercice détectée OU contexte de séance significatif
   const fatigueConfirmed = autoFatigueFlag(exercise, doneToday) || sessionFatigue.isSignificant(parent);
 
-  // ALGO_V2 §2 — détecte le pattern réel. `assisted_bodyweight` et `ramping` restent TOUJOURS
-  // sur le chemin v1 (verrou §2 étape 1, et ramping n'est jamais détecté §2 étape 2/11).
-  const alwaysLegacy = exercise.setPatternMode === SPM.assistedBodyweight || exercise.setPatternMode === SPM.ramping;
-  const rawPattern = alwaysLegacy ? null : detectPatternPure(exercise, history, historyPositions);
-  const sessionsWithData = history.filter((s) => s.some((set) => set.completed)).length;
+  const sessionsWithData = rawHistory.filter((s) => s.some((set) => set.completed)).length;
   const useV2 = !alwaysLegacy && rawPattern !== null && sessionsWithData >= ALGO_V2.MIN_SESSIONS_FOR_PATTERN;
 
   let result: SetSuggestion;
@@ -1769,7 +1815,9 @@ export function suggest(params: SuggestParams): SetSuggestion {
     // pattern figé toujours applicable (assisted_bodyweight, ramping).
     // ------------------------------------------------------------------
     if (exercise.setPatternMode === SPM.weightedBodyweight) {
-      const bwSetsToday = currentSessionSets.filter((s) => s.completed && s.setType !== ST.warmup && s.weight === 0);
+      const bwSetsToday = currentSessionSets.filter(
+        (s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher && s.weight === 0
+      );
       result = suggestWeightedBodyweight(exercise, doneToday, derived, fatigueConfirmed, hasPrimerToday, bwSetsToday);
     } else if (exercise.setPatternMode === SPM.topSetBackoff) {
       result = suggestTopSetBackoff(exercise, doneToday, derived, increment, fatigueConfirmed);
@@ -1783,7 +1831,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
     // Chemin v2 (§7 ALGO_SPEC_HARDENED) — pattern détecté, références par rôle, predictReps.
     // ------------------------------------------------------------------
     const todayFirstLoad = doneToday[0]?.weight;
-    const v2Raw = deriveStateV2(exercise, history, increment, historyPositions, todayFirstLoad);
+    const v2Raw = deriveStateV2(exercise, rawHistory, increment, alignedPositions, todayFirstLoad);
 
     // §6.3 — deload daté (WS4, barème `deload.ts`) s'applique à amorceTarget/straightRef/topTarget
     // (même décalage), exactement comme pour `deriveState` v1. `effectiveGapDays` intègre déjà

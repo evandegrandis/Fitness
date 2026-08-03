@@ -22,10 +22,6 @@ import type { MuscleGroup } from "@/lib/models/muscles";
  * `scripts/seed.ts` (source unique à unifier en intégration).
  */
 
-interface RecentSet {
-  0: number;
-  1: number;
-}
 interface RecentExercise {
   name: string;
   sets: [number, number][];
@@ -126,6 +122,7 @@ function resolveRecentSession(
     templateName: null,
     exercises,
     supersetGroups: [],
+    cardioEntries: [],
   };
 }
 

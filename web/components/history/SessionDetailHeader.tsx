@@ -3,11 +3,17 @@
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 
 /** En-tête du détail de séance : jour + heure + sets + durée. */
 export function SessionDetailHeader({ session }: { session: WorkoutSession }) {
-  const totalSets = session.exercises.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
+  const totalSets = Math.round(
+    session.exercises.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0) * 10
+  ) / 10;
+  const completedExerciseCount = session.exercises.filter((exercise) =>
+    exercise.sets.some((set) => set.completed)
+  ).length;
   const duration = sessionDurationLabel(session);
 
   return (
@@ -20,8 +26,9 @@ export function SessionDetailHeader({ session }: { session: WorkoutSession }) {
         {session.endTime && ` – ${format(session.endTime, "HH:mm")}`}
       </p>
       <p className="mt-1.5 text-sm text-[--color-fg-muted]">
-        {totalSets} sets{duration ? ` · ${duration}` : ""} · {session.exercises.length} exercice
-        {session.exercises.length > 1 ? "s" : ""}
+        {totalSets} sets{duration ? ` · ${duration}` : ""} · {completedExerciseCount} exercice
+        {completedExerciseCount > 1 ? "s" : ""}
+        {(session.cardioEntries?.length ?? 0) > 0 ? ` · ${session.cardioEntries?.length} cardio` : ""}
       </p>
       {session.templateName && (
         <span className="pill mt-2 inline-flex bg-white/8">{session.templateName}</span>

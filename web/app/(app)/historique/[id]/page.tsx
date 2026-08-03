@@ -8,6 +8,7 @@ import { orderedSets, type LoggedExercise, type LoggedSet } from "@/lib/models/t
 import { useWorkoutStore } from "@/lib/store/workout";
 import { SessionDetailHeader } from "@/components/history/SessionDetailHeader";
 import { SessionExerciseBlock, SessionSupersetBlock } from "@/components/history/SessionExerciseBlock";
+import { SessionCardioBlock } from "@/components/history/SessionCardioBlock";
 
 export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -70,7 +71,9 @@ export default function SessionDetailPage() {
     );
   }
 
-  const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
+  const ordered = session.exercises
+    .filter((exercise) => exercise.sets.some((set) => set.completed))
+    .sort((a, b) => a.orderIndex - b.orderIndex);
   const blocks = buildBlocks(ordered, session.supersetGroups);
 
   return (
@@ -105,6 +108,8 @@ export default function SessionDetailPage() {
             />
           )
         )}
+
+        <SessionCardioBlock entries={session.cardioEntries ?? []} />
       </div>
     </main>
   );

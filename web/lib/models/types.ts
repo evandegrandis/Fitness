@@ -86,8 +86,17 @@ export interface SupersetGroup {
 }
 
 // ---------------------------------------------------------------------------
-// WorkoutSession
+// CardioEntry / WorkoutSession
 // ---------------------------------------------------------------------------
+
+export interface CardioEntry {
+  id: string;
+  activityName: string;
+  durationSeconds: number;
+  level: number | null;
+  distanceKm: number | null;
+  orderIndex: number;
+}
 
 export interface WorkoutSession {
   id: string;
@@ -99,6 +108,12 @@ export interface WorkoutSession {
   templateName: string | null;
   exercises: LoggedExercise[];
   supersetGroups: SupersetGroup[];
+  /**
+   * Optionnel uniquement pour tolérer les anciennes séances déjà sérialisées
+   * dans localStorage / les backups antérieurs à l'ajout du cardio. Toutes les
+   * lectures DB et toutes les nouvelles séances normalisent ce champ à `[]`.
+   */
+  cardioEntries?: CardioEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +163,13 @@ export interface RecoveryCheckin {
   tookCreatine: boolean;
   proteinTargetMet: boolean;
   sleepHours: number;
+  hadAlcohol: boolean;
 }
+
+/** Entrée rétrocompatible avec l'UI déployée avant l'ajout du suivi alcool. */
+export type RecoveryCheckinInput = Omit<RecoveryCheckin, "hadAlcohol"> & {
+  hadAlcohol?: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Fonctions utilitaires PURES — miroir des propriétés calculées Swift.

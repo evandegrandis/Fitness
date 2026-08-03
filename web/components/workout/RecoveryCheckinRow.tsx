@@ -7,6 +7,7 @@ export interface RecoveryDraft {
   tookCreatine: boolean;
   proteinTargetMet: boolean;
   sleepHours: number;
+  hadAlcohol: boolean;
 }
 
 function sleepTone(hours: number): { label: string; color: string } {
@@ -22,7 +23,7 @@ function formatSleepHours(hours: number): string {
   return minutes === 0 ? `${wholeHours}h` : `${wholeHours}h${minutes}`;
 }
 
-/** Ligne de recovery checkin (J-1 ou J-2) : toggles Créatine/Protéine + slider sommeil. */
+/** Ligne de recovery checkin (J-1 ou J-2) : habitudes + slider sommeil. */
 export function RecoveryCheckinRow({
   label,
   value,
@@ -49,6 +50,12 @@ export function RecoveryCheckinRow({
           active={value.proteinTargetMet}
           onClick={() => onChange({ ...value, proteinTargetMet: !value.proteinTargetMet })}
         />
+        <ToggleChip
+          label="Alcool"
+          active={value.hadAlcohol}
+          tone="warning"
+          onClick={() => onChange({ ...value, hadAlcohol: !value.hadAlcohol })}
+        />
       </div>
 
       <div className="flex items-center gap-3">
@@ -60,10 +67,10 @@ export function RecoveryCheckinRow({
           step={0.5}
           value={value.sleepHours}
           onChange={(e) => onChange({ ...value, sleepHours: Number(e.target.value) })}
-          className="h-1.5 flex-1 appearance-none rounded-full bg-white/10 accent-[color:var(--accent)]"
+          className="h-1.5 w-28 shrink-0 appearance-none rounded-full bg-white/10 accent-[color:var(--accent)]"
         />
         <span
-          className="tnum block shrink-0 min-w-[4.5rem] text-right text-sm font-semibold"
+          className="tnum block w-20 shrink-0 whitespace-nowrap text-right text-sm font-semibold"
           style={{ color: tone.color }}
         >
           {formatSleepHours(value.sleepHours)} · {tone.label}
@@ -73,16 +80,35 @@ export function RecoveryCheckinRow({
   );
 }
 
-function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function ToggleChip({
+  label,
+  active,
+  tone = "accent",
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  tone?: "accent" | "warning";
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
         "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition",
-        active ? "border-transparent text-[#06070d]" : "border-white/10 text-[--color-fg-muted]"
+        active
+          ? tone === "warning"
+            ? "border-amber-300/40 bg-amber-300/15 text-amber-200"
+            : "border-transparent text-[#06070d]"
+          : "border-white/10 text-[--color-fg-muted]"
       )}
-      style={active ? { background: "linear-gradient(120deg, var(--accent), var(--accent-2))" } : undefined}
+      style={
+        active && tone === "accent"
+          ? { background: "linear-gradient(120deg, var(--accent), var(--accent-2))" }
+          : undefined
+      }
     >
       {label}
     </button>

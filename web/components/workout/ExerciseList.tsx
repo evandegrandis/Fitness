@@ -42,22 +42,28 @@ export function ExerciseList({
   onEditSet,
   onReplace,
   onAddExercise,
+  expandedExerciseId,
+  onExpandedExerciseChange,
 }: {
   session: WorkoutSession;
   onEditSet: (loggedExerciseId: string, set: LoggedSet) => void;
   onReplace: (loggedExerciseId: string) => void;
   onAddExercise: () => void;
+  expandedExerciseId: string | null;
+  onExpandedExerciseChange: (loggedExerciseId: string | null) => void;
 }) {
   const catalog = useWorkoutStore((s) => s.catalog);
   const moveExercise = useWorkoutStore((s) => s.moveExercise);
+  const duplicateExercise = useWorkoutStore((s) => s.duplicateExercise);
+
+  const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
+  const ids = ordered.map((e) => e.id);
 
   // Activation par DÉLAI (appui maintenu ~220ms) plutôt que par distance :
   // le swipe horizontal (SwipeRow, immédiat) reste au geste de la carte,
   // tandis que le réordonnancement (poignée ⋮⋮) exige un geste délibéré.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 220, tolerance: 6 } }));
 
-  const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-  const ids = ordered.map((e) => e.id);
   const items = buildListItems(ordered, session);
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -69,6 +75,15 @@ export function ExerciseList({
     moveExercise(fromIndex, toIndex);
   };
 
+  const handleDuplicate = (loggedExerciseId: string) => {
+    const previousIds = new Set(session.exercises.map((exercise) => exercise.id));
+    duplicateExercise(loggedExerciseId);
+    const duplicate = useWorkoutStore
+      .getState()
+      .active?.exercises.find((exercise) => !previousIds.has(exercise.id));
+    onExpandedExerciseChange(duplicate?.id ?? loggedExerciseId);
+  };
+
   const renderCard = (loggedExercise: LoggedExercise) => {
     const exercise = catalog.find((e) => e.id === loggedExercise.exerciseId);
     return (
@@ -77,6 +92,12 @@ export function ExerciseList({
         loggedExercise={loggedExercise}
         exercise={exercise}
         session={session}
+        expanded={expandedExerciseId === loggedExercise.id}
+        onToggleExpanded={() =>
+          onExpandedExerciseChange(expandedExerciseId === loggedExercise.id ? null : loggedExercise.id)
+        }
+        onBecameActive={() => onExpandedExerciseChange(loggedExercise.id)}
+        onDuplicate={() => handleDuplicate(loggedExercise.id)}
         onEditSet={(set) => onEditSet(loggedExercise.id, set)}
         onReplace={onReplace}
       />

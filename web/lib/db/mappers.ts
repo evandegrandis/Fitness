@@ -6,12 +6,14 @@
  */
 
 import type {
+  CardioEntryRow,
   ExerciseRow,
   LoggedExerciseRow,
   LoggedSetRow,
   MuscleGoalRow,
   MuscleMappingRow,
   NewExerciseRow,
+  NewCardioEntryRow,
   NewLoggedExerciseRow,
   NewLoggedSetRow,
   NewMuscleGoalRow,
@@ -38,12 +40,14 @@ import type {
 } from "@/lib/models/enums";
 import type { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
 import type {
+  CardioEntry,
   Exercise,
   LoggedExercise,
   LoggedSet,
   MuscleGoal,
   MuscleMapping,
   RecoveryCheckin,
+  RecoveryCheckinInput,
   SupersetGroup,
   UserSettings,
   WorkoutSession,
@@ -144,8 +148,19 @@ export function exerciseToMappingRows(exercise: Exercise): NewMuscleMappingRow[]
 }
 
 // ---------------------------------------------------------------------------
-// WorkoutSession (exercises -> sets, supersetGroups)
+// WorkoutSession (exercises -> sets, supersetGroups, cardioEntries)
 // ---------------------------------------------------------------------------
+
+export function mapCardioEntryRow(row: CardioEntryRow): CardioEntry {
+  return {
+    id: row.id,
+    activityName: row.activityName,
+    durationSeconds: row.durationSeconds,
+    level: row.level,
+    distanceKm: row.distanceKm,
+    orderIndex: row.orderIndex,
+  };
+}
 
 function mapLoggedSetRow(row: LoggedSetRow): LoggedSet {
   return {
@@ -186,13 +201,14 @@ function mapSupersetGroupRow(row: SupersetGroupRow): SupersetGroup {
 /**
  * Assemble une `WorkoutSession` complète à partir des rows plates issues des
  * jointures (une session, ses logged_exercises, tous les logged_sets de ces
- * exercices, et ses superset_groups).
+ * exercices, ses superset_groups et ses cardio_entries).
  */
 export function mapSessionRow(
   sessionRow: WorkoutSessionRow,
   exerciseRows: LoggedExerciseRow[],
   setRows: LoggedSetRow[],
-  supersetRows: SupersetGroupRow[]
+  supersetRows: SupersetGroupRow[],
+  cardioRows: CardioEntryRow[] = []
 ): WorkoutSession {
   const exercises = exerciseRows
     .filter((e) => e.sessionId === sessionRow.id)
@@ -214,6 +230,10 @@ export function mapSessionRow(
     templateName: sessionRow.templateName,
     exercises,
     supersetGroups,
+    cardioEntries: cardioRows
+      .filter((entry) => entry.sessionId === sessionRow.id)
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map(mapCardioEntryRow),
   };
 }
 
@@ -235,6 +255,18 @@ export function sessionToSupersetRows(session: WorkoutSession): NewSupersetGroup
     sessionId: session.id,
     orderIndex: g.orderIndex,
     memberOrder: g.memberOrder,
+  }));
+}
+
+export function sessionToCardioEntryRows(session: WorkoutSession): NewCardioEntryRow[] {
+  return (session.cardioEntries ?? []).map((entry) => ({
+    id: entry.id,
+    sessionId: session.id,
+    activityName: entry.activityName,
+    durationSeconds: entry.durationSeconds,
+    level: entry.level,
+    distanceKm: entry.distanceKm,
+    orderIndex: entry.orderIndex,
   }));
 }
 
@@ -369,15 +401,17 @@ export function mapRecoveryCheckinRow(row: RecoveryCheckinRow): RecoveryCheckin 
     tookCreatine: row.tookCreatine,
     proteinTargetMet: row.proteinTargetMet,
     sleepHours: row.sleepHours,
+    hadAlcohol: row.hadAlcohol,
   };
 }
 
-export function recoveryCheckinToRow(checkin: RecoveryCheckin): NewRecoveryCheckinRow {
+export function recoveryCheckinToRow(checkin: RecoveryCheckinInput): NewRecoveryCheckinRow {
   return {
     id: checkin.id,
     date: checkin.date,
     tookCreatine: checkin.tookCreatine,
     proteinTargetMet: checkin.proteinTargetMet,
     sleepHours: checkin.sleepHours,
+    hadAlcohol: checkin.hadAlcohol ?? false,
   };
 }

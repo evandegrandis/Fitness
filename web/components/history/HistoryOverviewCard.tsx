@@ -2,6 +2,7 @@
 
 import { StatTile } from "@/components/ui/StatTile";
 import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationMinutes } from "./historyHelpers";
 
 /**
@@ -17,9 +18,11 @@ export function HistoryOverviewCard({
   prCountBySessionId: Map<string, number>;
 }) {
   const totalSets = sessions.reduce(
-    (acc, s) => acc + s.exercises.reduce((subtotal, e) => subtotal + completedWorkSets(e).length, 0),
+    (acc, s) =>
+      acc + s.exercises.reduce((subtotal, e) => subtotal + effectiveSetUnits(completedWorkSets(e)), 0),
     0
   );
+  const displayedTotalSets = Math.round(totalSets * 10) / 10;
   const totalPRs = sessions.reduce((acc, s) => acc + (prCountBySessionId.get(s.id) ?? 0), 0);
   const totalHours = sessions.reduce((acc, s) => acc + sessionDurationMinutes(s).minutes / 60, 0);
 
@@ -27,7 +30,7 @@ export function HistoryOverviewCard({
     <div className="sticky top-0 z-30 -mx-5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl bg-gradient-to-b from-[var(--bg-top)] via-[var(--bg-top)]/90 to-transparent">
       <div className="grid grid-cols-4 gap-2">
         <StatTile value={sessions.length} label="Séances" />
-        <StatTile value={totalSets} label="Sets" />
+        <StatTile value={displayedTotalSets} label="Sets" />
         <StatTile value={totalPRs} label="PR" accent={totalPRs > 0} />
         <StatTile value={totalHours.toFixed(1)} label="Heures" />
       </div>

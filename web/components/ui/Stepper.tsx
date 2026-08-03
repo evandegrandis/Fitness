@@ -8,9 +8,8 @@ const SCRUB_DEAD_ZONE = 12; // px : en-dessous, le scroll natif de la page gagne
 const SCRUB_PX_PER_STEP = 18; // px de glissement par cran
 
 /**
- * Incrémenteur tactile (poids / reps). Trois voies d'ajustement :
+ * Incrémenteur tactile (poids / reps). Deux voies d'ajustement :
  *  - tap unique sur +/- = un pas ;
- *  - appui maintenu sur +/- = répétition accélérée (grands écarts) ;
  *  - **scrub vertical sur le chiffre** = glisser haut/bas pour ajuster vite
  *    (le geste principal à la salle). Zone morte de 12 px pour ne pas voler le
  *    scroll de page ; chevrons fantômes persistants comme affordance.
@@ -34,14 +33,10 @@ export function Stepper({
   label?: string;
   className?: string;
 }) {
-  const workingValue = useRef(value); // source de vérité pendant un appui maintenu
-  const holdTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const repeatInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const repeatCount = useRef(0);
-
   // -- Scrub vertical sur le chiffre --
   const scrubStartY = useRef<number | null>(null);
   const scrubBaseValue = useRef(value);
+  const scrubLastValue = useRef(value);
   const scrubActive = useRef(false);
   const [scrubbing, setScrubbing] = useState(false);
 
@@ -52,36 +47,11 @@ export function Stepper({
     return Math.round(n * 100) / 100;
   };
 
-  const applyStep = (dir: 1 | -1) => {
-    // Accélération : gros pas après plusieurs répétitions.
-    const factor = repeatCount.current > 14 ? 8 : repeatCount.current > 7 ? 3 : 1;
-    const next = clamp(workingValue.current + dir * step * factor);
-    workingValue.current = next;
-    onChange(next);
-  };
-
-  const start = (dir: 1 | -1) => {
-    repeatCount.current = 0;
-    workingValue.current = value; // reseed depuis la valeur courante à chaque appui
-    applyStep(dir); // effet immédiat (couvre le tap simple)
-    holdTimeout.current = setTimeout(() => {
-      repeatInterval.current = setInterval(() => {
-        repeatCount.current += 1;
-        applyStep(dir);
-      }, 85);
-    }, 360);
-  };
-
-  const stop = () => {
-    if (holdTimeout.current) clearTimeout(holdTimeout.current);
-    if (repeatInterval.current) clearInterval(repeatInterval.current);
-    holdTimeout.current = null;
-    repeatInterval.current = null;
-  };
-
   const onScrubDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
     scrubStartY.current = e.clientY;
     scrubBaseValue.current = value;
+    scrubLastValue.current = value;
     scrubActive.current = false;
   };
   const onScrubMove = (e: React.PointerEvent) => {
@@ -95,7 +65,10 @@ export function Stepper({
     }
     const steps = Math.trunc((dy - Math.sign(dy) * SCRUB_DEAD_ZONE) / SCRUB_PX_PER_STEP);
     const next = clamp(scrubBaseValue.current + steps * step);
-    if (next !== value) onChange(next);
+    if (next !== scrubLastValue.current) {
+      scrubLastValue.current = next;
+      onChange(next);
+    }
   };
   const onScrubEnd = () => {
     scrubStartY.current = null;
@@ -109,14 +82,11 @@ export function Stepper({
     <button
       type="button"
       aria-label={aria}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-        start(dir);
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onChange(clamp(value + dir * step));
       }}
-      onPointerUp={stop}
-      onPointerLeave={stop}
-      onPointerCancel={stop}
       className="grid h-11 w-11 shrink-0 select-none place-items-center rounded-full border border-white/10 bg-white/6 transition active:scale-90"
     >
       <Icon size={20} />

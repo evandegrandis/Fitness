@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, Cloud, CloudOff, Loader2, WifiOff } from "lucide-react";
 import type { WorkoutSession } from "@/lib/models/types";
 import { completedWorkSets } from "@/lib/models/types";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 import { useSyncStatus } from "@/lib/sync/status";
 
 /** Badge de synchronisation HONNÊTE : reflète l'état réel, jamais un faux « enregistré ». */
@@ -63,7 +64,9 @@ export function SessionHeader({
     return () => clearInterval(id);
   }, []);
 
-  const totalSets = session.exercises.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
+  const totalSets = Math.round(
+    session.exercises.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0) * 10
+  ) / 10;
 
   return (
     <div className="glass glass-strong glass-card flex items-center justify-between gap-3">

@@ -20,6 +20,7 @@ import { fatigueClassFromRaw, SetPatternMode, SetType } from "./enums";
 import type { FatigueClass, ProgressionPolicy } from "./enums";
 import { LEAF_TO_PARENT, legacyMuscleMapping, MuscleGroup, MuscleParent } from "./muscles";
 import type {
+  CardioEntry,
   Exercise,
   LoggedExercise,
   LoggedSet,
@@ -106,6 +107,15 @@ const supersetGroupSchema = z.object({
   memberIDs: z.array(z.string()),
 });
 
+const cardioEntrySchema = z.object({
+  id: z.string(),
+  activityName: z.string(),
+  durationSeconds: z.number(),
+  level: z.number().nullish(),
+  distanceKm: z.number().nullish(),
+  orderIndex: z.number(),
+});
+
 const sessionSchema = z.object({
   id: z.string(),
   date: z.string(),
@@ -115,6 +125,7 @@ const sessionSchema = z.object({
   templateName: z.string().nullish(),
   exercises: z.array(loggedExerciseSchema),
   supersetGroups: z.array(supersetGroupSchema).nullish(),
+  cardioEntries: z.array(cardioEntrySchema).nullish(),
 });
 
 const templateExerciseSchema = z.object({
@@ -341,6 +352,17 @@ export function parseBackup(json: unknown): BackupData {
       }
     );
 
+    const cardioEntries: CardioEntry[] = (sData.cardioEntries ?? [])
+      .map((entry) => ({
+        id: entry.id,
+        activityName: entry.activityName,
+        durationSeconds: entry.durationSeconds,
+        level: entry.level ?? null,
+        distanceKm: entry.distanceKm ?? null,
+        orderIndex: entry.orderIndex,
+      }))
+      .sort((a, b) => a.orderIndex - b.orderIndex);
+
     const exercisesLogged: LoggedExercise[] = sData.exercises.map(
       (leData, index): LoggedExercise => {
         const loggedId = loggedExerciseIds[index];
@@ -380,6 +402,7 @@ export function parseBackup(json: unknown): BackupData {
       templateName: sData.templateName ?? null,
       exercises: exercisesLogged,
       supersetGroups,
+      cardioEntries,
     };
   });
 

@@ -4,6 +4,10 @@ import { ModeProvider } from "@/components/providers/ModeProvider";
 import { SyncProvider } from "@/components/providers/SyncProvider";
 import { TabBar } from "@/components/ui/TabBar";
 
+// Les séances changent hors du cycle de build (autosave, imports, backfills) :
+// toujours hydrater depuis Neon au chargement, jamais depuis un HTML figé.
+export const dynamic = "force-dynamic";
+
 /**
  * Shell applicatif : lit les données initiales côté serveur, hydrate le store
  * client, applique le thème de mode, et pose la barre d'onglets.

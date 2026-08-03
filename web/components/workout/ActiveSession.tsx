@@ -15,6 +15,23 @@ import { AchievementOverlay } from "./AchievementOverlay";
 import { ExercisePicker } from "./ExercisePicker";
 import { EditSetSheet } from "./EditSetSheet";
 import { SupersetLinkBanner } from "./SupersetLinkBanner";
+import { CardioSection } from "./CardioSection";
+
+/** Carte à garder ouverte lorsqu'une séance active est restaurée. */
+function latestActiveExerciseId(session: WorkoutSession): string | null {
+  let latest: { exerciseId: string; timestampMs: number } | null = null;
+
+  for (const exercise of session.exercises) {
+    for (const set of exercise.sets) {
+      const timestampMs = set.timestamp.getTime();
+      if (!latest || timestampMs > latest.timestampMs) {
+        latest = { exerciseId: exercise.id, timestampMs };
+      }
+    }
+  }
+
+  return latest?.exerciseId ?? null;
+}
 
 /** Écran de séance active : liste d'exercices, timer de repos, actions. */
 export function ActiveSession({
@@ -35,6 +52,9 @@ export function ActiveSession({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<{ loggedExerciseId: string; set: LoggedSet } | null>(null);
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(
+    () => latestActiveExerciseId(session)
+  );
 
   const setSyncStatus = useSyncStatus((s) => s.setStatus);
   const setPending = useSyncStatus((s) => s.setPending);
@@ -47,16 +67,20 @@ export function ActiveSession({
   // Empreinte STABLE des sets : ne change QUE quand un set est ajouté/édité/
   // supprimé (pas à chaque changement de référence de `session`).
   const setFingerprint = session.exercises
-    .map((e) => `${e.id}:${e.sets.map((s) => `${s.id}=${s.weight}x${s.reps}:${s.completed ? 1 : 0}`).join(",")}`)
-    .join("|");
+    .map((e) => `${e.id}:${e.sets.map((s) => `${s.id}=${s.weight}x${s.reps}:${s.setType}:${s.completed ? 1 : 0}`).join(",")}`)
+    .join("|") +
+    `#cardio:${(session.cardioEntries ?? [])
+      .map((entry) => `${entry.id}=${entry.activityName}:${entry.durationSeconds}:${entry.level}:${entry.distanceKm}`)
+      .join(",")}`;
   const totalSetsCount = session.exercises.reduce((acc, e) => acc + e.sets.length, 0);
+  const totalCardioCount = session.cardioEntries?.length ?? 0;
 
   // AUTOSAVE (offline-first) : la séance en cours vit TOUJOURS en local
   // (localStorage via persist) — jamais perdue à la salle, même sans réseau.
   // On tente en plus une écriture base best-effort ~800 ms après un changement.
   // Le statut est HONNÊTE : "offline" si pas de réseau, jamais un faux "saved".
   useEffect(() => {
-    if (finishing.current || totalSetsCount === 0) return;
+    if (finishing.current || (totalSetsCount === 0 && totalCardioCount === 0)) return;
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (isOffline()) {
@@ -84,7 +108,7 @@ export function ActiveSession({
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
     // Séance vide → on jette et on nettoie la base (au cas où un autosave l'a écrite).
-    if (session.exercises.every((e) => e.sets.length === 0)) {
+    if (session.exercises.every((e) => e.sets.length === 0) && (session.cardioEntries?.length ?? 0) === 0) {
       finishing.current = true;
       const id = session.id;
       discard();
@@ -123,9 +147,15 @@ export function ActiveSession({
   const handlePickExercise = (exerciseId: string) => {
     if (replaceTarget) {
       replaceExercise(replaceTarget, exerciseId);
+      setExpandedExerciseId(replaceTarget);
       setReplaceTarget(null);
     } else {
+      const previousIds = new Set(session.exercises.map((exercise) => exercise.id));
       addExercise(exerciseId);
+      const added = useWorkoutStore
+        .getState()
+        .active?.exercises.find((exercise) => !previousIds.has(exercise.id));
+      setExpandedExerciseId(added?.id ?? null);
     }
   };
 
@@ -137,11 +167,15 @@ export function ActiveSession({
         session={session}
         onEditSet={(loggedExerciseId, set) => setEditTarget({ loggedExerciseId, set })}
         onReplace={setReplaceTarget}
+        expandedExerciseId={expandedExerciseId}
+        onExpandedExerciseChange={setExpandedExerciseId}
         onAddExercise={() => {
           setReplaceTarget(null);
           setPickerOpen(true);
         }}
       />
+
+      <CardioSection entries={session.cardioEntries ?? []} />
 
       <RestTimer />
       <UndoToast />

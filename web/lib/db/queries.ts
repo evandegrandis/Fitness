@@ -18,6 +18,7 @@ import {
   mapTemplateRow,
 } from "./mappers";
 import {
+  cardioEntries,
   exercises,
   loggedExercises,
   loggedSets,
@@ -88,9 +89,10 @@ export async function getSessions(): Promise<WorkoutSession[]> {
 
   const sessionIds = finished.map((s) => s.id);
 
-  const [exerciseRows, supersetRows] = await Promise.all([
+  const [exerciseRows, supersetRows, cardioRows] = await Promise.all([
     db.select().from(loggedExercises).where(inArray(loggedExercises.sessionId, sessionIds)),
     db.select().from(supersetGroups).where(inArray(supersetGroups.sessionId, sessionIds)),
+    db.select().from(cardioEntries).where(inArray(cardioEntries.sessionId, sessionIds)),
   ]);
 
   const exerciseIds = exerciseRows.map((e) => e.id);
@@ -100,7 +102,7 @@ export async function getSessions(): Promise<WorkoutSession[]> {
       : [];
 
   return finished.map((sessionRow) =>
-    mapSessionRow(sessionRow, exerciseRows, setRows, supersetRows)
+    mapSessionRow(sessionRow, exerciseRows, setRows, supersetRows, cardioRows)
   );
 }
 
@@ -112,9 +114,10 @@ export async function getSessionById(id: string): Promise<WorkoutSession | null>
   const sessionRow = sessionRows[0];
   if (!sessionRow) return null;
 
-  const [exerciseRows, supersetRows] = await Promise.all([
+  const [exerciseRows, supersetRows, cardioRows] = await Promise.all([
     db.select().from(loggedExercises).where(eq(loggedExercises.sessionId, id)),
     db.select().from(supersetGroups).where(eq(supersetGroups.sessionId, id)),
+    db.select().from(cardioEntries).where(eq(cardioEntries.sessionId, id)),
   ]);
 
   const exerciseIds = exerciseRows.map((e) => e.id);
@@ -123,7 +126,7 @@ export async function getSessionById(id: string): Promise<WorkoutSession | null>
       ? await db.select().from(loggedSets).where(inArray(loggedSets.loggedExerciseId, exerciseIds))
       : [];
 
-  return mapSessionRow(sessionRow, exerciseRows, setRows, supersetRows);
+  return mapSessionRow(sessionRow, exerciseRows, setRows, supersetRows, cardioRows);
 }
 
 // ---------------------------------------------------------------------------

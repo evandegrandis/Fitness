@@ -59,6 +59,7 @@ export function SettingsBackupSection() {
           orderIndex: g.orderIndex,
           memberIDs: g.memberOrder,
         })),
+        cardioEntries: s.cardioEntries ?? [],
       })),
       templates: state.templates.map((t) => ({
         name: t.name,

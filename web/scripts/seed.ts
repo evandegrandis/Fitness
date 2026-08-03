@@ -173,6 +173,7 @@ function resolveRecentSession(
     templateName: null,
     exercises: exercisesLogged,
     supersetGroups: [],
+    cardioEntries: [],
   };
 }
 
@@ -245,6 +246,7 @@ async function main(): Promise<void> {
   // reste de lib/db) quand on tourne en dry-run sans DATABASE_URL.
   const { db } = await import("../lib/db/client");
   const {
+    cardioEntries: cardioEntriesTable,
     exercises: exercisesTable,
     muscleMappings: muscleMappingsTable,
     workoutSessions: workoutSessionsTable,
@@ -260,6 +262,7 @@ async function main(): Promise<void> {
     exerciseToMappingRows,
     exerciseToRow,
     goalToRow,
+    sessionToCardioEntryRows,
     sessionToLoggedExerciseRows,
     sessionToLoggedSetRows,
     sessionToRow,
@@ -275,6 +278,7 @@ async function main(): Promise<void> {
   await db.update(loggedExercisesTable).set({ supersetGroupId: null });
   await db.delete(supersetGroupsTable);
   await db.delete(loggedExercisesTable);
+  await db.delete(cardioEntriesTable);
   await db.delete(workoutSessionsTable);
   await db.delete(templateExercisesTable);
   await db.delete(workoutTemplatesTable);
@@ -313,6 +317,11 @@ async function main(): Promise<void> {
 
   console.log("Insertion des séances...");
   await db.insert(workoutSessionsTable).values(allSessions.map(sessionToRow));
+
+  const cardioRows = allSessions.flatMap(sessionToCardioEntryRows);
+  if (cardioRows.length > 0) {
+    await db.insert(cardioEntriesTable).values(cardioRows);
+  }
 
   const supersetRows = allSessions.flatMap(sessionToSupersetRows);
   if (supersetRows.length > 0) {

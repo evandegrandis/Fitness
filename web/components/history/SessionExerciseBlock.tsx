@@ -1,7 +1,7 @@
 "use client";
 
-import { Link2, Star } from "lucide-react";
-import { setTypeShortLabel } from "@/lib/models/enums";
+import { Flame, Link2, Star } from "lucide-react";
+import { SetType, setTypeShortLabel } from "@/lib/models/enums";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
 
@@ -44,14 +44,30 @@ function ExerciseSetsList({
   recordSetIds: Set<string>;
 }) {
   const sets = orderedSets(logged);
+  const indexed = sets.map((set, index) => ({ set, slot: index + 1 }));
+  const normalSets = indexed.filter(({ set }) => set.setType !== SetType.finisher);
+  const finisherSets = indexed.filter(({ set }) => set.setType === SetType.finisher);
   return (
     <div>
       <p className="text-sm font-semibold text-[--color-fg]">{logged.exerciseName}</p>
       {logged.notes && <p className="mt-0.5 text-xs text-[--color-fg-faint]">{logged.notes}</p>}
       <div className="mt-2 flex flex-col gap-1.5">
-        {sets.map((set, i) => (
-          <SetLine key={set.id} set={set} slot={i + 1} isRecord={recordSetIds.has(set.id)} />
+        {normalSets.map(({ set, slot }) => (
+          <SetLine key={set.id} set={set} slot={slot} isRecord={recordSetIds.has(set.id)} />
         ))}
+        {finisherSets.length > 0 && (
+          <div className="mt-1 rounded-2xl border border-rose-300/25 bg-rose-300/[0.045] p-2">
+            <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[0.68rem] font-semibold uppercase tracking-wide text-rose-200">
+              <Flame size={12} />
+              Finisher · hors prévision
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {finisherSets.map(({ set, slot }) => (
+                <SetLine key={set.id} set={set} slot={slot} isRecord={false} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       {!exercise && <p className="mt-1 text-[0.68rem] text-[--color-fg-faint]">Exercice supprimé du catalogue</p>}
     </div>

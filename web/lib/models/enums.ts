@@ -126,6 +126,8 @@ export const SetType = {
   work: "work",
   backoff: "backoff",
   topSet: "top_set",
+  /** Bloc de fin de séance, conservé dans l'historique mais exclu des ancres normales. */
+  finisher: "finisher",
 } as const;
 
 export type SetType = (typeof SetType)[keyof typeof SetType];
@@ -137,6 +139,7 @@ export const setTypeDisplayName: Record<SetType, string> = {
   work: "Work",
   backoff: "Backoff",
   top_set: "Top Set",
+  finisher: "Finisher",
 };
 
 /** Étiquette courte affichée sur le badge du set ("W"/""/"B"/"T"). */
@@ -145,6 +148,7 @@ export const setTypeShortLabel: Record<SetType, string> = {
   work: "",
   backoff: "B",
   top_set: "T",
+  finisher: "F",
 };
 
 // ---------------------------------------------------------------------------

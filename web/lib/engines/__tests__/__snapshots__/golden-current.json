@@ -37,7 +37,7 @@
   },
   "Lateral raises": {
     "exerciseName": "Lateral raises",
-    "weight": 11,
+    "weight": 10,
     "reps": 10,
     "mode": "record_attempt",
     "reasonCodes": [

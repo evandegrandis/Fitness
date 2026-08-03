@@ -26,6 +26,7 @@ function revive(session: WorkoutSession): WorkoutSession {
     date: d(session.date),
     startTime: d(session.startTime),
     endTime: session.endTime == null ? null : d(session.endTime),
+    cardioEntries: session.cardioEntries ?? [],
     exercises: session.exercises.map((ex) => ({
       ...ex,
       sets: ex.sets.map((s) => ({ ...s, timestamp: d(s.timestamp) })),

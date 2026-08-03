@@ -15,7 +15,13 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { buildRecords, classify, EMPTY_RECORDS, type ExerciseRecords, type RecordKind } from "@/lib/engines/records";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
-import { suggest, type SetSuggestion, type SuggestParams } from "@/lib/engines/progression";
+import {
+  suggest,
+  type HistoryPosition,
+  type SetSuggestion,
+  type SuggestParams,
+} from "@/lib/engines/progression";
+import { compositeSetBlocks, immediateCompositeKind } from "@/lib/engines/set-structure";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { HISTORY_WINDOW, RECORDS_HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
@@ -25,6 +31,7 @@ import {
   orderedSets,
   primaryParent,
   warmupSets,
+  type CardioEntry,
   type Exercise,
   type LoggedExercise,
   type LoggedSet,
@@ -168,9 +175,13 @@ export interface WorkoutState extends ReferenceData {
 
   // -- Sets ------------------------------------------------------------------
   logSet: (loggedExerciseId: string, input: { weight: number; reps: number; setType?: SetType }) => void;
-  editSet: (setId: string, input: { weight: number; reps: number }) => void;
+  editSet: (setId: string, input: { weight: number; reps: number; setType?: SetType }) => void;
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
+
+  // -- Cardio ----------------------------------------------------------------
+  addCardioEntry: (input: Omit<CardioEntry, "id" | "orderIndex">) => void;
+  deleteCardioEntry: (entryId: string) => void;
 
   // -- Suggestions -----------------------------------------------------------
   suggestion: (loggedExerciseId: string) => SetSuggestion;
@@ -237,6 +248,98 @@ export function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId:
     if (found.length >= maxSessions) break;
   }
   return found;
+}
+
+/** Historique + position réelle de l'exercice, alignés pour isoler les finishers tardifs. */
+function recentHistoryContextForExercise(
+  history: WorkoutSession[],
+  exerciseId: string,
+  maxSessions: number
+): { sets: LoggedSet[][]; positions: HistoryPosition[] } {
+  const sets: LoggedSet[][] = [];
+  const positions: HistoryPosition[] = [];
+
+  for (const session of history) {
+    const performed = [...session.exercises]
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .filter((logged) => logged.sets.some((set) => set.completed && set.setType !== SetType.warmup));
+
+    for (const logged of performed) {
+      if (logged.exerciseId !== exerciseId) continue;
+      const normalSets = orderedSets(logged).filter(
+        (set) =>
+          set.setType === SetType.work ||
+          set.setType === SetType.topSet ||
+          set.setType === SetType.backoff
+      );
+      if (normalSets.length === 0) continue;
+      sets.push(normalSets);
+      positions.push({
+        position: performed.findIndex((candidate) => candidate.id === logged.id),
+        sessionExerciseCount: performed.length,
+      });
+      if (sets.length >= maxSessions) return { sets, positions };
+    }
+  }
+
+  return { sets, positions };
+}
+
+function shouldAutoMarkFinisher(
+  session: WorkoutSession,
+  loggedExercise: LoggedExercise,
+  exercise: Exercise,
+  input: { weight: number; reps: number }
+): boolean {
+  const normalizedName = exercise.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const finisherFriendly =
+    exercise.setPatternMode === "bodyweight" ||
+    exercise.setPatternMode === "weighted_bodyweight" ||
+    normalizedName.includes("dip") ||
+    normalizedName.includes("traction") ||
+    normalizedName.includes("lateral") ||
+    normalizedName.includes("elev");
+  if (!finisherFriendly) return false;
+
+  const highRepThreshold = Math.max(15, exercise.repTargetMax);
+  if (input.reps < highRepThreshold) return false;
+
+  const priorNormalSets = session.exercises.flatMap((logged) => completedWorkSets(logged));
+  if (priorNormalSets.length < 5) return false;
+
+  // Un exercice dédié court, exécuté après un vrai bloc de travail, ressemble
+  // à un finisher. Au-delà de deux séries normales on reste conservateur.
+  return completedWorkSets(loggedExercise).length <= 1;
+}
+
+/** Proposition immédiate pour compléter un mini-set en un bloc de 10 reps. */
+function compositeCompletionSuggestion(
+  loggedExercise: LoggedExercise,
+  exercise: Exercise
+): SetSuggestion | null {
+  const normalSets = completedWorkSets(loggedExercise);
+  const last = normalSets.at(-1);
+  if (!last || last.weight <= 0 || last.reps > 4) return null;
+
+  const blocks = compositeSetBlocks(normalSets, { increment: exercise.smallestIncrement });
+  const tail = blocks.at(-1);
+  const tailEndsAtLast = tail?.sets.at(-1)?.id === last.id;
+  const repsAlreadyDone = tailEndsAtLast && tail.kind !== "standard" ? tail.totalReps : last.reps;
+  if (repsAlreadyDone >= 10) return null;
+
+  const increment = Math.max(0.5, exercise.smallestIncrement);
+  const lowerWeight = Math.max(0, last.weight - increment);
+  const remainingReps = Math.max(1, 10 - repsAlreadyDone);
+  return {
+    weight: Math.round(lowerWeight * 100) / 100,
+    reps: remainingReps,
+    setType: SetType.backoff,
+    explanation: `Série courte : baisse d’un cran et enchaîne ${remainingReps} rep${remainingReps > 1 ? "s" : ""} maintenant pour former 1 série effective.`,
+    confidence: 0.94,
+    reasonCodes: ["drop_set_completion"],
+    mode: "fallback_hypertrophy",
+    sessionFatigueWarning: null,
+  };
 }
 
 /**
@@ -472,6 +575,7 @@ function makeEmptySession(templateName: string | null = null): WorkoutSession {
     templateName,
     exercises: [],
     supersetGroups: [],
+    cardioEntries: [],
   };
 }
 
@@ -617,6 +721,9 @@ function shouldExtendBeastSession(recoveryCheckins: RecoveryCheckin[]): boolean 
   if (recoveryCheckins.length === 0) return false;
   const sorted = [...recoveryCheckins].sort((a, b) => b.date.getTime() - a.date.getTime());
   const window = sorted.slice(0, 2);
+  // Une nuit longue après alcool n'est pas traitée comme un signal de bonne
+  // récupération et ne déclenche jamais automatiquement une extension Beast.
+  if (window.some((checkin) => checkin.hadAlcohol)) return false;
   const avgSleep = window.reduce((acc, c) => acc + c.sleepHours, 0) / window.length;
   const adherence = window.filter((c) => c.tookCreatine || c.proteinTargetMet).length;
   return avgSleep >= 7.0 && adherence >= 1;
@@ -898,18 +1005,53 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!loggedExercise) return;
         const exercise = findExercise(state.catalog, loggedExercise.exerciseId);
 
-        const setType = input.setType ?? SetType.work;
+        const requestedSetType = input.setType ?? SetType.work;
+        const setType =
+          requestedSetType !== SetType.warmup &&
+          requestedSetType !== SetType.finisher &&
+          exercise &&
+          shouldAutoMarkFinisher(state.active, loggedExercise, exercise, input)
+            ? SetType.finisher
+            : requestedSetType;
         const priorRecords = exercise ? get().records(exercise.id) : EMPTY_RECORDS;
 
-        const roundIndex = loggedExercise.supersetGroupId !== null ? completedWorkSets(loggedExercise).length + 1 : null;
         const nextSlot = (orderedSets(loggedExercise).reduce((max, s) => Math.max(max, s.setSlotIndex), -1)) + 1;
+        const timestamp = new Date();
+        const previousWorkSet = completedWorkSets(loggedExercise).at(-1);
+        const provisionalSet: LoggedSet = {
+          id: "pending",
+          weight: input.weight,
+          reps: input.reps,
+          setType,
+          timestamp,
+          setSlotIndex: nextSlot,
+          completed: true,
+          supersetRoundIndex: previousWorkSet?.supersetRoundIndex ?? null,
+        };
+        const continuesPreviousRound =
+          previousWorkSet && exercise
+            ? immediateCompositeKind(previousWorkSet, provisionalSet, {
+                increment: exercise.smallestIncrement,
+              }) !== null
+            : false;
+        const nextRoundIndex =
+          orderedSets(loggedExercise).reduce(
+            (max, loggedSet) => Math.max(max, loggedSet.supersetRoundIndex ?? 0),
+            0
+          ) + 1;
+        const roundIndex =
+          loggedExercise.supersetGroupId !== null
+            ? continuesPreviousRound
+              ? previousWorkSet?.supersetRoundIndex ?? Math.max(1, nextRoundIndex - 1)
+              : nextRoundIndex
+            : null;
 
         const newSet: LoggedSet = {
           id: newId(),
           weight: input.weight,
           reps: input.reps,
           setType,
-          timestamp: new Date(),
+          timestamp,
           setSlotIndex: nextSlot,
           completed: true,
           supersetRoundIndex: roundIndex,
@@ -926,7 +1068,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         let recordsCache = state.recordsCache;
         let achievement = state.achievement;
 
-        if (exercise) {
+        if (exercise && setType !== SetType.warmup && setType !== SetType.finisher) {
           const kind = classify(newSet, exercise, priorRecords);
           if (kind) {
             justHitRecord = { ...justHitRecord, [newSet.id]: kind };
@@ -1016,7 +1158,11 @@ export const useWorkoutStore = create<WorkoutState>()(
           exerciseId = e.exerciseId;
           return {
             ...e,
-            sets: e.sets.map((s) => (s.id === setId ? { ...s, weight: input.weight, reps: input.reps } : s)),
+            sets: e.sets.map((s) =>
+              s.id === setId
+                ? { ...s, weight: input.weight, reps: input.reps, setType: input.setType ?? s.setType }
+                : s
+            ),
           };
         });
         const justHitRecord = omitKey(state.justHitRecord, setId);
@@ -1059,6 +1205,35 @@ export const useWorkoutStore = create<WorkoutState>()(
       },
 
       // -----------------------------------------------------------------
+      // Cardio — séparé des LoggedSet pour ne jamais contaminer le volume.
+      // -----------------------------------------------------------------
+
+      addCardioEntry: (input) => {
+        const state = get();
+        if (!state.active) return;
+        const existing = state.active.cardioEntries ?? [];
+        const entry: CardioEntry = {
+          id: newId(),
+          activityName: input.activityName.trim() || "Cardio",
+          durationSeconds: Math.max(0, Math.round(input.durationSeconds)),
+          level: input.level == null ? null : Math.max(0, Math.round(input.level)),
+          distanceKm:
+            input.distanceKm == null ? null : Math.max(0, Math.round(input.distanceKm * 100) / 100),
+          orderIndex: existing.length,
+        };
+        set({ active: { ...state.active, cardioEntries: [...existing, entry] } });
+      },
+
+      deleteCardioEntry: (entryId) => {
+        const state = get();
+        if (!state.active) return;
+        const entries = (state.active.cardioEntries ?? [])
+          .filter((entry) => entry.id !== entryId)
+          .map((entry, index) => ({ ...entry, orderIndex: index }));
+        set({ active: { ...state.active, cardioEntries: entries } });
+      },
+
+      // -----------------------------------------------------------------
       // WS4 — override deload "Je suis frais"
       // -----------------------------------------------------------------
 
@@ -1098,7 +1273,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           } as SetSuggestion;
         }
 
-        const recentHistory = recentWorkSetsForExercise(state.history, exercise.id, HISTORY_WINDOW);
+        const recentContext = recentHistoryContextForExercise(state.history, exercise.id, HISTORY_WINDOW);
+        const recentHistory = recentContext.sets;
         const currentSessionSets = orderedSets(loggedExercise).filter((s) => s.completed);
         const fatigueBaselines = buildFatigueBaselines(state.history, state.catalog, exercise.id);
         const sessionFatigue = buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, fatigueBaselines);
@@ -1109,8 +1285,11 @@ export const useWorkoutStore = create<WorkoutState>()(
 
         const params: SuggestParams = {
           exercise,
-          currentSetIndex: completedWorkSets(loggedExercise).length,
+          currentSetIndex: compositeSetBlocks(completedWorkSets(loggedExercise), {
+            increment: exercise.smallestIncrement,
+          }).length,
           recentHistory,
+          historyPositions: recentContext.positions,
           currentSessionSets,
           sessionFatigue,
           gapDays,
@@ -1118,9 +1297,11 @@ export const useWorkoutStore = create<WorkoutState>()(
           // ALGO_V2 §5.1 — poids de corps pour weighted/assisted bodyweight (predictReps).
           bodyweightKg: readBodyweightKg(state.settings),
         };
-        let result = suggest(params);
+        let result = compositeCompletionSuggestion(loggedExercise, exercise) ?? suggest(params);
 
-        const currentSetIndex = completedWorkSets(loggedExercise).length;
+        const currentSetIndex = compositeSetBlocks(completedWorkSets(loggedExercise), {
+          increment: exercise.smallestIncrement,
+        }).length;
         if (state.activeMode === "beast" && currentSetIndex === 1 && result.weight > 0 && result.mode !== "fallback_hypertrophy") {
           const bump = Math.max(1, exercise.smallestIncrement);
           const bumpedReps = result.mode === "plateau_break" ? result.reps : Math.max(exercise.repTargetMin, result.reps - 1);

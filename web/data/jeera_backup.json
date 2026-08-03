@@ -95,7 +95,7 @@
       "repTargetMin" : 6,
       "setPatternMode" : "straight",
       "setupNotes" : "",
-      "smallestIncrement" : 2.5,
+      "smallestIncrement" : 2,
       "sortOrder" : 0,
       "suggestedRestSeconds" : 90
     },
@@ -274,7 +274,7 @@
       "repTargetMin" : 10,
       "setPatternMode" : "straight",
       "setupNotes" : "",
-      "smallestIncrement" : 1,
+      "smallestIncrement" : 2,
       "sortOrder" : 0,
       "suggestedRestSeconds" : 75
     },

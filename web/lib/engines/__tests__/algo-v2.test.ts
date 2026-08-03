@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { suggest, SuggestionMode, detectPattern, predictReps } from "@/lib/engines/progression";
-import { clusterLoads, activeCluster } from "@/lib/engines/patterns";
+import { clusterLoads, activeCluster, preprocessHistory } from "@/lib/engines/patterns";
 import { SetType, SetPatternMode, FatigueClass } from "@/lib/models/enums";
 import { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
@@ -115,6 +115,67 @@ describe("ALGO_V2 §2 — detectPattern", () => {
     const exercise = makeExercise({ setPatternMode: SetPatternMode.straight });
     const history = [sTSB([60, 8], [60, 7]), sTSB([60, 8], [60, 6]), sTSB([60, 8], [60, 7])];
     expect(detectPattern(exercise, history)).toBe("STRAIGHT");
+  });
+
+  it("ISOLATION_FINISHER : exercice court placé tard dans les séances", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 8, repTargetMax: 12 });
+    const history = [sTSB([12, 10], [12, 7]), sTSB([12, 10], [12, 8]), sTSB([12, 10], [12, 7])];
+    const positions = [
+      { position: 8, sessionExerciseCount: 10 },
+      { position: 7, sessionExerciseCount: 9 },
+      { position: 9, sessionExerciseCount: 11 },
+    ];
+    expect(detectPattern(exercise, history, positions)).toBe("ISOLATION_FINISHER");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Drop-sets / finishers : nettoyage des ancres et du profil empirique
+// ---------------------------------------------------------------------------
+
+describe("structure intra-exercice — historique normalisé pour la prédiction", () => {
+  it("un drop-set immédiat ne crée qu'un set structurel et sa continuation n'entre pas dans les samples", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, smallestIncrement: 2.5 });
+    const started = new Date("2026-08-01T10:00:00.000Z");
+    const lead = makeSet({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started });
+    const drop = makeSet({
+      weight: 75,
+      reps: 6,
+      setSlotIndex: 1,
+      timestamp: new Date(started.getTime() + 15_000),
+      setType: SetType.backoff,
+    });
+
+    const processed = preprocessHistory([[lead, drop]], exercise, exercise.smallestIncrement);
+    expect(processed[0].workSets).toEqual([lead]);
+    expect(processed[0].amorce?.id).toBe(lead.id);
+  });
+
+  it("un burnout final hautes reps après baisse franche est exclu de l'ancre normale", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, smallestIncrement: 2.5 });
+    const started = new Date("2026-08-01T10:00:00.000Z");
+    const normal = makeSet({ weight: 20, reps: 6, setSlotIndex: 0, timestamp: started });
+    const finisher = makeSet({
+      weight: 0,
+      reps: 15,
+      setSlotIndex: 1,
+      timestamp: new Date(started.getTime() + 300_000),
+      setType: SetType.backoff,
+    });
+
+    const processed = preprocessHistory([[normal, finisher]], exercise, exercise.smallestIncrement);
+    expect(processed[0].workSets).toEqual([normal]);
+    expect(processed[0].amorce?.id).toBe(normal.id);
+  });
+
+  it("les sets d'un finisher dédié restent disponibles dans sa branche spécifique", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, smallestIncrement: 2.5 });
+    const sets = sTSB([12, 10], [12, 7]);
+    const processed = preprocessHistory([sets], exercise, exercise.smallestIncrement, {
+      positions: [{ position: 8, sessionExerciseCount: 10 }],
+      preserveDedicatedFinishers: true,
+    });
+    expect(processed[0].workSets).toHaveLength(2);
   });
 });
 

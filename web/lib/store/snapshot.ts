@@ -5,6 +5,7 @@
 
 import { displayedRecordSetIDs, type RecordKind } from "@/lib/engines/records";
 import { parentSets, rolling7DayProgress } from "@/lib/engines/effective-sets";
+import { effectiveSetUnits, setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import {
   completedWorkSets,
@@ -52,8 +53,12 @@ function formatDuration(startTime: Date, endTime: Date): string {
 }
 
 /** Miroir de `WorkoutSession.totalWorkSets` : total des work sets complétés. */
-function totalWorkSets(session: WorkoutSession): number {
-  return session.exercises.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
+function totalWorkSets(session: WorkoutSession, exerciseIndex: Map<string, Exercise>): number {
+  const total = session.exercises.reduce((acc, logged) => {
+    const increment = exerciseIndex.get(logged.exerciseId)?.smallestIncrement;
+    return acc + effectiveSetUnits(completedWorkSets(logged), { increment });
+  }, 0);
+  return Math.round(total * 10) / 10;
 }
 
 export interface BuildSnapshotParams {
@@ -74,16 +79,20 @@ export function buildFinishedWorkoutSnapshot(params: BuildSnapshotParams): Finis
   const { session, exercises, justHitRecord, finishedSessions, goals } = params;
   const exerciseIndex = new Map(exercises.map((e) => [e.id, e]));
 
-  const sets = totalWorkSets(session);
+  const muscleTotals = new Map<MuscleParent, number>();
+  const sets = totalWorkSets(session, exerciseIndex);
   const duration = formatDuration(session.startTime, session.endTime ?? new Date());
 
-  const prCount = session.exercises
-    .flatMap((e) => completedWorkSets(e))
-    .filter((s) => justHitRecord[s.id] !== undefined).length;
+  const prCount = session.exercises.reduce((count, logged) => {
+    const exercise = exerciseIndex.get(logged.exerciseId);
+    const eligible = setsForNormalPrediction(completedWorkSets(logged), {
+      increment: exercise?.smallestIncrement,
+    });
+    return count + eligible.filter((set) => justHitRecord[set.id] !== undefined).length;
+  }, 0);
 
   const progressionSignal = prCount > 0 ? "Haussier" : sets >= 12 ? "Stable+" : "Stable";
 
-  const muscleTotals = new Map<MuscleParent, number>();
   for (const logged of session.exercises) {
     const exercise = exerciseIndex.get(logged.exerciseId);
     for (const [parent, value] of parentSets(logged, exercise)) {

@@ -6,6 +6,7 @@
 
 import { displayedRecordSetIDs } from "@/lib/engines/records";
 import { completedWorkSets, orderedSets, type Exercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 
 /** ~3,5 min par série de travail (exécution + repos), moyenne réaliste toutes séries confondues. */
 const MINUTES_PER_SET_ESTIMATE = 3.5;
@@ -19,7 +20,7 @@ export function sessionDurationMinutes(session: WorkoutSession): { minutes: numb
   if (session.endTime) {
     return { minutes: Math.round((session.endTime.getTime() - session.startTime.getTime()) / 60_000), estimated: false };
   }
-  const sets = session.exercises.reduce((acc, e) => acc + completedWorkSets(e).length, 0);
+  const sets = session.exercises.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0);
   return { minutes: Math.round(sets * MINUTES_PER_SET_ESTIMATE), estimated: true };
 }
 

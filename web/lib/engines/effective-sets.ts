@@ -13,9 +13,11 @@ import {
   completedWorkSets,
   type Exercise,
   type LoggedExercise,
+  type LoggedSet,
   type MuscleGoal,
   type WorkoutSession,
 } from "@/lib/models/types";
+import { effectiveSetUnits } from "@/lib/engines/set-structure";
 
 // ---------------------------------------------------------------------------
 // Statut de couverture
@@ -101,7 +103,9 @@ function addDays(date: Date, days: number): Date {
 export function leafSets(loggedExercise: LoggedExercise, exercise: Exercise | undefined): Map<MuscleGroup, number> {
   const result = new Map<MuscleGroup, number>();
   if (!exercise) return result;
-  const completed = completedWorkSets(loggedExercise).length;
+  const completed = effectiveSetUnits(completedWorkSets(loggedExercise), {
+    increment: exercise.smallestIncrement,
+  });
   if (completed <= 0) return result;
   for (const mapping of exercise.muscleMappings) {
     result.set(mapping.muscleGroup, (result.get(mapping.muscleGroup) ?? 0) + completed * mapping.coefficient);
@@ -117,7 +121,9 @@ export function leafSets(loggedExercise: LoggedExercise, exercise: Exercise | un
 export function parentSets(loggedExercise: LoggedExercise, exercise: Exercise | undefined): Map<MuscleParent, number> {
   const result = new Map<MuscleParent, number>();
   if (!exercise) return result;
-  const completed = completedWorkSets(loggedExercise).length;
+  const completed = effectiveSetUnits(completedWorkSets(loggedExercise), {
+    increment: exercise.smallestIncrement,
+  });
   if (completed <= 0) return result;
   for (const parent of MUSCLE_PARENTS) {
     const coeff = aggregateCoefficient(exercise, parent);
@@ -330,8 +336,9 @@ export function parentsWorkedInWeek(sessions: WorkoutSession[], exercises: Exerc
 export function rollingStatusLine(
   progress: ParentMuscleProgress[],
   sessions: WorkoutSession[],
-  referenceDate: Date = new Date()
+  _referenceDate: Date = new Date()
 ): string {
+  void _referenceDate;
   const withGoals = progress.filter((p) => p.goalSets > 0);
   if (withGoals.length === 0) return "Pas encore d'objectifs configurés";
 
@@ -397,4 +404,17 @@ export function liveParentImpact(exercise: Exercise, completedSets: number): Map
     }
   }
   return result;
+}
+
+/**
+ * Variante à privilégier dès que l'appelant possède les sets eux-mêmes : elle
+ * évite que deux mini-blocs d'un drop-set apparaissent comme "+2" en direct.
+ * `liveParentImpact(exercise, number)` reste compatible pour les appelants qui
+ * n'ont encore qu'un compteur agrégé.
+ */
+export function liveParentImpactForSets(exercise: Exercise, sets: LoggedSet[]): Map<MuscleParent, number> {
+  return liveParentImpact(
+    exercise,
+    effectiveSetUnits(sets, { increment: exercise.smallestIncrement })
+  );
 }

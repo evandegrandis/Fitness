@@ -8,6 +8,7 @@
  */
 
 import { ALGO_V2 } from "@/lib/engines/constants";
+import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { SetPatternMode as SPM, SetType as ST } from "@/lib/models/enums";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
 
@@ -16,6 +17,18 @@ import type { Exercise, LoggedSet } from "@/lib/models/types";
 // ---------------------------------------------------------------------------
 
 export type SetRole = "amorce" | "top" | "backoff" | "straight" | "bw" | "finisher";
+
+export interface HistoryPosition {
+  position: number;
+  sessionExerciseCount: number;
+}
+
+export interface PreprocessHistoryOptions {
+  /** Position alignée sur `history`, utilisée pour isoler les finishers dédiés. */
+  positions?: HistoryPosition[];
+  /** La branche ISOLATION_FINISHER garde ses sets dédiés comme profil spécifique. */
+  preserveDedicatedFinishers?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // P1-P5 — pré-traitement d'une séance
@@ -57,7 +70,9 @@ export function median(xs: number[]): number {
 function provisionalAmorceLoad(priorSessions: LoggedSet[][]): number | null {
   const loads: number[] = [];
   for (const session of priorSessions.slice(0, 5)) {
-    const completed = session.filter((s) => s.completed && s.setType !== ST.warmup);
+    const completed = session.filter(
+      (s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher
+    );
     if (completed.length === 0) continue;
     const maxReps = Math.max(...completed.map((s) => s.reps));
     const first = completed.find((s) => s.reps === maxReps);
@@ -80,7 +95,7 @@ function preprocessSession(
   const provisional = provisionalAmorceLoad(priorSessions);
 
   return completed.filter((s) => {
-    if (s.setType !== ST.warmup) return true;
+    if (s.setType !== ST.warmup) return s.setType !== ST.finisher;
     if (provisional === null) return false;
     return s.weight >= 0.9 * provisional && s.reps >= exercise.repTargetMin;
   });
@@ -129,14 +144,32 @@ export function classifySessionRoles(workSets: LoggedSet[], increment: number): 
  * Pipeline complet P1-P5 pour une fenêtre de séances (plus récent en premier).
  * `exercise` et `increment` pilotent P2 (reclassification warmup) et le seuil top (P3).
  */
-export function preprocessHistory(history: LoggedSet[][], exercise: Exercise, increment: number): ProcessedSession[] {
+export function preprocessHistory(
+  history: LoggedSet[][],
+  exercise: Exercise,
+  increment: number,
+  options: PreprocessHistoryOptions = {}
+): ProcessedSession[] {
   const result: ProcessedSession[] = [];
   for (let i = 0; i < history.length; i++) {
     const priorSessions = history.slice(i + 1); // plus anciennes que la séance i
-    const workSets =
+    const eligibleSets =
       exercise.setPatternMode === SPM.weightedBodyweight
-        ? history[i].filter((s) => s.completed) // §P3 : sets weight===0 sont des sets bw, on les garde tous
+        ? history[i].filter(
+            (s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher
+          ) // §P3 : les sets weight===0 sont des sets bw
         : preprocessSession(history[i], exercise, priorSessions);
+
+    // P2 est une reclassification dérivée : le tag persisté reste warmup, mais l'analyse de
+    // structure doit le voir comme un work set. Aucun objet source n'est muté.
+    const structurallyWorkSets = eligibleSets.map((set) =>
+      set.setType === ST.warmup ? { ...set, setType: ST.work } : set
+    );
+    const workSets = setsForNormalPrediction(structurallyWorkSets, {
+      increment,
+      position: options.positions?.[i],
+      preserveDedicatedFinisher: options.preserveDedicatedFinishers,
+    });
     result.push(classifySessionRoles(workSets, increment));
   }
   return result;
@@ -153,11 +186,6 @@ export type DetectedPattern =
   | "TOP_SET_BACKOFF"
   | "ISOLATION_FINISHER"
   | "STRAIGHT";
-
-export interface HistoryPosition {
-  position: number;
-  sessionExerciseCount: number;
-}
 
 function patternFromFixedMode(exercise: Exercise): DetectedPattern {
   switch (exercise.setPatternMode) {
@@ -186,7 +214,19 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
   // 1. Verrou assisted_bodyweight : jamais overridé.
   if (exercise.setPatternMode === SPM.assistedBodyweight) return "ASSISTED_BW";
 
-  const sessions = rawHistory.filter((s) => s.some((set) => set.completed));
+  // Les continuations de drop-set/rest-pause ne doivent ni gonfler le nombre de sets, ni faire
+  // basculer artificiellement BW/TOP_SET_BACKOFF. On garde toutefois les finishers dédiés ici :
+  // leur position et leur faible nombre de sets sont précisément les signaux de l'étape 6.
+  const sessions = rawHistory
+    .map((sets, index) => ({
+      sets: setsForNormalPrediction(sets, {
+        increment: exercise.smallestIncrement,
+        position: positions?.[index],
+        preserveDedicatedFinisher: true,
+      }),
+      position: positions?.[index],
+    }))
+    .filter((entry) => entry.sets.length > 0);
   const S = sessions.length;
 
   // 2. Historique insuffisant : suit le setPatternMode figé.
@@ -194,7 +234,7 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
 
   // 3. WEIGHTED_BW_VARIABLE : >= WBW_MIXED_SESSIONS séances avec un set BW ET un set lesté.
   const mixedSessions = sessions.filter((session) => {
-    const completed = session.filter((s) => s.completed);
+    const completed = session.sets;
     const hasBW = completed.some((s) => s.weight === 0);
     const hasWeighted = completed.some((s) => s.weight > 0);
     return hasBW && hasWeighted;
@@ -202,7 +242,7 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
   if (mixedSessions >= ALGO_V2.WBW_MIXED_SESSIONS) return "WEIGHTED_BW_VARIABLE";
 
   // 4. BW_REP : part des sets à weight === 0 >= BW_SET_SHARE.
-  const allSets = sessions.flatMap((s) => s.filter((set) => set.completed));
+  const allSets = sessions.flatMap((session) => session.sets);
   if (allSets.length > 0) {
     const bwShare = allSets.filter((s) => s.weight === 0).length / allSets.length;
     if (bwShare >= ALGO_V2.BW_SET_SHARE) return "BW_REP";
@@ -211,7 +251,7 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
   // 5. TOP_SET_BACKOFF : parmi les séances à >= 2 sets de travail, part des séances où le set le
   // plus lourd n'est PAS le premier chronologique ET dépasse le premier d'au moins 1 incrément.
   const multiSetSessions = sessions
-    .map((s) => [...s.filter((set) => set.completed)].sort((a, b) => a.setSlotIndex - b.setSlotIndex))
+    .map((session) => session.sets)
     .filter((s) => s.length >= 2);
   if (multiSetSessions.length > 0) {
     const topSetLaterCount = multiSetSessions.filter((s) => {
@@ -223,10 +263,11 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
   }
 
   // 6. ISOLATION_FINISHER : nécessite `positions` alignés sur rawHistory ; si absent, on saute.
-  if (positions && positions.length === sessions.length) {
-    const setsPerSession = sessions.map((s) => s.filter((set) => set.completed).length);
+  if (positions && sessions.every((session) => session.position !== undefined)) {
+    const setsPerSession = sessions.map((session) => session.sets.length);
     const medSets = median(setsPerSession);
-    const posRatios = positions
+    const posRatios = sessions
+      .map((session) => session.position!)
       .filter((p) => p.sessionExerciseCount > 1)
       .map((p) => p.position / (p.sessionExerciseCount - 1));
     const medPos = posRatios.length > 0 ? median(posRatios) : 0;
