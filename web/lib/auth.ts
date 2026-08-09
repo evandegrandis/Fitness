@@ -38,6 +38,8 @@ export async function login(formData: FormData): Promise<void> {
  * local sans `SESSION_SECRET`, on conserve le mode sans authentification déjà prévu par le proxy.
  */
 export async function requireAuthenticatedSession(): Promise<void> {
+  if (process.env.JEERA_PUBLIC_MODE === "true") return;
+
   const expected = process.env.SESSION_SECRET;
   if (!expected) {
     if (process.env.NODE_ENV === "production") {

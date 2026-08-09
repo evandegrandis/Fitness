@@ -24,6 +24,10 @@ export function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // L'app est volontairement publique lorsque ce choix est explicite côté hébergeur.
+  // On ne déduit jamais ce mode de l'absence accidentelle d'un secret.
+  if (process.env.JEERA_PUBLIC_MODE === "true") return NextResponse.next();
+
   const expected = process.env.SESSION_SECRET;
   // Dev local explicite : mode sans auth toléré. Un build déployé ne doit en revanche JAMAIS
   // devenir public silencieusement parce qu'une variable Vercel manque.
