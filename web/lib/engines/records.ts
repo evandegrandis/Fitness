@@ -9,7 +9,8 @@
  */
 
 import { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
-import { completedWorkSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
+import { immediateCompositeKind } from "@/lib/engines/set-structure";
+import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
 import { SetType } from "@/lib/models/enums";
 
 // ---------------------------------------------------------------------------
@@ -45,16 +46,89 @@ export const EMPTY_RECORDS: ExerciseRecords = {
 };
 
 /** Miroir de `RecordKind` (Swift). */
-export type RecordKind = "heaviestWeight" | "estimated1RM" | "repsAtWeight" | "bodyweightReps";
+export type RecordKind =
+  | "heaviestWeight"
+  | "estimated1RM"
+  | "repsAtWeight"
+  | "bodyweightReps"
+  | "finisherReps";
+
+/**
+ * Piste volontairement séparée des PR normaux : un finisher ne doit jamais
+ * modifier heaviest/e1RM/repsAtWeight, mais peut battre son propre meilleur
+ * nombre de reps à charge identique.
+ */
+export interface FinisherRecords {
+  bestRepsByWeight: Record<string, number>;
+}
+
+export const EMPTY_FINISHER_RECORDS: FinisherRecords = { bestRepsByWeight: {} };
+
+function finisherWeightKey(weight: number): string {
+  return String(Math.round(weight * 100) / 100);
+}
+
+export function buildFinisherRecords(historicalSets: LoggedSet[]): FinisherRecords {
+  const bestRepsByWeight: Record<string, number> = {};
+  for (const set of historicalSets) {
+    if (!set.completed || set.setType !== SetType.finisher) continue;
+    const key = finisherWeightKey(set.weight);
+    bestRepsByWeight[key] = Math.max(bestRepsByWeight[key] ?? 0, set.reps);
+  }
+  return { bestRepsByWeight };
+}
+
+export function isFinisherRepRecord(set: LoggedSet, prior: FinisherRecords): boolean {
+  return (
+    set.completed &&
+    set.setType === SetType.finisher &&
+    set.reps > (prior.bestRepsByWeight[finisherWeightKey(set.weight)] ?? 0)
+  );
+}
+
+/** Classification dédiée, volontairement impossible à confondre avec un PR normal. */
+export function classifyFinisher(set: LoggedSet, prior: FinisherRecords): RecordKind | null {
+  return isFinisherRepRecord(set, prior) ? "finisherReps" : null;
+}
 
 /**
  * Marge minimale d'amélioration relative sur l'e1RM précédent pour compter
  * comme un PR. Assez petite pour capter une vraie progression (80→82 = +2.5%)
  * mais assez grande pour éviter de flaguer chaque variation d'un demi-kilo.
+ * Exportée (BENCHMARK_LEVEL_SPEC.md §3, P3.3) : `progression.ts::suggest()` réutilise EXACTEMENT
+ * cette marge pour `readyForPR`, afin que le signal feu ne promette jamais un PR qui ne se
+ * matérialiserait pas en étoile une fois le set réellement loggé (source de vérité unique).
  */
-const K_E1RM_PR_THRESHOLD = 1.02;
+export const K_E1RM_PR_THRESHOLD = 1.02;
 
 const WORK_KINDS = new Set<string>([SetType.work, SetType.topSet, SetType.backoff]);
+
+/**
+ * Séries autorisées à porter un record normal. Une continuation immédiate de
+ * drop-set/rest-pause appartient au bloc logique précédent : elle contribue au
+ * volume, mais ne peut jamais devenir un second PR ni modifier les records
+ * utilisés par la progression.
+ *
+ * L'ordre reçu est conservé volontairement. Les appelants historiques
+ * concatènent les séances/occurrences ; le retour des slots à zéro empêche une
+ * fusion accidentelle entre deux séances.
+ */
+export function normalRecordSets(sets: LoggedSet[], exercise: Exercise): LoggedSet[] {
+  const leads: LoggedSet[] = [];
+  let previousWorkSet: LoggedSet | undefined;
+
+  for (const set of sets) {
+    if (!set.completed || !WORK_KINDS.has(set.setType)) continue;
+    const continuesPrevious =
+      previousWorkSet !== undefined &&
+      previousWorkSet.supersetRoundIndex === set.supersetRoundIndex &&
+      immediateCompositeKind(previousWorkSet, set, { increment: exercise.smallestIncrement }) !== null;
+    if (!continuesPrevious) leads.push(set);
+    previousWorkSet = set;
+  }
+
+  return leads;
+}
 
 export const RecordsEngine = {
   /**
@@ -63,7 +137,7 @@ export const RecordsEngine = {
    * séance actuellement active.
    */
   buildRecords(exercise: Exercise, historicalSets: LoggedSet[]): ExerciseRecords {
-    const completedWork = historicalSets.filter((s) => s.completed && WORK_KINDS.has(s.setType));
+    const completedWork = normalRecordSets(historicalSets, exercise);
 
     // Records pondérés : reps validées (>= repTargetMin) ET poids > 0.
     const weightedValidated = completedWork.filter((s) => s.weight > 0 && s.reps >= exercise.repTargetMin);
@@ -166,7 +240,9 @@ export const RecordsEngine = {
   isRecordSet(set: LoggedSet, amongSets: LoggedSet[], exercise: Exercise): boolean {
     if (!set.completed || !WORK_KINDS.has(set.setType)) return false;
 
-    const others = amongSets.filter((s) => s.id !== set.id && s.completed && WORK_KINDS.has(s.setType));
+    const eligible = normalRecordSets(amongSets, exercise);
+    if (!eligible.some((candidate) => candidate.id === set.id)) return false;
+    const others = eligible.filter((candidate) => candidate.id !== set.id);
 
     if (set.weight === 0) {
       const priorBWMax = others
@@ -203,8 +279,15 @@ export const RecordsEngine = {
    *   - le PR pondéré absolu le plus fort sous validation, si distinct
    */
   displayedRecordSetIDs(loggedExercise: LoggedExercise, amongSets: LoggedSet[], exercise: Exercise): Set<string> {
-    const candidates = completedWorkSets(loggedExercise).filter((s) => RecordsEngine.isRecordSet(s, amongSets, exercise));
-    if (candidates.length === 0) return new Set();
+    const candidates = normalRecordSets(orderedSets(loggedExercise), exercise).filter((s) =>
+      RecordsEngine.isRecordSet(s, amongSets, exercise)
+    );
+    const finisherCandidates = orderedSets(loggedExercise).filter((set) => {
+      if (!set.completed || set.setType !== SetType.finisher) return false;
+      const prior = buildFinisherRecords(amongSets.filter((candidate) => candidate.id !== set.id));
+      return isFinisherRepRecord(set, prior);
+    });
+    if (candidates.length === 0 && finisherCandidates.length === 0) return new Set();
 
     const kept: LoggedSet[] = [];
 
@@ -232,6 +315,10 @@ export const RecordsEngine = {
     if (bestAbsoluteWeighted && !kept.some((s) => s.id === bestAbsoluteWeighted.id)) {
       kept.push(bestAbsoluteWeighted);
     }
+
+    // La piste finisher reste séparée : un meilleur nombre de reps est gardé
+    // par charge, sans jamais entrer dans les catégories poids/e1RM normales.
+    kept.push(...finisherCandidates);
 
     return new Set(kept.map((s) => s.id));
   },

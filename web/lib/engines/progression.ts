@@ -26,11 +26,28 @@
 
 import type { ProgressionPolicy, SetPatternMode, SetType } from "@/lib/models/enums";
 import { FATIGUE_CLASS_PROPERTIES, SetPatternMode as SPM, SetType as ST } from "@/lib/models/enums";
-import type { Exercise, LoggedSet } from "@/lib/models/types";
+import type { Exercise, LoggedSet, MuscleGoal, UserSettings, WorkoutSession } from "@/lib/models/types";
 import { primaryParent } from "@/lib/models/types";
+import {
+  buildFinisherRecords,
+  buildRecords,
+  classifyFinisher,
+  K_E1RM_PR_THRESHOLD,
+  normalRecordSets,
+} from "@/lib/engines/records";
+import {
+  benchmarkLevel,
+  resolveStandard,
+  strengthLevelLabel,
+  strengthLevelRank,
+  strengthStandardAxisSupportsSet,
+  strengthStandardValueForSet,
+  type ResolvedStandard,
+} from "@/lib/engines/benchmark";
 import { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { applyDeload, deloadMessage } from "@/lib/engines/deload";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
+import { estimated1RM } from "@/lib/engines/e1rm";
 import {
   clusterLoads,
   activeCluster,
@@ -55,6 +72,7 @@ import {
 import { predictReps as predictRepsPure, type LoadMode, type PredictContext, type RepSample } from "@/lib/engines/predict";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { easierVariantName } from "@/lib/engines/variants";
+import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
 
 export { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
 export { applyDeload, deloadTierForGap, deloadMessage } from "@/lib/engines/deload";
@@ -91,13 +109,57 @@ export interface SetSuggestion {
   /** ALGO_V2 §0/§11 — rôle du set suggéré (dérivé, jamais persisté). */
   role?: SetRole;
   /**
-   * ALGO_V2 §7.4/§9 — nom de la variante plus facile vers laquelle basculer (`VARIANT_LINKS`,
-   * `lib/engines/variants.ts`), null si aucune bascule proposée. Porte le NOM d'exercice (pas
-   * d'id : la résolution nom -> id catalogue est faite côté store/UI, hors périmètre moteur).
+   * VARIATION_CYCLING_SPEC §8 — `Exercise.id` RÉEL d'une variante vers laquelle basculer, null si
+   * aucune bascule proposée. Deux sources possibles, TOUJOURS résolues en id par `suggest()` (plus
+   * jamais un nom, fin du code mort — §8) :
+   *   - §7.4/§9 (BW_REP, plancher de reps) : nom `VARIANT_LINKS` (`lib/engines/variants.ts`) résolu
+   *     dans `catalog` (`SuggestParams.catalog`) ; `null` si `catalog` absent ou nom introuvable.
+   *   - §2/§4/§6 (plateau daté, `isPlateau`) : `selectAlternative()` (`lib/engines/variation-select.ts`),
+   *     déjà un id ; `reasonCodes` porte alors `"variation"`.
+   *   - §3/§4.2 (P2.3, rotation PRÉEMPTIVE sur `progressionState === "slowing"`, PAS encore
+   *     `isPlateau`) : même `selectAlternative()`, mais `reasonCodes` porte `"variation_preemptive"`
+   *     à la place (mutuellement exclusif avec `"variation"` — `progressionState` ne peut jamais
+   *     être `"plateaued"` ET `"slowing"` en même temps, `deriveStateV2`).
+   * VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : ce champ peut être masqué a posteriori par le
+   * store (`lib/store/workout.ts::suggestion()`) si `exercise` est la cible d'une rotation acceptée
+   * il y a moins de `ALGO_V2.ROTATION_COOLDOWN_DAYS` jours — `suggest()` lui-même ne connaît pas
+   * `rotationAcceptedAt` (bookkeeping store, pas moteur pur).
    */
   switchToVariantId?: string | null;
-  /** ALGO_V2 §8 — technique d'intensité appliquée sur ce set (escalade anti-plateau). */
+  /**
+   * ALGO_V2 §8 (historique) — technique d'intensité appliquée sur ce set. VARIATION_CYCLING_SPEC
+   * décision #3 : plus AUCUNE technique d'intensité n'est prescrite par l'app (rest-pause retiré
+   * avec `plateauEscalation()`, voir §4) — ce champ reste TOUJOURS `null` désormais. Conservé pour
+   * compat de type (consommateurs existants), pas retiré (décision d'impl. tracée, P1.6).
+   */
   intensityTechnique?: "rest_pause" | null;
+  /**
+   * VARIATION_CYCLING_SPEC §3/§8 — état à 3 niveaux (`DeriveStateV2Result.progressionState`), pour
+   * l'indice discret UI (`ExerciseCard.tsx`, "progrès qui ralentit" sur `slowing`, rien sur
+   * `progressing`/`plateaued` — le plateau a sa propre carte dans le bilan, §8). `undefined` sur le
+   * chemin v1 (`deriveState`, pas de calcul date-based — §9) : l'UI doit traiter `undefined` comme
+   * "pas d'indice", jamais comme `slowing`.
+   */
+  progressionState?: "progressing" | "slowing" | "plateaued";
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — signal feu intra-séance : si le poids proposé ci-dessus est
+   * atteint aux reps ci-dessus, l'e1RM résultant franchirait le palier StrengthLevel suivant.
+   * `undefined`/`false` si pas de `strengthStandardKey`/`profile` fournis (§9, dégradation gracieuse
+   * — jamais calculé à partir de rien). Mutuellement compatible avec `readyForPR` (les deux peuvent
+   * être vrais en même temps, ex. un nouveau max qui franchit aussi Avancé).
+   */
+  readyForLevelUp?: boolean;
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — le poids proposé, aux reps ciblées ET si `reps >=
+   * exercise.repTargetMin` (même garde que `RecordsEngine.classify`, pour ne jamais promettre un feu
+   * qui ne se matérialiserait pas en vraie étoile de record une fois loggé), battrait le record e1RM
+   * de l'exercice (`RecordsEngine.buildRecords(exercise, historicalSets).bestE1RM`, marge anti-flapping
+   * 2% identique à `records.ts`). Ne dépend PAS de `profile`/`strengthStandardKey` — fonctionne pour
+   * tout exercice avec de l'historique, benchmark StrengthLevel ou pas.
+   */
+  readyForPR?: boolean;
+  /** Nom FR du palier StrengthLevel franchi si `readyForLevelUp` (ex. "Avancé") ; `undefined` sinon. */
+  nextLevelName?: string;
 }
 
 function makeSuggestion(
@@ -185,7 +247,7 @@ function effectiveLoad(load: number, mode: SetPatternMode): number {
   return load;
 }
 
-function stepLoad(load: number, increment: number, mode: SetPatternMode, towardHarder: boolean): number {
+export function stepLoad(load: number, increment: number, mode: SetPatternMode, towardHarder: boolean): number {
   if (mode === SPM.assistedBodyweight) {
     return towardHarder ? Math.max(0, load - increment) : load + increment;
   }
@@ -280,9 +342,13 @@ function progressVelocityScore(exercise: Exercise, history: LoggedSet[][]): numb
   if (anchors.length < 2) return 0;
   let velocity = 0;
   let alpha = 1.0;
-  for (let idx = anchors.length - 1; idx >= 1; idx--) {
-    const cur = anchors[idx];
-    const prev = anchors[idx - 1];
+  // `history`/`anchors` sont plus récents en premier. Chaque transition compare donc
+  // `anchors[idx]` (ancien) à `anchors[idx - 1]` (nouveau), et la transition la plus récente
+  // reçoit le poids maximal. L'ancienne boucle faisait exactement l'inverse : une progression
+  // récente était notée comme une régression et les événements les plus vieux dominaient.
+  for (let idx = 1; idx < anchors.length; idx++) {
+    const cur = anchors[idx - 1];
+    const prev = anchors[idx];
     let event = 0.0;
     if (cur.weight > prev.weight && cur.reps >= prev.reps) event = 1.5;
     else if (Math.abs(cur.weight - prev.weight) < 0.01 && cur.reps > prev.reps) event = 1.0;
@@ -539,7 +605,128 @@ export interface DeriveStateV2Result {
   failedOverreachLoads: number[];
   repSamples: RepSample[]; // cluster actif, pour predictReps
   plateauCounter: number;
+  /**
+   * VARIATION_CYCLING_SPEC §2 — date (LoggedSet.timestamp) de la dernière ancre du rôle dominant
+   * (top pour TOP_SET_BACKOFF/WEIGHTED_BW_VARIABLE, amorce sinon) ayant établi un nouveau max de
+   * P (e1RM, `estimated1RM`) sur la fenêtre. `null` si aucune ancre du rôle dominant.
+   */
+  lastProgressDate: Date | null;
+  /** VARIATION_CYCLING_SPEC §2 — jours entre la séance la plus récente (rôle dominant) et `lastProgressDate`. `null` si aucune ancre. */
+  plateauStalledDays: number | null;
+  /** VARIATION_CYCLING_SPEC §2 — nb d'ancres du rôle dominant dans les 14 jours précédant la séance la plus récente (anti faux-positif d'absence). */
+  sessionsInWindow: number;
+  /** VARIATION_CYCLING_SPEC §2 — trigger officiel de plateau en dates : `plateauStalledDays >= PLATEAU_STALL_DAYS && sessionsInWindow >= PLATEAU_MIN_SESSIONS`. Remplace `plateauCounter >= PLATEAU_THRESHOLD` (voir P1.3, blast radius §2). */
+  isPlateau: boolean;
+  /** VARIATION_CYCLING_SPEC §3 — état à 3 niveaux : `plateaued` (isPlateau) / `slowing` (préemptif) / `progressing`, dérivé de `progressVelocityScore` existant. */
+  progressionState: "progressing" | "slowing" | "plateaued";
   reasonCodes: string[]; // ex: "machine_cluster_switch"
+}
+
+/** Ancre datée (rôle dominant), pour la détection de plateau en dates (VARIATION_CYCLING_SPEC §2). */
+interface DatedAnchor {
+  weight: number;
+  reps: number;
+  timestamp: Date;
+}
+
+/** Nombre de jours (entier, tronqué) entre deux dates — même convention que `suggest()` (gapDays, ligne ~1754). */
+function daysBetween(later: Date, earlier: Date): number {
+  return Math.floor((later.getTime() - earlier.getTime()) / 86_400_000);
+}
+
+export interface PlateauDateState {
+  lastProgressDate: Date | null;
+  plateauStalledDays: number | null;
+  sessionsInWindow: number;
+  isPlateau: boolean;
+}
+
+/**
+ * VARIATION_CYCLING_SPEC §2 — détection de plateau en DATES, pure (aucun état persisté).
+ * `anchorsMostRecentFirst` = ancres du rôle dominant (top ou amorce selon `usesTopAsPlateauRef`),
+ * PLUS RÉCENTE EN PREMIER (même ordre que `amorceHistory`/`topHistory`).
+ *
+ * - `lastSessionDate` (référence interne) = date de l'ancre la plus récente — PAS `now`/horloge
+ *   système : le calcul reste une fonction pure de l'historique fourni (cf. §0.2 pureté), testable
+ *   sans horloge injectée. `suggest()` gère séparément la fraîcheur "aujourd'hui" via `gapDays`.
+ * - Anti-bruit (§2) : un gain de e1RM ne "bat" le record courant que s'il est >= au max(1% du
+ *   record, +1 rep à charge constante) — sinon `lastProgressDate` ne bouge pas (bruit de mesure).
+ * - Absence (§9) : si `sessionsInWindow < PLATEAU_MIN_SESSIONS`, jamais de plateau (c'est un gap,
+ *   géré par le deload d'absence existant `deload.ts`).
+ */
+function derivePlateauDateState(exercise: Exercise, anchorsMostRecentFirst: DatedAnchor[]): PlateauDateState {
+  if (anchorsMostRecentFirst.length === 0) {
+    return { lastProgressDate: null, plateauStalledDays: null, sessionsInWindow: 0, isPlateau: false };
+  }
+
+  const lastSessionDate = anchorsMostRecentFirst[0].timestamp;
+  const sessionsInWindow = anchorsMostRecentFirst.filter(
+    (a) => daysBetween(lastSessionDate, a.timestamp) <= ALGO_V2.PLATEAU_STALL_DAYS
+  ).length;
+
+  // Chronologique (plus ancien -> plus récent) pour suivre le record de P (e1RM) au fil du temps.
+  const chrono = [...anchorsMostRecentFirst].reverse();
+  // Pour un exercice strictement au poids du corps, `estimated1RM(0, reps)` vaut toujours zéro :
+  // une hausse de reps n'était donc jamais reconnue comme un progrès. Dans ce cas homogène, la
+  // performance pertinente est simplement le record de répétitions. Les historiques lestés
+  // conservent l'e1RM existant.
+  const repsOnly = chrono.every((anchor) => Math.abs(anchor.weight) < 0.01);
+  const performance = (anchor: DatedAnchor) =>
+    repsOnly ? anchor.reps : estimated1RM(anchor.weight, anchor.reps);
+  let recordPerformance = performance(chrono[0]);
+  let lastProgressDate = chrono[0].timestamp;
+  for (let i = 1; i < chrono.length; i++) {
+    const anchor = chrono[i];
+    const currentPerformance = performance(anchor);
+    const gain = currentPerformance - recordPerformance;
+    const noiseFloor = repsOnly
+      ? 1
+      : Math.max(
+          0.01 * recordPerformance,
+          estimated1RM(anchor.weight, exercise.repTargetMin + 1) -
+            estimated1RM(anchor.weight, exercise.repTargetMin)
+        );
+    // Epsilon (même convention que le reste du moteur, ex. progression.ts ligne ~530) : sans lui,
+    // un gain mathématiquement égal au seuil (ex. exactement +1 rep) peut se retrouver infinitésimalement
+    // sous `noiseFloor` par arrondi flottant (deux soustractions différentes du même écart réel) et
+    // manquer d'être compté comme progrès.
+    if (gain > 0 && gain >= noiseFloor - 1e-9) {
+      recordPerformance = currentPerformance;
+      lastProgressDate = anchor.timestamp;
+    }
+  }
+
+  const plateauStalledDays = daysBetween(lastSessionDate, lastProgressDate);
+  const isPlateau = plateauStalledDays >= ALGO_V2.PLATEAU_STALL_DAYS && sessionsInWindow >= ALGO_V2.PLATEAU_MIN_SESSIONS;
+  return { lastProgressDate, plateauStalledDays, sessionsInWindow, isPlateau };
+}
+
+/**
+ * Fenêtre du run courant : une reprise après plus de 21 jours ne doit pas réutiliser l'ancien
+ * bloc pour conclure immédiatement à un ralentissement. La prédiction peut toujours exploiter
+ * l'historique antérieur ; seuls les signaux de cycle (`velocity`/plateau) sont segmentés ici.
+ */
+function currentRunHistory(historyMostRecentFirst: LoggedSet[][]): LoggedSet[][] {
+  if (historyMostRecentFirst.length === 0) return [];
+  const latestCompletedAt = (sets: LoggedSet[]): Date | null => {
+    const completed = sets.filter((set) => set.completed);
+    if (completed.length === 0) return null;
+    return completed.reduce(
+      (latest, set) => (set.timestamp > latest ? set.timestamp : latest),
+      completed[0].timestamp
+    );
+  };
+
+  const run: LoggedSet[][] = [historyMostRecentFirst[0]];
+  let newerDate = latestCompletedAt(historyMostRecentFirst[0]);
+  for (let index = 1; index < historyMostRecentFirst.length; index += 1) {
+    const olderDate = latestCompletedAt(historyMostRecentFirst[index]);
+    if (!newerDate || !olderDate) break;
+    if (daysBetween(newerDate, olderDate) > ALGO_V2.LIFECYCLE_RUN_GAP_DAYS) break;
+    run.push(historyMostRecentFirst[index]);
+    newerDate = olderDate;
+  }
+  return run;
 }
 
 /**
@@ -626,6 +813,21 @@ function deriveStateV2(
     }
   }
 
+  // VARIATION_CYCLING_SPEC §2 — mêmes ancres que amorceHistory/topHistory (même filtre cluster),
+  // mais avec leur date réelle (`LoggedSet.timestamp`) : `AnchorLoad` (ci-dessus) ne porte pas la
+  // date, donc dupliqué ici depuis `p.amorce`/`p.top` (les LoggedSet originaux, pas dépouillés).
+  const amorceHistoryDated: DatedAnchor[] = [];
+  const topHistoryDated: DatedAnchor[] = [];
+  processedHistory.forEach((p, idx) => {
+    const inCluster = clusterSessionIdx.has(idx);
+    if (p.amorce && (inCluster || !isClusterable)) {
+      amorceHistoryDated.push({ weight: p.amorce.weight, reps: p.amorce.reps, timestamp: p.amorce.timestamp });
+    }
+    if (p.top && (inCluster || !isClusterable)) {
+      topHistoryDated.push({ weight: p.top.weight, reps: p.top.reps, timestamp: p.top.timestamp });
+    }
+  });
+
   const validAmorceAnchors = amorceHistory.filter((a) => a.reps >= exercise.repTargetMin - 1);
   const lastAmorce = amorceHistory[0] ?? null;
 
@@ -691,6 +893,31 @@ function deriveStateV2(
     else break;
   }
 
+  // VARIATION_CYCLING_SPEC §2/§3 — trigger officiel en dates (remplace plateauCounter>=3, voir
+  // P1.3 pour le blast radius des sites appelants). Même rôle dominant que `plateauReference`
+  // ci-dessus, mais avec les dates réelles (`amorceHistoryDated`/`topHistoryDated`).
+  const plateauReferenceDatedAll = usesTopAsPlateauRef && topHistoryDated.length > 0 ? topHistoryDated : amorceHistoryDated;
+  const plateauReferenceDated: DatedAnchor[] = [];
+  for (const anchor of plateauReferenceDatedAll) {
+    const previous = plateauReferenceDated.at(-1);
+    if (
+      previous &&
+      daysBetween(previous.timestamp, anchor.timestamp) > ALGO_V2.LIFECYCLE_RUN_GAP_DAYS
+    ) {
+      break;
+    }
+    plateauReferenceDated.push(anchor);
+  }
+  const plateauDateState = derivePlateauDateState(exercise, plateauReferenceDated);
+  const velocity = progressVelocityScore(exercise, currentRunHistory(rawHistory));
+  const progressionState: "progressing" | "slowing" | "plateaued" = plateauDateState.isPlateau
+    ? "plateaued"
+    : plateauDateState.sessionsInWindow >= ALGO_V2.PLATEAU_MIN_SESSIONS &&
+        velocity <= ALGO_V2.SLOWING_VELOCITY &&
+        (plateauDateState.plateauStalledDays ?? 0) >= ALGO_V2.SLOWING_STALL_DAYS
+      ? "slowing"
+      : "progressing";
+
   return {
     pattern,
     processedHistory,
@@ -702,6 +929,11 @@ function deriveStateV2(
     failedOverreachLoads,
     repSamples,
     plateauCounter,
+    lastProgressDate: plateauDateState.lastProgressDate,
+    plateauStalledDays: plateauDateState.plateauStalledDays,
+    sessionsInWindow: plateauDateState.sessionsInWindow,
+    isPlateau: plateauDateState.isPlateau,
+    progressionState,
     reasonCodes,
   };
 }
@@ -1384,33 +1616,11 @@ function detectAntiPlateauActive(
   return false;
 }
 
-/** §8 — escalade anti-plateau : pair = surcharge (+1incr x5), impair = rest-pause (même poids, +2 reps). */
-function plateauEscalation(
-  plateauCounter: number,
-  load: number,
-  increment: number,
-  predictedBase: number
-): { load: number; reps: number; intensityTechnique: "rest_pause" | null; mode: SuggestionMode; explanation: string; reasonCode: string } {
-  const cycle = (plateauCounter - ALGO_V2.PLATEAU_THRESHOLD) % 2;
-  if (cycle === 0) {
-    return {
-      load: load + increment,
-      reps: 5,
-      intensityTechnique: null,
-      mode: SuggestionMode.plateauBreak,
-      explanation: "Plateau — surcharge : +1 incrément, viser 5 reps",
-      reasonCode: "plateau_break",
-    };
-  }
-  return {
-    load,
-    reps: predictedBase + 2,
-    intensityTechnique: "rest_pause",
-    mode: SuggestionMode.plateauBreak,
-    explanation: "Rest-pause : mini-pauses 10-15 s pour dépasser",
-    reasonCode: "rest_pause",
-  };
-}
+// VARIATION_CYCLING_SPEC §4 décision #3 (P1.6) — `plateauEscalation()` (surcharge +1 incrément /
+// rest-pause en alternance) est RETIRÉE : aucune technique d'intensité n'est plus prescrite par
+// l'app. Son site d'invocation (ex-§8, ci-dessous dans `suggest()`) pose désormais le signal de
+// rotation de variation (`selectAlternative`, §6) au lieu de muter weight/reps/mode. Cf. note P1.6
+// dans `VARIATION_CYCLING_IMPL.md` pour le détail du retrait.
 
 /**
  * §7.1 — TOP_SET_BACKOFF v2. `sfContext`/`gapTier` alimentent `predictReps` (§5.3).
@@ -1542,7 +1752,11 @@ function suggestBWRepV2(
     });
   }
 
-  if (v2.plateauCounter >= ALGO_V2.PLATEAU_THRESHOLD) {
+  // VARIATION_CYCLING_SPEC §2 (P1.3) : trigger officiel = isPlateau (date-based), remplace
+  // plateauCounter >= PLATEAU_THRESHOLD (session-count v2). Ce n'est pas la branche
+  // plateauEscalation() (rest-pause/overreach) visée par le retrait §4/décision #3 — juste
+  // l'extension du cap de reps BW quand plateau ; trigger seul migré ici.
+  if (v2.isPlateau) {
     const extendedCap = Math.max(exercise.repTargetMax, last.reps) + 2;
     const reps = clampInt(last.reps + 1, exercise.repTargetMin, extendedCap);
     return render({ load: 0, reps, mode: SuggestionMode.plateauBreak, reasonCodes: ["bw_plateau_rep_target_v2"] }, 0.82, ST.work, "bw");
@@ -1571,7 +1785,8 @@ function suggestWeightedBWVariableV2(
   v2: DeriveStateV2Result,
   increment: number,
   predictCtx: Omit<PredictContext, "samples">,
-  gapDays: number | undefined,
+  gapExerciseDays: number | undefined,
+  gapLestDays: number | undefined,
   sessionFatigue: SessionFatigueContext,
   parent: ReturnType<typeof primaryParent>
 ): SetSuggestion {
@@ -1589,20 +1804,23 @@ function suggestWeightedBWVariableV2(
 
   if (weightedSetsToday.length === 0) {
     // set 1 (BW primer) déjà fait — décide lest vs 3xBW.
-    const gapLestOk = gapDays === undefined || gapDays <= 10;
+    const gapExerciseOk = gapExerciseDays === undefined || gapExerciseDays <= 10;
     const localCount = parent ? sessionFatigue.sameParentSets(parent) : 0;
+    // VARIATION_CYCLING_SPEC §2 (P1.3) : trigger officiel = isPlateau (date-based), remplace
+    // plateauCounter < PLATEAU_THRESHOLD. Gate d'escalade (pas la branche plateauEscalation) :
+    // ne pas ajouter de lest tant que l'exo est en plateau (rester sur le BW en premier).
     const lestAllowed =
       (set1BW?.reps ?? 0) >= 10 &&
-      gapLestOk &&
+      gapExerciseOk &&
       localCount < 3 &&
       sessionFatigue.totalSystemicCost <= ALGO_V2.FRESH_SYSTEMIC_MAX &&
-      v2.plateauCounter < ALGO_V2.PLATEAU_THRESHOLD;
+      !v2.isPlateau;
 
     if (lestAllowed && v2.topHistory.length > 0) {
       const lastLest = v2.topHistory[0];
       const lestTarget = computeLestRef({
         lastLest,
-        gapLestDays: gapDays,
+        gapLestDays,
         increment,
         repTargetMin: exercise.repTargetMin,
         mode: "weighted_bodyweight",
@@ -1651,7 +1869,7 @@ function suggestStraightV2(
   if (doneToday.length === 0 && v2.amorceTarget > 0) {
     const lastAmorce = v2.amorceHistory[0] ?? null;
     const promoted = lastAmorce !== null && v2.amorceTarget > lastAmorce.weight + 0.01;
-    const ctx: PredictContext = { ...predictCtxBase, samples: v2.repSamples, fatiguePenalty: fatigueConfirmed ? predictCtxBase.fatiguePenalty : 0 };
+    const ctx: PredictContext = { ...predictCtxBase, samples: v2.repSamples };
     const reps = clampInt(predictRepsPure(v2.amorceTarget, 1, ctx, { extendedCap: cap }), exercise.repTargetMin, cap);
     return render(
       {
@@ -1711,6 +1929,34 @@ export interface SuggestParams {
   historyPositions?: HistoryPosition[];
   /** ALGO_V2 §6.3 — jours depuis la dernière séance contenant un set LESTÉ (WEIGHTED_BW_VARIABLE, §4.5), distinct de `gapDays` (gap de l'exercice). */
   gapLestDays?: number;
+  /** Un PR déjà réalisé aujourd'hui masque au minimum l'alerte de fatigue contradictoire. */
+  prAchievedToday?: boolean;
+  /**
+   * VARIATION_CYCLING_SPEC §6/§8 — catalogue complet des exercices, nécessaire pour :
+   *   (1) résoudre en `Exercise.id` réel le nom `VARIANT_LINKS` (§7.4/§9, bascule BW facile) ;
+   *   (2) alimenter `selectAlternative` (rotation de variation sur plateau daté, §2/§4).
+   * `undefined` => dégradation gracieuse (§9) : `switchToVariantId` reste `null`, jamais de crash.
+   */
+  catalog?: Exercise[];
+  /**
+   * VARIATION_CYCLING_SPEC §6 — historique brut MULTI-exercices (`WorkoutSession[]`, plus récent en
+   * premier), distinct de `recentHistory` (mono-exercice, `LoggedSet[][]`) : nécessaire à
+   * `selectAlternative` (`collectExerciseHistory`/`rollingPriorities` regardent d'autres exercices
+   * que celui-ci). `undefined` => pas de proposition de rotation (§9, dégradation gracieuse).
+   */
+  sessionHistory?: WorkoutSession[];
+  /** VARIATION_CYCLING_SPEC §6 — objectifs musculaires courants (`goalFit` de `selectAlternative`). Défaut `[]`. */
+  goals?: MuscleGoal[];
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — profil StrengthLevel (gender/ageYears/bodyWeightKg), requis
+   * pour `readyForLevelUp`/`nextLevelName` (`resolveStandard`, mêmes règles de garde que
+   * `exerciseBenchmark` : 25-40 ans, genre homme, poids de corps connu). DISTINCT de `bodyweightKg`
+   * ci-dessus (celui-ci a un défaut algorithmique `ALGO_V2.DEFAULT_BODYWEIGHT_KG` pour les modes
+   * bodyweight/assisted — pas un vrai profil, ne doit pas alimenter une jauge StrengthLevel).
+   * `undefined` => `readyForLevelUp`/`nextLevelName` restent `undefined` (§9, dégradation gracieuse ;
+   * `readyForPR` n'en dépend PAS, cf. note du champ).
+   */
+  profile?: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
 }
 
 /**
@@ -1738,6 +1984,11 @@ export function suggest(params: SuggestParams): SetSuggestion {
     bodyweightKg,
     historyPositions,
     gapLestDays,
+    prAchievedToday = false,
+    catalog,
+    sessionHistory,
+    goals = [],
+    profile,
   } = params;
 
   const increment = smallestIncrement ?? exercise.smallestIncrement;
@@ -1749,6 +2000,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
   const derivedGapDays =
     explicitGapDays ?? (lastSessionDate ? Math.floor((now.getTime() - lastSessionDate.getTime()) / 86_400_000) : undefined);
   const effectiveGapDays = freshOverride ? undefined : derivedGapDays;
+  const effectiveGapLestDays = freshOverride ? undefined : gapLestDays;
 
   // Sépare primers/warmups des vrais sets de travail.
   // doneToday ne contient que les sets sur lesquels le moteur doit raisonner pour prédire charge/reps.
@@ -1759,12 +2011,8 @@ export function suggest(params: SuggestParams): SetSuggestion {
       (s.setType === ST.warmup ||
         (s.setType !== ST.finisher && s.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight))
   );
-  const rawDoneToday = currentSessionSets.filter(
-    (s) =>
-      s.completed &&
-      s.setType !== ST.warmup &&
-      s.setType !== ST.finisher &&
-      !(s.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight)
+  const completedNonWarmupToday = currentSessionSets.filter(
+    (set) => set.completed && set.setType !== ST.warmup
   );
 
   // ALGO_V2 §2 — détecte le pattern réel. `assisted_bodyweight` et `ramping` restent TOUJOURS
@@ -1781,31 +2029,59 @@ export function suggest(params: SuggestParams): SetSuggestion {
 
   const alwaysLegacy = exercise.setPatternMode === SPM.assistedBodyweight || exercise.setPatternMode === SPM.ramping;
   const rawPattern = alwaysLegacy ? null : detectPatternPure(exercise, rawHistory, alignedPositions);
+  const hasExplicitFinisherProfile =
+    rawPattern === "ISOLATION_FINISHER" &&
+    rawHistory.some((session) => session.some((set) => set.completed && set.setType === ST.finisher));
   const preserveDedicatedFinisher = rawPattern === "ISOLATION_FINISHER";
   const history = rawHistory
     .map((session, index) =>
-      setsForNormalPrediction(session, {
+      setsForNormalPrediction(
+        preserveDedicatedFinisher
+          ? session.map((set) => (set.setType === ST.finisher ? { ...set, setType: ST.work } : set))
+          : session,
+        {
         increment,
         position: alignedPositions?.[index],
         preserveDedicatedFinisher,
-      })
+        }
+      )
     )
     .filter((session) => session.length > 0);
 
-  // Dans la séance courante on fusionne un composite en un seul bloc logique, mais on ne retire
-  // pas un finisher : il doit continuer à compter dans l'avancement de la séance déjà en cours.
-  const doneToday = setsForNormalPrediction(rawDoneToday, {
+  // Un profil finisher EXPLICITEMENT persisté garde sa piste dédiée, mais les
+  // sets sont temporairement recastés en work pour réutiliser le prédicteur de
+  // charge/reps. Hors de ce profil, les finishers restent exclus comme avant.
+  const rawDoneToday = completedNonWarmupToday.filter((set) =>
+    hasExplicitFinisherProfile
+      ? set.setType === ST.finisher
+      : set.setType !== ST.finisher &&
+        !(set.weight === 0 && exercise.setPatternMode === SPM.weightedBodyweight)
+  );
+  const doneToday = setsForNormalPrediction(
+    hasExplicitFinisherProfile
+      ? rawDoneToday.map((set) => ({ ...set, setType: ST.work }))
+      : rawDoneToday,
+    {
     increment,
     excludeFinishers: false,
-  });
+    }
+  );
   const derived = deriveState(exercise, history, increment, effectiveGapDays);
 
   const parent = primaryParent(exercise);
-  // Fatigue confirmée si : chute intra-exercice détectée OU contexte de séance significatif
-  const fatigueConfirmed = autoFatigueFlag(exercise, doneToday) || sessionFatigue.isSignificant(parent);
+  // Un PR obtenu sur cet exercice est une preuve directe que la fatigue contextuelle n'a pas
+  // invalidé sa performance du jour. On conserve la fatigue intra-exercice réellement observée
+  // (`autoFatigueFlag`) mais on n'abaisse plus artificiellement la suite à cause du seul contexte.
+  const sessionFatiguePenalty = prAchievedToday ? 0 : sessionFatigue.fatiguePenalty(parent);
+  // La fatigue contextuelle est confirmée sur l'excès (pénalité >= 2), pas sur
+  // le coût brut déjà absorbé par le profil historique.
+  const fatigueConfirmed = autoFatigueFlag(exercise, doneToday) || sessionFatiguePenalty >= 2;
 
   const sessionsWithData = rawHistory.filter((s) => s.some((set) => set.completed)).length;
-  const useV2 = !alwaysLegacy && rawPattern !== null && sessionsWithData >= ALGO_V2.MIN_SESSIONS_FOR_PATTERN;
+  const useV2 =
+    !alwaysLegacy &&
+    rawPattern !== null &&
+    (sessionsWithData >= ALGO_V2.MIN_SESSIONS_FOR_PATTERN || hasExplicitFinisherProfile);
 
   let result: SetSuggestion;
 
@@ -1836,15 +2112,18 @@ export function suggest(params: SuggestParams): SetSuggestion {
     // §6.3 — deload daté (WS4, barème `deload.ts`) s'applique à amorceTarget/straightRef/topTarget
     // (même décalage), exactement comme pour `deriveState` v1. `effectiveGapDays` intègre déjà
     // `freshOverride` (annule le deload si armé).
+    const fatiguePenalty = sessionFatiguePenalty;
     const amorceDeload = applyDeload(v2Raw.amorceTarget, effectiveGapDays, increment);
     const topDeload = v2Raw.topTarget !== null ? applyDeload(v2Raw.topTarget, effectiveGapDays, increment) : null;
+    const reduceFirstLoadForFatigue = doneToday.length === 0 && fatiguePenalty >= 2 && amorceDeload.load > 0;
     const v2: DeriveStateV2Result = {
       ...v2Raw,
-      amorceTarget: amorceDeload.load,
+      amorceTarget: reduceFirstLoadForFatigue
+        ? roundToIncrementV2(Math.max(0, amorceDeload.load - increment), increment)
+        : amorceDeload.load,
       topTarget: topDeload ? topDeload.load : v2Raw.topTarget,
     };
 
-    const fatiguePenalty = sessionFatigue.fatiguePenalty(parent);
     // Tier de deload pour predictReps (§5.3.3) — même barème que `deload.ts::deloadTierForGap`,
     // redérivé ici pour éviter un import circulaire (progression.ts exporte déjà deload.ts).
     const derivedTier =
@@ -1888,7 +2167,8 @@ export function suggest(params: SuggestParams): SetSuggestion {
           v2,
           increment,
           predictCtxBase,
-          gapLestDays ?? effectiveGapDays,
+          effectiveGapDays,
+          effectiveGapLestDays,
           sessionFatigue,
           parent
         );
@@ -1898,48 +2178,87 @@ export function suggest(params: SuggestParams): SetSuggestion {
         // Amendement §7.2 (1) : targetLoad = straightRef (cluster actif, §4.2), au lieu de
         // max(ancres 5 séances).
         result = suggestStraightV2(exercise, doneToday, derived, v2, increment, fatigueConfirmed, predictCtxBase);
+        if (v2.pattern === "ISOLATION_FINISHER" && hasExplicitFinisherProfile) {
+          result = { ...result, setType: ST.finisher };
+        }
         break;
       }
       default:
         result = suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed);
     }
 
-    // §8 — plateau/anti-plateau : si un plateau est détecté sur le rôle dominant et qu'aucune
-    // branche ci-dessus n'a déjà produit un mode plateauBreak OU déjà cassé le plateau via une
-    // promotion (transitionMode = la référence vient de monter, le plateau est déjà résolu pour
-    // cette séance), applique l'escalade (surcharge pair / rest-pause impair) sur le DERNIER set
-    // proposé. JAMAIS sur le premier set de la séance (l'amorce/ancre du jour, quel que soit le
-    // pattern) : ANTI_PLATEAU_SCIENCE.md §2 précise "sur les 1-2 derniers sets seulement", et le
-    // premier set sert à jauger la forme du jour (§3.1 ALGO_SPEC) — il ne doit jamais porter une
-    // surcharge de plateau non calibrée sur la performance du jour.
+    // VARIATION_CYCLING_SPEC §7.4/§9/§8 — `switchToVariantId` ne doit JAMAIS porter un nom
+    // d'exercice (fin du code mort, §8) : la seule branche qui en pose un aujourd'hui est le
+    // plancher BW (§7.4, `easierVariantName` ci-dessus dans `suggestBWRepV2`, role "bw") ; on le
+    // résout ici en `Exercise.id` réel via `catalog`. `catalog` absent ou nom introuvable => `null`
+    // (dégradation gracieuse §9), jamais un nom qui fuiterait vers l'UI/le store.
+    if (result.switchToVariantId) {
+      const resolved = catalog?.find((e) => e.name === result.switchToVariantId);
+      result = { ...result, switchToVariantId: resolved ? resolved.id : null };
+    }
+
+    // VARIATION_CYCLING_SPEC §2/§4/§8 (remplace l'escalade d'intensité rest-pause/overreach,
+    // RETIRÉE — décision #3, cf. `plateauEscalation()` ci-dessus) : si un plateau DATÉ (`isPlateau`,
+    // trigger officiel depuis P1.3) EST DÉJÀ installé, OU si on s'en approche seulement
+    // (`progressionState === "slowing"`, §3/§4.2, P2.3 — rotation PRÉEMPTIVE : "préparer" un
+    // candidat avant même le plateau, cf. spec §4 étape 2 "slowing → préparer une variation") — sur
+    // le rôle dominant, et qu'aucune branche ci-dessus n'a déjà posé sa propre bascule (role "bw",
+    // §7.4) ni déjà cassé/dépassé le plateau (plateauBreak/transitionMode), cherche une variante
+    // candidate (`selectAlternative`, §6) et l'attache en PURES métadonnées (`switchToVariantId` +
+    // `reasonCodes`) — à la différence de l'ancienne escalade, AUCUNE mutation de weight/reps/mode :
+    // la bascule ne prend effet qu'à la prochaine séance (§8, non destructif via
+    // `replaceExercise()`, jamais en pleine séance). JAMAIS sur le premier set de la séance (même
+    // garde qu'avant, `doneToday.length > 0` + `role !== "amorce"` : pour STRAIGHT le 1er set porte
+    // `role:"straight"`, pas "amorce" — voir `suggestStraightV2`). `catalog`/`sessionHistory` non
+    // fournis => aucune proposition, jamais de crash (§9, dégradation gracieuse).
+    const isSlowingPreemptive = v2.progressionState === "slowing";
     if (
-      v2.plateauCounter >= ALGO_V2.PLATEAU_THRESHOLD &&
+      (v2.isPlateau || isSlowingPreemptive) &&
       doneToday.length > 0 &&
       result.mode !== SuggestionMode.plateauBreak &&
       result.mode !== SuggestionMode.transitionMode &&
       result.role !== "amorce" &&
       result.role !== "bw" &&
-      !antiPlateauActive
+      !antiPlateauActive &&
+      catalog &&
+      sessionHistory
     ) {
-      const escalation = plateauEscalation(v2.plateauCounter, result.weight, increment, result.reps);
-      result = {
-        ...result,
-        weight: Math.max(0, escalation.load),
-        reps: escalation.reps,
-        mode: escalation.mode,
-        intensityTechnique: escalation.intensityTechnique,
-        explanation: escalation.explanation,
-        reasonCodes: [...result.reasonCodes, escalation.reasonCode],
-      };
+      // VARIATION_CYCLING_SPEC §5.3/§6 (P2.1) — point faible mesuré le plus récemment capturé
+      // (1-tap, `LoggedExercise.plateauWeakPoint`) pour CET exercice, dérivé à la volée depuis
+      // `sessionHistory` (jamais persisté ici). `null` si jamais capturé -> `weakPointFit` neutre.
+      const weakPoint = mostRecentPlateauWeakPoint(exercise.id, sessionHistory);
+      const alternative = selectAlternative(exercise, catalog, sessionHistory, goals, weakPoint);
+      if (alternative) {
+        // `progressionState` est un état à 3 niveaux MUTUELLEMENT EXCLUSIFS (deriveStateV2, §3) :
+        // `isPlateau` implique toujours `"plateaued"`, jamais `"slowing"` simultanément — le
+        // reasonCode distingue donc sans ambiguïté "déjà en plateau" de "préemptif" pour l'UI/tests
+        // (P2.3 : `SetEntry.tsx` affiche le même indice discret dans les deux cas, la distinction
+        // sert surtout à la testabilité et à un éventuel affinage UI futur).
+        result = {
+          ...result,
+          switchToVariantId: alternative.exerciseId,
+          reasonCodes: [...result.reasonCodes, v2.isPlateau ? "variation" : "variation_preemptive"],
+        };
+      }
     }
 
     if (v2.reasonCodes.length > 0) {
       result = { ...result, reasonCodes: [...result.reasonCodes, ...v2.reasonCodes] };
     }
+    // VARIATION_CYCLING_SPEC §3/§8 — expose l'état à 3 niveaux pour l'indice UI `slowing`
+    // (`ExerciseCard.tsx`). Additif, ne change ni weight/reps/mode ni aucun test existant qui ne
+    // regarde pas ce champ.
+    result = { ...result, progressionState: v2.progressionState };
+    if (reduceFirstLoadForFatigue) {
+      result = {
+        ...result,
+        reasonCodes: [...result.reasonCodes, "session_fatigue_load_reduction"],
+      };
+    }
   }
 
   // Attache l'avertissement de fatigue de séance si pertinent (ne change pas la suggestion elle-même)
-  const note = sessionFatigue.fatigueNote(parent);
+  const note = prAchievedToday ? null : sessionFatigue.fatigueNote(parent);
   if (note !== null) {
     result = { ...result, sessionFatigueWarning: note };
   }
@@ -1955,7 +2274,108 @@ export function suggest(params: SuggestParams): SetSuggestion {
     };
   }
 
+  // BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — signal feu : calculé sur le poids/reps PROPOSÉS
+  // (`result`), jamais encore loggés. §9 : `sessionHistory` absent => les deux flags restent
+  // `undefined` (jamais calculés à partir de rien) ; `profile`/`strengthStandardKey` absents =>
+  // `readyForLevelUp`/`nextLevelName` seuls restent `undefined` (`readyForPR` n'en dépend pas).
+  if (sessionHistory) {
+    const historicalSetsForExercise = sessionHistory
+      .flatMap((session) => session.exercises)
+      .filter((logged) => logged.exerciseId === exercise.id)
+      .flatMap((logged) => logged.sets);
+    // La séance active n'est pas encore dans `sessionHistory`, mais ses sets déjà validés sont
+    // désormais des faits. Les ignorer pouvait rallumer immédiatement « PR possible » ou annoncer
+    // le même passage de niveau juste après l'avoir atteint.
+    const knownSetsForExercise = [...historicalSetsForExercise, ...currentSessionSets];
+
+    // readyForPR — indépendant du profil StrengthLevel. Même garde `reps >= repTargetMin` et même
+    // marge anti-flapping (`K_E1RM_PR_THRESHOLD`, records.ts) que `RecordsEngine.classify` (branche
+    // "estimated1RM"), pour que le feu ne promette jamais un PR qui ne se matérialiserait pas en
+    // étoile une fois le set réellement loggé. `bestE1RM<=0` (jamais fait/aucun set validé avant)
+    // compte comme un PR dès que `proposedE1RM>0` — cohérent avec `classify()` qui flague déjà tout
+    // premier set chargé via sa branche "heaviestWeight" (`heaviestEver` initial = 0).
+    if (result.setType === ST.finisher) {
+      const proposedFinisher: LoggedSet = {
+        id: "suggested-finisher",
+        weight: result.weight,
+        reps: result.reps,
+        setType: ST.finisher,
+        timestamp: now,
+        setSlotIndex: currentSessionSets.length,
+        completed: true,
+        supersetRoundIndex: null,
+      };
+      if (classifyFinisher(proposedFinisher, buildFinisherRecords(knownSetsForExercise))) {
+        result = { ...result, readyForPR: true };
+      }
+    } else if (result.weight > 0 && result.reps >= exercise.repTargetMin) {
+      const priorRecords = buildRecords(exercise, knownSetsForExercise);
+      const proposedE1RM = estimated1RM(result.weight, result.reps);
+      const readyForPR =
+        proposedE1RM > 0 && (priorRecords.bestE1RM <= 0 || proposedE1RM > priorRecords.bestE1RM * K_E1RM_PR_THRESHOLD);
+      if (readyForPR) {
+        result = { ...result, readyForPR: true };
+      }
+    }
+
+    // readyForLevelUp — nécessite un profil StrengthLevel valide (mêmes gardes que `exerciseBenchmark`
+    // : `resolveStandard` renvoie `null` si pas de `strengthStandardKey`/profil hors plage 25-40 ans/
+    // genre non homme/poids de corps manquant, §9). Pour un standard à deux axes, chacun est testé :
+    // une série au poids du corps peut ainsi franchir le palier reps sans être bloquée par l'axe lest.
+    if (profile && result.setType !== ST.finisher) {
+      const resolved = resolveStandard(exercise, profile);
+      if (resolved) {
+        const axes = [
+          { axis: resolved.primaryAxis, thresholds: resolved.primaryThresholds },
+          ...(resolved.secondaryAxis && resolved.secondaryThresholds
+            ? [{ axis: resolved.secondaryAxis, thresholds: resolved.secondaryThresholds }]
+            : []),
+        ];
+        let bestCrossedRank = 0;
+        let bestCrossedName: string | undefined;
+        for (const { axis, thresholds } of axes) {
+          if (!strengthStandardAxisSupportsSet(exercise, result, axis)) continue;
+          const proposedValue = strengthStandardValueForSet(resolved, result, axis);
+          if (proposedValue <= 0) continue;
+          const currentBestValue = currentBestOnAxis(knownSetsForExercise, axis, exercise, resolved);
+          const proposedLevel = benchmarkLevel(proposedValue, thresholds);
+          const currentRank = strengthLevelRank(benchmarkLevel(currentBestValue, thresholds).key);
+          const proposedRank = strengthLevelRank(proposedLevel.key);
+          if (
+            proposedRank > currentRank &&
+            proposedRank > bestCrossedRank &&
+            proposedLevel.key !== "below_beginner"
+          ) {
+            bestCrossedRank = proposedRank;
+            bestCrossedName = strengthLevelLabel(proposedLevel.key);
+          }
+        }
+        if (bestCrossedName) {
+          result = { ...result, readyForLevelUp: true, nextLevelName: bestCrossedName };
+        }
+      }
+    }
+  }
+
   return result;
+}
+
+/**
+ * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — meilleure valeur historique sur l'axe donné, parmi les sets
+ * de travail complétés (work/top_set/backoff — même périmètre que `RecordsEngine`). Axe "load" :
+ * `strengthStandardValueForSet` centralise formule et convention de charge (dont Plate ×2).
+ * Axe "reps" : reps brutes. `0` si aucun set éligible (jamais de crash).
+ */
+function currentBestOnAxis(
+  sets: LoggedSet[],
+  axis: "load" | "reps",
+  exercise: Exercise,
+  resolved: ResolvedStandard
+): number {
+  const workSets = normalRecordSets(sets, exercise);
+  const eligible = workSets.filter((set) => strengthStandardAxisSupportsSet(exercise, set, axis));
+  if (eligible.length === 0) return 0;
+  return Math.max(...eligible.map((set) => strengthStandardValueForSet(resolved, set, axis)));
 }
 
 // Exposé pour le store/tests.

@@ -106,6 +106,56 @@ export async function getSessions(): Promise<WorkoutSession[]> {
   );
 }
 
+// ---------------------------------------------------------------------------
+// getActiveSession — dernière séance active autosauvegardée, avec tous ses enfants.
+// Le tri défensif permet de récupérer la plus récente si une ancienne base contient encore
+// plusieurs lignes actives historiques ; les nouvelles écritures restent idempotentes par id.
+// ---------------------------------------------------------------------------
+
+/**
+ * Une active serveur n'est qu'une copie de secours d'un autosave. Passé ce délai, une ligne
+ * `is_active=true` est considérée comme orpheline et ne doit pas ressusciter dans l'interface.
+ * La copie locale courante n'est pas concernée par cette limite et reste prioritaire.
+ */
+export const ACTIVE_SESSION_RESTORE_WINDOW_MS = 36 * 60 * 60 * 1000;
+
+export function isRestorableActiveSessionStart(
+  startTime: Date,
+  now: Date = new Date()
+): boolean {
+  const startTimeMs = startTime.getTime();
+  const nowMs = now.getTime();
+  return (
+    Number.isFinite(startTimeMs) &&
+    Number.isFinite(nowMs) &&
+    startTimeMs >= nowMs - ACTIVE_SESSION_RESTORE_WINDOW_MS
+  );
+}
+
+export async function getActiveSession(): Promise<WorkoutSession | null> {
+  if (!hasDatabaseUrl()) return null;
+
+  const sessionRows = await db
+    .select()
+    .from(workoutSessions)
+    .where(eq(workoutSessions.isActive, true))
+    .orderBy(desc(workoutSessions.startTime));
+  const sessionRow = sessionRows.find((row) => isRestorableActiveSessionStart(row.startTime));
+  if (!sessionRow) return null;
+
+  const [exerciseRows, supersetRows, cardioRows] = await Promise.all([
+    db.select().from(loggedExercises).where(eq(loggedExercises.sessionId, sessionRow.id)),
+    db.select().from(supersetGroups).where(eq(supersetGroups.sessionId, sessionRow.id)),
+    db.select().from(cardioEntries).where(eq(cardioEntries.sessionId, sessionRow.id)),
+  ]);
+  const exerciseIds = exerciseRows.map((exercise) => exercise.id);
+  const setRows = exerciseIds.length > 0
+    ? await db.select().from(loggedSets).where(inArray(loggedSets.loggedExerciseId, exerciseIds))
+    : [];
+
+  return mapSessionRow(sessionRow, exerciseRows, setRows, supersetRows, cardioRows);
+}
+
 /** Une seule séance par id (avec exercices/sets/supersets), ou null si absente. */
 export async function getSessionById(id: string): Promise<WorkoutSession | null> {
   if (!hasDatabaseUrl()) return null;
@@ -151,7 +201,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   defaultRepTargetMax: 12,
   userName: "Evan",
   supersetRestSeconds: 180,
-    bodyWeightKg: null,
+  bodyWeightKg: null,
+  gender: null,
+  ageYears: null,
 };
 
 export async function getSettings(): Promise<UserSettings> {
@@ -205,28 +257,59 @@ export async function getRecoveryCheckins(): Promise<RecoveryCheckin[]> {
 export interface AllData {
   exercises: Exercise[];
   sessions: WorkoutSession[];
+  /** Séance autosauvegardée récupérable si le cache navigateur a disparu. */
+  activeSession: WorkoutSession | null;
   goals: MuscleGoal[];
   settings: UserSettings;
   templates: WorkoutTemplate[];
   recoveryCheckins: RecoveryCheckin[];
 }
 
+/**
+ * OFFLINE_PWA_SPEC §3 (P4.2) — valeurs vides partagées entre "pas de `DATABASE_URL`" (ci-dessous)
+ * et "Neon injoignable" (`lib/data/index.ts::getInitialData`, try/catch autour de cet appel). Un
+ * seul endroit qui définit ce qu'est une réponse "vide" — `isEmptyAllData` ci-dessous compare
+ * structurellement à cette même forme.
+ */
+export function emptyAllData(): AllData {
+  return {
+    exercises: [],
+    sessions: [],
+    activeSession: null,
+    goals: [],
+    settings: DEFAULT_SETTINGS,
+    templates: [],
+    recoveryCheckins: [],
+  };
+}
+
+/**
+ * OFFLINE_PWA_SPEC §3 (P4.2) — `true` si `data` ne porte aucune donnée de référence exploitable
+ * (Neon injoignable, DB pas encore provisionnée, ou compte réellement neuf). Consommé par
+ * `StoreHydrator` : ne JAMAIS écraser le cache localStorage réhydraté (P4.1) avec ceci — l'absence
+ * de données serveur ne doit jamais se traduire par une perte du cache offline (C2).
+ */
+export function isEmptyAllData(data: AllData): boolean {
+  return (
+    data.exercises.length === 0 &&
+    data.sessions.length === 0 &&
+    data.activeSession === null &&
+    data.templates.length === 0 &&
+    data.recoveryCheckins.length === 0 &&
+    data.goals.length === 0
+  );
+}
+
 export async function getAllData(): Promise<AllData> {
   if (!hasDatabaseUrl()) {
-    return {
-      exercises: [],
-      sessions: [],
-      goals: [],
-      settings: DEFAULT_SETTINGS,
-      templates: [],
-      recoveryCheckins: [],
-    };
+    return emptyAllData();
   }
 
-  const [exercisesData, sessionsData, goalsData, settingsData, templatesData, checkinsData] =
+  const [exercisesData, sessionsData, activeSessionData, goalsData, settingsData, templatesData, checkinsData] =
     await Promise.all([
       getExercises(),
       getSessions(),
+      getActiveSession(),
       getGoals(),
       getSettings(),
       getTemplates(),
@@ -236,6 +319,7 @@ export async function getAllData(): Promise<AllData> {
   return {
     exercises: exercisesData,
     sessions: sessionsData,
+    activeSession: activeSessionData,
     goals: goalsData,
     settings: settingsData,
     templates: templatesData,

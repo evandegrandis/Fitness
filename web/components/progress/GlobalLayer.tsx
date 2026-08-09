@@ -7,13 +7,23 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { parentTotals } from "@/lib/engines/effective-sets";
-import { effectiveSetUnits } from "@/lib/engines/set-structure";
-import { completedWorkSets, aggregateCoefficient, type Exercise, type WorkoutSession } from "@/lib/models/types";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
+import {
+  aggregateCoefficient,
+  type Exercise,
+  type RecoveryCheckin,
+  type WorkoutSession,
+} from "@/lib/models/types";
+import { comparableSessionPerformances } from "@/components/progress/global-analytics";
 import { MUSCLE_PARENTS, parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import { buildWeekBuckets, pearsonCorrelation, startOfDay, type WeekBucket } from "@/components/progress/utils";
 import { WeeklyBarChart, type WeekDatum } from "@/components/progress/WeeklyBarChart";
 import { MuscleRadar, type RadarDatum } from "@/components/progress/MuscleRadar";
 import { CorrelationTile } from "@/components/progress/CorrelationTile";
+import {
+  recoverySessionsChronological,
+  sleepHoursWithoutAlcohol,
+} from "@/components/progress/recovery-analytics";
 
 const WEEK_COUNT = 10;
 
@@ -57,14 +67,24 @@ export function GlobalLayer() {
     let sleepAvg: number | null = null;
     let alcoholDays: number | null = null;
     if (checkinsInRange.length > 0) {
-      const checkinsWithoutAlcohol = checkinsInRange.filter((c) => !c.hadAlcohol);
-      creatinePct = Math.round((checkinsInRange.filter((c) => c.tookCreatine).length / checkinsInRange.length) * 100);
-      proteinPct = Math.round((checkinsInRange.filter((c) => c.proteinTargetMet).length / checkinsInRange.length) * 100);
-      alcoholDays = checkinsInRange.filter((c) => c.hadAlcohol).length;
-      if (checkinsWithoutAlcohol.length > 0) {
+      const knownCreatine = checkinsInRange.filter((c) => c.tookCreatine !== null);
+      const knownProtein = checkinsInRange.filter((c) => c.proteinTargetMet !== null);
+      const knownAlcohol = checkinsInRange.filter((c) => c.hadAlcohol !== null);
+      const knownSleepWithoutAlcohol = checkinsInRange.filter(
+        (c): c is RecoveryCheckin & { sleepHours: number } =>
+          sleepHoursWithoutAlcohol(c) !== null
+      );
+      if (knownCreatine.length > 0) {
+        creatinePct = Math.round((knownCreatine.filter((c) => c.tookCreatine === true).length / knownCreatine.length) * 100);
+      }
+      if (knownProtein.length > 0) {
+        proteinPct = Math.round((knownProtein.filter((c) => c.proteinTargetMet === true).length / knownProtein.length) * 100);
+      }
+      if (knownAlcohol.length > 0) alcoholDays = knownAlcohol.filter((c) => c.hadAlcohol === true).length;
+      if (knownSleepWithoutAlcohol.length > 0) {
         sleepAvg =
           Math.round(
-            (checkinsWithoutAlcohol.reduce((a, c) => a + c.sleepHours, 0) / checkinsWithoutAlcohol.length) * 10
+            (knownSleepWithoutAlcohol.reduce((a, c) => a + c.sleepHours, 0) / knownSleepWithoutAlcohol.length) * 10
           ) / 10;
       }
     }
@@ -174,7 +194,7 @@ export function GlobalLayer() {
       {/* Corrélations */}
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-fg-faint]">
-          Corrélations récupération / volume
+          Corrélations J-1/J-2 / performance vs prévision · 30 j
         </p>
         {correlations ? (
           <div className="grid grid-cols-2 gap-2">
@@ -182,6 +202,9 @@ export function GlobalLayer() {
             <CorrelationTile label="Protéines" r={correlations.protein} />
             <CorrelationTile label="Sommeil sans alcool" r={correlations.sleep} />
             <CorrelationTile label="Alcool" r={correlations.alcohol} />
+            <p className="col-span-2 text-center text-[0.68rem] text-[--color-fg-faint]">
+              {correlations.sampleCount} séances comparées à la meilleure performance de la séance précédente.
+            </p>
           </div>
         ) : (
           <GlassCard className="text-center py-6">
@@ -211,7 +234,7 @@ function topContributingExercises(
       if (!exercise) continue;
       const coeff = aggregateCoefficient(exercise, parent);
       if (coeff <= 0) continue;
-      const completed = effectiveSetUnits(completedWorkSets(logged), {
+      const completed = physiologicalSetUnits(logged.sets, {
         increment: exercise.smallestIncrement,
       });
       if (completed <= 0) continue;
@@ -230,66 +253,86 @@ interface Correlations {
   protein: number | null;
   sleep: number | null;
   alcohol: number | null;
+  sampleCount: number;
 }
 
 /**
- * Corrèle, jour par jour sur les 30 derniers jours avec check-in, le volume
- * (sets de travail complétés ce jour-là) avec créatine (0/1), protéines
- * (0/1), alcool (0/1) et sommeil (heures). La corrélation sommeil ignore les
- * nuits avec alcool pour ne pas attribuer leur récupération atypique au sommeil.
+ * Corrèle les check-ins J-1/J-2 avec le résidu de performance de la séance
+ * suivante. La prévision est une baseline de persistance: meilleure performance
+ * de la dernière séance comparable pour chaque exercice. Seules les séances des
+ * 30 jours précédant la séance la plus récente sont analysées.
  */
 function buildCorrelations(
   finished: WorkoutSession[],
-  exerciseById: Map<string, Exercise>,
-  recoveryCheckins: {
-    date: Date;
-    tookCreatine: boolean;
-    proteinTargetMet: boolean;
-    sleepHours: number;
-    hadAlcohol: boolean;
-  }[]
+  _exerciseById: Map<string, Exercise>,
+  recoveryCheckins: RecoveryCheckin[]
 ): Correlations | null {
-  if (recoveryCheckins.length < 3) return null;
+  if (finished.length < 2 || recoveryCheckins.length === 0) return null;
 
-  const volumeByDay = new Map<string, number>();
-  for (const session of finished) {
-    const key = startOfDay(session.date).toISOString();
-    const sets = effectiveSessionSets(session, exerciseById);
-    volumeByDay.set(key, (volumeByDay.get(key) ?? 0) + sets);
-  }
+  const chronological = recoverySessionsChronological(finished);
+  const latestDate = chronological.at(-1)!.date;
+  const cutoff = new Date(latestDate);
+  cutoff.setDate(cutoff.getDate() - 30);
+  const checkinByDay = new Map(recoveryCheckins.map((checkin) => [localDayKey(checkin.date), checkin]));
+  const previousByExercise = new Map<string, { kind: "weighted" | "bodyweight"; score: number }>();
+  const observations: { residual: number; recovery: RecoveryCheckin[] }[] = [];
 
-  const volumes: number[] = [];
-  const creatine: number[] = [];
-  const protein: number[] = [];
-  const alcohol: number[] = [];
-  const sleep: number[] = [];
-  const sleepVolumes: number[] = [];
-
-  for (const c of recoveryCheckins) {
-    const key = startOfDay(c.date).toISOString();
-    const vol = volumeByDay.get(key) ?? 0;
-    volumes.push(vol);
-    creatine.push(c.tookCreatine ? 1 : 0);
-    protein.push(c.proteinTargetMet ? 1 : 0);
-    alcohol.push(c.hadAlcohol ? 1 : 0);
-    if (!c.hadAlcohol) {
-      sleep.push(c.sleepHours);
-      sleepVolumes.push(vol);
+  for (const session of chronological) {
+    const deltas: number[] = [];
+    for (const [exerciseId, performance] of comparableSessionPerformances(session, _exerciseById)) {
+      const previous = previousByExercise.get(exerciseId);
+      if (previous && previous.kind === performance.kind && previous.score > 0) {
+        deltas.push(((performance.score - previous.score) / previous.score) * 100);
+      }
+      previousByExercise.set(exerciseId, performance);
     }
+    if (session.date < cutoff || deltas.length === 0) continue;
+    const recovery = [-1, -2]
+      .map((offset) => checkinByDay.get(localDayKey(addLocalDays(session.date, offset))))
+      .filter((checkin): checkin is RecoveryCheckin => checkin !== undefined);
+    if (recovery.length === 0) continue;
+    observations.push({
+      residual: deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length,
+      recovery,
+    });
   }
+
+  if (observations.length < 3) return null;
+  const correlate = (select: (checkin: RecoveryCheckin) => number | null): number | null => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const observation of observations) {
+      const known = observation.recovery.map(select).filter((value): value is number => value !== null);
+      if (known.length === 0) continue;
+      xs.push(known.reduce((sum, value) => sum + value, 0) / known.length);
+      ys.push(observation.residual);
+    }
+    return pearsonCorrelation(xs, ys);
+  };
 
   return {
-    creatine: pearsonCorrelation(creatine, volumes),
-    protein: pearsonCorrelation(protein, volumes),
-    sleep: pearsonCorrelation(sleep, sleepVolumes),
-    alcohol: pearsonCorrelation(alcohol, volumes),
+    creatine: correlate((checkin) => checkin.tookCreatine === null ? null : Number(checkin.tookCreatine)),
+    protein: correlate((checkin) => checkin.proteinTargetMet === null ? null : Number(checkin.proteinTargetMet)),
+    sleep: correlate(sleepHoursWithoutAlcohol),
+    alcohol: correlate((checkin) => checkin.hadAlcohol === null ? null : Number(checkin.hadAlcohol)),
+    sampleCount: observations.length,
   };
+}
+
+function localDayKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addLocalDays(date: Date, offset: number): Date {
+  const result = startOfDay(date);
+  result.setDate(result.getDate() + offset);
+  return result;
 }
 
 function effectiveSessionSets(session: WorkoutSession, exerciseById: Map<string, Exercise>): number {
   const total = session.exercises.reduce((sum, logged) => {
     const increment = exerciseById.get(logged.exerciseId)?.smallestIncrement;
-    return sum + effectiveSetUnits(completedWorkSets(logged), { increment });
+    return sum + physiologicalSetUnits(logged.sets, { increment });
   }, 0);
   return Math.round(total * 10) / 10;
 }

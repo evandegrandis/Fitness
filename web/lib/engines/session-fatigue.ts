@@ -68,14 +68,15 @@ export class SessionFatigueContext {
   }
 
   /**
-   * true si le contexte de séance suggère une fatigue accumulée significative pour cet exercice.
-   * - Systémique : > 12 points de coût (~ 6 sets lourds composés ou 8 sets moyens)
-   * - Locale : ≥ 3 sets ciblant le même parent musculaire
+   * Une fatigue n'est confirmée que sur l'EXCÈS par rapport au contexte
+   * habituel. Le seuil commun `fatiguePenalty >= 2` évite qu'une séance
+   * structurellement identique aux précédentes soit annoncée comme fatigante.
    */
   isSignificant(parent: MuscleParent | null): boolean {
-    if (this.totalSystemicCost > 12) return true;
-    if (parent !== null && this.sameParentSets(parent) >= 3) return true;
-    return false;
+    const localConfirmed = parent !== null && this.excessSameParentSets(parent) >= 3;
+    // La garde locale (3 vraies séries effectives) reste indépendante : le durcissement demandé
+    // concerne l'étiquette systémique, pas une fatigue ciblée directement observée.
+    return localConfirmed || this.fatiguePenalty(parent) >= 2;
   }
 
   /**
@@ -86,14 +87,17 @@ export class SessionFatigueContext {
   fatiguePenalty(parent: MuscleParent | null): number {
     const excessSystemic = this.excessSystemicCost;
     const excessLocal = parent !== null ? this.excessSameParentSets(parent) : 0;
-    const base = Math.round(excessSystemic / ALGO_V2.FATIGUE_EXCESS_DIVISOR) + (excessLocal >= 3 ? 1 : 0);
+    // Un palier n'est acquis qu'une fois le divisor entièrement dépassé. `Math.round` produisait
+    // deux points dès 9 de coût (1,5), soit une alerte systémique après seulement cinq-six sets
+    // moyens — trop sensible et contradictoire avec le seuil documenté de 1 point par 6.
+    const base = Math.floor(excessSystemic / ALGO_V2.FATIGUE_EXCESS_DIVISOR) + (excessLocal >= 3 ? 1 : 0);
     return Math.max(0, Math.min(ALGO_V2.MAX_FATIGUE_REP_PENALTY, base));
   }
 
   /** Note lisible pour l'UI (français). */
   fatigueNote(parent: MuscleParent | null): string | null {
     if (!this.isSignificant(parent)) return null;
-    if (parent !== null && this.sameParentSets(parent) >= 3) {
+    if (parent !== null && this.excessSameParentSets(parent) >= 3) {
       return `Fatigue locale ${parentDisplayName[parent]} détectée`;
     }
     return "Fatigue systémique de séance détectée";

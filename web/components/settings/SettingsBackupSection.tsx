@@ -4,7 +4,11 @@ import { useRef, useState } from "react";
 import { Download, Upload } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { importBackup } from "@/lib/db/actions";
+import { createBackupJson, parseBackup } from "@/lib/models/backup";
+import { sessionsNewestFirst } from "@/lib/models/types";
 import { useWorkoutStore } from "@/lib/store/workout";
+import { defaultOutboxHandlers } from "@/lib/sync/handlers";
+import { flush, pendingCount } from "@/lib/sync/outbox";
 
 /**
  * Sauvegarde : export JSON (download Blob, construit côté client depuis le
@@ -20,53 +24,7 @@ export function SettingsBackupSection() {
 
   function handleExport() {
     const state = useWorkoutStore.getState();
-    const backup = {
-      version: 2,
-      exportDate: new Date().toISOString(),
-      lastWorkoutLoggedAt: state.history[0]?.date.toISOString() ?? null,
-      deviceId: "web",
-      exercises: state.catalog.map((ex) => ({
-        ...ex,
-        lastUsed: ex.lastUsed?.toISOString() ?? null,
-      })),
-      goals: state.goals.map((g) => ({ muscleGroup: g.parent, weeklyGoalSets: g.weeklyGoalSets })),
-      settings: state.settings,
-      sessions: state.history.map((s) => ({
-        id: s.id,
-        date: s.date.toISOString(),
-        startTime: s.startTime.toISOString(),
-        endTime: s.endTime?.toISOString() ?? null,
-        notes: s.notes,
-        templateName: s.templateName,
-        exercises: s.exercises.map((le) => ({
-          id: le.id,
-          exerciseId: le.exerciseId,
-          exerciseName: le.exerciseName,
-          orderIndex: le.orderIndex,
-          notes: le.notes,
-          sets: le.sets.map((set) => ({
-            weight: set.weight,
-            reps: set.reps,
-            setType: set.setType,
-            timestamp: set.timestamp.toISOString(),
-            setSlotIndex: set.setSlotIndex,
-            completed: set.completed,
-            supersetRoundIndex: set.supersetRoundIndex,
-          })),
-        })),
-        supersetGroups: s.supersetGroups.map((g) => ({
-          id: g.id,
-          orderIndex: g.orderIndex,
-          memberIDs: g.memberOrder,
-        })),
-        cardioEntries: s.cardioEntries ?? [],
-      })),
-      templates: state.templates.map((t) => ({
-        name: t.name,
-        sortOrder: t.sortOrder,
-        exercises: t.exercises,
-      })),
-    };
+    const backup = createBackupJson(state);
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -93,11 +51,42 @@ export function SettingsBackupSection() {
     try {
       const text = await pendingFile.text();
       const json = JSON.parse(text);
+      const parsed = parseBackup(json);
+      // Un import remplace toute la base. Rejouer ensuite une ancienne file offline pourrait
+      // ressusciter des valeurs antérieures ; on exige donc une file entièrement synchronisée.
+      if (pendingCount() > 0 && (await flush(defaultOutboxHandlers)) > 0) {
+        throw new Error("Des modifications hors-ligne restent à synchroniser avant l'import.");
+      }
       await importBackup(json);
+      const active = parsed.sessions.find((session) => session.isActive) ?? null;
+      useWorkoutStore.setState({
+        catalog: parsed.exercises,
+        history: sessionsNewestFirst(parsed.sessions.filter((session) => !session.isActive)),
+        goals: parsed.goals,
+        settings: parsed.settings,
+        templates: parsed.templates,
+        recoveryCheckins: parsed.recoveryCheckins,
+        active,
+        activeMode: parsed.activeMode,
+        selectedStartMode: parsed.selectedStartMode,
+        pendingVariantSwitches: parsed.pendingVariantSwitches,
+        treatedVariantSuggestions: parsed.treatedVariantSuggestions,
+        rotationAcceptedAt: parsed.rotationAcceptedAt,
+        rest: null,
+        undo: null,
+        achievement: null,
+        armedSupersetExerciseId: null,
+        justHitRecord: {},
+        recordsCache: {},
+      });
       setStatus("Import réussi — rechargement…");
       window.location.reload();
-    } catch {
-      setStatus("Échec de l'import — fichier invalide");
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? `Échec de l'import — ${error.message}`
+          : "Échec de l'import — erreur inconnue"
+      );
       setImporting(false);
     } finally {
       setConfirmingImport(false);

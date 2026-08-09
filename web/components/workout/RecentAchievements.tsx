@@ -15,6 +15,7 @@ const KIND_LABEL: Record<Achievement["kind"], string> = {
   estimated1RM: "Nouveau 1RM estimé",
   repsAtWeight: "Plus de reps à ce poids",
   bodyweightReps: "Nouveau record de reps",
+  finisherReps: "Nouveau record de finisher",
 };
 
 /** Liste des records récents — écran d'accueil (10 derniers PR). */

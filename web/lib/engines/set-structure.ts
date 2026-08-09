@@ -18,10 +18,8 @@ export const SET_STRUCTURE = {
   COMPOSITE_MAX_GAP_SECONDS: 30,
   /** Mini-bloc à charge identique : au plus 5 reps pour signaler un rest-pause. */
   REST_PAUSE_MAX_REPS: 5,
-  /** Un set isolé de 4 reps ou moins reste incomplet tant qu'il n'est pas prolongé. */
-  INCOMPLETE_SET_MAX_REPS: 4,
-  /** Un bloc composite vaut au plus une série effective, atteinte à 10 reps cumulées. */
-  EFFECTIVE_REPS_PER_SET: 10,
+  /** Un bloc, composite ou isolé, vaut une série effective à partir de 8 reps cumulées. */
+  EFFECTIVE_REPS_PER_SET: 8,
   /** Seuil absolu d'un burnout/finisher à hautes reps. */
   FINISHER_REP_FLOOR: 10,
   /** Un finisher tardif doit gagner au moins 3 reps après la baisse de charge. */
@@ -47,7 +45,7 @@ export interface CompositeSetBlock {
   /** Série qui porte la charge/reps normale pour les ancres de prédiction. */
   leadSet: LoggedSet;
   totalReps: number;
-  /** Unité de couverture : min(reps cumulées / 10, 1) pour un composite. */
+  /** Unité de couverture binaire : 1 à partir de 8 reps cumulées, sinon 0. */
   effectiveSetUnits: number;
 }
 
@@ -132,8 +130,8 @@ function compositeLinkKind(
 
 /**
  * Regroupe les mini-blocs consécutifs détectables. Une série standard garde
- * une unité. Un composite est plafonné à une unité et reste fractionnaire
- * sous 10 reps cumulées (ex. 4+3 => 0,7, donc jamais une série pleine).
+ * une unité au maximum. Un bloc n'est effectif qu'à partir de 8 reps
+ * cumulées (ex. 4 reps => 0 ; 4+4 immédiats => 1 ; 16 reps => 1).
  */
 export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptions = {}): CompositeSetBlock[] {
   const ordered = chronologicalCompletedWorkSets(sets);
@@ -145,10 +143,7 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
     const linkKind = previousSet ? compositeLinkKind(previousSet, set, options) : null;
 
     if (!previousBlock || !linkKind) {
-      const effectiveSetUnits =
-        set.reps <= SET_STRUCTURE.INCOMPLETE_SET_MAX_REPS
-          ? Math.min(1, set.reps / SET_STRUCTURE.EFFECTIVE_REPS_PER_SET)
-          : 1;
+      const effectiveSetUnits = set.reps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET ? 1 : 0;
       blocks.push({ kind: "standard", sets: [set], leadSet: set, totalReps: set.reps, effectiveSetUnits });
       continue;
     }
@@ -156,10 +151,8 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
     previousBlock.sets.push(set);
     previousBlock.kind = previousBlock.kind === "drop_set" || linkKind === "drop_set" ? "drop_set" : "rest_pause";
     previousBlock.totalReps += set.reps;
-    previousBlock.effectiveSetUnits = Math.min(
-      1,
-      previousBlock.totalReps / SET_STRUCTURE.EFFECTIVE_REPS_PER_SET
-    );
+    previousBlock.effectiveSetUnits =
+      previousBlock.totalReps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET ? 1 : 0;
   }
 
   return blocks;
@@ -168,6 +161,20 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
 /** Nombre de séries effectives pour la couverture musculaire. */
 export function effectiveSetUnits(sets: LoggedSet[], options: SetStructureOptions = {}): number {
   return compositeSetBlocks(sets, options).reduce((sum, block) => sum + block.effectiveSetUnits, 0);
+}
+
+/**
+ * Volume physiologique : les finishers comptent dans la couverture, mais sont
+ * gardés dans une piste séparée afin de ne jamais devenir des ancres de
+ * prédiction normale. Deux mini-blocs de finisher peuvent encore former une
+ * seule série effective selon les mêmes règles temporelles.
+ */
+export function physiologicalSetUnits(sets: LoggedSet[], options: SetStructureOptions = {}): number {
+  const normalUnits = effectiveSetUnits(sets, options);
+  const finisherAsWork = sets
+    .filter((set) => set.completed && set.setType === ST.finisher)
+    .map((set) => ({ ...set, setType: ST.work }));
+  return normalUnits + effectiveSetUnits(finisherAsWork, options);
 }
 
 function exercisePositionIsFinisher(sets: LoggedSet[], position?: ExercisePositionSignal): boolean {

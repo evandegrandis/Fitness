@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { Copy, Flame, GripVertical, Link2, Repeat, Unlink } from "lucide-react";
+import { Copy, Flame, GripVertical, Link2, Repeat, TrendingDown, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { SwipeRow } from "@/components/ui/SwipeRow";
 import { buildRecords } from "@/lib/engines/records";
-import { compositeSetBlocks, effectiveSetUnits } from "@/lib/engines/set-structure";
+import { compositeSetBlocks, physiologicalSetUnits, SET_STRUCTURE } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
 import { completedWorkSets } from "@/lib/models/types";
@@ -16,12 +16,14 @@ import { SetRow } from "./SetRow";
 import { SetEntry } from "./SetEntry";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
+import { nextSupersetExerciseId, nextSupersetRoundIndex } from "@/lib/store/superset";
 
 function supersetRoundLabel(session: WorkoutSession, loggedExercise: LoggedExercise): string | null {
   const group = session.supersetGroups.find((g) => g.id === loggedExercise.supersetGroupId);
   if (!group) return null;
   const memberIdx = group.memberOrder.indexOf(loggedExercise.id) + 1;
-  const round = completedWorkSets(loggedExercise).length + 1;
+  const round = nextSupersetRoundIndex(session, loggedExercise.id);
+  if (memberIdx <= 0 || round === null) return null;
   return `SS · r${round} · ${memberIdx}/${group.memberOrder.length}`;
 }
 
@@ -53,7 +55,7 @@ export function ExerciseCard({
   session: WorkoutSession;
   expanded: boolean;
   onToggleExpanded: () => void;
-  onBecameActive: () => void;
+  onBecameActive: (loggedExerciseId: string) => void;
   onDuplicate: () => void;
   onEditSet: (set: LoggedSet) => void;
   onReplace: (loggedExerciseId: string) => void;
@@ -65,6 +67,9 @@ export function ExerciseCard({
   const warmupSuggestion = useWorkoutStore((s) => s.warmupSuggestion);
   const justHitRecord = useWorkoutStore((s) => s.justHitRecord);
   const history = useWorkoutStore((s) => s.history);
+  // VARIATION_CYCLING_SPEC §8 — résout `suggestion.switchToVariantId` (un `Exercise.id` réel) en nom
+  // affichable ; `SetEntry` reste découplé du store/catalogue (voir sa doc de prop).
+  const catalog = useWorkoutStore((s) => s.catalog);
   const armedSupersetExerciseId = useWorkoutStore((s) => s.armedSupersetExerciseId);
   const handleSupersetLink = useWorkoutStore((s) => s.handleSupersetLink);
   const detachFromSupersetGroup = useWorkoutStore((s) => s.detachFromSupersetGroup);
@@ -85,18 +90,34 @@ export function ExerciseCard({
   const compositeByLeadId = new Map(compositeBlocks.map((block) => [block.leadSet.id, block]));
   const compositeContinuationIds = new Set(compositeBlocks.flatMap((block) => block.sets.slice(1).map((set) => set.id)));
   const effectiveCount = Math.round(
-    effectiveSetUnits(completedWorkSets(loggedExercise), { increment: exercise?.smallestIncrement }) * 10
+    physiologicalSetUnits(loggedExercise.sets, { increment: exercise?.smallestIncrement }) * 10
   ) / 10;
   const currentLastSet = sets.at(-1);
   const roundLabel = supersetRoundLabel(session, loggedExercise);
   const isArmed = armedSupersetExerciseId === loggedExercise.id;
+  const armedExercise = session.exercises.find((candidate) => candidate.id === armedSupersetExerciseId);
+  const targetGroup = session.supersetGroups.find((group) => group.id === loggedExercise.supersetGroupId);
+  const armedGroup = session.supersetGroups.find((group) => group.id === armedExercise?.supersetGroupId);
   // Un AUTRE exercice est armé → cette carte devient une cible de liaison :
   // taper n'importe où dessus finalise le superset (agrandissement de cible).
-  const isLinkTarget = armedSupersetExerciseId !== null && !isArmed;
+  const isLinkTarget =
+    armedExercise !== undefined &&
+    !isArmed &&
+    (targetGroup
+      ? armedExercise.supersetGroupId === null && targetGroup.memberOrder.length < 4
+      : loggedExercise.supersetGroupId === null && (!armedGroup || armedGroup.memberOrder.length < 4));
 
   // Dépend de `loggedExercise` (pas juste son id) pour recalculer après chaque set loggué.
   const currentSuggestion = useMemo(() => suggestion(loggedExercise.id), [suggestion, loggedExercise]);
   const currentWarmup = useMemo(() => warmupSuggestion(loggedExercise.id), [warmupSuggestion, loggedExercise]);
+  const variantCandidateName = useMemo(
+    () => (currentSuggestion.switchToVariantId ? catalog.find((e) => e.id === currentSuggestion.switchToVariantId)?.name ?? null : null),
+    [currentSuggestion, catalog]
+  );
+  // VARIATION_CYCLING_SPEC §3/§8 — indice discret "progrès qui ralentit" : apparaît UNIQUEMENT sur
+  // `slowing` (préemptif, avant `isPlateau` — qui a sa propre carte dans le bilan, pas ici), et
+  // disparaît dès `progressing`/`plateaued`/`undefined` (v1, pas de calcul date-based — §9).
+  const isSlowing = currentSuggestion.progressionState === "slowing";
   const lastSet = useMemo(
     () => (exercise ? lastSessionSetFor(exercise.id, history) : null),
     [exercise, history]
@@ -157,6 +178,14 @@ export function ExerciseCard({
                     {roundLabel}
                   </span>
                 )}
+                {/* VARIATION_CYCLING_SPEC §3/§8 — indice discret "slowing" : préemptif, zéro bruit
+                    tant que ça progresse (§8 "progressing : rien"), disparaît dès que retour à progressing. */}
+                {isSlowing && (
+                  <span className="pill shrink-0" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)" }}>
+                    <TrendingDown size={11} />
+                    Progrès qui ralentit
+                  </span>
+                )}
               </span>
               {exercise.machineSetting && (
                 <span className="block truncate text-xs text-[--color-fg-muted]">{exercise.machineSetting}</span>
@@ -191,13 +220,23 @@ export function ExerciseCard({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                if (armedSupersetExerciseId !== null && !isArmed) {
+                  if (isLinkTarget) handleSupersetLink(loggedExercise.id);
+                  return;
+                }
                 if (isLinked) {
                   detachFromSupersetGroup(loggedExercise.id);
                 } else {
                   handleSupersetLink(loggedExercise.id);
                 }
               }}
-              aria-label={isLinked ? "Détacher du superset" : "Lier en superset"}
+              aria-label={
+                isLinkTarget
+                  ? "Ajouter au superset"
+                  : isLinked
+                    ? "Détacher du superset"
+                    : "Lier en superset"
+              }
               aria-pressed={isArmed}
               className={cn(
                 "shrink-0 grid h-8 w-8 place-items-center rounded-full transition active:scale-90",
@@ -233,7 +272,7 @@ export function ExerciseCard({
                       return (
                         <div key={set.id} className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.035] p-2">
                           <div className="mb-1.5 px-1 text-[0.68rem] font-semibold text-sky-200">
-                            {block.kind === "drop_set" ? "Drop set" : "Rest-pause"} · {block.totalReps}/10 reps · {Math.round(block.effectiveSetUnits * 10) / 10} série{block.effectiveSetUnits === 1 ? "" : "s"} effective{block.effectiveSetUnits === 1 ? "" : "s"}
+                            {block.kind === "drop_set" ? "Drop set" : "Rest-pause"} · {block.totalReps}/{SET_STRUCTURE.EFFECTIVE_REPS_PER_SET} reps · {Math.round(block.effectiveSetUnits * 10) / 10} série{block.effectiveSetUnits === 1 ? "" : "s"} effective{block.effectiveSetUnits === 1 ? "" : "s"}
                           </div>
                           <div className="flex flex-col gap-1.5">
                             {block.sets.map((blockSet) => (
@@ -258,7 +297,7 @@ export function ExerciseCard({
                     </div>
                     <div className="flex flex-col gap-1.5">
                       {finisherSets.map((set) => (
-                        <SetRow key={set.id} set={set} isRecord={undefined} onTap={() => onEditSet(set)} />
+                        <SetRow key={set.id} set={set} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />
                       ))}
                     </div>
                   </div>
@@ -270,9 +309,27 @@ export function ExerciseCard({
                   suggestion={currentSuggestion}
                   warmup={currentWarmup}
                   lastSessionSet={lastSet}
+                  variantCandidateName={variantCandidateName}
                   onLogSet={(input) => {
-                    onBecameActive();
                     logSet(loggedExercise.id, input);
+                    const updatedSession = useWorkoutStore.getState().active;
+                    const updatedExercise = updatedSession?.exercises.find(
+                      (candidate) => candidate.id === loggedExercise.id
+                    );
+                    const loggedSet = updatedExercise ? orderedSets(updatedExercise).at(-1) : undefined;
+                    const advancesSuperset =
+                      loggedSet?.setType === SetType.work ||
+                      loggedSet?.setType === SetType.topSet ||
+                      loggedSet?.setType === SetType.backoff;
+                    const requiresImmediateCompletion = useWorkoutStore
+                      .getState()
+                      .suggestion(loggedExercise.id)
+                      .reasonCodes.includes("drop_set_completion");
+                    const nextId =
+                      updatedSession && advancesSuperset && !requiresImmediateCompletion
+                        ? nextSupersetExerciseId(updatedSession, loggedExercise.id)
+                        : null;
+                    onBecameActive(nextId ?? loggedExercise.id);
                   }}
                 />
               </motion.div>

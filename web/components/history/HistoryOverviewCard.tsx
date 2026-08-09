@@ -1,8 +1,8 @@
 "use client";
 
 import { StatTile } from "@/components/ui/StatTile";
-import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
-import { effectiveSetUnits } from "@/lib/engines/set-structure";
+import type { WorkoutSession } from "@/lib/models/types";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationMinutes } from "./historyHelpers";
 
 /**
@@ -19,7 +19,7 @@ export function HistoryOverviewCard({
 }) {
   const totalSets = sessions.reduce(
     (acc, s) =>
-      acc + s.exercises.reduce((subtotal, e) => subtotal + effectiveSetUnits(completedWorkSets(e)), 0),
+      acc + s.exercises.reduce((subtotal, exercise) => subtotal + physiologicalSetUnits(exercise.sets), 0),
     0
   );
   const displayedTotalSets = Math.round(totalSets * 10) / 10;

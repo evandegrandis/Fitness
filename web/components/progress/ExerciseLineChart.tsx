@@ -17,7 +17,7 @@ import {
 } from "recharts";
 
 import { formatShortDate, roundToIncrement } from "@/components/progress/utils";
-import { trendBadge } from "@/components/progress/trend";
+import { trendBadge, type ExerciseProgressAxis } from "@/components/progress/trend";
 
 export interface ExercisePoint {
   date: Date;
@@ -30,7 +30,7 @@ export interface ExercisePoint {
 const ZOOM_THRESHOLD = 12;
 
 /**
- * Courbe principale poids meilleur set / séance avec scrub (survol/drag) et
+ * Courbe principale (charge ou reps selon l'exercice) avec scrub (survol/drag) et
  * bande de benchmark optionnelle. Échelle Y resserrée non-zéro. Une courbe
  * reps secondaire (orange) peut être superposée. Badge de tendance dérivé de
  * la série ("Plateau N séances" / "+X% ce mois"). Zoom (Brush) uniquement
@@ -39,6 +39,7 @@ const ZOOM_THRESHOLD = 12;
 export function ExerciseLineChart({
   points,
   referenceBand,
+  primaryAxis = "load",
   showReps = false,
   height = 200,
   smallestIncrement = 0.5,
@@ -51,6 +52,7 @@ export function ExerciseLineChart({
    * absent si l'exercice n'a pas de benchmark.
    */
   referenceBand?: { low: number; high: number } | null;
+  primaryAxis?: ExerciseProgressAxis;
   showReps?: boolean;
   height?: number;
   /** Incrément de charge de l'exercice — arrondit le poids "lissé" affiché en tête. */
@@ -70,13 +72,17 @@ export function ExerciseLineChart({
     [points, smallestIncrement]
   );
 
-  const trend = useMemo(() => trendBadge(points.map((p) => ({ date: p.date, weight: p.weight }))), [points]);
+  const trend = useMemo(
+    () => trendBadge(points.map((p) => ({ date: p.date, value: primaryAxis === "reps" ? p.reps : p.weight }))),
+    [points, primaryAxis]
+  );
 
-  const weights = data.map((d) => d.weight);
-  const minW = Math.min(...weights, referenceBand?.low ?? Infinity);
-  const maxW = Math.max(...weights, referenceBand?.high ?? -Infinity);
-  const pad = Math.max(1, (maxW - minW) * 0.15);
-  const yDomain: [number, number] = [Math.max(0, Math.floor(minW - pad)), Math.ceil(maxW + pad)];
+  const primaryValues = data.map((d) => (primaryAxis === "reps" ? d.reps : d.weight));
+  const visibleReferenceBand = primaryAxis === "load" ? referenceBand : null;
+  const minValue = Math.min(...primaryValues, visibleReferenceBand?.low ?? Infinity);
+  const maxValue = Math.max(...primaryValues, visibleReferenceBand?.high ?? -Infinity);
+  const pad = Math.max(1, (maxValue - minValue) * 0.15);
+  const yDomain: [number, number] = [Math.max(0, Math.floor(minValue - pad)), Math.ceil(maxValue + pad)];
 
   const handleMove = useCallback((state: MouseHandlerDataParam) => {
     if (state?.isTooltipActive && typeof state.activeTooltipIndex === "number") {
@@ -94,8 +100,12 @@ export function ExerciseLineChart({
       <div className="mb-2 flex items-start justify-between gap-2">
         {active && (
           <div className="flex items-baseline gap-3">
-            <span className="tnum text-2xl font-bold text-[--color-fg]">{active.weight} kg</span>
-            <span className="tnum text-sm text-[--color-fg-muted]">{active.reps} reps</span>
+            <span className="tnum text-2xl font-bold text-[--color-fg]">
+              {primaryAxis === "reps" ? `${active.reps} reps` : `${active.weight} kg`}
+            </span>
+            <span className="tnum text-sm text-[--color-fg-muted]">
+              {primaryAxis === "reps" ? (active.weight > 0 ? `+${active.weight} kg` : "PDC") : `${active.reps} reps`}
+            </span>
             <span className="tnum text-xs text-[--color-fg-faint]">{active.dateLabel}</span>
           </div>
         )}
@@ -122,30 +132,30 @@ export function ExerciseLineChart({
               interval="preserveStartEnd"
             />
             <YAxis
-              yAxisId="weight"
+              yAxisId="primary"
               domain={yDomain}
               tick={{ fill: "var(--color-fg-faint)", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               width={34}
             />
-            {showReps && (
+            {showReps && primaryAxis === "load" && (
               <YAxis yAxisId="reps" orientation="right" hide domain={["dataMin - 2", "dataMax + 2"]} />
             )}
-            {referenceBand && (
+            {visibleReferenceBand && (
               <>
                 <ReferenceArea
-                  yAxisId="weight"
-                  y1={referenceBand.low}
-                  y2={referenceBand.high}
+                  yAxisId="primary"
+                  y1={visibleReferenceBand.low}
+                  y2={visibleReferenceBand.high}
                   fill="var(--color-success)"
                   fillOpacity={0.07}
                   stroke="none"
                 />
-                <ReferenceLine yAxisId="weight" y={referenceBand.low} stroke="var(--color-warning)" strokeDasharray="4 4" strokeOpacity={0.55}>
+                <ReferenceLine yAxisId="primary" y={visibleReferenceBand.low} stroke="var(--color-warning)" strokeDasharray="4 4" strokeOpacity={0.55}>
                   <Label value="Avancé" position="insideBottomLeft" fill="var(--color-warning)" fontSize={9} fontFamily="var(--font-mono)" />
                 </ReferenceLine>
-                <ReferenceLine yAxisId="weight" y={referenceBand.high} stroke="var(--color-success)" strokeDasharray="4 4" strokeOpacity={0.55}>
+                <ReferenceLine yAxisId="primary" y={visibleReferenceBand.high} stroke="var(--color-success)" strokeDasharray="4 4" strokeOpacity={0.55}>
                   <Label value="Élite" position="insideTopLeft" fill="var(--color-success)" fontSize={9} fontFamily="var(--font-mono)" />
                 </ReferenceLine>
               </>
@@ -155,15 +165,15 @@ export function ExerciseLineChart({
               content={() => null}
             />
             <Line
-              yAxisId="weight"
+              yAxisId="primary"
               type="monotone"
-              dataKey="weight"
+              dataKey={primaryAxis === "reps" ? "reps" : "weight"}
               stroke="var(--accent)"
               strokeWidth={2.5}
               dot={{ r: 3, fill: "var(--accent)", strokeWidth: 0 }}
               activeDot={{ r: 5, fill: "var(--accent)", stroke: "#06070d", strokeWidth: 2 }}
             />
-            {showReps && (
+            {showReps && primaryAxis === "load" && (
               <Line
                 yAxisId="reps"
                 type="monotone"

@@ -10,14 +10,13 @@
 import { LEAVES_OF_PARENT, MUSCLE_PARENTS, parentDisplayName, type MuscleGroup, type MuscleParent } from "@/lib/models/muscles";
 import {
   aggregateCoefficient,
-  completedWorkSets,
   type Exercise,
   type LoggedExercise,
   type LoggedSet,
   type MuscleGoal,
   type WorkoutSession,
 } from "@/lib/models/types";
-import { effectiveSetUnits } from "@/lib/engines/set-structure";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 
 // ---------------------------------------------------------------------------
 // Statut de couverture
@@ -103,7 +102,7 @@ function addDays(date: Date, days: number): Date {
 export function leafSets(loggedExercise: LoggedExercise, exercise: Exercise | undefined): Map<MuscleGroup, number> {
   const result = new Map<MuscleGroup, number>();
   if (!exercise) return result;
-  const completed = effectiveSetUnits(completedWorkSets(loggedExercise), {
+  const completed = physiologicalSetUnits(loggedExercise.sets, {
     increment: exercise.smallestIncrement,
   });
   if (completed <= 0) return result;
@@ -121,7 +120,7 @@ export function leafSets(loggedExercise: LoggedExercise, exercise: Exercise | un
 export function parentSets(loggedExercise: LoggedExercise, exercise: Exercise | undefined): Map<MuscleParent, number> {
   const result = new Map<MuscleParent, number>();
   if (!exercise) return result;
-  const completed = effectiveSetUnits(completedWorkSets(loggedExercise), {
+  const completed = physiologicalSetUnits(loggedExercise.sets, {
     increment: exercise.smallestIncrement,
   });
   if (completed <= 0) return result;
@@ -415,6 +414,6 @@ export function liveParentImpact(exercise: Exercise, completedSets: number): Map
 export function liveParentImpactForSets(exercise: Exercise, sets: LoggedSet[]): Map<MuscleParent, number> {
   return liveParentImpact(
     exercise,
-    effectiveSetUnits(sets, { increment: exercise.smallestIncrement })
+    physiologicalSetUnits(sets, { increment: exercise.smallestIncrement })
   );
 }

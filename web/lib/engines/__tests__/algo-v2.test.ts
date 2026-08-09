@@ -6,9 +6,16 @@
  */
 import { describe, expect, it } from "vitest";
 import { suggest, SuggestionMode, detectPattern, predictReps } from "@/lib/engines/progression";
-import { clusterLoads, activeCluster, preprocessHistory } from "@/lib/engines/patterns";
-import { SetType, SetPatternMode, FatigueClass } from "@/lib/models/enums";
-import { MuscleGroup } from "@/lib/models/muscles";
+import {
+  activeCluster,
+  classifySessionRoles,
+  clusterLoads,
+  collectExerciseHistory,
+  preprocessHistory,
+} from "@/lib/engines/patterns";
+import { SetType, SetPatternMode, FatigueClass, MovementPattern } from "@/lib/models/enums";
+import { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
+import { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
 
 let idCounter = 0;
@@ -39,6 +46,10 @@ function makeExercise(overrides: Partial<Exercise> = {}): Exercise {
     voluntaryRepCap: 0,
     muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
     lastUsed: null,
+    movementPattern: null,
+    resistanceProfile: null,
+    strengthStandardKey: null,
+    benchmarkUnit: null,
     ...overrides,
   };
 }
@@ -176,6 +187,116 @@ describe("structure intra-exercice — historique normalisé pour la prédiction
       preserveDedicatedFinishers: true,
     });
     expect(processed[0].workSets).toHaveLength(2);
+  });
+
+  it("un finisher PDC tardif gagne sur BW_REP et garde son profil", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.bodyweight, repTargetMin: 6, repTargetMax: 12 });
+    const history = [s1(0, 16), s1(0, 14), s1(0, 13)];
+    const positions = history.map(() => ({ position: 7, sessionExerciseCount: 8 }));
+
+    expect(detectPattern(exercise, history, positions)).toBe("ISOLATION_FINISHER");
+    const processed = preprocessHistory(history, exercise, exercise.smallestIncrement, {
+      positions,
+      preserveDedicatedFinishers: true,
+    });
+    expect(processed.map((session) => session.workSets.length)).toEqual([1, 1, 1]);
+  });
+
+  it("un finisher explicitement persisté conserve immédiatement un profil dédié", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight });
+    const finisher = makeSet({ weight: 12, reps: 12, setType: SetType.finisher });
+    expect(detectPattern(exercise, [[finisher]])).toBe("ISOLATION_FINISHER");
+    const processed = preprocessHistory([[finisher]], exercise, exercise.smallestIncrement, {
+      preserveDedicatedFinishers: true,
+    });
+    expect(processed[0].workSets).toHaveLength(1);
+  });
+
+  it("un profil finisher explicite suggère et enchaîne des sets typés finisher", () => {
+    const exercise = makeExercise({ repTargetMin: 8, repTargetMax: 12 });
+    const historicalFinisher = makeSet({ weight: 12, reps: 12, setType: SetType.finisher });
+
+    const first = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory: [[historicalFinisher]],
+      currentSessionSets: [],
+    });
+    expect(first.setType).toBe(SetType.finisher);
+
+    const second = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: [[historicalFinisher]],
+      currentSessionSets: [
+        makeSet({ weight: first.weight, reps: first.reps, setType: SetType.finisher }),
+      ],
+    });
+    expect(second.setType).toBe(SetType.finisher);
+    expect(second.reps).toBeLessThanOrEqual(exercise.repTargetMax);
+  });
+
+  it("collecte les warmups et fusionne les doublons intra-séance avant P2/P5", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.topSetBackoff, repTargetMin: 6 });
+    const at = (minute: number) => new Date(`2026-07-30T10:${String(minute).padStart(2, "0")}:00Z`);
+    const warmup = makeSet({ weight: 100, reps: 10, setType: SetType.warmup, timestamp: at(0), setSlotIndex: 0 });
+    const top = makeSet({ weight: 120, reps: 6, timestamp: at(2), setSlotIndex: 1 });
+    const backoff = makeSet({ weight: 100, reps: 6, timestamp: at(4), setSlotIndex: 2 });
+    const reminder1 = makeSet({ weight: 80, reps: 12, timestamp: at(40), setSlotIndex: 0 });
+    const reminder2 = makeSet({ weight: 80, reps: 12, timestamp: at(42), setSlotIndex: 1 });
+    const old = (id: string, day: string) => ({
+      id,
+      date: new Date(day), startTime: new Date(day), endTime: new Date(day), notes: "", isActive: false,
+      templateName: null, supersetGroups: [], cardioEntries: [],
+      exercises: [{ id: `${id}-le`, orderIndex: 0, notes: "", exerciseId: exercise.id, exerciseName: exercise.name,
+        sets: [makeSet({ weight: 100, reps: 10, timestamp: new Date(day) })], supersetGroupId: null, plateauWeakPoint: null }],
+    });
+    const recent = {
+      id: "recent", date: at(0), startTime: at(0), endTime: at(50), notes: "", isActive: false,
+      templateName: null, supersetGroups: [], cardioEntries: [],
+      exercises: [
+        { id: "first", orderIndex: 0, notes: "", exerciseId: exercise.id, exerciseName: exercise.name,
+          sets: [warmup, top, backoff], supersetGroupId: null, plateauWeakPoint: null },
+        { id: "other", orderIndex: 1, notes: "", exerciseId: "other", exerciseName: "Other", sets: [], supersetGroupId: null, plateauWeakPoint: null },
+        { id: "reminder", orderIndex: 2, notes: "", exerciseId: exercise.id, exerciseName: exercise.name,
+          sets: [reminder1, reminder2], supersetGroupId: null, plateauWeakPoint: null },
+      ],
+    };
+    const collected = collectExerciseHistory(
+      [recent, old("old-1", "2026-07-25T10:00:00Z"), old("old-2", "2026-07-20T10:00:00Z")],
+      exercise.id,
+      10
+    );
+
+    expect(collected.sets).toHaveLength(3);
+    expect(collected.sets[0]).toHaveLength(5);
+    expect(collected.sets[0].map((set) => set.setSlotIndex)).toEqual([0, 1, 2, 3, 4]);
+    const processed = preprocessHistory(collected.sets, exercise, exercise.smallestIncrement, {
+      positions: collected.positions,
+    });
+    expect(processed[0].workSets).toHaveLength(3);
+    expect(processed[0].amorce?.weight).toBe(100);
+    expect(processed[0].top?.weight).toBe(120);
+    expect(processed[0].workSets.some((set) => set.id === reminder2.id)).toBe(false);
+
+    const permuted = collectExerciseHistory(
+      [old("old-2b", "2026-07-20T10:00:00Z"), recent, old("old-1b", "2026-07-25T10:00:00Z")],
+      exercise.id,
+      2
+    );
+    expect(permuted.sets.map((sets) => sets[0].timestamp.getTime())).toEqual([
+      collected.sets[0][0].timestamp.getTime(),
+      new Date("2026-07-25T10:00:00Z").getTime(),
+    ]);
+  });
+
+  it("ne classe jamais comme backoff un set placé avant le top", () => {
+    const roles = classifySessionRoles(
+      [sTSB([90, 6])[0], sTSB([80, 10])[0], sTSB([100, 6])[0]].map((set, index) => ({ ...set, setSlotIndex: index })),
+      2.5
+    );
+    expect(roles.roles).toEqual(["straight", "amorce", "top"]);
+    expect(roles.backoffs).toEqual([]);
   });
 });
 
@@ -332,45 +453,306 @@ describe("ALGO_V2 §4.4/§4.2 — promotion réactive vs démotion stricte", () 
 // Escalade plateau (§8 ALGO_SPEC_HARDENED, ANTI_PLATEAU_SCIENCE.md §2)
 // ---------------------------------------------------------------------------
 
-describe("ALGO_V2 §8 — escalade plateau (surcharge / rest-pause), jamais sur le premier set", () => {
-  it("le premier set de la séance n'est JAMAIS touché par l'escalade plateau, même si plateauCounter >= 3", () => {
+describe("VARIATION_CYCLING_SPEC §4 décision #3 — l'escalade d'intensité (rest-pause/overreach) est RETIRÉE", () => {
+  it("plateauCounter >= 3 seul (sans plateau daté) ne déclenche plus AUCUNE escalade — intensityTechnique toujours null", () => {
     const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 6, repTargetMax: 10, smallestIncrement: 2.5 });
-    // 4 séances identiques à 80x8 (mauvais jour recurrent, pas de promotion, plateau détecté).
+    // 4 séances identiques à 80x7, mais TOUTES au même timestamp (fixture `s1`/`makeSet` par défaut)
+    // -> plateauStalledDays=0 -> isPlateau=false (VARIATION_CYCLING_SPEC §2, date-based) malgré
+    // plateauCounter=4 : preuve que l'ancien seuil par nombre de séances ne ressuscite pas l'escalade.
     const history = [s1(80, 7), s1(80, 7), s1(80, 7), s1(80, 7)];
-    const suggestion = suggest({ exercise, currentSetIndex: 0, recentHistory: history, currentSessionSets: [] });
+    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0 })];
+    const suggestion = suggest({ exercise, currentSetIndex: 1, recentHistory: history, currentSessionSets });
     expect(suggestion.mode).not.toBe(SuggestionMode.plateauBreak);
     expect(suggestion.intensityTechnique).toBeNull();
-  });
-
-  it("set 2+ en plateau (>=3 séances identiques) : escalade appliquée (surcharge OU rest-pause selon la parité de plateauCounter-3)", () => {
-    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 6, repTargetMax: 10, smallestIncrement: 2.5 });
-    const history = [s1(80, 7), s1(80, 7), s1(80, 7), s1(80, 7)];
-    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0 })];
-    const suggestion = suggest({ exercise, currentSetIndex: 1, recentHistory: history, currentSessionSets });
-    expect(suggestion.mode).toBe(SuggestionMode.plateauBreak);
-    // plateauCounter=4 ici (4 séances identiques) -> (4-3)%2=1 -> impair -> rest-pause (ANTI_PLATEAU_SCIENCE.md §2, étape 4).
-    expect(suggestion.intensityTechnique).toBe("rest_pause");
-    expect(suggestion.reasonCodes).toContain("rest_pause");
-  });
-
-  it("plateauCounter=3 (premier cycle) : escalade PAIRE = surcharge +1 incrément, 5 reps", () => {
-    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 6, repTargetMax: 10, smallestIncrement: 2.5 });
-    const history = [s1(80, 7), s1(80, 7), s1(80, 7)];
-    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0 })];
-    const suggestion = suggest({ exercise, currentSetIndex: 1, recentHistory: history, currentSessionSets });
-    expect(suggestion.mode).toBe(SuggestionMode.plateauBreak);
-    expect(suggestion.reasonCodes).toContain("plateau_break");
-    expect(suggestion.weight).toBeCloseTo(82.5);
-    expect(suggestion.reps).toBe(5);
+    expect(suggestion.reasonCodes).not.toContain("rest_pause");
+    expect(suggestion.reasonCodes).not.toContain("plateau_break");
   });
 });
 
 // ---------------------------------------------------------------------------
-// Bascule de variante (Ab roller debout -> genoux, §7.4/§9)
+// Rotation de variation sur plateau DATÉ (remplace l'escalade d'intensité, §2/§4/§6/§8)
+// ---------------------------------------------------------------------------
+
+describe("VARIATION_CYCLING_SPEC §2/§4/§6/§8 — rotation de variation sur plateau daté (isPlateau)", () => {
+  /** Ancre datée `n` jours avant `TODAY`, même poids/reps (aucun nouveau max d'e1RM -> plateau). */
+  const TODAY = new Date("2026-08-04T12:00:00Z");
+  function daysAgo(n: number): Date {
+    return new Date(TODAY.getTime() - n * 86_400_000);
+  }
+  function datedSession(weight: number, reps: number, n: number): LoggedSet[] {
+    return [makeSet({ weight, reps, setSlotIndex: 0, timestamp: daysAgo(n) })];
+  }
+
+  it("isPlateau (14j+, >=2 séances, aucun progrès) + catalogue avec un pair même pattern -> switchToVariantId = un exerciseId réel, reasonCodes contient 'variation', AUCUNE mutation de weight/reps/mode", () => {
+    const current = makeExercise({
+      name: "Développé militaire machine",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    const candidate = makeExercise({
+      name: "Développé militaire haltères",
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    // Même charge/reps depuis 21 jours, >= 2 séances dans la fenêtre de 14j -> isPlateau=true.
+    const history = [datedSession(80, 7, 3), datedSession(80, 7, 10), datedSession(80, 7, 21)];
+    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0, timestamp: TODAY })];
+
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      catalog: [current, candidate],
+      sessionHistory: [],
+      goals: [],
+      now: TODAY,
+    });
+
+    expect(suggestion.switchToVariantId).toBe(candidate.id);
+    expect(suggestion.reasonCodes).toContain("variation");
+    // Non destructif : la rotation ne mute ni la charge, ni les reps, ni le mode de CETTE suggestion.
+    expect(suggestion.mode).not.toBe(SuggestionMode.plateauBreak);
+    expect(suggestion.intensityTechnique).toBeNull();
+  });
+
+  it("VARIATION_CYCLING_SPEC §3/§4.2 (P2.3) — rotation PRÉEMPTIVE sur 'slowing' (PAS encore isPlateau) : switchToVariantId posé, reasonCodes contient 'variation_preemptive' (pas 'variation')", () => {
+    const current = makeExercise({
+      name: "Développé militaire machine",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    const candidate = makeExercise({
+      name: "Développé militaire haltères",
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    // Totalement plat (même charge/reps) sur 10 jours : vélocité nulle, stalledDays ~10 (>= 7, < 14)
+    // -> "slowing", PAS "plateaued" (le seuil isPlateau est 14j) — même fixture que
+    // progression.test.ts "stagnation flat 7-13 jours".
+    const history = [datedSession(80, 7, 0), datedSession(80, 7, 5), datedSession(80, 7, 10)];
+    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0, timestamp: TODAY })];
+
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      catalog: [current, candidate],
+      sessionHistory: [],
+      goals: [],
+      now: TODAY,
+    });
+
+    expect(suggestion.progressionState).toBe("slowing");
+    expect(suggestion.switchToVariantId).toBe(candidate.id);
+    expect(suggestion.reasonCodes).toContain("variation_preemptive");
+    expect(suggestion.reasonCodes).not.toContain("variation");
+  });
+
+  it("progressionState='progressing' (reps en hausse à charge constante) -> AUCUNE proposition, même avec catalogue/pair disponibles", () => {
+    const current = makeExercise({
+      name: "Développé militaire machine",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    const candidate = makeExercise({
+      name: "Développé militaire haltères",
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    // Reps en hausse à charge constante -> §2 décision #2 : progrès, jamais "slowing"/"plateaued".
+    const history = [datedSession(80, 9, 0), datedSession(80, 8, 5), datedSession(80, 7, 10)];
+    const currentSessionSets = [makeSet({ weight: 80, reps: 9, setSlotIndex: 0, timestamp: TODAY })];
+
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      catalog: [current, candidate],
+      sessionHistory: [],
+      goals: [],
+      now: TODAY,
+    });
+
+    expect(suggestion.progressionState).toBe("progressing");
+    expect(suggestion.switchToVariantId).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("variation");
+    expect(suggestion.reasonCodes).not.toContain("variation_preemptive");
+  });
+
+  it("VARIATION_CYCLING_SPEC §5.3/§6 (P2.1) — le point faible capturé sur une séance passée (`sessionHistory`) départage les candidats via weakPointFit", () => {
+    const current = makeExercise({
+      name: "Développé militaire machine",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    const shared = {
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+      category: "push",
+      fatigueClass: "medium" as const,
+      name: "Développé variante",
+    };
+    const matching = makeExercise({ ...shared, resistanceProfile: "lockout" });
+    const nonMatching = makeExercise({ ...shared, resistanceProfile: "bottom" });
+    const history = [datedSession(80, 7, 3), datedSession(80, 7, 10), datedSession(80, 7, 21)];
+    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0, timestamp: TODAY })];
+    // Capture 1-tap déjà faite sur une séance PASSÉE (§5.3) : "où ça a calé ?" -> "lockout".
+    const sessionHistory = [
+      {
+        id: "past-session-weakpoint",
+        date: daysAgo(21),
+        startTime: daysAgo(21),
+        endTime: daysAgo(21),
+        notes: "",
+        isActive: false,
+        templateName: null,
+        supersetGroups: [],
+        exercises: [
+          {
+            id: "logged-past",
+            orderIndex: 0,
+            notes: "",
+            exerciseId: current.id,
+            exerciseName: current.name,
+            supersetGroupId: null,
+            plateauWeakPoint: "lockout" as const,
+            sets: datedSession(80, 7, 21),
+          },
+        ],
+      },
+    ];
+
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      catalog: [current, matching, nonMatching],
+      sessionHistory,
+      goals: [],
+      now: TODAY,
+    });
+
+    expect(suggestion.switchToVariantId).toBe(matching.id);
+  });
+
+  it("le premier set de la séance n'est JAMAIS touché, même en plateau daté avec un candidat disponible", () => {
+    const current = makeExercise({
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    const candidate = makeExercise({
+      name: "Candidat",
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
+    });
+    const history = [datedSession(80, 7, 3), datedSession(80, 7, 10), datedSession(80, 7, 21)];
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 0,
+      recentHistory: history,
+      currentSessionSets: [], // aucun set fait aujourd'hui -> c'est le premier set
+      catalog: [current, candidate],
+      sessionHistory: [],
+      goals: [],
+      now: TODAY,
+    });
+    expect(suggestion.switchToVariantId).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("variation");
+  });
+
+  it("isPlateau=true mais `catalog`/`sessionHistory` non fournis -> aucune proposition, switchToVariantId reste null (dégradation gracieuse §9)", () => {
+    const current = makeExercise({
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.verticalPress,
+    });
+    const history = [datedSession(80, 7, 3), datedSession(80, 7, 10), datedSession(80, 7, 21)];
+    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0, timestamp: TODAY })];
+    const suggestion = suggest({ exercise: current, currentSetIndex: 1, recentHistory: history, currentSessionSets, now: TODAY });
+    expect(suggestion.switchToVariantId).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("variation");
+  });
+
+  it("isPlateau=true et catalogue fourni mais SANS pair valide (aucun autre exercice du même pattern) -> selectAlternative renvoie null, pas de crash", () => {
+    const current = makeExercise({
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      movementPattern: MovementPattern.isolation,
+    });
+    const history = [datedSession(80, 7, 3), datedSession(80, 7, 10), datedSession(80, 7, 21)];
+    const currentSessionSets = [makeSet({ weight: 80, reps: 7, setSlotIndex: 0, timestamp: TODAY })];
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      catalog: [current],
+      sessionHistory: [],
+      goals: [],
+      now: TODAY,
+    });
+    expect(suggestion.switchToVariantId).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("variation");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bascule de variante (Ab roller debout -> genoux, §7.4/§9) — switchToVariantId porte un exerciseId
 // ---------------------------------------------------------------------------
 
 describe("ALGO_V2 §7.4/§9 — bascule de variante (Ab roller debout -> genoux)", () => {
-  it("< VARIANT_SWITCH_FLOOR(4) reps sur 'Ab roller debout' -> propose la bascule vers 'Ab roller genoux'", () => {
+  it("< VARIANT_SWITCH_FLOOR(4) reps sur 'Ab roller debout' -> propose la bascule vers l'exerciseId de 'Ab roller genoux' (résolu via `catalog`, plus un nom — VARIATION_CYCLING_SPEC §8)", () => {
+    const exercise = makeExercise({
+      name: "Ab roller debout",
+      setPatternMode: SetPatternMode.bodyweight,
+      repTargetMin: 4,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+    });
+    const easierVariant = makeExercise({ name: "Ab roller genoux" });
+    const history = [s1(0, 4), s1(0, 6), s1(0, 3)];
+    const currentSessionSets = [makeSet({ weight: 0, reps: 3, setSlotIndex: 0 })];
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      catalog: [exercise, easierVariant],
+    });
+    expect(suggestion.switchToVariantId).toBe(easierVariant.id);
+    expect(suggestion.reasonCodes).toContain("variant_switch_easier");
+    expect(suggestion.reps).toBe(10);
+  });
+
+  it("< VARIANT_SWITCH_FLOOR(4) reps mais `catalog` non fourni -> switchToVariantId reste null (plus jamais un nom brut, dégradation gracieuse)", () => {
     const exercise = makeExercise({
       name: "Ab roller debout",
       setPatternMode: SetPatternMode.bodyweight,
@@ -381,9 +763,8 @@ describe("ALGO_V2 §7.4/§9 — bascule de variante (Ab roller debout -> genoux)
     const history = [s1(0, 4), s1(0, 6), s1(0, 3)];
     const currentSessionSets = [makeSet({ weight: 0, reps: 3, setSlotIndex: 0 })];
     const suggestion = suggest({ exercise, currentSetIndex: 1, recentHistory: history, currentSessionSets });
-    expect(suggestion.switchToVariantId).toBe("Ab roller genoux");
+    expect(suggestion.switchToVariantId).toBeNull();
     expect(suggestion.reasonCodes).toContain("variant_switch_easier");
-    expect(suggestion.reps).toBe(10);
   });
 
   it("exercice sans variante liée -> switchToVariantId reste null même en échec net", () => {
@@ -438,5 +819,88 @@ describe("ALGO_V2 §7.5 — WEIGHTED_BW_VARIABLE : primer BW puis décision lest
       gapDays: 2,
     });
     expect(suggestion.weight).toBeGreaterThan(0);
+  });
+
+  it("autorise le lest via le gap exercice mais déleste via le gap du dernier lest", () => {
+    const exercise = makeExercise({
+      name: "Tractions SN",
+      setPatternMode: SetPatternMode.weightedBodyweight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 1.25,
+    });
+    const history = [
+      sTSB([0, 10], [20, 4]),
+      sTSB([0, 10], [15, 6]),
+      sTSB([0, 10], [15, 7]),
+    ];
+    const currentSessionSets = [makeSet({ weight: 0, reps: 10, setSlotIndex: 0 })];
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      gapDays: 2,
+      gapLestDays: 45,
+      bodyweightKg: 75,
+    });
+    expect(suggestion.reasonCodes).toContain("wbw_v2_lest");
+    expect(suggestion.weight).toBe(17.5);
+    expect(suggestion.weight).toBeLessThan(20);
+  });
+});
+
+describe("ALGO_V2 §6.1 — fatigue sur l'excès", () => {
+  it("baisse le premier set d'un incrément quand fatiguePenalty >= 2", () => {
+    const exercise = makeExercise({
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+    });
+    const fatigue = new SessionFatigueContext(
+      Array.from({ length: 4 }, () => ({
+        primaryParent: MuscleParent.pectoraux,
+        workSetsCompleted: 1,
+        fatigueClass: FatigueClass.medium,
+      }))
+    );
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory: [s1(100, 8), s1(100, 8), s1(100, 8)],
+      currentSessionSets: [],
+      sessionFatigue: fatigue,
+    });
+    expect(fatigue.fatiguePenalty(MuscleParent.pectoraux)).toBe(2);
+    expect(suggestion.weight).toBe(97.5);
+    expect(suggestion.reasonCodes).toContain("session_fatigue_load_reduction");
+  });
+
+  it("un PR du jour masque l'alerte de fatigue contradictoire", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight });
+    const fatigue = new SessionFatigueContext([
+      { primaryParent: MuscleParent.pectoraux, workSetsCompleted: 8, fatigueClass: FatigueClass.heavy },
+    ]);
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: [s1(60, 8), s1(60, 8), s1(60, 8)],
+      currentSessionSets: [makeSet({ weight: 62.5, reps: 8 })],
+      sessionFatigue: fatigue,
+      prAchievedToday: true,
+    });
+    expect(suggestion.sessionFatigueWarning).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("session_fatigue_load_reduction");
+
+    const withoutContextPenalty = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: [s1(60, 8), s1(60, 8), s1(60, 8)],
+      currentSessionSets: [makeSet({ weight: 62.5, reps: 8 })],
+      prAchievedToday: true,
+    });
+    expect(suggestion.weight).toBe(withoutContextPenalty.weight);
+    expect(suggestion.reps).toBe(withoutContextPenalty.reps);
   });
 });

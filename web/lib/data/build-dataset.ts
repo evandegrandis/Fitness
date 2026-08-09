@@ -1,23 +1,29 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseBackup } from "@/lib/models/backup";
-import { fatigueClassFromRaw } from "@/lib/models/enums";
+import { BenchmarkUnit, fatigueClassFromRaw, MovementPattern, ResistanceProfile } from "@/lib/models/enums";
+import type {
+  BenchmarkUnit as BenchmarkUnitT,
+  MovementPattern as MovementPatternT,
+  ResistanceProfile as ResistanceProfileT,
+} from "@/lib/models/enums";
 import type {
   AllData,
 } from "@/lib/db/queries";
-import type {
-  Exercise,
-  LoggedExercise,
-  LoggedSet,
-  MuscleMapping,
-  WorkoutSession,
+import {
+  sessionsNewestFirst,
+  type Exercise,
+  type LoggedExercise,
+  type LoggedSet,
+  type MuscleMapping,
+  type WorkoutSession,
 } from "@/lib/models/types";
 import type { MuscleGroup } from "@/lib/models/muscles";
 
 /**
  * Construit le jeu de données complet (33 séances) à partir des deux fichiers
  * JSON : le backup officiel + les 13 séances récentes. Utilisé comme fallback
- * local quand aucune DATABASE_URL n'est configurée (dev / avant provisioning),
+ * local de développement quand aucune DATABASE_URL n'est configurée (jamais en production),
  * pour que l'app soit pleinement utilisable sans DB. La logique reflète
  * `scripts/seed.ts` (source unique à unifier en intégration).
  */
@@ -41,10 +47,38 @@ interface RecentNewExercise {
   fatigueClass: string;
   isFavorite?: boolean;
   muscleMappings: { muscleGroup: string; coefficient: number }[];
+  /** VARIATION_CYCLING_SPEC §5 — optionnel : absent -> null (dégradation gracieuse, §9). */
+  movementPattern?: string | null;
+  /** VARIATION_CYCLING_SPEC §5.2 (P2.1) — optionnel, absent partout ici -> null (seed par défaut null). */
+  resistanceProfile?: string | null;
+  /** BENCHMARK_LEVEL_SPEC.md §1 (P3.1) — optionnel, absent -> null (dégradation gracieuse, §9). */
+  strengthStandardKey?: string | null;
+  benchmarkUnit?: string | null;
 }
 interface RecentFile {
   newExercises: RecentNewExercise[];
   sessions: RecentSession[];
+}
+
+/** Même règle de repli que `mappers.ts::asMovementPattern` / `scripts/seed.ts::resolveMovementPattern`. */
+function resolveMovementPattern(raw: string | null | undefined): MovementPatternT | null {
+  if (!raw) return null;
+  const values = Object.values(MovementPattern) as string[];
+  return values.includes(raw) ? (raw as MovementPatternT) : null;
+}
+
+/** Même règle de repli que `mappers.ts::asResistanceProfile` / `scripts/seed.ts::resolveResistanceProfile`. */
+function resolveResistanceProfile(raw: string | null | undefined): ResistanceProfileT | null {
+  if (!raw) return null;
+  const values = Object.values(ResistanceProfile) as string[];
+  return values.includes(raw) ? (raw as ResistanceProfileT) : null;
+}
+
+/** Même règle de repli que `mappers.ts::asBenchmarkUnit` / `scripts/seed.ts::resolveBenchmarkUnit`. */
+function resolveBenchmarkUnit(raw: string | null | undefined): BenchmarkUnitT | null {
+  if (!raw) return null;
+  const values = Object.values(BenchmarkUnit) as string[];
+  return values.includes(raw) ? (raw as BenchmarkUnitT) : null;
 }
 
 function buildNewExercise(data: RecentNewExercise, sortOrder: number): Exercise {
@@ -74,6 +108,10 @@ function buildNewExercise(data: RecentNewExercise, sortOrder: number): Exercise 
       }),
     ),
     lastUsed: null,
+    movementPattern: resolveMovementPattern(data.movementPattern),
+    resistanceProfile: resolveResistanceProfile(data.resistanceProfile),
+    strengthStandardKey: data.strengthStandardKey ?? null,
+    benchmarkUnit: resolveBenchmarkUnit(data.benchmarkUnit),
   };
 }
 
@@ -109,6 +147,8 @@ function resolveRecentSession(
       exerciseName: catalogEx.name,
       sets,
       supersetGroupId: null,
+      // VARIATION_CYCLING_SPEC §5.3 (P2.1) — pas de trace de capture 1-tap dans ce fallback local.
+      plateauWeakPoint: null,
     };
   });
 
@@ -142,13 +182,16 @@ export function buildFullDataset(backupJson: unknown, recentJson: unknown): AllD
   });
 
   const recentSessions = recent.sessions.map((s) => resolveRecentSession(s, byName));
-  const sessions = [...backup.sessions, ...recentSessions].sort(
-    (a, b) => b.date.getTime() - a.date.getTime(),
-  );
+  const activeSession = backup.sessions.find((session) => session.isActive) ?? null;
+  const sessions = sessionsNewestFirst([
+    ...backup.sessions.filter((session) => !session.isActive),
+    ...recentSessions,
+  ]);
 
   return {
     exercises: catalog,
     sessions,
+    activeSession,
     goals: backup.goals,
     settings: backup.settings,
     templates: backup.templates,

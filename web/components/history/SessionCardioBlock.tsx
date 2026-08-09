@@ -29,10 +29,19 @@ export function SessionCardioBlock({ entries }: { entries: CardioEntry[] }) {
           .map((entry) => (
             <div key={entry.id} className="rounded-xl bg-white/5 px-3 py-2.5">
               <p className="text-sm font-semibold text-[--color-fg]">{entry.activityName}</p>
+              {(entry.machineName || entry.machineModel) && (
+                <p className="text-[0.68rem] text-[--color-fg-faint]">
+                  {[entry.machineName, entry.machineModel].filter(Boolean).join(" · ")}
+                </p>
+              )}
               <p className="mt-0.5 text-xs text-[--color-fg-muted]">
                 {durationLabel(entry.durationSeconds)}
                 {entry.level != null ? ` · niveau ${entry.level}` : ""}
+                {entry.resistance != null ? ` · résistance ${entry.resistance}` : ""}
                 {entry.distanceKm != null ? ` · ${entry.distanceKm} km` : ""}
+                {entry.averageWatts != null ? ` · ${entry.averageWatts} W` : ""}
+                {entry.averageHeartRateBpm != null ? ` · ${entry.averageHeartRateBpm} bpm` : ""}
+                {entry.inclinePercent != null ? ` · pente ${entry.inclinePercent}%` : ""}
               </p>
             </div>
           ))}

@@ -3,12 +3,13 @@
  * `WorkoutViewModel.finishWorkout` (Swift, lignes ~373-467).
  */
 
-import { displayedRecordSetIDs, type RecordKind } from "@/lib/engines/records";
+import { normalRecordSets, type RecordKind } from "@/lib/engines/records";
 import { parentSets, rolling7DayProgress } from "@/lib/engines/effective-sets";
-import { effectiveSetUnits, setsForNormalPrediction } from "@/lib/engines/set-structure";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
+import { SetType } from "@/lib/models/enums";
 import { parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import {
-  completedWorkSets,
+  orderedSets,
   type Exercise,
   type LoggedSet,
   type MuscleGoal,
@@ -56,7 +57,7 @@ function formatDuration(startTime: Date, endTime: Date): string {
 function totalWorkSets(session: WorkoutSession, exerciseIndex: Map<string, Exercise>): number {
   const total = session.exercises.reduce((acc, logged) => {
     const increment = exerciseIndex.get(logged.exerciseId)?.smallestIncrement;
-    return acc + effectiveSetUnits(completedWorkSets(logged), { increment });
+    return acc + physiologicalSetUnits(logged.sets, { increment });
   }, 0);
   return Math.round(total * 10) / 10;
 }
@@ -85,9 +86,12 @@ export function buildFinishedWorkoutSnapshot(params: BuildSnapshotParams): Finis
 
   const prCount = session.exercises.reduce((count, logged) => {
     const exercise = exerciseIndex.get(logged.exerciseId);
-    const eligible = setsForNormalPrediction(completedWorkSets(logged), {
-      increment: exercise?.smallestIncrement,
-    });
+    if (!exercise) return count;
+    const ordered = orderedSets(logged);
+    const eligible = [
+      ...normalRecordSets(ordered, exercise),
+      ...ordered.filter((set) => set.completed && set.setType === SetType.finisher),
+    ];
     return count + eligible.filter((set) => justHitRecord[set.id] !== undefined).length;
   }, 0);
 
@@ -112,16 +116,21 @@ export function buildFinishedWorkoutSnapshot(params: BuildSnapshotParams): Finis
   const prHighlights: RecordHighlight[] = session.exercises.flatMap((logged) => {
     const exercise = exerciseIndex.get(logged.exerciseId);
     if (!exercise) return [];
-    const completed = completedWorkSets(logged);
-    const keptIds = displayedRecordSetIDs(logged, completed, exercise);
-    const keptSets = completed.filter((s) => keptIds.has(s.id));
+    const ordered = orderedSets(logged);
+    const eligible = [
+      ...normalRecordSets(ordered, exercise),
+      ...ordered.filter((set) => set.completed && set.setType === SetType.finisher),
+    ];
+    const keptSets = eligible.filter((set) => justHitRecord[set.id] !== undefined);
     return keptSets.map((set: LoggedSet) => ({
       title: exercise.name,
-      detail: set.weight > 0 ? `${cleanWeight(set.weight)}×${set.reps}` : `BW×${set.reps}`,
+      detail: `${set.weight > 0 ? `${cleanWeight(set.weight)}×${set.reps}` : `BW×${set.reps}`}${
+        set.setType === SetType.finisher ? " · finisher" : ""
+      }`,
     }));
   });
 
-  const progress = rolling7DayProgress(finishedSessions, exercises, goals, session.date);
+  const progress = rolling7DayProgress(finishedSessions, exercises, goals, session.date, session);
   const remainingMuscles: MuscleImpact[] = progress
     .filter((p) => p.remaining > 0)
     .sort((a, b) => {
@@ -134,7 +143,10 @@ export function buildFinishedWorkoutSnapshot(params: BuildSnapshotParams): Finis
   return {
     duration,
     setCount: sets,
-    exerciseCount: session.exercises.filter((e) => completedWorkSets(e).length > 0).length,
+    exerciseCount: session.exercises.filter((logged) => {
+      const increment = exerciseIndex.get(logged.exerciseId)?.smallestIncrement;
+      return physiologicalSetUnits(logged.sets, { increment }) > 0;
+    }).length,
     prCount,
     progressionSignal,
     topMuscles,

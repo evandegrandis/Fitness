@@ -7,12 +7,15 @@
  *
  * IDs : `text` (on garde les UUID string tels qu'exportés par l'app iOS,
  * pas de génération d'UUID côté Postgres).
- * Dates : `timestamp` en mode `date` (renvoie un objet `Date` JS).
+ * Dates métier : `timestamptz` en mode `date` (instants UTC, affichage dans le
+ * fuseau du client). Les valeurs historiques sans suffixe contiennent déjà
+ * l'instant UTC ; la migration les interprète donc explicitement en UTC.
  */
 
-import { relations, type InferInsertModel, type InferSelectModel } from "drizzle-orm";
+import { relations, sql, type InferInsertModel, type InferSelectModel } from "drizzle-orm";
 import {
   boolean,
+  check,
   doublePrecision,
   index,
   integer,
@@ -20,6 +23,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
@@ -45,7 +49,15 @@ export const exercises = pgTable("exercises", {
   fatigueClass: text("fatigue_class").notNull().default("medium"),
   progressionPolicy: text("progression_policy"),
   voluntaryRepCap: integer("voluntary_rep_cap").notNull().default(0),
-  lastUsed: timestamp("last_used", { mode: "date" }),
+  lastUsed: timestamp("last_used", { mode: "date", withTimezone: true }),
+  /** VARIATION_CYCLING_SPEC §5 — nullable (dégradation gracieuse si non tagué, cf. §9). */
+  movementPattern: text("movement_pattern"),
+  /** VARIATION_CYCLING_SPEC §5.2 (P2.1) — nullable, seed par défaut null (cf. §9). */
+  resistanceProfile: text("resistance_profile"),
+  /** BENCHMARK_LEVEL_SPEC.md §1 (P3.1) — clé dans `data/strength_standards_corrected.json`, nullable. */
+  strengthStandardKey: text("strength_standard_key"),
+  /** BENCHMARK_LEVEL_SPEC.md §1 (P3.1) — "load"|"reps"|"reps_and_load", nullable. */
+  benchmarkUnit: text("benchmark_unit"),
 });
 
 export const exercisesRelations = relations(exercises, ({ many }) => ({
@@ -86,9 +98,9 @@ export const workoutSessions = pgTable(
   "workout_sessions",
   {
     id: text("id").primaryKey(),
-    date: timestamp("date", { mode: "date" }).notNull(),
-    startTime: timestamp("start_time", { mode: "date" }).notNull(),
-    endTime: timestamp("end_time", { mode: "date" }),
+    date: timestamp("date", { mode: "date", withTimezone: true }).notNull(),
+    startTime: timestamp("start_time", { mode: "date", withTimezone: true }).notNull(),
+    endTime: timestamp("end_time", { mode: "date", withTimezone: true }),
     notes: text("notes").notNull().default(""),
     isActive: boolean("is_active").notNull().default(false),
     templateName: text("template_name"),
@@ -113,13 +125,36 @@ export const cardioEntries = pgTable(
     sessionId: text("session_id")
       .notNull()
       .references(() => workoutSessions.id, { onDelete: "cascade" }),
+    activityType: text("activity_type").notNull().default("other"),
     activityName: text("activity_name").notNull().default(""),
+    machineName: text("machine_name"),
+    machineModel: text("machine_model"),
     durationSeconds: integer("duration_seconds").notNull().default(0),
     level: integer("level"),
+    resistance: doublePrecision("resistance"),
     distanceKm: doublePrecision("distance_km"),
+    averageWatts: doublePrecision("average_watts"),
+    averageHeartRateBpm: integer("average_heart_rate_bpm"),
+    inclinePercent: doublePrecision("incline_percent"),
     orderIndex: integer("order_index").notNull().default(0),
   },
-  (table) => [index("cardio_entries_session_id_idx").on(table.sessionId)]
+  (table) => [
+    index("cardio_entries_session_id_idx").on(table.sessionId),
+    check(
+      "cardio_entries_activity_type_check",
+      sql`${table.activityType} IN ('running', 'rowing', 'cycling', 'swimming', 'elliptical', 'stairs', 'other')`
+    ),
+    check(
+      "cardio_entries_metrics_check",
+      sql`${table.durationSeconds} > 0 AND ${table.durationSeconds} <= 86400
+        AND (${table.level} IS NULL OR ${table.level} BETWEEN 0 AND 100)
+        AND (${table.resistance} IS NULL OR ${table.resistance} BETWEEN 0 AND 1000)
+        AND (${table.distanceKm} IS NULL OR ${table.distanceKm} BETWEEN 0 AND 1000)
+        AND (${table.averageWatts} IS NULL OR ${table.averageWatts} BETWEEN 0 AND 3000)
+        AND (${table.averageHeartRateBpm} IS NULL OR ${table.averageHeartRateBpm} BETWEEN 20 AND 260)
+        AND (${table.inclinePercent} IS NULL OR ${table.inclinePercent} BETWEEN -30 AND 100)`
+    ),
+  ]
 );
 
 export const cardioEntriesRelations = relations(cardioEntries, ({ one }) => ({
@@ -149,6 +184,12 @@ export const loggedExercises = pgTable(
     supersetGroupId: text("superset_group_id").references(() => supersetGroups.id, {
       onDelete: "set null",
     }),
+    /**
+     * VARIATION_CYCLING_SPEC §5.3/§8 (P2.1) — capture 1-tap « où ça a calé ? » à l'entrée en
+     * plateau. Nullable : SEULE donnée utilisateur réellement nouvelle persistée par cette
+     * feature (le reste du moteur reste dérivé à la volée, jamais persisté, invariant HARDENED §0.2).
+     */
+    plateauWeakPoint: text("plateau_weak_point"),
   },
   (table) => [
     index("logged_exercises_session_id_idx").on(table.sessionId),
@@ -186,7 +227,7 @@ export const loggedSets = pgTable(
     weight: doublePrecision("weight").notNull().default(0),
     reps: integer("reps").notNull().default(0),
     setType: text("set_type").notNull().default("work"),
-    timestamp: timestamp("timestamp", { mode: "date" }).notNull(),
+    timestamp: timestamp("timestamp", { mode: "date", withTimezone: true }).notNull(),
     setSlotIndex: integer("set_slot_index").notNull().default(0),
     completed: boolean("completed").notNull().default(true),
     supersetRoundIndex: integer("superset_round_index"),
@@ -244,7 +285,7 @@ export const muscleGoals = pgTable("muscle_goals", {
 export const workoutTemplates = pgTable("workout_templates", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  createdAt: timestamp("created_at", { mode: "date" }).notNull(),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
@@ -278,17 +319,29 @@ export const templateExercisesRelations = relations(templateExercises, ({ one })
 // ---------------------------------------------------------------------------
 
 /** Table single-row (id fixe "singleton") — miroir du UserSettings Swift. */
-export const userSettings = pgTable("user_settings", {
-  id: text("id").primaryKey().default("singleton"),
-  usesKilograms: boolean("uses_kilograms").notNull().default(true),
-  defaultSmallestIncrement: doublePrecision("default_smallest_increment").notNull().default(2.5),
-  defaultRestTimerSeconds: integer("default_rest_timer_seconds").notNull().default(120),
-  defaultRepTargetMin: integer("default_rep_target_min").notNull().default(8),
-  defaultRepTargetMax: integer("default_rep_target_max").notNull().default(12),
-  userName: text("user_name").notNull().default("Evan"),
-  supersetRestSeconds: integer("superset_rest_seconds").notNull().default(180),
-  bodyWeightKg: doublePrecision("body_weight_kg"),
-});
+export const userSettings = pgTable(
+  "user_settings",
+  {
+    id: text("id").primaryKey().default("singleton"),
+    usesKilograms: boolean("uses_kilograms").notNull().default(true),
+    defaultSmallestIncrement: doublePrecision("default_smallest_increment").notNull().default(2.5),
+    defaultRestTimerSeconds: integer("default_rest_timer_seconds").notNull().default(120),
+    defaultRepTargetMin: integer("default_rep_target_min").notNull().default(8),
+    defaultRepTargetMax: integer("default_rep_target_max").notNull().default(12),
+    userName: text("user_name").notNull().default("Evan"),
+    supersetRestSeconds: integer("superset_rest_seconds").notNull().default(180),
+    bodyWeightKg: doublePrecision("body_weight_kg"),
+    gender: text("gender"),
+    ageYears: integer("age_years"),
+  },
+  (table) => [
+    check(
+      "user_settings_profile_check",
+      sql`(${table.gender} IS NULL OR ${table.gender} IN ('male', 'female'))
+        AND (${table.ageYears} IS NULL OR ${table.ageYears} BETWEEN 10 AND 120)`
+    ),
+  ]
+);
 
 // ---------------------------------------------------------------------------
 // recovery_checkins
@@ -298,13 +351,19 @@ export const recoveryCheckins = pgTable(
   "recovery_checkins",
   {
     id: text("id").primaryKey(),
-    date: timestamp("date", { mode: "date" }).notNull(),
-    tookCreatine: boolean("took_creatine").notNull().default(false),
-    proteinTargetMet: boolean("protein_target_met").notNull().default(false),
-    sleepHours: doublePrecision("sleep_hours").notNull().default(0),
-    hadAlcohol: boolean("had_alcohol").notNull().default(false),
+    date: timestamp("date", { mode: "date", withTimezone: true }).notNull(),
+    tookCreatine: boolean("took_creatine"),
+    proteinTargetMet: boolean("protein_target_met"),
+    sleepHours: doublePrecision("sleep_hours"),
+    hadAlcohol: boolean("had_alcohol"),
   },
-  (table) => [index("recovery_checkins_date_idx").on(table.date)]
+  (table) => [
+    uniqueIndex("recovery_checkins_date_unique").on(table.date),
+    check(
+      "recovery_checkins_values_check",
+      sql`${table.sleepHours} IS NULL OR ${table.sleepHours} BETWEEN 0 AND 24`
+    ),
+  ]
 );
 
 // ---------------------------------------------------------------------------

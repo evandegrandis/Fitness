@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { suggest, SuggestionMode, deriveState } from "@/lib/engines/progression";
+import {
+  suggest,
+  SuggestionMode,
+  deriveState,
+  deriveStateV2,
+  progressVelocityScore,
+} from "@/lib/engines/progression";
 import { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
 import { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { SetType, SetPatternMode, FatigueClass } from "@/lib/models/enums";
@@ -38,6 +44,10 @@ function makeExercise(overrides: Partial<Exercise> = {}): Exercise {
     voluntaryRepCap: 0,
     muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
     lastUsed: null,
+    movementPattern: null,
+    resistanceProfile: null,
+    strengthStandardKey: null,
+    benchmarkUnit: null,
     ...overrides,
   };
 }
@@ -59,6 +69,19 @@ function makeSet(overrides: Partial<LoggedSet> = {}): LoggedSet {
 /** Séance simple à un seul set de travail (utile pour construire recentHistory). */
 function session(weight: number, reps: number, opts: Partial<LoggedSet> = {}): LoggedSet[] {
   return [makeSet({ weight, reps, setSlotIndex: 0, ...opts })];
+}
+
+/** Référence "aujourd'hui" pour les tests de plateau en dates (VARIATION_CYCLING_SPEC §2). */
+const TODAY = new Date("2026-08-04T12:00:00Z");
+
+/** Date `n` jours avant `TODAY` (n >= 0). */
+function daysAgo(n: number): Date {
+  return new Date(TODAY.getTime() - n * 86_400_000);
+}
+
+/** Séance à un seul set de travail, datée `n` jours avant `TODAY` (VARIATION_CYCLING_SPEC §2). */
+function sessionDaysAgo(weight: number, reps: number, n: number): LoggedSet[] {
+  return session(weight, reps, { timestamp: daysAgo(n) });
 }
 
 // ---------------------------------------------------------------------------
@@ -403,5 +426,306 @@ describe("weightedBodyweight : séparation primer / sets de travail", () => {
     });
     expect(s.reasonCodes).toContain("post_primer_main_target");
     expect(s.weight).toBeCloseTo(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VARIATION_CYCLING_SPEC §2/§3 — isPlateau / progressionState en dates (deriveStateV2, pur)
+// ---------------------------------------------------------------------------
+
+describe("deriveStateV2 — plateau en dates (isPlateau, progressionState)", () => {
+  it("reps↑ à poids constant, la séance la plus récente bat le record de e1RM ⇒ NON plateau (decision #2)", () => {
+    const exercise = makeExercise({ repTargetMin: 6, repTargetMax: 10 });
+    // Plus récent en premier : aujourd'hui 100x8 bat 100x7 (jour -10) qui battait 100x6 (jour -20).
+    const history = [sessionDaysAgo(100, 8, 0), sessionDaysAgo(100, 7, 10), sessionDaysAgo(100, 6, 20)];
+    const v2 = deriveStateV2(exercise, history, exercise.smallestIncrement, undefined, undefined);
+    expect(v2.isPlateau).toBe(false);
+    expect(v2.plateauStalledDays).toBe(0);
+    expect(v2.progressionState).toBe("progressing");
+  });
+
+  it("14+ jours sans nouveau record de e1RM ET >= 2 séances dans la fenêtre ⇒ plateau", () => {
+    const exercise = makeExercise({ repTargetMin: 6, repTargetMax: 10 });
+    // Record établi il y a 30 jours (100x8, e1RM=126.67), jamais rebattu depuis (100x7 puis 100x6).
+    const history = [sessionDaysAgo(100, 6, 0), sessionDaysAgo(100, 7, 12), sessionDaysAgo(100, 8, 30)];
+    const v2 = deriveStateV2(exercise, history, exercise.smallestIncrement, undefined, undefined);
+    expect(v2.sessionsInWindow).toBeGreaterThanOrEqual(2);
+    expect(v2.plateauStalledDays).toBeGreaterThanOrEqual(14);
+    expect(v2.isPlateau).toBe(true);
+    expect(v2.progressionState).toBe("plateaued");
+  });
+
+  it("longue absence puis reprise (< 2 séances dans les 14 derniers jours) ⇒ PAS de plateau (garde-fou §9)", () => {
+    const exercise = makeExercise({ repTargetMin: 6, repTargetMax: 10 });
+    // Record il y a 100 jours, une seule séance de reprise aujourd'hui : sessionsInWindow=1 < 2.
+    const history = [sessionDaysAgo(100, 6, 0), sessionDaysAgo(100, 8, 100)];
+    const v2 = deriveStateV2(exercise, history, exercise.smallestIncrement, undefined, undefined);
+    expect(v2.sessionsInWindow).toBeLessThan(2);
+    expect(v2.isPlateau).toBe(false);
+    expect(v2.progressionState).toBe("progressing");
+  });
+
+  it("poids du corps : une hausse de reps est bien un progrès malgré weight=0", () => {
+    const exercise = makeExercise({
+      setPatternMode: SetPatternMode.bodyweight,
+      repTargetMin: 8,
+      repTargetMax: 15,
+    });
+    const history = [sessionDaysAgo(0, 12, 0), sessionDaysAgo(0, 11, 10), sessionDaysAgo(0, 10, 20)];
+    const v2 = deriveStateV2(exercise, history, exercise.smallestIncrement, undefined, undefined);
+    expect(v2.lastProgressDate).toEqual(daysAgo(0));
+    expect(v2.plateauStalledDays).toBe(0);
+    expect(v2.progressionState).toBe("progressing");
+  });
+
+  it("stagnation flat 7-13 jours (sous le seuil de 14) ⇒ état préemptif 'slowing', pas encore 'plateaued'", () => {
+    const exercise = makeExercise({ repTargetMin: 6, repTargetMax: 10 });
+    // Totalement plat (même charge, mêmes reps) sur 10 jours : vélocité nulle, stalledDays=10 (>=7, <14).
+    const history = [sessionDaysAgo(100, 7, 0), sessionDaysAgo(100, 7, 5), sessionDaysAgo(100, 7, 10)];
+    const v2 = deriveStateV2(exercise, history, exercise.smallestIncrement, undefined, undefined);
+    expect(v2.isPlateau).toBe(false);
+    expect(v2.plateauStalledDays).toBeGreaterThanOrEqual(7);
+    expect(v2.plateauStalledDays).toBeLessThan(14);
+    expect(v2.progressionState).toBe("slowing");
+  });
+});
+
+describe("progressVelocityScore — ordre chronologique", () => {
+  it("note positivement une progression récente (historique fourni du plus récent au plus ancien)", () => {
+    const exercise = makeExercise();
+    expect(progressVelocityScore(exercise, [session(100, 8), session(100, 7)])).toBeGreaterThan(0);
+  });
+
+  it("note négativement une baisse récente", () => {
+    const exercise = makeExercise();
+    expect(progressVelocityScore(exercise, [session(100, 6), session(100, 8)])).toBeLessThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — signal feu (readyForLevelUp / readyForPR / nextLevelName)
+// ---------------------------------------------------------------------------
+
+describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
+  function loggedExercise(exercise: Exercise, sets: LoggedSet[]) {
+    return {
+      id: `le-${Math.random().toString(36).slice(2)}`,
+      orderIndex: 0,
+      notes: "",
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      sets: sets.map((s, i) => ({ ...s, setSlotIndex: i })),
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+    };
+  }
+
+  function workoutSession(date: Date, exercise: Exercise, sets: LoggedSet[]) {
+    return {
+      id: `session-${date.getTime()}-${Math.random().toString(36).slice(2)}`,
+      date,
+      startTime: date,
+      endTime: date,
+      notes: "",
+      isActive: false,
+      templateName: null,
+      exercises: [loggedExercise(exercise, sets)],
+      supersetGroups: [],
+    };
+  }
+
+  // Les standards absolus chargés sont la ligne fixe H80 ; aucun scaling n'est inventé pour 75,5 kg.
+  const PROFILE = { bodyWeightKg: 80, gender: "male" as const, ageYears: 26 };
+
+  it("premier passage jamais fait (sessionHistory=[]) -> readyForPR ET readyForLevelUp vrais (0 -> tout est un record)", () => {
+    const exercise = makeExercise({
+      name: "Curl debout",
+      strengthStandardKey: "Curl debout",
+      benchmarkUnit: "load",
+      repTargetMin: 8,
+      repTargetMax: 12,
+    });
+    const s = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory: [],
+      currentSessionSets: [],
+      sessionHistory: [],
+      profile: PROFILE,
+    });
+    // Cold start déterministe (constaté) : 20kg x 9 -> e1RM StrengthLevel ≈ 25.9 -> tier "intermediate"
+    // (seuils Curl debout par_bras [8,14,22,32,42]) alors que l'historique est vide (below_beginner).
+    expect(s.weight).toBe(20);
+    expect(s.reps).toBe(9);
+    expect(s.readyForPR).toBe(true);
+    expect(s.readyForLevelUp).toBe(true);
+    expect(s.nextLevelName).toBe("Intermédiaire");
+  });
+
+  it("déjà au palier Élite (plafond) -> readyForLevelUp reste faux même en progressant encore (pas de palier au-dessus), mais readyForPR peut rester vrai", () => {
+    const exercise = makeExercise({
+      name: "Curl debout",
+      strengthStandardKey: "Curl debout",
+      benchmarkUnit: "load",
+      repTargetMin: 8,
+      repTargetMax: 12,
+    });
+    const history = [
+      workoutSession(new Date(Date.now() - 3 * 86_400_000), exercise, [makeSet({ weight: 40, reps: 9 })]),
+      workoutSession(new Date(Date.now() - 10 * 86_400_000), exercise, [makeSet({ weight: 40, reps: 9 })]),
+      workoutSession(new Date(Date.now() - 17 * 86_400_000), exercise, [makeSet({ weight: 40, reps: 9 })]),
+    ];
+    const recentHistory = history.map((session) => session.exercises[0].sets);
+    const s = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory,
+      currentSessionSets: [],
+      sessionHistory: history,
+      profile: PROFILE,
+    });
+    // Promotion attendue (constatée) : 42.5kg x 8 -> e1RM StrengthLevel déjà au-dessus du seuil Élite
+    // (42) AVANT et APRÈS (l'historique à 40x9 est aussi déjà élite) -> pas de franchissement de
+    // palier possible (déjà au plafond des deux côtés).
+    expect(s.weight).toBe(42.5);
+    expect(s.reps).toBe(8);
+    expect(s.readyForLevelUp).toBeFalsy();
+    expect(s.readyForPR).toBe(true);
+  });
+
+  it("plateau stable (même charge/reps qu'avant) -> ni PR ni passage de palier", () => {
+    const exercise = makeExercise({
+      name: "Curl debout",
+      strengthStandardKey: "Curl debout",
+      benchmarkUnit: "load",
+      repTargetMin: 8,
+      repTargetMax: 12,
+    });
+    const history = [
+      workoutSession(new Date(Date.now() - 3 * 86_400_000), exercise, [makeSet({ weight: 20, reps: 8 })]),
+      workoutSession(new Date(Date.now() - 10 * 86_400_000), exercise, [makeSet({ weight: 20, reps: 8 })]),
+      workoutSession(new Date(Date.now() - 17 * 86_400_000), exercise, [makeSet({ weight: 20, reps: 8 })]),
+    ];
+    const recentHistory = history.map((session) => session.exercises[0].sets);
+    const s = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory,
+      currentSessionSets: [],
+      sessionHistory: history,
+      profile: PROFILE,
+    });
+    expect(s.weight).toBe(20);
+    expect(s.reps).toBe(8);
+    expect(s.readyForPR).toBeFalsy();
+    expect(s.readyForLevelUp).toBeFalsy();
+  });
+
+  it("sans sessionHistory (paramètre omis) -> les deux flags restent undefined, jamais calculés (§9 — invariant golden test)", () => {
+    const exercise = makeExercise({ name: "Curl debout", strengthStandardKey: "Curl debout", benchmarkUnit: "load" });
+    const s = suggest({ exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [], profile: PROFILE });
+    expect(s.readyForPR).toBeUndefined();
+    expect(s.readyForLevelUp).toBeUndefined();
+    expect(s.nextLevelName).toBeUndefined();
+  });
+
+  it("sans profile -> readyForLevelUp/nextLevelName restent undefined, mais readyForPR reste calculé (n'a pas besoin du profil)", () => {
+    const exercise = makeExercise({ name: "Curl debout", strengthStandardKey: "Curl debout", benchmarkUnit: "load" });
+    const s = suggest({ exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [], sessionHistory: [] });
+    expect(s.readyForPR).toBe(true);
+    expect(s.readyForLevelUp).toBeUndefined();
+    expect(s.nextLevelName).toBeUndefined();
+  });
+
+  it("sans strengthStandardKey (exercice pas encore sourcé) -> readyForLevelUp reste undefined, readyForPR fonctionne quand même", () => {
+    const exercise = makeExercise({ name: "Chest Press", strengthStandardKey: null, benchmarkUnit: null });
+    const s = suggest({ exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [], sessionHistory: [], profile: PROFILE });
+    expect(s.readyForLevelUp).toBeUndefined();
+    expect(s.readyForPR).toBe(true);
+  });
+
+  it("inclut les sets déjà faits aujourd'hui et ne rallume pas immédiatement le même feu PR", () => {
+    const exercise = makeExercise({
+      name: "Curl debout",
+      strengthStandardKey: "Curl debout",
+      benchmarkUnit: "load",
+      repTargetMin: 8,
+      repTargetMax: 12,
+    });
+    const current = makeSet({ weight: 20, reps: 9 });
+    const s = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: [],
+      currentSessionSets: [current],
+      sessionHistory: [],
+      profile: PROFILE,
+      prAchievedToday: true,
+    });
+    expect(s.readyForPR).toBeFalsy();
+  });
+
+  it("un standard à deux axes peut franchir le palier reps au poids du corps", () => {
+    const exercise = makeExercise({
+      name: "Dips",
+      setPatternMode: SetPatternMode.bodyweight,
+      strengthStandardKey: "Dips",
+      benchmarkUnit: "reps_and_load",
+      repTargetMin: 8,
+      repTargetMax: 15,
+      smallestIncrement: 1,
+    });
+    const history = [
+      workoutSession(daysAgo(1), exercise, [makeSet({ weight: 0, reps: 9, timestamp: daysAgo(1) })]),
+      workoutSession(daysAgo(5), exercise, [makeSet({ weight: 0, reps: 9, timestamp: daysAgo(5) })]),
+      workoutSession(daysAgo(9), exercise, [makeSet({ weight: 0, reps: 9, timestamp: daysAgo(9) })]),
+    ];
+    const s = suggest({
+      exercise,
+      currentSetIndex: 0,
+      // Deux occurrences gardent ce test sur le prédicteur v1 (+1 rep). La troisième reste dans
+      // `sessionHistory` pour tester le niveau sur l'historique complet sans coupler l'assertion
+      // au choix médian volontaire du chemin BW v2.
+      recentHistory: history.slice(0, 2).map((item) => item.exercises[0].sets),
+      currentSessionSets: [],
+      sessionHistory: history,
+      profile: PROFILE,
+    });
+    expect(s.weight).toBe(0);
+    expect(s.reps).toBeGreaterThanOrEqual(10);
+    expect(s.readyForLevelUp).toBe(true);
+    expect(s.nextLevelName).toBe("Novice");
+  });
+
+  it("un finisher n'allume jamais un niveau StrengthLevel", () => {
+    const exercise = makeExercise({
+      name: "Curl debout",
+      strengthStandardKey: "Curl debout",
+      benchmarkUnit: "load",
+      repTargetMin: 8,
+      repTargetMax: 12,
+    });
+    const historical = [
+      makeSet({ weight: 12, reps: 10, setType: SetType.finisher, timestamp: daysAgo(1) }),
+    ];
+    const history = [
+      workoutSession(daysAgo(1), exercise, historical),
+      workoutSession(daysAgo(5), exercise, [
+        makeSet({ weight: 12, reps: 10, setType: SetType.finisher, timestamp: daysAgo(5) }),
+      ]),
+      workoutSession(daysAgo(9), exercise, [
+        makeSet({ weight: 12, reps: 10, setType: SetType.finisher, timestamp: daysAgo(9) }),
+      ]),
+    ];
+    const s = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory: history.map((item) => item.exercises[0].sets),
+      currentSessionSets: [],
+      sessionHistory: history,
+      profile: PROFILE,
+    });
+    expect(s.setType).toBe(SetType.finisher);
+    expect(s.readyForLevelUp).toBeFalsy();
   });
 });

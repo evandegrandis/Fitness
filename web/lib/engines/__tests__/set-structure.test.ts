@@ -3,6 +3,7 @@ import {
   compositeSetBlocks,
   detectFinisherSets,
   effectiveSetUnits,
+  physiologicalSetUnits,
   setsForNormalPrediction,
 } from "@/lib/engines/set-structure";
 import { SetType } from "@/lib/models/enums";
@@ -47,13 +48,19 @@ describe("séries composites — drop-set / rest-pause", () => {
     expect(blocks[0].effectiveSetUnits).toBe(1);
   });
 
-  it("ne compte pas un mini-set isolé de 4 reps comme une série pleine", () => {
-    expect(effectiveSetUnits([set(0, 0, 100, 4)], { increment: 2.5 })).toBeCloseTo(0.4);
+  it("compte une série isolée seulement à partir de 8 reps", () => {
+    expect(effectiveSetUnits([set(0, 0, 100, 4)], { increment: 2.5 })).toBe(0);
+    expect(effectiveSetUnits([set(0, 0, 100, 6)], { increment: 2.5 })).toBe(0);
+    expect(effectiveSetUnits([set(0, 0, 100, 8)], { increment: 2.5 })).toBe(1);
+    expect(effectiveSetUnits([set(0, 0, 100, 16)], { increment: 2.5 })).toBe(1);
   });
 
-  it("sous 10 reps cumulées, le composite reste fractionnaire et n'est pas une série pleine", () => {
+  it("un composite 4+4 atteint une série, plafonnée à une unité", () => {
+    const exact = [set(0, 0, 100, 4), set(1, 12, 75, 4)];
+    expect(effectiveSetUnits(exact, { increment: 2.5 })).toBe(1);
+
     const sets = [set(0, 0, 100, 4), set(1, 12, 75, 3)];
-    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBeCloseTo(0.7);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(0);
   });
 
   it("détecte aussi un mini-bloc rest-pause à charge identique", () => {
@@ -65,7 +72,7 @@ describe("séries composites — drop-set / rest-pause", () => {
   it("ne fusionne pas deux séries séparées par un repos normal", () => {
     const sets = [set(0, 0, 100, 4), set(1, 120, 75, 8)];
     expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(2);
-    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBeCloseTo(1.4);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
   });
 
   it("ne considère jamais les timestamps identiques d'un import legacy comme une preuve", () => {
@@ -93,6 +100,14 @@ describe("finishers — exclusion des ancres normales", () => {
 
     expect(effectiveSetUnits([normal, finisher])).toBe(1);
     expect(setsForNormalPrediction([normal, finisher])).toEqual([normal]);
+  });
+
+  it("compte un finisher dans le volume physiologique sans le remettre dans la prédiction", () => {
+    const normal = set(0, 0, 80, 8);
+    const finisher = set(1, 180, 0, 4, { setType: SetType.finisher });
+
+    expect(setsForNormalPrediction([normal, finisher])).toEqual([normal]);
+    expect(physiologicalSetUnits([normal, finisher])).toBe(1);
   });
 
   it("isole un burnout final hautes reps après une baisse franche (tractions lestées -> PDC)", () => {

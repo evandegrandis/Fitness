@@ -8,8 +8,21 @@
  * qui étaient des records au moment où ils ont été loggés.
  */
 
-import { RecordsEngine, type RecordKind } from "@/lib/engines/records";
-import { completedWorkSets, type Exercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
+import {
+  buildFinisherRecords,
+  classifyFinisher,
+  normalRecordSets,
+  RecordsEngine,
+  type RecordKind,
+} from "@/lib/engines/records";
+import { SetType } from "@/lib/models/enums";
+import {
+  orderedSets,
+  sessionsNewestFirst,
+  type Exercise,
+  type LoggedSet,
+  type WorkoutSession,
+} from "@/lib/models/types";
 
 /** Miroir de `Achievement` (Swift). */
 export interface Achievement {
@@ -30,6 +43,8 @@ function rank(kind: RecordKind): number {
     case "repsAtWeight":
       return 2;
     case "bodyweightReps":
+      return 2;
+    case "finisherReps":
       return 1;
   }
 }
@@ -51,28 +66,34 @@ function nextAchievementId(): string {
  * Chaque set est testé contre TOUT l'historique antérieur pour voir s'il
  * était un record au moment où il a été loggé.
  *
- * `sessions` doit être trié plus récent en premier (comme le @Query Swift par
- * défaut).
+ * L'ordre d'entrée est tolérant aux imports/restaurations : il est normalisé
+ * ici avant d'appliquer la fenêtre des séances récentes.
  */
 export function recentAchievements(sessions: WorkoutSession[], exercises: Exercise[], maxSessions = 10): Achievement[] {
-  const recent = sessions.slice(0, maxSessions);
+  const newestFirst = sessionsNewestFirst(sessions);
+  const recent = newestFirst.slice(0, maxSessions);
   const recentIds = new Set(recent.map((s) => s.id));
   // Liste chronologique de toutes les séances pour l'historique par exercice.
-  const allChronological = [...sessions].reverse();
+  const allChronological = newestFirst.reverse();
 
   const results: Achievement[] = [];
 
   for (const exercise of exercises) {
     // Rassemble tous les sets historiques de cet exercice, en ordre chronologique.
     let cumulativeSets: LoggedSet[] = [];
+    let cumulativeFinishers: LoggedSet[] = [];
 
     for (const session of allChronological) {
       const logged = session.exercises.filter((le) => le.exerciseId === exercise.id);
-      const newSets = logged.flatMap((le) => completedWorkSets(le));
-      if (newSets.length === 0) continue;
+      const newSets = logged.flatMap((le) => normalRecordSets(orderedSets(le), exercise));
+      const newFinishers = logged.flatMap((le) =>
+        orderedSets(le).filter((set) => set.completed && set.setType === SetType.finisher)
+      );
+      if (newSets.length === 0 && newFinishers.length === 0) continue;
 
       // Construit les records AVANT les sets de cette séance.
       const priorRecords = RecordsEngine.buildRecords(exercise, cumulativeSets);
+      const priorFinisherRecords = buildFinisherRecords(cumulativeFinishers);
 
       // Vérifie chaque nouveau set contre les records antérieurs.
       for (const set of newSets) {
@@ -89,7 +110,22 @@ export function recentAchievements(sessions: WorkoutSession[], exercises: Exerci
         }
       }
 
+      for (const set of newFinishers) {
+        const kind = classifyFinisher(set, priorFinisherRecords);
+        if (kind && recentIds.has(session.id)) {
+          results.push({
+            id: nextAchievementId(),
+            exerciseName: exercise.name,
+            date: session.date,
+            kind,
+            weight: set.weight,
+            reps: set.reps,
+          });
+        }
+      }
+
       cumulativeSets = cumulativeSets.concat(newSets);
+      cumulativeFinishers = cumulativeFinishers.concat(newFinishers);
     }
   }
 

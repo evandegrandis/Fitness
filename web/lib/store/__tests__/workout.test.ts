@@ -56,6 +56,10 @@ const BENCH: ExerciseType = {
   voluntaryRepCap: 0,
   muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
   lastUsed: null,
+  movementPattern: null,
+  resistanceProfile: null,
+  strengthStandardKey: null,
+  benchmarkUnit: null,
 };
 
 const SETTINGS: UserSettingsType = {
@@ -67,6 +71,8 @@ const SETTINGS: UserSettingsType = {
   userName: "Evan",
   supersetRestSeconds: 180,
   bodyWeightKg: null,
+  gender: null,
+  ageYears: null,
 };
 
 const DIPS: ExerciseType = {
@@ -98,6 +104,9 @@ function resetStore() {
     justHitRecord: {},
     recordsCache: {},
     hasHydratedStorage: false,
+    pendingVariantSwitches: {},
+    treatedVariantSuggestions: {},
+    rotationAcceptedAt: {},
   });
 }
 
@@ -105,6 +114,185 @@ describe("useWorkoutStore", () => {
   beforeEach(() => {
     resetStore();
     localStorage.clear();
+  });
+
+  it("normalise un historique importé avant que repeatLast et les moteurs ne lisent history[0]", () => {
+    const makeSession = (id: string, iso: string) => ({
+      id,
+      date: new Date(iso),
+      startTime: new Date(iso),
+      endTime: new Date(iso),
+      notes: "",
+      isActive: false,
+      templateName: null,
+      exercises: [],
+      supersetGroups: [],
+      cardioEntries: [],
+    });
+    const oldest = makeSession("oldest", "2026-07-01T10:00:00Z");
+    const newest = makeSession("newest", "2026-07-15T10:00:00Z");
+    const middle = makeSession("middle", "2026-07-08T10:00:00Z");
+
+    useWorkoutStore.getState().hydrate({
+      catalog: [],
+      history: [oldest, newest, middle],
+      goals: [],
+      settings: SETTINGS,
+      templates: [],
+      recoveryCheckins: [],
+    });
+
+    expect(useWorkoutStore.getState().history.map((session) => session.id)).toEqual([
+      "newest",
+      "middle",
+      "oldest",
+    ]);
+  });
+
+  it("un PR masque le contexte antérieur, mais pas la fatigue réellement accumulée après lui", () => {
+    const OTHER: ExerciseType = { ...BENCH, id: "ex-other", name: "Autre poussée" };
+    const at = (minute: number) => new Date(`2026-08-09T18:${String(minute).padStart(2, "0")}:00Z`);
+    const prSet = {
+      id: "pr-set",
+      weight: 80,
+      reps: 8,
+      setType: "work" as const,
+      timestamp: at(10),
+      setSlotIndex: 0,
+      completed: true,
+      supersetRoundIndex: null,
+    };
+    const otherSets = (minutes: number[]) =>
+      minutes.map((minute, index) => ({
+        id: `other-${minute}`,
+        weight: 60,
+        reps: 8,
+        setType: "work" as const,
+        timestamp: at(minute),
+        setSlotIndex: index,
+        completed: true,
+        supersetRoundIndex: null,
+      }));
+    const activeWith = (minutes: number[]) => ({
+      id: "active-pr",
+      date: at(0),
+      startTime: at(0),
+      endTime: null,
+      notes: "",
+      isActive: true,
+      templateName: null,
+      exercises: [
+        {
+          id: "logged-bench",
+          orderIndex: 0,
+          notes: "",
+          exerciseId: BENCH.id,
+          exerciseName: BENCH.name,
+          sets: [prSet],
+          supersetGroupId: null,
+          plateauWeakPoint: null,
+        },
+        {
+          id: "logged-other",
+          orderIndex: 1,
+          notes: "",
+          exerciseId: OTHER.id,
+          exerciseName: OTHER.name,
+          sets: otherSets(minutes),
+          supersetGroupId: null,
+          plateauWeakPoint: null,
+        },
+      ],
+      supersetGroups: [],
+      cardioEntries: [],
+    });
+
+    useWorkoutStore.setState({
+      catalog: [BENCH, OTHER],
+      active: activeWith([11, 12, 13]),
+      justHitRecord: { [prSet.id]: "heaviestWeight" },
+    });
+    expect(useWorkoutStore.getState().suggestion("logged-bench").sessionFatigueWarning).not.toBeNull();
+
+    useWorkoutStore.setState({ active: activeWith([1, 2, 3]) });
+    expect(useWorkoutStore.getState().suggestion("logged-bench").sessionFatigueWarning).toBeNull();
+  });
+
+  it("un finisher tardif de la cible n'étend pas sa baseline de fatigue au travail fait après le bloc normal", () => {
+    const OTHER: ExerciseType = { ...BENCH, id: "ex-other", name: "Autre poussée" };
+    const at = (day: number, minute: number) =>
+      new Date(`2026-08-${String(day).padStart(2, "0")}T18:${String(minute).padStart(2, "0")}:00Z`);
+    const makeSet = (id: string, timestamp: Date, setType: "work" | "finisher" = "work") => ({
+      id,
+      weight: setType === "finisher" ? 0 : 60,
+      reps: setType === "finisher" ? 20 : 8,
+      setType,
+      timestamp,
+      setSlotIndex: 0,
+      completed: true,
+      supersetRoundIndex: null,
+    });
+    const logged = (
+      id: string,
+      exercise: ExerciseType,
+      sets: ReturnType<typeof makeSet>[],
+      orderIndex: number
+    ) => ({
+      id,
+      orderIndex,
+      notes: "",
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      sets,
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+    });
+    const historical = {
+      id: "historical",
+      date: at(1, 0),
+      startTime: at(1, 0),
+      endTime: at(1, 55),
+      notes: "",
+      isActive: false,
+      templateName: null,
+      exercises: [
+        logged("old-target", BENCH, [
+          makeSet("old-work", at(1, 10)),
+          makeSet("old-finisher", at(1, 50), "finisher"),
+        ], 0),
+        logged("old-other", OTHER, [
+          makeSet("old-other-1", at(1, 30)),
+          { ...makeSet("old-other-2", at(1, 31)), setSlotIndex: 1 },
+          { ...makeSet("old-other-3", at(1, 32)), setSlotIndex: 2 },
+        ], 1),
+      ],
+      supersetGroups: [],
+      cardioEntries: [],
+    };
+    const active = {
+      ...historical,
+      id: "active-baseline",
+      date: at(9, 0),
+      startTime: at(9, 0),
+      endTime: null,
+      isActive: true,
+      exercises: [
+        logged("target-now", BENCH, [], 0),
+        logged("other-now", OTHER, [
+          makeSet("now-other-1", at(9, 10)),
+          { ...makeSet("now-other-2", at(9, 11)), setSlotIndex: 1 },
+          { ...makeSet("now-other-3", at(9, 12)), setSlotIndex: 2 },
+        ], 1),
+      ],
+    };
+
+    useWorkoutStore.setState({
+      catalog: [BENCH, OTHER],
+      history: [historical],
+      active,
+      justHitRecord: {},
+    });
+    expect(useWorkoutStore.getState().suggestion("target-now").sessionFatigueWarning).not.toBeNull();
   });
 
   it("hydrate -> startEmpty -> addExercise -> logSet x2 -> suggestion cohérente, rest timer, finish() move vers history", () => {
@@ -161,10 +349,10 @@ describe("useWorkoutStore", () => {
     logged = active.exercises.find((e) => e.id === loggedExerciseId)!;
     expect(logged.sets).toHaveLength(2);
 
-    // 7. finish() -> snapshot with correct setCount, session moved to history.
+    // 7. finish() -> comptage binaire : 8 reps = 1 série, 6 reps = 0.
     const result = useWorkoutStore.getState().finish();
     expect(result).not.toBeNull();
-    expect(result!.snapshot.setCount).toBe(2);
+    expect(result!.snapshot.setCount).toBe(1);
     expect(result!.snapshot.exerciseCount).toBe(1);
 
     const stateAfterFinish = useWorkoutStore.getState();
@@ -196,6 +384,7 @@ describe("useWorkoutStore", () => {
               exerciseId: BENCH.id,
               exerciseName: BENCH.name,
               supersetGroupId: null,
+              plateauWeakPoint: null,
               sets: [
                 {
                   id: "set-hist-1",
@@ -257,8 +446,34 @@ describe("useWorkoutStore", () => {
 
     expect(completion.reasonCodes).toContain("drop_set_completion");
     expect(completion.weight).toBe(97.5);
-    expect(completion.reps).toBe(6);
+    expect(completion.reps).toBe(4);
     expect(completion.setType).toBe("backoff");
+
+    // Rend le signal temporel non ambigu (les imports à timestamp identique ne
+    // sont volontairement jamais fusionnés), puis complète bien à 4+4=8.
+    useWorkoutStore.setState((state) => ({
+      active: state.active
+        ? {
+            ...state.active,
+            exercises: state.active.exercises.map((logged) =>
+              logged.id === loggedExerciseId
+                ? {
+                    ...logged,
+                    sets: logged.sets.map((loggedSet) => ({
+                      ...loggedSet,
+                      timestamp: new Date(Date.now() - 1_000),
+                    })),
+                  }
+                : logged
+            ),
+          }
+        : null,
+    }));
+    store.logSet(loggedExerciseId, { weight: completion.weight, reps: completion.reps, setType: completion.setType });
+
+    const afterCompletion = useWorkoutStore.getState().suggestion(loggedExerciseId);
+    expect(afterCompletion.reasonCodes).not.toContain("drop_set_completion");
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
   });
 
   it("garde la continuation immédiate d'un drop-set dans le même round de superset", () => {
@@ -313,7 +528,15 @@ describe("useWorkoutStore", () => {
 
     const finisher = useWorkoutStore.getState().active!.exercises[1].sets[0];
     expect(finisher.setType).toBe("finisher");
-    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(5);
+    expect(useWorkoutStore.getState().justHitRecord[finisher.id]).toBe("finisherReps");
+    expect(useWorkoutStore.getState().achievement?.kind).toBe("finisherReps");
+    // La piste normale des dips reste vierge malgré le PR finisher.
+    expect(useWorkoutStore.getState().records(DIPS.id).isEmpty).toBe(true);
+
+    const result = useWorkoutStore.getState().finish()!;
+    expect(result.snapshot.setCount).toBe(6);
+    expect(result.snapshot.exerciseCount).toBe(2);
+    expect(result.snapshot.prHighlights).toContainEqual({ title: DIPS.name, detail: "BW×16 · finisher" });
   });
 
   it("ajoute et supprime le cardio sans créer de set de musculation", () => {
@@ -321,12 +544,381 @@ describe("useWorkoutStore", () => {
     store.hydrate({ catalog: [], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
     store.startEmpty("normal");
 
-    store.addCardioEntry({ activityName: "Cardio", durationSeconds: 120, level: 10, distanceKm: 1 });
+    store.addCardioEntry({
+      activityType: "other",
+      activityName: "Cardio",
+      machineName: null,
+      machineModel: null,
+      durationSeconds: 120,
+      level: 10,
+      resistance: null,
+      distanceKm: 1,
+      averageWatts: null,
+      averageHeartRateBpm: null,
+      inclinePercent: null,
+    });
     const entry = useWorkoutStore.getState().active!.cardioEntries![0];
     expect(entry).toMatchObject({ activityName: "Cardio", durationSeconds: 120, level: 10, distanceKm: 1 });
     expect(useWorkoutStore.getState().active!.exercises).toHaveLength(0);
 
     store.deleteCardioEntry(entry.id);
     expect(useWorkoutStore.getState().active!.cardioEntries).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // VARIATION_CYCLING_SPEC §8 — rotation de variation acceptée/refusée depuis le bilan
+  // -------------------------------------------------------------------------
+
+  it("acceptVariantSwitch() sans séance active en attente -> pendingVariantSwitches puis consommé au prochain repeatLast()", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+    const lastSession = {
+      id: "sess-last",
+      date: new Date("2026-07-01T10:00:00"),
+      startTime: new Date("2026-07-01T10:00:00"),
+      endTime: new Date("2026-07-01T11:00:00"),
+      notes: "",
+      isActive: false,
+      templateName: null,
+      exercises: [
+        {
+          id: "logged-last-1",
+          orderIndex: 0,
+          notes: "",
+          exerciseId: BENCH.id,
+          exerciseName: BENCH.name,
+          supersetGroupId: null,
+          plateauWeakPoint: null,
+          sets: [
+            {
+              id: "set-last-1",
+              weight: 60,
+              reps: 8,
+              setType: "work" as const,
+              timestamp: new Date("2026-07-01T10:05:00"),
+              setSlotIndex: 0,
+              completed: true,
+              supersetRoundIndex: null,
+            },
+          ],
+        },
+      ],
+      supersetGroups: [],
+    };
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [lastSession], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+
+    // Pas de séance active (bilan traité après coup, typiquement) -> reste en attente.
+    store.acceptVariantSwitch("sess-last", BENCH.id, DUMBBELL.id);
+    expect(useWorkoutStore.getState().pendingVariantSwitches[BENCH.id]).toBe(DUMBBELL.id);
+    expect(useWorkoutStore.getState().active).toBeNull();
+
+    // La PROCHAINE séance (repeatLast, base = lastSession) reçoit la variante, pas l'original.
+    store.repeatLast("normal");
+    const active = useWorkoutStore.getState().active!;
+    expect(active.exercises).toHaveLength(1);
+    expect(active.exercises[0].exerciseId).toBe(DUMBBELL.id);
+    expect(active.exercises[0].exerciseName).toBe("Développé haltères");
+    // Consommé : ne doit plus traîner en attente pour une séance encore après.
+    expect(useWorkoutStore.getState().pendingVariantSwitches[BENCH.id]).toBeUndefined();
+  });
+
+  it("acceptVariantSwitch() avec une séance active contenant déjà l'exercice (0 set) -> bascule immédiate, pas de pending", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
+
+    store.acceptVariantSwitch("sess-x", BENCH.id, DUMBBELL.id);
+
+    const active = useWorkoutStore.getState().active!;
+    expect(active.exercises.find((e) => e.id === loggedExerciseId)?.exerciseId).toBe(DUMBBELL.id);
+    expect(useWorkoutStore.getState().pendingVariantSwitches[BENCH.id]).toBeUndefined();
+  });
+
+  it("dismissVariantSwitch() masque la carte de suggestion (plateau.suggestedVariant) au prochain sessionReview() de CETTE séance", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+
+    function pastSession(id: string, daysAgo: number, weight: number, reps: number) {
+      const date = new Date(Date.now() - daysAgo * 86_400_000);
+      return {
+        id,
+        date,
+        startTime: date,
+        endTime: date,
+        notes: "",
+        isActive: false,
+        templateName: null,
+        exercises: [
+          {
+            id: `logged-${id}`,
+            orderIndex: 0,
+            notes: "",
+            exerciseId: BENCH.id,
+            exerciseName: BENCH.name,
+            supersetGroupId: null,
+            plateauWeakPoint: null,
+            sets: [
+              {
+                id: `set-${id}`,
+                weight,
+                reps,
+                setType: "work" as const,
+                timestamp: date,
+                setSlotIndex: 0,
+                completed: true,
+                supersetRoundIndex: null,
+              },
+            ],
+          },
+        ],
+        supersetGroups: [],
+      };
+    }
+
+    const history = [pastSession("h1", 3, 60, 8), pastSession("h2", 10, 60, 8), pastSession("h3", 17, 60, 8), pastSession("h4", 24, 60, 8)];
+    const todaySession = pastSession("today", 0, 60, 8);
+
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+
+    const before = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(before.exercises[0].plateau.wasInPlateau).toBe(true);
+    expect(before.exercises[0].plateau.suggestedVariant).not.toBeNull();
+
+    store.dismissVariantSwitch(todaySession.id, BENCH.id);
+
+    const after = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(after.exercises[0].plateau.suggestedVariant).toBeNull();
+    // Rien planifié : refuser n'est pas accepter.
+    expect(useWorkoutStore.getState().pendingVariantSwitches[BENCH.id]).toBeUndefined();
+  });
+
+  it("setPlateauWeakPoint() capture le point faible sur la séance du jour (déjà dans history, comme après finish()) — reflété immédiatement par sessionReview()", () => {
+    const DUMBBELL_LOCKOUT: ExerciseType = {
+      ...BENCH,
+      id: "ex-dumbbell-lockout",
+      name: "Développé haltères",
+      resistanceProfile: "lockout",
+    };
+    const store = useWorkoutStore.getState();
+
+    function pastSession(id: string, daysAgo: number, weight: number, reps: number) {
+      const date = new Date(Date.now() - daysAgo * 86_400_000);
+      return {
+        id,
+        date,
+        startTime: date,
+        endTime: date,
+        notes: "",
+        isActive: false,
+        templateName: null,
+        exercises: [
+          {
+            id: `logged-${id}`,
+            orderIndex: 0,
+            notes: "",
+            exerciseId: BENCH.id,
+            exerciseName: BENCH.name,
+            supersetGroupId: null,
+            plateauWeakPoint: null,
+            sets: [
+              {
+                id: `set-${id}`,
+                weight,
+                reps,
+                setType: "work" as const,
+                timestamp: date,
+                setSlotIndex: 0,
+                completed: true,
+                supersetRoundIndex: null,
+              },
+            ],
+          },
+        ],
+        supersetGroups: [],
+      };
+    }
+
+    const olderHistory = [pastSession("h1", 3, 60, 8), pastSession("h2", 10, 60, 8), pastSession("h3", 17, 60, 8), pastSession("h4", 24, 60, 8)];
+    const todaySession = pastSession("today", 0, 60, 8);
+    // Simule l'état réel post-`finish()` : la séance en cours de revue vit DÉJÀ dans `history`
+    // (voir `finish()` : `history: [finishedSession, ...state.history]`) — c'est là que
+    // `setPlateauWeakPoint` doit muter, pas sur une séance active inexistante.
+    store.hydrate({
+      catalog: [BENCH, DUMBBELL_LOCKOUT],
+      history: [todaySession, ...olderHistory],
+      goals: [],
+      settings: SETTINGS,
+      templates: [],
+      recoveryCheckins: [],
+    });
+
+    const before = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(before.exercises[0].plateau.wasInPlateau).toBe(true);
+    expect(before.exercises[0].plateau.weakPoint).toBeNull();
+    expect(before.exercises[0].plateau.needsWeakPointCapture).toBe(true);
+
+    store.setPlateauWeakPoint(todaySession.id, "logged-today", "lockout");
+
+    // Persisté dans le store (pas seulement dérivé) : relecture directe de `history`.
+    const stored = useWorkoutStore.getState().history.find((s) => s.id === todaySession.id);
+    expect(stored?.exercises[0].plateauWeakPoint).toBe("lockout");
+
+    // `sessionReview(todaySession)` est appelé avec la référence FIGÉE d'avant la capture (comme
+    // le ferait un composant qui a reçu `session` en prop) — doit malgré tout refléter la capture
+    // fraîche (fix P2.1 : `sessionReview` relit toujours `history` par id, jamais le paramètre brut).
+    const after = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(after.exercises[0].plateau.weakPoint).toBe("lockout");
+    expect(after.exercises[0].plateau.needsWeakPointCapture).toBe(false);
+    // weakPointFit désormais actif (candidat resistanceProfile="lockout" matche) -> annoncé dans l'explication (§6).
+    expect(after.exercises[0].plateau.suggestedVariant).not.toBeNull();
+    expect(after.exercises[0].plateau.suggestedVariant!.explanationFR).toContain("point faible");
+  });
+
+  // -------------------------------------------------------------------------
+  // Anti-thrash — cooldown après rotation acceptée (VARIATION_CYCLING_SPEC §8, P2.3)
+  // -------------------------------------------------------------------------
+
+  function pastSessionFor(exerciseId: string, exerciseName: string, id: string, daysAgo: number, weight: number, reps: number) {
+    const date = new Date(Date.now() - daysAgo * 86_400_000);
+    return {
+      id,
+      date,
+      startTime: date,
+      endTime: date,
+      notes: "",
+      isActive: false,
+      templateName: null,
+      exercises: [
+        {
+          id: `logged-${id}`,
+          orderIndex: 0,
+          notes: "",
+          exerciseId,
+          exerciseName,
+          supersetGroupId: null,
+          plateauWeakPoint: null,
+          sets: [
+            {
+              id: `set-${id}`,
+              weight,
+              reps,
+              setType: "work" as const,
+              timestamp: date,
+              setSlotIndex: 0,
+              completed: true,
+              supersetRoundIndex: null,
+            },
+          ],
+        },
+      ],
+      supersetGroups: [],
+    };
+  }
+
+  it("acceptVariantSwitch() horodate rotationAcceptedAt[newExerciseId] (P2.3)", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+
+    expect(useWorkoutStore.getState().rotationAcceptedAt[DUMBBELL.id]).toBeUndefined();
+    store.acceptVariantSwitch("sess-x", BENCH.id, DUMBBELL.id);
+
+    const iso = useWorkoutStore.getState().rotationAcceptedAt[DUMBBELL.id];
+    expect(iso).toBeDefined();
+    expect(Date.now() - new Date(iso).getTime()).toBeLessThan(5_000);
+    // La cible est bien la variante ADOPTÉE (newExerciseId), pas celle quittée.
+    expect(useWorkoutStore.getState().rotationAcceptedAt[BENCH.id]).toBeUndefined();
+  });
+
+  it("cooldown ACTIF (rotation acceptée il y a 2j < ROTATION_COOLDOWN_DAYS=14) -> sessionReview() gèle suggestedVariant/needsWeakPointCapture MÊME si l'exo est de nouveau en plateau", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+    const olderHistory = [
+      pastSessionFor(BENCH.id, BENCH.name, "h1", 3, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h2", 10, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h3", 17, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h4", 24, 60, 8),
+    ];
+    const todaySession = pastSessionFor(BENCH.id, BENCH.name, "today", 0, 60, 8);
+    store.hydrate({
+      catalog: [BENCH, DUMBBELL],
+      history: [todaySession, ...olderHistory],
+      goals: [],
+      settings: SETTINGS,
+      templates: [],
+      recoveryCheckins: [],
+    });
+
+    // Sans cooldown : la carte apparaît normalement (comportement P1.6/P2.1 déjà couvert ailleurs).
+    const before = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(before.exercises[0].plateau.suggestedVariant).not.toBeNull();
+
+    // Simule une rotation ACCEPTÉE vers BENCH il y a 2 jours (P2.3 : `acceptVariantSwitch` l'aurait
+    // fait naturellement ; on force directement l'état pour isoler le comportement du cooldown).
+    useWorkoutStore.setState({
+      rotationAcceptedAt: { [BENCH.id]: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+    });
+
+    const after = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(after.exercises[0].plateau.wasInPlateau).toBe(true); // le plateau lui-même reste vrai...
+    expect(after.exercises[0].plateau.suggestedVariant).toBeNull(); // ...mais la carte est gelée.
+    expect(after.exercises[0].plateau.needsWeakPointCapture).toBe(false);
+  });
+
+  it("cooldown EXPIRÉ (rotation acceptée il y a 20j >= ROTATION_COOLDOWN_DAYS=14) -> la carte réapparaît normalement", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+    const olderHistory = [
+      pastSessionFor(BENCH.id, BENCH.name, "h1", 3, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h2", 10, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h3", 17, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h4", 24, 60, 8),
+    ];
+    const todaySession = pastSessionFor(BENCH.id, BENCH.name, "today", 0, 60, 8);
+    store.hydrate({
+      catalog: [BENCH, DUMBBELL],
+      history: [todaySession, ...olderHistory],
+      goals: [],
+      settings: SETTINGS,
+      templates: [],
+      recoveryCheckins: [],
+    });
+    useWorkoutStore.setState({
+      rotationAcceptedAt: { [BENCH.id]: new Date(Date.now() - 20 * 86_400_000).toISOString() },
+    });
+
+    const review = useWorkoutStore.getState().sessionReview(todaySession);
+    expect(review.exercises[0].plateau.suggestedVariant).not.toBeNull();
+  });
+
+  it("la suggestion LIVE (suggestion()) masque aussi switchToVariantId/reasonCodes pendant le cooldown anti-thrash", () => {
+    const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
+    const store = useWorkoutStore.getState();
+    const history = [
+      pastSessionFor(BENCH.id, BENCH.name, "h1", 3, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h2", 10, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h3", 17, 60, 8),
+      pastSessionFor(BENCH.id, BENCH.name, "h4", 24, 60, 8),
+    ];
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
+    store.logSet(loggedExerciseId, { weight: 60, reps: 8 });
+
+    const withoutCooldown = useWorkoutStore.getState().suggestion(loggedExerciseId);
+    expect(withoutCooldown.switchToVariantId).toBe(DUMBBELL.id);
+    expect(withoutCooldown.reasonCodes).toContain("variation");
+
+    useWorkoutStore.setState({
+      rotationAcceptedAt: { [BENCH.id]: new Date(Date.now() - 2 * 86_400_000).toISOString() },
+    });
+
+    const withCooldown = useWorkoutStore.getState().suggestion(loggedExerciseId);
+    expect(withCooldown.switchToVariantId).toBeNull();
+    expect(withCooldown.reasonCodes).not.toContain("variation");
   });
 });

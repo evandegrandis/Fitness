@@ -13,7 +13,7 @@ type ListItem =
   | { kind: "superset"; groupId: string; members: LoggedExercise[] };
 
 /** Regroupe les exercices ordonnés en items solo / superset contigus, en respectant l'ordre du groupe. */
-function buildListItems(ordered: LoggedExercise[], session: WorkoutSession): ListItem[] {
+export function buildListItems(ordered: LoggedExercise[], session: WorkoutSession): ListItem[] {
   const items: ListItem[] = [];
   const seenGroups = new Set<string>();
 
@@ -22,14 +22,22 @@ function buildListItems(ordered: LoggedExercise[], session: WorkoutSession): Lis
       items.push({ kind: "solo", exercise: ex });
       continue;
     }
-    if (seenGroups.has(ex.supersetGroupId)) continue;
-    seenGroups.add(ex.supersetGroupId);
-
     const group = session.supersetGroups.find((g) => g.id === ex.supersetGroupId);
     const byId = new Map(ordered.map((e) => [e.id, e]));
-    const members = group
-      ? group.memberOrder.map((id) => byId.get(id)).filter((m): m is LoggedExercise => m !== undefined)
-      : [ex];
+    const members = group?.memberOrder
+      .map((id) => byId.get(id))
+      .filter(
+        (member): member is LoggedExercise =>
+          member !== undefined && member.supersetGroupId === group.id
+      );
+    // Un groupe absent/incomplet ne doit jamais masquer une carte. Le store le
+    // réparera à la prochaine action structurelle; l'UI reste utilisable entre-temps.
+    if (!group || !members || members.length < 2 || !members.some((member) => member.id === ex.id)) {
+      items.push({ kind: "solo", exercise: ex });
+      continue;
+    }
+    if (seenGroups.has(ex.supersetGroupId)) continue;
+    seenGroups.add(ex.supersetGroupId);
     items.push({ kind: "superset", groupId: ex.supersetGroupId, members });
   }
 
@@ -96,7 +104,7 @@ export function ExerciseList({
         onToggleExpanded={() =>
           onExpandedExerciseChange(expandedExerciseId === loggedExercise.id ? null : loggedExercise.id)
         }
-        onBecameActive={() => onExpandedExerciseChange(loggedExercise.id)}
+        onBecameActive={(activeExerciseId) => onExpandedExerciseChange(activeExerciseId)}
         onDuplicate={() => handleDuplicate(loggedExercise.id)}
         onEditSet={(set) => onEditSet(loggedExercise.id, set)}
         onReplace={onReplace}

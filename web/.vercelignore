@@ -1,0 +1,17 @@
+# Secrets locaux (Vercel injecte ses propres variables chiffrées).
+.env
+.env.*
+
+# Dumps complets de données utilisateur : indispensables en local, jamais à uploader au build.
+data/backups/
+data/jeera_backup.json
+data/recent_sessions.json
+
+# Outils DB opérationnels/destructifs, inutiles au runtime Vercel.
+# `scripts/generate-sw.ts` reste volontairement inclus : package.json::prebuild en dépend.
+scripts/_safety.ts
+scripts/backfill-*.ts
+scripts/export-backup.ts
+scripts/fix-catalog-profile-*.ts
+scripts/migrate-prod-*.ts
+scripts/seed.ts

@@ -29,6 +29,10 @@ const BENCH: Exercise = {
   voluntaryRepCap: 0,
   muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
   lastUsed: null,
+  movementPattern: null,
+  resistanceProfile: null,
+  strengthStandardKey: null,
+  benchmarkUnit: null,
 };
 
 const ROW: Exercise = {
@@ -62,6 +66,7 @@ function loggedExercise(exercise: Exercise, sets: LoggedSet[], overrides: Partia
     exerciseName: exercise.name,
     sets: sets.map((s, i) => ({ ...s, setSlotIndex: i })),
     supersetGroupId: null,
+    plateauWeakPoint: null,
     ...overrides,
   };
 }
@@ -81,10 +86,17 @@ function session(date: Date, exercises: LoggedExercise[], overrides: Partial<Wor
   };
 }
 
-/** Séance historique à un seul exercice / un seul set de travail. */
+/**
+ * Séance historique à un seul exercice / un seul set de travail.
+ * VARIATION_CYCLING_SPEC §2 (P1.3) : le `timestamp` du `LoggedSet` doit être propagé à `daysAgo`
+ * (pas seulement `WorkoutSession.date`) — `deriveStateV2`/`isPlateau` lisent `LoggedSet.timestamp`
+ * exclusivement (§2 : "Dates come from LoggedSet.timestamp"). Avant ce fix, `set()` gardait son
+ * timestamp par défaut identique pour toutes les séances passées, ce qui rendait `plateauStalledDays`
+ * toujours 0 (bug de fixture, pas du moteur — révélé par le passage au plateau daté).
+ */
 function pastSession(daysAgo: number, exercise: Exercise, weight: number, reps: number): WorkoutSession {
   const date = new Date(Date.now() - daysAgo * 86_400_000);
-  return session(date, [loggedExercise(exercise, [set({ weight, reps })])]);
+  return session(date, [loggedExercise(exercise, [set({ weight, reps, timestamp: date })])]);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +145,47 @@ describe("performed / performanceSignal", () => {
     const review = buildSessionReview(today, [], [BENCH]);
     expect(review.exercises).toHaveLength(0);
     expect(review.performanceLabel).toBe("Difficile");
+  });
+
+  it("une charge supérieure à 1 rep n'équivaut pas à la référence si ce n'est pas un PR", () => {
+    const priorRecord = pastSession(30, BENCH, 102.5, 1);
+    const todayLogged = loggedExercise(BENCH, [set({ weight: 102.5, reps: 1 })]);
+    const today = session(new Date(), [todayLogged]);
+    const reference = {
+      weight: 100, reps: 8, setType: SetType.work, explanation: "test", confidence: 1,
+      reasonCodes: [], mode: "record_attempt" as const, sessionFatigueWarning: null,
+      role: "straight" as const, switchToVariantId: null, intensityTechnique: null,
+    };
+
+    const review = buildSessionReview(today, [priorRecord], [BENCH], [], {
+      referenceSuggestionByLoggedExerciseId: { [todayLogged.id]: reference },
+    });
+    expect(review.exercises[0].performed).toBe(false);
+  });
+
+  it("un vrai PR du jour neutralise la sous-performance", () => {
+    const todayLogged = loggedExercise(BENCH, [set({ weight: 102.5, reps: 1 })]);
+    const today = session(new Date(), [todayLogged]);
+    const reference = {
+      weight: 100, reps: 8, setType: SetType.work, explanation: "test", confidence: 1,
+      reasonCodes: [], mode: "record_attempt" as const, sessionFatigueWarning: null,
+      role: "straight" as const, switchToVariantId: null, intensityTechnique: null,
+    };
+    const review = buildSessionReview(today, [], [BENCH], [], {
+      referenceSuggestionByLoggedExerciseId: { [todayLogged.id]: reference },
+    });
+    expect(review.exercises[0].recordKinds).toContain("heaviestWeight");
+    expect(review.exercises[0].performed).toBe(true);
+    expect(review.underperformed).not.toContain(BENCH.name);
+  });
+
+  it("le bilan réapplique le gap daté de la suggestion live", () => {
+    const oldDate = new Date("2026-05-01T10:00:00Z");
+    const reviewDate = new Date("2026-06-30T10:00:00Z");
+    const history = [session(oldDate, [loggedExercise(BENCH, [set({ weight: 100, reps: 8 })])])];
+    const today = session(reviewDate, [loggedExercise(BENCH, [set({ weight: 85, reps: 8 })])]);
+    const review = buildSessionReview(today, history, [BENCH]);
+    expect(review.exercises[0].referenceWeight).toBe(85);
   });
 });
 
@@ -200,6 +253,12 @@ describe("plateau", () => {
     expect(review.exercises[0].plateau.wasInPlateau).toBe(true);
     expect(review.exercises[0].plateau.brokenToday).toBe(false);
     expect(review.enteringPlateau).toContain("Développé couché");
+    // VARIATION_CYCLING_SPEC §2 (P1.3) : trigger officiel isPlateau + message bilan EN JOURS
+    // (plus "depuis N séances") ; plateauStalledDaysBefore reflète le vrai record e1RM (jour -24,
+    // jamais rebattu par la suite car les 4 séances sont identiques).
+    expect(review.exercises[0].plateau.plateauStalledDaysBefore).toBeGreaterThanOrEqual(14);
+    expect(review.exercises[0].plateau.message).toMatch(/jours?/);
+    expect(review.exercises[0].plateau.message).not.toMatch(/séances?/);
   });
 
   it("plateau cassé aujourd'hui avec une charge supérieure -> plateausBroken", () => {
@@ -223,6 +282,132 @@ describe("plateau", () => {
 
     const review = buildSessionReview(today, history, [BENCH]);
     expect(review.exercises[0].plateau.wasInPlateau).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// VARIATION_CYCLING_SPEC §8 — carte de suggestion de variante (plateau v2 uniquement)
+// ---------------------------------------------------------------------------
+
+describe("plateau — carte de suggestion de variante (§8)", () => {
+  // Même recouvrement musculaire que BENCH (pect_stern, coefficient 1.0) et movementPattern=null
+  // des deux côtés -> passe le repli musculaire de `selectAlternative` (§9).
+  const DUMBBELL_PRESS: Exercise = { ...BENCH, id: "ex-db-press", name: "Développé haltères" };
+
+  it("plateau toujours actif (v2) + catalogue avec un pair valide -> suggestedVariant non null, explication FR mentionne le plateau ET le candidat", () => {
+    const history = [
+      pastSession(3, BENCH, 60, 8),
+      pastSession(10, BENCH, 60, 8),
+      pastSession(17, BENCH, 60, 8),
+      pastSession(24, BENCH, 60, 8),
+    ];
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 60, reps: 8 })])]);
+
+    const review = buildSessionReview(today, history, [BENCH, DUMBBELL_PRESS]);
+
+    expect(review.exercises[0].plateau.wasInPlateau).toBe(true);
+    expect(review.exercises[0].plateau.suggestedVariant).not.toBeNull();
+    expect(review.exercises[0].plateau.suggestedVariant!.exerciseId).toBe(DUMBBELL_PRESS.id);
+    expect(review.exercises[0].plateau.suggestedVariant!.exerciseName).toBe("Développé haltères");
+    expect(review.exercises[0].plateau.suggestedVariant!.explanationFR).toContain("Plateau sur Développé couché");
+    expect(review.exercises[0].plateau.suggestedVariant!.explanationFR).toContain("Développé haltères");
+  });
+
+  it("plateau actif mais catalogue SANS pair valide -> suggestedVariant reste null (pas de crash, §9)", () => {
+    const history = [
+      pastSession(3, BENCH, 60, 8),
+      pastSession(10, BENCH, 60, 8),
+      pastSession(17, BENCH, 60, 8),
+      pastSession(24, BENCH, 60, 8),
+    ];
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 60, reps: 8 })])]);
+
+    const review = buildSessionReview(today, history, [BENCH]);
+    expect(review.exercises[0].plateau.wasInPlateau).toBe(true);
+    expect(review.exercises[0].plateau.suggestedVariant).toBeNull();
+  });
+
+  it("plateau cassé aujourd'hui -> suggestedVariant reste null (inutile de proposer une bascule sur un plateau qu'on vient de casser)", () => {
+    const history = [
+      pastSession(3, BENCH, 60, 8),
+      pastSession(10, BENCH, 60, 8),
+      pastSession(17, BENCH, 60, 8),
+      pastSession(24, BENCH, 60, 8),
+    ];
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 65, reps: 8 })])]);
+
+    const review = buildSessionReview(today, history, [BENCH, DUMBBELL_PRESS]);
+    expect(review.exercises[0].plateau.brokenToday).toBe(true);
+    expect(review.exercises[0].plateau.suggestedVariant).toBeNull();
+  });
+
+  it("pas de plateau -> suggestedVariant reste null même avec un pair valide dans le catalogue", () => {
+    const history = [pastSession(3, BENCH, 65, 8), pastSession(10, BENCH, 62.5, 8), pastSession(17, BENCH, 60, 7)];
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 65, reps: 9 })])]);
+
+    const review = buildSessionReview(today, history, [BENCH, DUMBBELL_PRESS]);
+    expect(review.exercises[0].plateau.wasInPlateau).toBe(false);
+    expect(review.exercises[0].plateau.suggestedVariant).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Plateau — capture 1-tap du point faible mesuré (VARIATION_CYCLING_SPEC §5.3/§8, P2.1)
+// ---------------------------------------------------------------------------
+
+describe("plateau — capture 1-tap du point faible (§5.3/§8, P2.1)", () => {
+  // Même recouvrement musculaire que BENCH (pect_stern, coefficient 1.0), movementPattern=null
+  // des deux côtés -> passe le repli musculaire de `selectAlternative` (§9). `resistanceProfile`
+  // taggé "lockout" pour vérifier l'activation de `weakPointFit` de bout en bout.
+  const DUMBBELL_PRESS_LOCKOUT: Exercise = {
+    ...BENCH,
+    id: "ex-db-press-lockout",
+    name: "Développé haltères",
+    resistanceProfile: "lockout",
+  };
+
+  function plateauedHistory() {
+    return [pastSession(3, BENCH, 60, 8), pastSession(10, BENCH, 60, 8), pastSession(17, BENCH, 60, 8), pastSession(24, BENCH, 60, 8)];
+  }
+
+  it("plateau toujours actif + pas encore répondu (LoggedExercise.plateauWeakPoint=null) -> needsWeakPointCapture=true, weakPoint=null", () => {
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 60, reps: 8 })])]);
+    const review = buildSessionReview(today, plateauedHistory(), [BENCH, DUMBBELL_PRESS_LOCKOUT]);
+
+    expect(review.exercises[0].plateau.wasInPlateau).toBe(true);
+    expect(review.exercises[0].plateau.weakPoint).toBeNull();
+    expect(review.exercises[0].plateau.needsWeakPointCapture).toBe(true);
+  });
+
+  it("plateau toujours actif + DÉJÀ répondu (plateauWeakPoint sur le LoggedExercise du jour) -> needsWeakPointCapture=false, weakPoint reflété, weakPointFit actif dans suggestedVariant", () => {
+    const today = session(new Date(), [
+      loggedExercise(BENCH, [set({ weight: 60, reps: 8 })], { plateauWeakPoint: "lockout" }),
+    ]);
+    const review = buildSessionReview(today, plateauedHistory(), [BENCH, DUMBBELL_PRESS_LOCKOUT]);
+
+    expect(review.exercises[0].plateau.wasInPlateau).toBe(true);
+    expect(review.exercises[0].plateau.weakPoint).toBe("lockout");
+    expect(review.exercises[0].plateau.needsWeakPointCapture).toBe(false);
+    // Le candidat matche le point faible -> `selectAlternative` l'annonce dans l'explication (§6).
+    expect(review.exercises[0].plateau.suggestedVariant).not.toBeNull();
+    expect(review.exercises[0].plateau.suggestedVariant!.explanationFR).toContain("point faible");
+  });
+
+  it("pas de plateau -> needsWeakPointCapture=false même sans réponse (contextuel, §8 'apparaît au bon moment')", () => {
+    const history = [pastSession(3, BENCH, 65, 8), pastSession(10, BENCH, 62.5, 8), pastSession(17, BENCH, 60, 7)];
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 65, reps: 9 })])]);
+
+    const review = buildSessionReview(today, history, [BENCH, DUMBBELL_PRESS_LOCKOUT]);
+    expect(review.exercises[0].plateau.wasInPlateau).toBe(false);
+    expect(review.exercises[0].plateau.needsWeakPointCapture).toBe(false);
+  });
+
+  it("plateau cassé aujourd'hui -> needsWeakPointCapture=false (§8, inutile une fois le plateau cassé)", () => {
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 65, reps: 8 })])]);
+    const review = buildSessionReview(today, plateauedHistory(), [BENCH, DUMBBELL_PRESS_LOCKOUT]);
+
+    expect(review.exercises[0].plateau.brokenToday).toBe(true);
+    expect(review.exercises[0].plateau.needsWeakPointCapture).toBe(false);
   });
 });
 
@@ -268,6 +453,82 @@ describe("records", () => {
     const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 60, reps: 8 })])]);
     const review = buildSessionReview(today, [], [BENCH]);
     expect(review.exercises[0].recordKinds).toContain("heaviestWeight");
+  });
+
+  it("un record vieux de plus de 20 séances reste all-time", () => {
+    const history = Array.from({ length: 20 }, (_, index) => pastSession(index + 1, BENCH, 60, 8));
+    history.push(pastSession(30, BENCH, 100, 8));
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 90, reps: 8 })])]);
+    const review = buildSessionReview(today, history, [BENCH]);
+    expect(review.exercises[0].recordKinds).not.toContain("heaviestWeight");
+  });
+
+  it("le libellé d'un record PDC utilise le set PDC exact", () => {
+    const pullups: Exercise = {
+      ...ROW,
+      id: "pullups",
+      name: "Tractions",
+      setPatternMode: "weighted_bodyweight",
+      repTargetMin: 6,
+      repTargetMax: 10,
+    };
+    const history = [pastSession(7, pullups, 0, 10), pastSession(8, pullups, 20, 6)];
+    const today = session(new Date(), [
+      loggedExercise(pullups, [set({ weight: 0, reps: 12 }), set({ weight: 20, reps: 4 })]),
+    ]);
+    const review = buildSessionReview(today, history, [pullups]);
+    const bwRecord = review.records.find((record) => record.kind === "bodyweightReps");
+    expect(bwRecord?.weight).toBe(0);
+    expect(bwRecord?.reps).toBe(12);
+    expect(bwRecord?.label).toContain("BW×12");
+  });
+
+  it("fusionne deux occurrences du même exercice dans le bilan", () => {
+    const today = session(new Date(), [
+      loggedExercise(BENCH, [set({ weight: 60, reps: 8, timestamp: new Date("2026-07-14T10:00:00Z") })], { orderIndex: 0 }),
+      loggedExercise(BENCH, [set({ weight: 60, reps: 6, timestamp: new Date("2026-07-14T10:30:00Z") })], { orderIndex: 4 }),
+    ]);
+    const review = buildSessionReview(today, [], [BENCH]);
+    expect(review.exercises).toHaveLength(1);
+  });
+
+  it("affiche un PR finisher séparé sans inventer une comparaison de performance normale", () => {
+    const oldDate = new Date(Date.now() - 7 * 86_400_000);
+    const history = [
+      session(oldDate, [
+        loggedExercise(BENCH, [set({ weight: 0, reps: 16, setType: SetType.finisher, timestamp: oldDate })]),
+      ]),
+    ];
+    const today = session(new Date(), [
+      loggedExercise(BENCH, [set({ weight: 0, reps: 18, setType: SetType.finisher })]),
+    ]);
+
+    const review = buildSessionReview(today, history, [BENCH]);
+    expect(review.exercises).toHaveLength(0);
+    expect(review.records).toContainEqual(
+      expect.objectContaining({ kind: "finisherReps", exerciseName: BENCH.name, weight: 0, reps: 18 })
+    );
+    expect(review.coverage.workedParents.length).toBeGreaterThan(0);
+  });
+
+  it("une continuation composite n'ajoute jamais un second record au bilan", () => {
+    const history = [pastSession(7, BENCH, 75, 8)];
+    const started = new Date("2026-07-14T10:00:00Z");
+    const today = session(new Date(), [
+      loggedExercise(BENCH, [
+        set({ weight: 100, reps: 4, timestamp: started }),
+        set({
+          weight: 75,
+          reps: 12,
+          setType: SetType.backoff,
+          timestamp: new Date(started.getTime() + 10_000),
+        }),
+      ]),
+    ]);
+
+    const review = buildSessionReview(today, history, [BENCH]);
+    expect(review.records).toHaveLength(1);
+    expect(review.records[0]).toEqual(expect.objectContaining({ kind: "heaviestWeight", weight: 100, reps: 4 }));
   });
 });
 

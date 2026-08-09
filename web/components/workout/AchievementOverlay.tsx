@@ -13,6 +13,7 @@ const KIND_LABEL: Record<string, string> = {
   estimated1RM: "Nouveau 1RM estimé",
   repsAtWeight: "Record de reps à ce poids",
   bodyweightReps: "Record de reps",
+  finisherReps: "Record de finisher",
 };
 
 /** Célébration plein écran quand un PR vient d'être loggé. Auto-dismiss après 2s (piloté par le store). */

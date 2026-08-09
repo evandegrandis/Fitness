@@ -4,7 +4,12 @@ import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { displayedRecordSetIDs } from "@/lib/engines/records";
-import { orderedSets, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
+import {
+  orderedSets,
+  sessionsNewestFirst,
+  type LoggedExercise,
+  type LoggedSet,
+} from "@/lib/models/types";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { SessionDetailHeader } from "@/components/history/SessionDetailHeader";
 import { SessionExerciseBlock, SessionSupersetBlock } from "@/components/history/SessionExerciseBlock";
@@ -24,7 +29,11 @@ export default function SessionDetailPage() {
     const result = new Map<string, Set<string>>();
     if (!session) return result;
     // Chronologique (plus ancien en premier) jusqu'à et y compris cette séance.
-    const chronological = [...history].filter((s) => s.date <= session.date).reverse();
+    // La date civile seule ne suffit pas : une autre séance plus tardive le même
+    // jour ne doit jamais entrer dans les records affichés ici.
+    const allChronological = sessionsNewestFirst(history).reverse();
+    const targetIndex = allChronological.findIndex((candidate) => candidate.id === session.id);
+    const chronological = allChronological.slice(0, targetIndex + 1);
 
     for (const logged of session.exercises) {
       const exercise = exerciseById.get(logged.exerciseId);

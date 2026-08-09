@@ -1,11 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Stepper } from "@/components/ui/Stepper";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { updateSettings } from "@/lib/db/actions";
+import { writeThrough } from "@/lib/sync/write-through";
+import { useWorkoutStore } from "@/lib/store/workout";
+import { mergeSettingsPatch } from "@/lib/store/settings-write";
 import type { UserSettings } from "@/lib/models/types";
+
+function restoreDurablePreferenceFields(current: UserSettings, durable: UserSettings): UserSettings {
+  return {
+    ...current,
+    usesKilograms: durable.usesKilograms,
+    defaultSmallestIncrement: durable.defaultSmallestIncrement,
+    defaultRestTimerSeconds: durable.defaultRestTimerSeconds,
+    defaultRepTargetMin: durable.defaultRepTargetMin,
+    defaultRepTargetMax: durable.defaultRepTargetMax,
+    userName: durable.userName,
+    supersetRestSeconds: durable.supersetRestSeconds,
+  };
+}
 
 /**
  * Préférences éditables : userName, incrément par défaut, repos par défaut,
@@ -17,14 +33,47 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
   const [draft, setDraft] = useState<UserSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mutationVersion = useRef(0);
+  const lastDurable = useRef<UserSettings>(settings);
 
-  async function persist(next: UserSettings) {
+  async function persist(patch: Partial<UserSettings>) {
+    const version = ++mutationVersion.current;
+    const previous = useWorkoutStore.getState().settings;
+    // Ne jamais réécrire l'objet `draft` complet : il peut précéder une
+    // modification faite dans la carte Corps montée en parallèle.
+    const next = mergeSettingsPatch(previous, patch);
     setDraft(next);
+    // OFFLINE_PWA_SPEC §4 (P4.4) — reflète immédiatement dans le store, comme SettingsBodySection.
+    useWorkoutStore.getState().setSettings(next);
     setSaving(true);
     setSaved(false);
-    await updateSettings(next);
-    setSaving(false);
-    setSaved(true);
+    setError(null);
+    try {
+      // Avant ce lot : `await updateSettings(next)` sans try/catch — hors-ligne, la promesse
+      // rejetait sans jamais repasser `saving` à false (bouton bloqué sur "Enregistrement…" à
+      // vie) ET l'action était perdue. `writeThrough` met en file au lieu de perdre l'action.
+      await writeThrough({ kind: "settings", settings: next }, () => updateSettings(next));
+      lastDurable.current = next;
+      if (version === mutationVersion.current) setSaved(true);
+    } catch (cause) {
+      if (useWorkoutStore.getState().settings === next) {
+        const current = useWorkoutStore.getState().settings;
+        useWorkoutStore.getState().setSettings(
+          restoreDurablePreferenceFields(current, lastDurable.current)
+        );
+      }
+      if (version === mutationVersion.current) {
+        setDraft((current) =>
+          current === next ? restoreDurablePreferenceFields(current, lastDurable.current) : current
+        );
+        setError(cause instanceof Error ? cause.message : "Impossible de sécuriser les préférences.");
+      }
+    } finally {
+      // Une réponse ancienne ne doit jamais annoncer « enregistré » ni
+      // masquer le spinner de la mutation plus récente encore en attente.
+      if (version === mutationVersion.current) setSaving(false);
+    }
   }
 
   return (
@@ -41,7 +90,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
           <input
             value={draft.userName}
             onChange={(e) => setDraft({ ...draft, userName: e.target.value })}
-            onBlur={() => persist(draft)}
+            onBlur={() => persist({ userName: draft.userName })}
             placeholder="Ton prénom"
             className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
           />
@@ -53,7 +102,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
             <SegmentedControl
               layoutId="units-segmented"
               value={draft.usesKilograms ? "kg" : "lb"}
-              onChange={(v) => persist({ ...draft, usesKilograms: v === "kg" })}
+              onChange={(v) => persist({ usesKilograms: v === "kg" })}
               options={[
                 { value: "kg", label: "Kilogrammes" },
                 { value: "lb", label: "Livres" },
@@ -66,7 +115,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
           <span className="text-sm text-[--color-fg]">Incrément par défaut</span>
           <Stepper
             value={draft.defaultSmallestIncrement}
-            onChange={(v) => persist({ ...draft, defaultSmallestIncrement: v })}
+            onChange={(v) => persist({ defaultSmallestIncrement: v })}
             step={0.5}
             min={0.5}
             max={25}
@@ -78,7 +127,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
           <span className="text-sm text-[--color-fg]">Repos par défaut</span>
           <Stepper
             value={draft.defaultRestTimerSeconds}
-            onChange={(v) => persist({ ...draft, defaultRestTimerSeconds: v })}
+            onChange={(v) => persist({ defaultRestTimerSeconds: v })}
             step={15}
             min={30}
             max={300}
@@ -90,7 +139,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
           <span className="text-sm text-[--color-fg]">Repos superset</span>
           <Stepper
             value={draft.supersetRestSeconds}
-            onChange={(v) => persist({ ...draft, supersetRestSeconds: v })}
+            onChange={(v) => persist({ supersetRestSeconds: v })}
             step={15}
             min={30}
             max={300}
@@ -102,19 +151,20 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
           <Stepper
             label="Reps min défaut"
             value={draft.defaultRepTargetMin}
-            onChange={(v) => persist({ ...draft, defaultRepTargetMin: v })}
+            onChange={(v) => persist({ defaultRepTargetMin: v })}
             min={1}
             max={draft.defaultRepTargetMax}
           />
           <Stepper
             label="Reps max défaut"
             value={draft.defaultRepTargetMax}
-            onChange={(v) => persist({ ...draft, defaultRepTargetMax: v })}
+            onChange={(v) => persist({ defaultRepTargetMax: v })}
             min={draft.defaultRepTargetMin}
             max={50}
           />
         </div>
       </div>
+      {error && <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}
     </GlassCard>
   );
 }

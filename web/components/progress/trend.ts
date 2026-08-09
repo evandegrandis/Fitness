@@ -1,13 +1,27 @@
 /**
  * Dérive un badge de tendance court ("Plateau 3 séances", "+8% ce mois", …)
- * à partir d'une série de points d'exercice déjà disponible (poids du
- * meilleur set / séance). Aucune nouvelle source de données : purement une
+ * à partir d'une série de points d'exercice déjà disponible (valeur de l'axe
+ * principal par séance). Aucune nouvelle source de données : purement une
  * lecture différente de ce qui alimente déjà `ExerciseLineChart`.
  */
 
 export interface TrendPoint {
   date: Date;
-  weight: number;
+  value: number;
+}
+
+export type ExerciseProgressAxis = "load" | "reps";
+
+/**
+ * Axe de progression affichable : le standard publié gagne lorsqu'il existe ;
+ * sinon un historique entièrement à 0 kg est nécessairement suivi en reps.
+ */
+export function exerciseProgressAxis(
+  points: Array<{ weight: number; reps: number }>,
+  publishedAxis: ExerciseProgressAxis | null
+): ExerciseProgressAxis {
+  if (points.length > 0 && points.every((point) => point.weight <= 0)) return "reps";
+  return publishedAxis ?? "load";
 }
 
 export type TrendTone = "up" | "down" | "flat";
@@ -35,10 +49,10 @@ export function trendBadge(points: TrendPoint[]): TrendBadge | null {
   const sorted = [...points].sort((a, b) => a.date.getTime() - b.date.getTime());
   const last = sorted[sorted.length - 1];
 
-  // Plateau : les N dernières séances (>=3) ont exactement le même poids.
+  // Plateau : les N dernières séances (>=3) ont exactement la même valeur.
   let plateauCount = 1;
   for (let i = sorted.length - 2; i >= 0; i--) {
-    if (Math.abs(sorted[i].weight - last.weight) < PLATEAU_EPSILON) {
+    if (Math.abs(sorted[i].value - last.value) < PLATEAU_EPSILON) {
       plateauCount++;
     } else {
       break;
@@ -53,9 +67,9 @@ export function trendBadge(points: TrendPoint[]): TrendBadge | null {
   const windowed = sorted.filter((p) => p.date >= windowStart);
   const reference = windowed.length >= 2 ? windowed[0] : sorted[0];
 
-  if (reference.weight <= 0) return null;
+  if (reference.value <= 0) return null;
 
-  const deltaPct = ((last.weight - reference.weight) / reference.weight) * 100;
+  const deltaPct = ((last.value - reference.value) / reference.value) * 100;
   const rounded = Math.round(Math.abs(deltaPct));
 
   if (rounded === 0) {

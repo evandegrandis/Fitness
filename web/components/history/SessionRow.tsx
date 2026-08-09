@@ -6,8 +6,8 @@ import { fr } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { ChevronRight, Star } from "lucide-react";
 import { SwipeRow } from "@/components/ui/SwipeRow";
-import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
-import { effectiveSetUnits } from "@/lib/engines/set-structure";
+import type { WorkoutSession } from "@/lib/models/types";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 
 function relativeDay(date: Date): string {
@@ -35,10 +35,10 @@ export function SessionRow({
   onDelete: (id: string) => void;
 }) {
   const ordered = session.exercises
-    .filter((exercise) => exercise.sets.some((set) => set.completed))
+    .filter((exercise) => physiologicalSetUnits(exercise.sets) > 0)
     .sort((a, b) => a.orderIndex - b.orderIndex);
   const totalSets = Math.round(
-    ordered.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0) * 10
+    ordered.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0) * 10
   ) / 10;
   const duration = sessionDurationLabel(session);
   const supersetCount = session.supersetGroups.length;

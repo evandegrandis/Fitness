@@ -3,9 +3,9 @@ import { login } from "@/lib/auth";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; from?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; configuration?: string }>;
 }) {
-  const { error, from } = await searchParams;
+  const { error, from, configuration } = await searchParams;
 
   return (
     <main className="flex-1 flex items-center justify-center p-6">
@@ -28,6 +28,9 @@ export default async function LoginPage({
           />
           {error && (
             <p className="text-sm text-[--color-danger]">Code incorrect</p>
+          )}
+          {configuration && (
+            <p className="text-sm text-[--color-danger]">Authentification indisponible — configuration serveur requise</p>
           )}
           <button type="submit" className="btn-accent w-full py-3 text-sm">
             Entrer

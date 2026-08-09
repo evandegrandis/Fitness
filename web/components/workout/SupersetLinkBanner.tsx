@@ -7,7 +7,7 @@ import { useWorkoutStore } from "@/lib/store/workout";
 /**
  * Bandeau persistant affiché pendant l'armement d'un lien superset.
  * Reste visible en bas d'écran tant qu'un exercice est armé — tap sur une
- * 2ᵉ carte crée le groupe (`handleSupersetLink`), "Annuler" désarme.
+ * autre carte crée une paire ou ajoute l'exercice à un groupe (4 membres max).
  */
 export function SupersetLinkBanner() {
   const armedSupersetExerciseId = useWorkoutStore((s) => s.armedSupersetExerciseId);
@@ -37,7 +37,7 @@ export function SupersetLinkBanner() {
               <Link2 size={15} />
             </div>
             <p className="truncate text-sm text-[--color-fg]">
-              Superset : touche le 2<sup>e</sup> exercice
+              Superset : touche un exercice ou un groupe · 4 max
             </p>
           </div>
           <button

@@ -24,6 +24,10 @@ const BENCH: Exercise = {
   voluntaryRepCap: 0,
   muscleMappings: [],
   lastUsed: null,
+  movementPattern: null,
+  resistanceProfile: null,
+  strengthStandardKey: null,
+  benchmarkUnit: null,
 };
 
 function set(overrides: Partial<LoggedSet>): LoggedSet {
@@ -49,6 +53,7 @@ function loggedExercise(exerciseId: string, sets: LoggedSet[]): LoggedExercise {
     exerciseName: BENCH.name,
     sets,
     supersetGroupId: null,
+    plateauWeakPoint: null,
   };
 }
 
@@ -80,6 +85,21 @@ describe("recentAchievements — parcours chronologique et fenêtre maxSessions"
     expect(achievements[0].weight).toBe(85);
     expect(achievements[0].date.getTime()).toBe(day2.date.getTime());
     expect(achievements[1].date.getTime()).toBe(day1.date.getTime());
+  });
+
+  it("donne le même résultat après un import dont les séances sont permutées", () => {
+    const day1 = session(new Date("2026-07-01T10:00:00"), [loggedExercise(BENCH.id, [set({ weight: 80, reps: 8 })])]);
+    const day2 = session(new Date("2026-07-08T10:00:00"), [loggedExercise(BENCH.id, [set({ weight: 85, reps: 6 })])]);
+    const day3 = session(new Date("2026-07-15T10:00:00"), [loggedExercise(BENCH.id, [set({ weight: 70, reps: 6 })])]);
+
+    const canonical = recentAchievements([day3, day2, day1], [BENCH], 2).map(
+      ({ exerciseName, date, kind, weight, reps }) => ({ exerciseName, date: date.getTime(), kind, weight, reps })
+    );
+    const imported = recentAchievements([day1, day3, day2], [BENCH], 2).map(
+      ({ exerciseName, date, kind, weight, reps }) => ({ exerciseName, date: date.getTime(), kind, weight, reps })
+    );
+
+    expect(imported).toEqual(canonical);
   });
 
   it("la toute première séance produit un achievement (aucun historique préalable à battre = heaviestWeight)", () => {
@@ -149,5 +169,21 @@ describe("recentAchievements — parcours chronologique et fenêtre maxSessions"
     const s = session(new Date("2026-07-01T10:00:00"), [loggedExercise(BENCH.id, [set({ completed: false })])]);
     const achievements = recentAchievements([s], [BENCH], 10);
     expect(achievements).toHaveLength(0);
+  });
+
+  it("suit les records finishers séparément des records normaux", () => {
+    const day1 = session(new Date("2026-07-01T10:00:00"), [
+      loggedExercise(BENCH.id, [set({ weight: 0, reps: 16, setType: SetType.finisher })]),
+    ]);
+    const day2 = session(new Date("2026-07-08T10:00:00"), [
+      loggedExercise(BENCH.id, [set({ weight: 0, reps: 18, setType: SetType.finisher })]),
+    ]);
+
+    const achievements = recentAchievements([day2, day1], [BENCH], 10);
+    expect(achievements.map((achievement) => achievement.kind)).toEqual([
+      "finisherReps",
+      "finisherReps",
+    ]);
+    expect(achievements[0].reps).toBe(18);
   });
 });

@@ -5,23 +5,29 @@ import { NextResponse, type NextRequest } from "next/server";
  * Laisse passer les assets, l'API d'auth et la page de login ;
  * sinon exige un cookie de session valide.
  */
-const PUBLIC_PATHS = ["/login", "/api/login"];
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/manifest.webmanifest",
+  "/favicon.ico",
+  "/sw.js",
+  "/icon",
+  "/apple-icon",
+]);
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (
-    PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname === "/manifest.webmanifest"
+    PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith("/_next/")
   ) {
     return NextResponse.next();
   }
 
   const expected = process.env.SESSION_SECRET;
-  // Si aucun secret configuré (dev local sans .env), on n'entrave pas.
-  if (!expected) return NextResponse.next();
+  // Dev local explicite : mode sans auth toléré. Un build déployé ne doit en revanche JAMAIS
+  // devenir public silencieusement parce qu'une variable Vercel manque.
+  if (!expected && process.env.NODE_ENV !== "production") return NextResponse.next();
 
   const session = req.cookies.get("jeera_session")?.value;
   if (session === expected) return NextResponse.next();
@@ -29,6 +35,7 @@ export function proxy(req: NextRequest) {
   const url = req.nextUrl.clone();
   url.pathname = "/login";
   url.searchParams.set("from", pathname);
+  if (!expected) url.searchParams.set("configuration", "missing");
   return NextResponse.redirect(url);
 }
 

@@ -33,6 +33,10 @@ function makeExercise(overrides: Partial<Exercise> = {}): Exercise {
     voluntaryRepCap: 0,
     muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
     lastUsed: null,
+    movementPattern: null,
+    resistanceProfile: null,
+    strengthStandardKey: null,
+    benchmarkUnit: null,
     ...overrides,
   };
 }

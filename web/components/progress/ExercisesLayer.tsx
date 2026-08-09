@@ -9,13 +9,19 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { buildRecords } from "@/lib/engines/records";
-import { benchmarkBoundsForLoggedWeight, exerciseBenchmark } from "@/lib/engines/benchmark";
-import { completedWorkSets, type Exercise, type WorkoutSession } from "@/lib/models/types";
+import {
+  benchmarkAxesFor,
+  benchmarkPrimaryAxisFor,
+  bestBenchmarkSets,
+  exerciseBenchmarkForSets,
+  personalProgress as computePersonalProgress,
+} from "@/lib/engines/benchmark";
+import { completedBenchmarkSets, type Exercise, type UserSettings, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
 import { formatWeight, formatDerivedWeight } from "@/components/progress/utils";
 import { ExerciseLineChart, type ExercisePoint } from "@/components/progress/ExerciseLineChart";
 import { BenchmarkGauge } from "@/components/progress/BenchmarkGauge";
-import { trendBadge } from "@/components/progress/trend";
+import { exerciseProgressAxis, trendBadge } from "@/components/progress/trend";
 
 type SortMode = "recent" | "az";
 
@@ -30,23 +36,24 @@ interface ExerciseHistory {
   lastDate: Date;
 }
 
-/** Meilleur set de travail d'un exercice pour une séance : poids le plus haut où reps >= repMin, sinon plus lourd tout court. */
+/**
+ * Meilleur set normal de la séance pour le chemin benchmark/niveau (finishers et warmups exclus).
+ * Le classement suit l'axe réellement publié : reps brutes ou e1RM de charge.
+ */
 function bestSetOfSession(session: WorkoutSession, exercise: Exercise) {
-  const sets = session.exercises
-    .filter((e) => e.exerciseId === exercise.id)
-    .flatMap((e) => completedWorkSets(e))
-    .filter((s) => s.weight > 0);
-  if (sets.length === 0) return null;
-
-  const validated = sets.filter((s) => s.reps >= exercise.repTargetMin);
-  const pool = validated.length > 0 ? validated : sets;
-  return pool.reduce((best, s) => (s.weight > best.weight ? s : best));
+  const sets = session.exercises.filter((e) => e.exerciseId === exercise.id).flatMap((e) => completedBenchmarkSets(e));
+  const best = bestBenchmarkSets(exercise, sets);
+  const axes = benchmarkAxesFor(exercise);
+  for (const axis of axes) {
+    if (best[axis]) return best[axis];
+  }
+  return axes.length === 0 ? best.load ?? best.reps : null;
 }
 
 export function ExercisesLayer() {
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
-  const bodyWeightKg = useWorkoutStore((s) => s.settings.bodyWeightKg ?? undefined);
+  const settings = useWorkoutStore((s) => s.settings);
 
   const [sort, setSort] = useState<SortMode>("recent");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -75,7 +82,18 @@ export function ExercisesLayer() {
       }
     }
 
-    return [...byExercise.values()];
+    return [...byExercise.values()].map((entry) => {
+      const axes = benchmarkAxesFor(entry.exercise);
+      const comparablePoints =
+        axes.length === 2 && entry.points.some((point) => point.weight > 0)
+          ? entry.points.filter((point) => point.weight > 0)
+          : entry.points;
+      return {
+        ...entry,
+        points: comparablePoints,
+        lastDate: comparablePoints.at(-1)?.date ?? entry.lastDate,
+      };
+    });
   }, [history, catalog]);
 
   const sorted = useMemo(() => {
@@ -107,7 +125,7 @@ export function ExercisesLayer() {
           expanded={expanded === entry.exercise.id}
           onToggle={() => setExpanded((cur) => (cur === entry.exercise.id ? null : entry.exercise.id))}
           history={history}
-          bodyWeightKg={bodyWeightKg}
+          benchmarkProfile={settings}
         />
       ))}
     </div>
@@ -119,25 +137,21 @@ function ExerciseCardRow({
   expanded,
   onToggle,
   history,
-  bodyWeightKg,
+  benchmarkProfile,
 }: {
   entry: ExerciseHistory;
   expanded: boolean;
   onToggle: () => void;
   history: WorkoutSession[];
-  bodyWeightKg?: number;
+  benchmarkProfile: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
 }) {
   const { exercise, points } = entry;
   const last = points[points.length - 1];
   const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 0.5;
-
-  const benchmark = useMemo(
-    () => exerciseBenchmark(exercise, last.weight, bodyWeightKg),
-    [exercise, last.weight, bodyWeightKg]
-  );
-  const referenceBand = useMemo(
-    () => benchmarkBoundsForLoggedWeight(exercise, bodyWeightKg),
-    [exercise, bodyWeightKg]
+  const publishedAxes = benchmarkAxesFor(exercise);
+  const primaryAxis = exerciseProgressAxis(
+    points,
+    publishedAxes.length === 1 ? benchmarkPrimaryAxisFor(exercise) : null
   );
 
   const historicalSets = useMemo(
@@ -150,9 +164,30 @@ function ExerciseCardRow({
     [history, exercise]
   );
 
+  const benchmark = useMemo(
+    () => exerciseBenchmarkForSets(exercise, historicalSets, benchmarkProfile),
+    [exercise, historicalSets, benchmarkProfile]
+  );
+
   const records = useMemo(() => buildRecords(exercise, historicalSets), [historicalSets, exercise]);
 
-  const trend = useMemo(() => trendBadge(points.map((p) => ({ date: p.date, weight: p.weight }))), [points]);
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §2 (P3.2) — introduit "les deux" pour les machines (`isMachine`).
+   * OFFLINE_PWA_SPEC §5 (P4.5) — élargi : calculé pour TOUT exercice (plus seulement les machines),
+   * `personalProgress()` étant déjà une pure lecture de `historicalSets` qui dégrade gracieusement
+   * (`hasData:false`) s'il n'y a pas assez d'historique chargé — aucun changement de signature ni
+   * de coût de calcul significatif, juste un gate en moins. `BenchmarkGauge` décide ensuite QUAND
+   * l'afficher (jauge StrengthLevel gated sur `hasBenchmark`, ce marqueur non).
+   */
+  const personalProgress = useMemo(
+    () => computePersonalProgress(exercise, historicalSets),
+    [exercise, historicalSets]
+  );
+
+  const trend = useMemo(
+    () => trendBadge(points.map((p) => ({ date: p.date, value: primaryAxis === "reps" ? p.reps : p.weight }))),
+    [points, primaryAxis]
+  );
 
   /** Date du set qui a établi le heaviestEver actuel — pour "record il y a X sem". */
   const heaviestRecordAgeLabel = useMemo(() => {
@@ -183,7 +218,7 @@ function ExerciseCardRow({
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             <span className="pill">
-              Dernier <span className="tnum ml-1 text-[--color-fg]">{formatWeight(last.weight)}kg×{last.reps}</span>
+              Dernier <span className="tnum ml-1 text-[--color-fg]">{formatPerformance(last, primaryAxis)}</span>
             </span>
             {records.bestE1RM > 0 && (
               <span className="pill">
@@ -218,13 +253,21 @@ function ExerciseCardRow({
             <div className="space-y-3 border-t border-white/8 px-4 pb-4 pt-3">
               <ExerciseLineChart
                 points={points}
-                referenceBand={referenceBand}
-                showReps={points.length > 1}
+                primaryAxis={primaryAxis}
+                showReps={primaryAxis === "load" && points.length > 1}
                 smallestIncrement={increment}
               />
-              {benchmark.hasBenchmark && <BenchmarkGauge benchmark={benchmark} increment={increment} />}
+              {/* OFFLINE_PWA_SPEC §5 (P4.5) — avant ce lot : gate `benchmark.hasBenchmark` seul, donc
+                  un exercice sans standard fiable n'affichait RIEN (même avec de l'historique
+                  exploitable pour la progression perso). `BenchmarkGauge` gère maintenant lui-même
+                  le détail (jauge StrengthLevel gated sur hasBenchmark, progression perso non) —
+                  ce gate d'appel élargi évite juste de monter le composant quand il n'a RIEN à
+                  montrer dans les deux cas. */}
+              {(benchmark.hasBenchmark || personalProgress.hasData) && (
+                <BenchmarkGauge benchmark={benchmark} personalProgress={personalProgress} />
+              )}
               <p className="text-xs text-[--color-fg-faint]">
-                Dernière séance : {formatWeight(last.weight)}kg × {last.reps} reps
+                Dernière séance : {formatPerformance(last, primaryAxis)}
               </p>
             </div>
           </motion.div>
@@ -232,6 +275,11 @@ function ExerciseCardRow({
       </AnimatePresence>
     </GlassCard>
   );
+}
+
+function formatPerformance(point: Pick<ExercisePoint, "weight" | "reps">, axis: "load" | "reps"): string {
+  if (axis === "reps" && point.weight <= 0) return `PDC × ${point.reps} reps`;
+  return `${formatWeight(point.weight)}kg × ${point.reps} reps`;
 }
 
 /** "il y a 8 sem" / "cette semaine" — contexte temporel d'un record ancien. */

@@ -1,4 +1,5 @@
-import { getInitialData } from "@/lib/data";
+import { getInitialDataResult } from "@/lib/data";
+import { requireAuthenticatedSession } from "@/lib/auth";
 import { StoreHydrator } from "@/components/providers/StoreHydrator";
 import { ModeProvider } from "@/components/providers/ModeProvider";
 import { SyncProvider } from "@/components/providers/SyncProvider";
@@ -17,11 +18,15 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const data = await getInitialData();
+  // Proxy ne constitue qu'un garde optimiste. La session est revérifiée au plus près de la
+  // lecture sensible afin qu'une mauvaise configuration ou un contournement de route ne puisse
+  // jamais exposer le dataset complet.
+  await requireAuthenticatedSession();
+  const initial = await getInitialDataResult();
 
   return (
     <ModeProvider>
-      <StoreHydrator data={data} />
+      <StoreHydrator data={initial.data} source={initial.source} fetchedAt={initial.fetchedAt} />
       <SyncProvider>
         <div className="flex-1 flex flex-col min-h-full">
           {/* padding-bottom = hauteur de la TabBar sticky, pour que le contenu ne passe jamais dessous */}

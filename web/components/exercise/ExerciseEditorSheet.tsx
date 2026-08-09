@@ -5,14 +5,24 @@ import { Sheet } from "@/components/ui/Sheet";
 import { Stepper } from "@/components/ui/Stepper";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { upsertExercise, deleteExercise } from "@/lib/db/actions";
+import { PermanentMutationError, writeThrough } from "@/lib/sync/write-through";
 import {
+  BENCHMARK_UNITS,
+  benchmarkUnitDisplayName,
   FATIGUE_CLASSES,
+  MOVEMENT_PATTERNS,
+  movementPatternDisplayName,
   PROGRESSION_POLICIES,
   progressionPolicyDisplayName,
+  RESISTANCE_PROFILES,
+  resistanceProfileDisplayName,
   SET_PATTERN_MODES,
   setPatternModeDisplayName,
+  type BenchmarkUnit,
   type FatigueClass,
+  type MovementPattern,
   type ProgressionPolicy,
+  type ResistanceProfile,
   type SetPatternMode,
 } from "@/lib/models/enums";
 import { LEAF_TO_PARENT, LEAVES_OF_PARENT, type MuscleParent } from "@/lib/models/muscles";
@@ -20,8 +30,16 @@ import type { Exercise, MuscleMapping } from "@/lib/models/types";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { MuscleMappingEditor, mappingsToParentLevel } from "@/components/exercise/MuscleMappingEditor";
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
+import { listKnownStandards } from "@/lib/engines/benchmark";
 
 const FATIGUE_LABEL: Record<FatigueClass, string> = { heavy: "Lourd", medium: "Moyen", light: "Léger" };
+
+const CONVENTION_LABEL: Record<"per_arm" | "total" | "added" | "reps", string> = {
+  per_arm: "par bras",
+  total: "total",
+  added: "ajoutée au poids de corps",
+  reps: "répétitions au poids de corps",
+};
 
 function parentMappingsToLeafMappings(parentMappings: [MuscleParent, number][]): MuscleMapping[] {
   return parentMappings.map(([parent, coefficient]) => ({
@@ -55,6 +73,10 @@ function emptyExercise(): Exercise {
     voluntaryRepCap: 0,
     muscleMappings: [],
     lastUsed: null,
+    movementPattern: null,
+    resistanceProfile: null,
+    strengthStandardKey: null,
+    benchmarkUnit: null,
   };
 }
 
@@ -96,20 +118,51 @@ function ExerciseEditorForm({
   const [draft, setDraft] = useState<Exercise>(() => exercise ?? emptyExercise());
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isEditing = exercise !== null;
 
   const parentMappings = mappingsToParentLevel(draft.muscleMappings, LEAF_TO_PARENT);
+  // BENCHMARK_LEVEL_SPEC.md §4 (P3.4) — recalculé à chaque rendu (pas de useMemo : `listKnownStandards()`
+  // relit un import JSON déjà en mémoire, coût négligeable, et reste toujours à jour si le fichier
+  // gagne des entrées entre deux ouvertures de la feuille sans re-render forcé).
+  const knownStandards = listKnownStandards();
+  const selectedStandard = draft.strengthStandardKey
+    ? knownStandards.find((s) => s.key === draft.strengthStandardKey)
+    : undefined;
 
   async function handleSave() {
     if (!draft.name.trim()) return;
     setSaving(true);
+    setError(null);
     const toSave: Exercise = {
       ...draft,
       name: draft.name.trim(),
       category: draft.category.trim() || "Autre",
       sortOrder: isEditing ? draft.sortOrder : catalogLength,
     };
-    await upsertExercise(toSave);
+    // OFFLINE_PWA_SPEC §4 (P4.4) — reflète immédiatement dans le catalogue local (avant même de
+    // savoir si Neon est joignable) : sans ça, créer/éditer un exercice hors-ligne ne serait visible
+    // que dans ce formulaire, jamais dans le reste de l'app (sélecteurs, suggestion(), etc.).
+    const previous = useWorkoutStore.getState().catalog.find((item) => item.id === toSave.id) ?? null;
+    useWorkoutStore.getState().upsertExerciseInCatalog(toSave);
+    try {
+      // Avant ce lot : `await upsertExercise(toSave)` sans try/catch — hors-ligne, la promesse
+      // rejetait sans jamais repasser `saving` à false ni fermer la feuille, ET l'édition était
+      // perdue. `writeThrough` met en file au lieu de perdre l'action (rejouée par SyncProvider).
+      await writeThrough({ kind: "exercise_upsert", exercise: toSave }, () => upsertExercise(toSave));
+    } catch (cause) {
+      // Ni Neon ni le stockage offline n'ont conservé la mutation : ne pas laisser le catalogue
+      // optimiste prétendre le contraire. Le test d'identité évite d'annuler une édition plus
+      // récente du même exercice qui aurait eu lieu pendant l'await.
+      const current = useWorkoutStore.getState().catalog.find((item) => item.id === toSave.id);
+      if (current === toSave) {
+        if (previous) useWorkoutStore.getState().upsertExerciseInCatalog(previous);
+        else useWorkoutStore.getState().removeExerciseFromCatalog(toSave.id);
+      }
+      setError(cause instanceof Error ? cause.message : "Impossible de sécuriser cet exercice.");
+      setSaving(false);
+      return;
+    }
     setSaving(false);
     onClose();
   }
@@ -120,8 +173,39 @@ function ExerciseEditorForm({
       setConfirmingDelete(true);
       return;
     }
+    const state = useWorkoutStore.getState();
+    const referencedLocally =
+      state.active?.exercises.some((logged) => logged.exerciseId === exercise.id) === true ||
+      state.history.some((session) => session.exercises.some((logged) => logged.exerciseId === exercise.id));
+    if (referencedLocally) {
+      setError("Cet exercice est utilisé dans l'historique et doit rester au catalogue.");
+      setConfirmingDelete(false);
+      return;
+    }
     setSaving(true);
-    await deleteExercise(exercise.id);
+    setError(null);
+    useWorkoutStore.getState().removeExerciseFromCatalog(exercise.id);
+    try {
+      await writeThrough(
+        { kind: "exercise_delete", exerciseId: exercise.id },
+        async () => {
+          const result = await deleteExercise(exercise.id);
+          if (result === "referenced") {
+            throw new PermanentMutationError(
+              "Cet exercice est utilisé dans l'historique et doit rester au catalogue."
+            );
+          }
+        }
+      );
+    } catch (cause) {
+      if (!useWorkoutStore.getState().catalog.some((item) => item.id === exercise.id)) {
+        useWorkoutStore.getState().upsertExerciseInCatalog(exercise);
+      }
+      setError(cause instanceof Error ? cause.message : "Impossible de supprimer cet exercice.");
+      setSaving(false);
+      setConfirmingDelete(false);
+      return;
+    }
     setSaving(false);
     onClose();
   }
@@ -192,6 +276,161 @@ function ExerciseEditorForm({
               </div>
             </div>
 
+            {/*
+              MovementPattern (VARIATION_CYCLING_SPEC §5) — clé de carry-over pour la rotation de
+              variation (§6). Éditable dès la création (comme SetPatternMode) pour que les nouveaux
+              exercices ne restent pas non-tagués. "Non taggé" (null) est une option explicite : la
+              sélection de variante retombe alors sur le recouvrement musculaire seul (§9), jamais
+              de crash — mais on préfère taguer dès que possible.
+            */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                Pattern de mouvement
+              </label>
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, movementPattern: null })}
+                  className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
+                    draft.movementPattern === null ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                  }`}
+                >
+                  Non taggé
+                </button>
+                {MOVEMENT_PATTERNS.map((pattern: MovementPattern) => (
+                  <button
+                    key={pattern}
+                    type="button"
+                    onClick={() => setDraft({ ...draft, movementPattern: pattern })}
+                    className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
+                      draft.movementPattern === pattern ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                    }`}
+                  >
+                    {movementPatternDisplayName[pattern]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/*
+              ResistanceProfile (VARIATION_CYCLING_SPEC §5.2, P2.1) — où l'exercice est le plus dur
+              dans l'amplitude de mouvement, sert à cibler le point faible mesuré (§6, `weakPointFit`).
+              Éditable dès la création, même pattern que MovementPattern ci-dessus. "Non taggé" (null)
+              reste l'option explicite : `weakPointFit` retombe alors neutre (§9), jamais de crash.
+              Seed par défaut null partout (pas de tagging manuel des 29 exos, décision tracée en P2.1).
+            */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                Profil de résistance
+              </label>
+              <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, resistanceProfile: null })}
+                  className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
+                    draft.resistanceProfile === null ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                  }`}
+                >
+                  Non taggé
+                </button>
+                {RESISTANCE_PROFILES.map((profile: ResistanceProfile) => (
+                  <button
+                    key={profile}
+                    type="button"
+                    onClick={() => setDraft({ ...draft, resistanceProfile: profile })}
+                    className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
+                      draft.resistanceProfile === profile ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                    }`}
+                  >
+                    {resistanceProfileDisplayName[profile]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/*
+              StrengthStandardKey (BENCHMARK_LEVEL_SPEC.md §4, P3.4) — clé dans
+              `data/strength_standards_corrected.json`. Sélectionner un standard mappe AUTOMATIQUEMENT
+              cet exercice dans la jauge (`BenchmarkGauge`, onglet Progrès) + le signal feu intra-séance
+              (`SetEntry.tsx`), sans aucun autre changement : `unit` se met à jour seul depuis le JSON
+              (source de vérité) ; `convention`/`isMachine` sont affichés à titre informatif (pas des
+              champs `Exercise` séparés — ils vivent uniquement dans l'entrée JSON). "Aucun" (fallback
+              manuel) laisse `benchmarkUnit` éditable pour un futur repère saisi à la main
+              (`benchmarkLow`/`benchmarkHigh`, non consommé aujourd'hui — §1).
+            */}
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                Standard StrengthLevel
+              </label>
+              <select
+                value={draft.strengthStandardKey ?? ""}
+                onChange={(e) => {
+                  const key = e.target.value || null;
+                  const entry = key ? knownStandards.find((s) => s.key === key) : undefined;
+                  setDraft({
+                    ...draft,
+                    strengthStandardKey: key,
+                    // Un standard JSON impose son unité (source de vérité) ; en repli manuel, on
+                    // garde l'unité déjà saisie par l'utilisateur (ne pas l'effacer en désélectionnant).
+                    benchmarkUnit: entry ? entry.unit : draft.benchmarkUnit,
+                  });
+                }}
+                className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none"
+              >
+                <option value="">Aucun (repère manuel ou pas encore sourcé)</option>
+                {knownStandards.map((standard) => (
+                  <option key={standard.key} value={standard.key}>
+                    {standard.key}
+                    {standard.isMachine ? " · machine" : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedStandard && (
+                <p className="mt-1.5 text-[0.68rem] text-[--color-fg-faint]">
+                  Unité {benchmarkUnitDisplayName[selectedStandard.unit].toLowerCase()} · charge{" "}
+                  {CONVENTION_LABEL[selectedStandard.convention]}
+                  {selectedStandard.isMachine && " · machine : jauge indicative uniquement"}
+                </p>
+              )}
+            </div>
+
+            {/*
+              Unité de repère (BENCHMARK_LEVEL_SPEC.md §1/§4) — verrouillée sur celle du standard
+              StrengthLevel choisi ci-dessus (désactivée dans ce cas, déjà affichée juste au-dessus) ;
+              éditable seulement en repli manuel (`strengthStandardKey === null`), pour un futur repère
+              `benchmarkLow`/`benchmarkHigh` saisi à la main.
+            */}
+            {draft.strengthStandardKey === null && (
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                  Unité du repère (si saisi à la main)
+                </label>
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDraft({ ...draft, benchmarkUnit: null })}
+                    className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
+                      draft.benchmarkUnit === null ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                    }`}
+                  >
+                    Aucune
+                  </button>
+                  {BENCHMARK_UNITS.map((unit: BenchmarkUnit) => (
+                    <button
+                      key={unit}
+                      type="button"
+                      onClick={() => setDraft({ ...draft, benchmarkUnit: unit })}
+                      className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
+                        draft.benchmarkUnit === unit ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                      }`}
+                    >
+                      {benchmarkUnitDisplayName[unit]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Reps min/max + incrément */}
             <div className="grid grid-cols-3 gap-2">
               <Stepper
@@ -212,8 +451,8 @@ function ExerciseEditorForm({
                 label="Incrément"
                 value={draft.smallestIncrement}
                 onChange={(v) => setDraft({ ...draft, smallestIncrement: v })}
-                step={0.5}
-                min={0.5}
+                step={0.25}
+                min={0.25}
                 max={25}
                 suffix="kg"
               />
@@ -319,10 +558,13 @@ function ExerciseEditorForm({
                 >
                   {confirmingDelete ? "Confirmer la suppression" : "Supprimer l'exercice"}
                 </button>
+                {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
               </>
             )}
           </div>
         </div>
+
+        {!isEditing && error && <p role="alert" className="mb-2 text-xs text-rose-300">{error}</p>}
 
         <button
           type="button"

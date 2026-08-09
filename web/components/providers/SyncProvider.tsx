@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { saveSession } from "@/lib/db/actions";
 import { flush, pendingCount } from "@/lib/sync/outbox";
+import { defaultOutboxHandlers } from "@/lib/sync/handlers";
 import { useSyncStatus } from "@/lib/sync/status";
 
 /**
@@ -18,18 +18,22 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function tryFlush() {
-      const before = pendingCount();
-      setPending(before);
-      if (before === 0) return;
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        setStatus("offline");
-        return;
+      try {
+        const before = pendingCount();
+        setPending(before);
+        if (before === 0) return;
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          setStatus("offline");
+          return;
+        }
+        setStatus("saving");
+        const remaining = await flush(defaultOutboxHandlers);
+        if (cancelled) return;
+        setPending(remaining);
+        setStatus(remaining === 0 ? "saved" : navigator.onLine === false ? "offline" : "error");
+      } catch {
+        if (!cancelled) setStatus("error");
       }
-      setStatus("saving");
-      const remaining = await flush(saveSession);
-      if (cancelled) return;
-      setPending(remaining);
-      setStatus(remaining === 0 ? "saved" : navigator.onLine === false ? "offline" : "error");
     }
 
     void tryFlush();

@@ -182,6 +182,122 @@ export const progressionPolicyDescription: Record<ProgressionPolicy, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// MovementPattern
+// ---------------------------------------------------------------------------
+
+/**
+ * VARIATION_CYCLING_SPEC §5 — pattern de mouvement d'un `Exercise`, clé de
+ * carry-over pour la rotation de variation (§6 : filtre dur
+ * `movementPattern === current.movementPattern`). Pas d'équivalent Swift —
+ * nouveau champ nullable, dégradation gracieuse si `null` (fallback sur le
+ * recouvrement musculaire seul, jamais de crash, cf. §9).
+ */
+export const MovementPattern = {
+  horizontalPress: "horizontal_press",
+  verticalPress: "vertical_press",
+  horizontalPull: "horizontal_pull",
+  verticalPull: "vertical_pull",
+  squat: "squat",
+  hinge: "hinge",
+  isolation: "isolation",
+} as const;
+
+export type MovementPattern = (typeof MovementPattern)[keyof typeof MovementPattern];
+
+export const MOVEMENT_PATTERNS: MovementPattern[] = Object.values(MovementPattern);
+
+export const movementPatternDisplayName: Record<MovementPattern, string> = {
+  horizontal_press: "Poussée horizontale",
+  vertical_press: "Poussée verticale",
+  horizontal_pull: "Tirage horizontal",
+  vertical_pull: "Tirage vertical",
+  squat: "Squat",
+  hinge: "Hinge (charnière de hanche)",
+  isolation: "Isolation",
+};
+
+// ---------------------------------------------------------------------------
+// ResistanceProfile
+// ---------------------------------------------------------------------------
+
+/**
+ * VARIATION_CYCLING_SPEC §5.2 — où l'exercice est le plus dur dans l'amplitude de
+ * mouvement. Sert à cibler le point faible mesuré de l'utilisateur (§6, `weakPointFit`).
+ * Pas d'équivalent Swift — nouveau champ nullable, dégradation gracieuse si `null`
+ * (`weakPointFit` reste neutre, cf. §9). P2.1 : seed par défaut `null` partout (pas de
+ * tagging manuel des 29 exos, à la différence de `movementPattern` en P1.4 — décision
+ * tracée dans VARIATION_CYCLING_IMPL.md P2.1).
+ */
+export const ResistanceProfile = {
+  bottom: "bottom",
+  mid: "mid",
+  lockout: "lockout",
+  even: "even",
+} as const;
+
+export type ResistanceProfile = (typeof ResistanceProfile)[keyof typeof ResistanceProfile];
+
+export const RESISTANCE_PROFILES: ResistanceProfile[] = Object.values(ResistanceProfile);
+
+export const resistanceProfileDisplayName: Record<ResistanceProfile, string> = {
+  bottom: "Bas (départ du mouvement)",
+  mid: "Milieu",
+  lockout: "Lockout (fin du mouvement)",
+  even: "Uniforme",
+};
+
+/**
+ * VARIATION_CYCLING_SPEC §5.3/§8 — point faible MESURÉ (capture 1-tap « où ça a calé ? »
+ * à l'entrée en plateau), persisté sur `LoggedExercise.plateauWeakPoint` — seule donnée
+ * utilisateur réellement nouvelle à persister (input brut, pas un état dérivé : ne viole
+ * pas l'invariant de pureté HARDENED §0.2). Sous-ensemble de `ResistanceProfile` :
+ * `"even"` n'est pas une réponse valide au tap (un plateau cale toujours sur une portion
+ * précise de l'amplitude, jamais "uniformément").
+ */
+export const PLATEAU_WEAK_POINTS = [
+  ResistanceProfile.bottom,
+  ResistanceProfile.mid,
+  ResistanceProfile.lockout,
+] as const;
+
+export type PlateauWeakPoint = (typeof PLATEAU_WEAK_POINTS)[number];
+
+export const plateauWeakPointDisplayName: Record<PlateauWeakPoint, string> = {
+  bottom: resistanceProfileDisplayName.bottom,
+  mid: resistanceProfileDisplayName.mid,
+  lockout: resistanceProfileDisplayName.lockout,
+};
+
+// ---------------------------------------------------------------------------
+// BenchmarkUnit
+// ---------------------------------------------------------------------------
+
+/**
+ * BENCHMARK_LEVEL_SPEC.md §1 — unité du repère StrengthLevel d'un `Exercise` :
+ *   - `load` : charge (kg), comparée via e1RM (`lib/engines/benchmark.ts`).
+ *   - `reps` : nombre de reps au poids de corps, comparé directement (pas de formule e1RM).
+ *   - `reps_and_load` : les deux (ex. tractions lestées) — jauge poids ET jauge reps.
+ * Pas d'équivalent Swift — nouveau champ nullable sur `Exercise` (`benchmarkUnit`), miroir de
+ * `data/strength_standards_corrected.json::standards[key].unit`. `null` = pas de repère (§9,
+ * dégradation gracieuse) OU repère `benchmarkLow`/`benchmarkHigh` legacy sans unité connue.
+ */
+export const BenchmarkUnit = {
+  load: "load",
+  reps: "reps",
+  repsAndLoad: "reps_and_load",
+} as const;
+
+export type BenchmarkUnit = (typeof BenchmarkUnit)[keyof typeof BenchmarkUnit];
+
+export const BENCHMARK_UNITS: BenchmarkUnit[] = Object.values(BenchmarkUnit);
+
+export const benchmarkUnitDisplayName: Record<BenchmarkUnit, string> = {
+  load: "Charge (kg)",
+  reps: "Reps",
+  reps_and_load: "Reps + charge lestée",
+};
+
+// ---------------------------------------------------------------------------
 // SuggestionMode
 // ---------------------------------------------------------------------------
 

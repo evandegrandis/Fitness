@@ -20,10 +20,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { parseBackup } from "@/lib/models/backup";
-import { fatigueClassFromRaw, SetType } from "@/lib/models/enums";
-import type { SetPatternMode } from "@/lib/models/enums";
+import { BenchmarkUnit, fatigueClassFromRaw, MovementPattern, ResistanceProfile, SetType } from "@/lib/models/enums";
+import type {
+  BenchmarkUnit as BenchmarkUnitT,
+  MovementPattern as MovementPatternT,
+  ResistanceProfile as ResistanceProfileT,
+  SetPatternMode,
+} from "@/lib/models/enums";
 import type { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, LoggedExercise, LoggedSet, MuscleMapping, WorkoutSession } from "@/lib/models/types";
+import { assertDbWriteAllowed, dumpAllTables, writeBackupFile } from "./_safety";
 
 // ---------------------------------------------------------------------------
 // Chargement des fichiers de données
@@ -51,6 +57,34 @@ interface RecentNewExercise {
   fatigueClass: string;
   isFavorite: boolean;
   muscleMappings: { muscleGroup: string; coefficient: number }[];
+  /** VARIATION_CYCLING_SPEC §5 — optionnel : absent -> null (dégradation gracieuse, §9). */
+  movementPattern?: string | null;
+  /** VARIATION_CYCLING_SPEC §5.2 (P2.1) — optionnel, absent partout ici -> null (seed par défaut null). */
+  resistanceProfile?: string | null;
+  /** BENCHMARK_LEVEL_SPEC.md §1 (P3.1) — optionnel, absent -> null (dégradation gracieuse, §9). */
+  strengthStandardKey?: string | null;
+  benchmarkUnit?: string | null;
+}
+
+/** Même règle de repli que `mappers.ts::asMovementPattern` / `backup.ts::resolveMovementPattern`. */
+function resolveMovementPattern(raw: string | null | undefined): MovementPatternT | null {
+  if (!raw) return null;
+  const values = Object.values(MovementPattern) as string[];
+  return values.includes(raw) ? (raw as MovementPatternT) : null;
+}
+
+/** Même règle de repli que `mappers.ts::asResistanceProfile` / `backup.ts::resolveResistanceProfile`. */
+function resolveResistanceProfile(raw: string | null | undefined): ResistanceProfileT | null {
+  if (!raw) return null;
+  const values = Object.values(ResistanceProfile) as string[];
+  return values.includes(raw) ? (raw as ResistanceProfileT) : null;
+}
+
+/** Même règle de repli que `mappers.ts::asBenchmarkUnit` / `backup.ts::resolveBenchmarkUnit`. */
+function resolveBenchmarkUnit(raw: string | null | undefined): BenchmarkUnitT | null {
+  if (!raw) return null;
+  const values = Object.values(BenchmarkUnit) as string[];
+  return values.includes(raw) ? (raw as BenchmarkUnitT) : null;
 }
 
 interface RecentSetTuple extends Array<number> {
@@ -113,6 +147,10 @@ function buildNewExercise(data: RecentNewExercise, sortOrder: number): Exercise 
     voluntaryRepCap: 0,
     muscleMappings,
     lastUsed: null,
+    movementPattern: resolveMovementPattern(data.movementPattern),
+    resistanceProfile: resolveResistanceProfile(data.resistanceProfile),
+    strengthStandardKey: data.strengthStandardKey ?? null,
+    benchmarkUnit: resolveBenchmarkUnit(data.benchmarkUnit),
   };
 }
 
@@ -160,6 +198,8 @@ function resolveRecentSession(
       exerciseName: exercise.name,
       sets,
       supersetGroupId: null,
+      // VARIATION_CYCLING_SPEC §5.3 (P2.1) — seed n'a pas de trace de capture 1-tap.
+      plateauWeakPoint: null,
     };
   });
 
@@ -242,6 +282,11 @@ async function main(): Promise<void> {
 
   console.log("\nDATABASE_URL détecté — écriture en base...");
 
+  // -- GARDE-FOU SÉCURITÉ (incident 2026-08-04) -----------------------------
+  // Refuse le reset destructif si DATABASE_URL n'est pas une base LOCALE.
+  // Ce verrou est absolu : aucun flag ne permet de lancer le seed sur Neon.
+  assertDbWriteAllowed("seed");
+
   // Import dynamique : évite d'initialiser le client Neon (et de dépendre du
   // reste de lib/db) quand on tourne en dry-run sans DATABASE_URL.
   const { db } = await import("../lib/db/client");
@@ -271,6 +316,19 @@ async function main(): Promise<void> {
     templateToExerciseRows,
     templateToRow,
   } = await import("../lib/db/mappers");
+
+  // -- Sauvegarde de sécurité AVANT tout reset --------------------------------
+  // Un reset ne peut plus JAMAIS faire perdre de données : dump complet d'abord.
+  console.log("Sauvegarde de sécurité (dump complet) avant reset...");
+  try {
+    const preSeed = await dumpAllTables();
+    const backupFile = writeBackupFile(preSeed, "pre-seed");
+    const total = Object.values(preSeed).reduce((n, rows) => n + rows.length, 0);
+    console.log(`Backup pré-seed écrit (${total} lignes) : ${backupFile}`);
+  } catch (backupError) {
+    console.error("\n⛔ Backup pré-seed impossible — RESET ANNULÉ par sécurité.", backupError);
+    process.exit(1);
+  }
 
   // -- Reset (enfants avant parents) -------------------------------------
   console.log("Reset de la base...");

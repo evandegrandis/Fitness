@@ -79,4 +79,30 @@ export const ALGO_V2 = {
   LEST_DESCENT_MAX_STEPS: 2,
   /** Au-delà : backoff -1 incrément, confiance 0.5 (§7.1). */
   MAX_WORK_SETS_SUGGESTED: 4,
+  /**
+   * Trigger de plateau date-based (VARIATION_CYCLING_SPEC §2) : `isPlateau` si
+   * `plateauStalledDays >= PLATEAU_STALL_DAYS` ET `sessionsInWindow >= PLATEAU_MIN_SESSIONS`.
+   * Remplace `plateauCounter >= PLATEAU_THRESHOLD` comme trigger officiel (voir §2 blast radius).
+   */
+  PLATEAU_STALL_DAYS: 14,
+  /** Nb minimum de séances du rôle dominant dans la fenêtre de 14 j pour qu'un plateau soit valide (anti faux-positif d'absence, §2/§9). */
+  PLATEAU_MIN_SESSIONS: 2,
+  /** `slowing` : stagnation >= 7 j (et non encore `isPlateau`) déclenche l'indice préemptif discret (§3). */
+  SLOWING_STALL_DAYS: 7,
+  /** `slowing` : vélocité <= ce seuil (progressVelocityScore, §3) ; "reps↑ à poids constant" (>= 1.0) reste toujours `progressing`. */
+  SLOWING_VELOCITY: 0.25,
+  /** Anti-thrash (§8, Phase 2) : après une rotation de variation acceptée, geler toute nouvelle proposition pour cet exo pendant N jours. */
+  ROTATION_COOLDOWN_DAYS: 14,
+  /**
+   * `lib/engines/lifecycle.ts` (§7, P2.2) — deux séances d'un même exercice appartiennent au même
+   * "run" (cycle continu) si l'écart entre elles est <= N jours ; au-delà, on considère que le run
+   * précédent est terminé (rotation vers une autre variante OU simple abandon — `computeLifeCycle`
+   * ne distingue pas les deux, purement local à un `exerciseId`) et qu'un nouveau run démarre.
+   * Valeur choisie : assez large pour tolérer une semaine de deload/voyage SANS casser un run actif
+   * (le trigger de plateau §2 est déjà à 14j ; un run de vie complet dure des semaines selon la
+   * méthode, §7 "roster 12-18 variantes, tracking durée/force") — 21j (3 semaines) évite de fausser
+   * `ended`/`weeks` sur une pause normale tout en restant strictement < aux cycles typiques observés
+   * (spec §6, exemple "cycle précédent 8 sem.").
+   */
+  LIFECYCLE_RUN_GAP_DAYS: 21,
 } as const;

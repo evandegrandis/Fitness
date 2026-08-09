@@ -2,17 +2,17 @@
 
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { completedWorkSets, type WorkoutSession } from "@/lib/models/types";
-import { effectiveSetUnits } from "@/lib/engines/set-structure";
+import type { WorkoutSession } from "@/lib/models/types";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 
 /** En-tête du détail de séance : jour + heure + sets + durée. */
 export function SessionDetailHeader({ session }: { session: WorkoutSession }) {
   const totalSets = Math.round(
-    session.exercises.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0) * 10
+    session.exercises.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0) * 10
   ) / 10;
-  const completedExerciseCount = session.exercises.filter((exercise) =>
-    exercise.sets.some((set) => set.completed)
+  const completedExerciseCount = session.exercises.filter(
+    (exercise) => physiologicalSetUnits(exercise.sets) > 0
   ).length;
   const duration = sessionDurationLabel(session);
 

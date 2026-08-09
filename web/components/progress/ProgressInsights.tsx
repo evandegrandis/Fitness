@@ -6,14 +6,25 @@ import { TrendingUp, AlertTriangle } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
-import { exerciseBenchmark, type BenchmarkTone, type ExerciseBenchmark } from "@/lib/engines/benchmark";
+import {
+  bestBenchmarkSets,
+  exerciseBenchmarkForSets,
+  normalizedDistanceToNext,
+  strengthLevelLabel,
+  supportsStrengthLevelBenchmark,
+  type BenchmarkTone,
+  type ExerciseBenchmark,
+} from "@/lib/engines/benchmark";
 import { parentDisplayName } from "@/lib/models/muscles";
-import { completedWorkSets, type Exercise, type WorkoutSession } from "@/lib/models/types";
-import { formatDerivedWeight } from "@/components/progress/utils";
+import { completedBenchmarkSets, type Exercise, type WorkoutSession } from "@/lib/models/types";
+import { formatDerivedWeight, formatWeight } from "@/components/progress/utils";
 
 const TONE_COLOR: Record<BenchmarkTone, string> = {
   below: "var(--color-warning)",
-  progressing: "var(--color-success)",
+  beginner: "var(--color-warning)",
+  novice: "#eab308",
+  intermediate: "#84cc16",
+  advanced: "var(--color-success)",
   elite: "var(--accent)",
 };
 
@@ -26,21 +37,16 @@ interface Insight {
 }
 
 /**
- * Meilleur set qualifiant (reps >= repMin, sinon le plus lourd) de la séance
- * la plus récente où cet exercice a été loggé — "où en est Evan MAINTENANT"
- * sur cet exercice, pour comparaison au bandeau de référence.
+ * Meilleur set normal repère (warmup/finisher exclus) dans la séance la plus récente où
+ * l'exercice a été loggé. Pour un standard en reps, le set au plus grand nombre de reps gagne ;
+ * pour un standard en charge, on utilise l'e1RM StrengthLevel.
  */
-function latestBestLoad(history: WorkoutSession[], exercise: Exercise): number | null {
+function latestBenchmarkSets(history: WorkoutSession[], exercise: Exercise) {
   const finished = history.filter((s) => !s.isActive).slice().sort((a, b) => b.date.getTime() - a.date.getTime());
   for (const session of finished) {
-    const sets = session.exercises
-      .filter((e) => e.exerciseId === exercise.id)
-      .flatMap((e) => completedWorkSets(e))
-      .filter((s) => s.weight > 0);
-    if (sets.length === 0) continue;
-    const validated = sets.filter((s) => s.reps >= exercise.repTargetMin);
-    const pool = validated.length > 0 ? validated : sets;
-    return pool.reduce((best, s) => (s.weight > best.weight ? s : best)).weight;
+    const sets = session.exercises.filter((e) => e.exerciseId === exercise.id).flatMap((e) => completedBenchmarkSets(e));
+    const best = bestBenchmarkSets(exercise, sets);
+    if (best.load || best.reps) return sets;
   }
   return null;
 }
@@ -57,7 +63,7 @@ export function ProgressInsights() {
   const catalog = useWorkoutStore((s) => s.catalog);
   const goals = useWorkoutStore((s) => s.goals);
   const active = useWorkoutStore((s) => s.active);
-  const bodyWeightKg = useWorkoutStore((s) => s.settings.bodyWeightKg ?? undefined);
+  const settings = useWorkoutStore((s) => s.settings);
 
   const muscleInsights = useMemo<Insight[]>(() => {
     const priorities = rollingPriorities(history, catalog, goals, new Date(), active);
@@ -70,49 +76,74 @@ export function ProgressInsights() {
 
   const benchmarkInsights = useMemo<Insight[]>(() => {
     const entries = catalog
-      .filter((e) => e.benchmarkLow != null && e.benchmarkHigh != null)
+      .filter(supportsStrengthLevelBenchmark)
       .map((exercise) => {
-        const bestLoad = latestBestLoad(history, exercise);
-        if (bestLoad == null) return null;
-        const benchmark = exerciseBenchmark(exercise, bestLoad, bodyWeightKg);
+        const latestSets = latestBenchmarkSets(history, exercise);
+        if (latestSets == null) return null;
+        const benchmark = exerciseBenchmarkForSets(exercise, latestSets, settings);
         if (!benchmark.hasBenchmark || !benchmark.level || benchmark.position == null) return null;
-        return { exercise, benchmark };
+        const normalizedDistance = normalizedDistanceToNext({
+          position: benchmark.position,
+          nextLevel: benchmark.nextLevel,
+        });
+        return { exercise, benchmark, normalizedDistance };
       })
-      .filter((e): e is { exercise: Exercise; benchmark: ExerciseBenchmark } => e !== null);
+      .filter(
+        (e): e is { exercise: Exercise; benchmark: ExerciseBenchmark; normalizedDistance: number | null } =>
+          e !== null
+      );
 
     if (entries.length === 0) return [];
 
-    const notYetElite = entries.filter((e) => e.benchmark.level!.tone !== "elite");
+    const notYetElite = entries.filter(
+      (e): e is typeof e & { normalizedDistance: number } => e.normalizedDistance !== null
+    );
     const insights: Insight[] = [];
 
     if (notYetElite.length > 0) {
-      // Le plus proche du prochain palier : plus petit écart restant (avancé ou élite selon le ton).
-      const closest = notYetElite.reduce((best, cur) => {
-        const gapBest = best.benchmark.level!.tone === "below" ? best.benchmark.gapToAdvanced! : best.benchmark.gapToElite!;
-        const gapCur = cur.benchmark.level!.tone === "below" ? cur.benchmark.gapToAdvanced! : cur.benchmark.gapToElite!;
-        return gapCur < gapBest ? cur : best;
-      });
+      const closest = notYetElite.reduce((best, cur) =>
+        cur.normalizedDistance < best.normalizedDistance ? cur : best
+      );
       const tone = closest.benchmark.level!.tone;
-      const text =
-        tone === "below"
-          ? `${closest.exercise.name} : encore ${formatDerivedWeight(closest.benchmark.gapToAdvanced!, closest.exercise.smallestIncrement)}kg avant l'avancé`
-          : `${closest.exercise.name} : à ${Math.round((closest.benchmark.position ?? 0) * 100)}% du chemin avancé → élite`;
+      const axis = closest.benchmark.primaryAxis!;
+      const current =
+        axis === "load"
+          ? `e1RM estimé ${formatDerivedWeight(closest.benchmark.currentE1RM, 0.1)}kg`
+          : `${formatWeight(closest.benchmark.currentE1RM)} reps`;
+      const gap =
+        axis === "load"
+          ? `${formatDerivedWeight(closest.benchmark.gapToNext!, 0.1)}kg`
+          : `${formatWeight(closest.benchmark.gapToNext!)} reps`;
+      const text = `${closest.exercise.name} : ${current}, encore ${gap} → ${strengthLevelLabel(closest.benchmark.nextLevel!).toLowerCase()}`;
       insights.push({ key: `bench-closest-${closest.exercise.id}`, text, color: TONE_COLOR[tone] });
 
-      // Le plus loin de l'avancé (uniquement si franchement sous le niveau, distinct du précédent).
-      const belowOnly = notYetElite.filter((e) => e.benchmark.level!.tone === "below" && e.exercise.id !== closest.exercise.id);
-      if (belowOnly.length > 0) {
-        const farthest = belowOnly.reduce((worst, cur) => (cur.benchmark.gapToAdvanced! > worst.benchmark.gapToAdvanced! ? cur : worst));
+      // Conserve le second signal historique de l'encart (le repère le plus éloigné), mais
+      // choisit lui aussi sur la distance de jauge sans unité : jamais 1 rep comparée à 1 kg.
+      const otherEntries = notYetElite.filter((entry) => entry.exercise.id !== closest.exercise.id);
+      if (otherEntries.length > 0) {
+        const farthest = otherEntries.reduce((worst, cur) =>
+          cur.normalizedDistance > worst.normalizedDistance ? cur : worst
+        );
+        const farthestTone = farthest.benchmark.level!.tone;
+        const farthestAxis = farthest.benchmark.primaryAxis!;
+        const farthestCurrent =
+          farthestAxis === "load"
+            ? `e1RM estimé ${formatDerivedWeight(farthest.benchmark.currentE1RM, 0.1)}kg`
+            : `${formatWeight(farthest.benchmark.currentE1RM)} reps`;
+        const farthestGap =
+          farthestAxis === "load"
+            ? `${formatDerivedWeight(farthest.benchmark.gapToNext!, 0.1)}kg`
+            : `${formatWeight(farthest.benchmark.gapToNext!)} reps`;
         insights.push({
           key: `bench-farthest-${farthest.exercise.id}`,
-          text: `${farthest.exercise.name} : encore ${formatDerivedWeight(farthest.benchmark.gapToAdvanced!, farthest.exercise.smallestIncrement)}kg avant l'avancé`,
-          color: TONE_COLOR.below,
+          text: `${farthest.exercise.name} : ${farthestCurrent}, encore ${farthestGap} → ${strengthLevelLabel(farthest.benchmark.nextLevel!).toLowerCase()}`,
+          color: TONE_COLOR[farthestTone],
         });
       }
     }
 
     return insights.slice(0, 2);
-  }, [history, catalog, bodyWeightKg]);
+  }, [history, catalog, settings]);
 
   const insights = [...muscleInsights, ...benchmarkInsights];
 

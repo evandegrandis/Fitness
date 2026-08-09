@@ -2,12 +2,17 @@
 
 import { Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hasAnyRecoveryValue } from "@/lib/models/recovery";
 
 export interface RecoveryDraft {
-  tookCreatine: boolean;
-  proteinTargetMet: boolean;
-  sleepHours: number;
-  hadAlcohol: boolean;
+  tookCreatine: boolean | null;
+  proteinTargetMet: boolean | null;
+  sleepHours: number | null;
+  hadAlcohol: boolean | null;
+}
+
+export function isRecoveryDraftConfirmed(value: RecoveryDraft): boolean {
+  return hasAnyRecoveryValue(value);
 }
 
 function sleepTone(hours: number): { label: string; color: string } {
@@ -16,14 +21,13 @@ function sleepTone(hours: number): { label: string; color: string } {
   return { label: "bas", color: "#fb7185" };
 }
 
-/** Formate en "7h" ou "7h30" — jamais de largeur variable type "7.5h". */
 function formatSleepHours(hours: number): string {
   const wholeHours = Math.floor(hours);
   const minutes = Math.round((hours - wholeHours) * 60);
   return minutes === 0 ? `${wholeHours}h` : `${wholeHours}h${minutes}`;
 }
 
-/** Ligne de recovery checkin (J-1 ou J-2) : habitudes + slider sommeil. */
+/** Ligne J-1/J-2 : aucune valeur n'est supposée tant que l'utilisateur ne la confirme pas. */
 export function RecoveryCheckinRow({
   label,
   value,
@@ -33,84 +37,111 @@ export function RecoveryCheckinRow({
   value: RecoveryDraft;
   onChange: (next: RecoveryDraft) => void;
 }) {
-  const tone = sleepTone(value.sleepHours);
+  const tone = value.sleepHours === null ? null : sleepTone(value.sleepHours);
 
   return (
     <div className="glass glass-card flex flex-col gap-3">
-      <p className="text-sm font-semibold text-[--color-fg]">{label}</p>
-
-      <div className="flex gap-2">
-        <ToggleChip
-          label="Créatine"
-          active={value.tookCreatine}
-          onClick={() => onChange({ ...value, tookCreatine: !value.tookCreatine })}
-        />
-        <ToggleChip
-          label="Protéine"
-          active={value.proteinTargetMet}
-          onClick={() => onChange({ ...value, proteinTargetMet: !value.proteinTargetMet })}
-        />
-        <ToggleChip
-          label="Alcool"
-          active={value.hadAlcohol}
-          tone="warning"
-          onClick={() => onChange({ ...value, hadAlcohol: !value.hadAlcohol })}
-        />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[--color-fg]">{label}</p>
+        <span className="text-[0.65rem] text-[--color-fg-faint]">
+          {isRecoveryDraftConfirmed(value) ? "Partiellement confirmé" : "Non renseigné"}
+        </span>
       </div>
 
+      <TriStateField
+        label="Créatine"
+        value={value.tookCreatine}
+        onChange={(next) => onChange({ ...value, tookCreatine: next })}
+      />
+      <TriStateField
+        label="Objectif protéines"
+        value={value.proteinTargetMet}
+        onChange={(next) => onChange({ ...value, proteinTargetMet: next })}
+      />
+      <TriStateField
+        label="Alcool"
+        value={value.hadAlcohol}
+        warning
+        onChange={(next) => onChange({ ...value, hadAlcohol: next })}
+      />
+
       <div className="flex items-center gap-3">
-        <Moon size={16} className="shrink-0" style={{ color: tone.color }} />
-        <input
-          type="range"
-          min={0}
-          max={12}
-          step={0.5}
-          value={value.sleepHours}
-          onChange={(e) => onChange({ ...value, sleepHours: Number(e.target.value) })}
-          className="h-1.5 w-28 shrink-0 appearance-none rounded-full bg-white/10 accent-[color:var(--accent)]"
-        />
-        <span
-          className="tnum block w-20 shrink-0 whitespace-nowrap text-right text-sm font-semibold"
-          style={{ color: tone.color }}
-        >
-          {formatSleepHours(value.sleepHours)} · {tone.label}
-        </span>
+        <Moon size={16} className="shrink-0" style={{ color: tone?.color ?? "var(--color-fg-faint)" }} />
+        {value.sleepHours === null ? (
+          <button
+            type="button"
+            onClick={() => onChange({ ...value, sleepHours: 7 })}
+            className="flex-1 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-[--color-fg-muted]"
+          >
+            Renseigner le sommeil
+          </button>
+        ) : (
+          <>
+            <input
+              type="range"
+              min={0}
+              max={12}
+              step={0.5}
+              value={value.sleepHours}
+              onChange={(event) => onChange({ ...value, sleepHours: Number(event.target.value) })}
+              className="h-1.5 min-w-0 flex-1 appearance-none rounded-full bg-white/10 accent-[color:var(--accent)]"
+            />
+            <span className="tnum w-20 text-right text-sm font-semibold" style={{ color: tone?.color }}>
+              {formatSleepHours(value.sleepHours)} · {tone?.label}
+            </span>
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, sleepHours: null })}
+              className="text-xs text-[--color-fg-faint]"
+              aria-label="Remettre le sommeil à inconnu"
+            >
+              ×
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function ToggleChip({
+function TriStateField({
   label,
-  active,
-  tone = "accent",
-  onClick,
+  value,
+  onChange,
+  warning = false,
 }: {
   label: string;
-  active: boolean;
-  tone?: "accent" | "warning";
-  onClick: () => void;
+  value: boolean | null;
+  onChange: (value: boolean | null) => void;
+  warning?: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition",
-        active
-          ? tone === "warning"
-            ? "border-amber-300/40 bg-amber-300/15 text-amber-200"
-            : "border-transparent text-[#06070d]"
-          : "border-white/10 text-[--color-fg-muted]"
-      )}
-      style={
-        active && tone === "accent"
-          ? { background: "linear-gradient(120deg, var(--accent), var(--accent-2))" }
-          : undefined
-      }
-    >
-      {label}
-    </button>
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-xs text-[--color-fg-muted]">{label}</span>
+      <div className="grid grid-cols-3 rounded-xl border border-white/10 p-0.5">
+        {([
+          [null, "?"],
+          [false, "Non"],
+          [true, "Oui"],
+        ] as const).map(([next, text]) => (
+          <button
+            key={text}
+            type="button"
+            onClick={() => onChange(next)}
+            aria-pressed={value === next}
+            className={cn(
+              "rounded-lg px-2.5 py-1.5 text-[0.68rem] font-semibold transition",
+              value === next
+                ? warning && next === true
+                  ? "bg-amber-300/15 text-amber-200"
+                  : "bg-white/12 text-[--color-fg]"
+                : "text-[--color-fg-faint]"
+            )}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Fraunces, Space_Mono } from "next/font/google";
+import { ServiceWorkerRegistrar } from "@/components/providers/ServiceWorkerRegistrar";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -47,7 +48,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr" className={`${manrope.variable} ${fraunces.variable} ${spaceMono.variable} h-full`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <ServiceWorkerRegistrar />
+        {children}
+      </body>
     </html>
   );
 }

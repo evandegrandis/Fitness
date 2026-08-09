@@ -5,8 +5,14 @@
  */
 
 import { displayedRecordSetIDs } from "@/lib/engines/records";
-import { completedWorkSets, orderedSets, type Exercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
-import { effectiveSetUnits } from "@/lib/engines/set-structure";
+import {
+  orderedSets,
+  sessionsNewestFirst,
+  type Exercise,
+  type LoggedSet,
+  type WorkoutSession,
+} from "@/lib/models/types";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 
 /** ~3,5 min par série de travail (exécution + repos), moyenne réaliste toutes séries confondues. */
 const MINUTES_PER_SET_ESTIMATE = 3.5;
@@ -20,7 +26,7 @@ export function sessionDurationMinutes(session: WorkoutSession): { minutes: numb
   if (session.endTime) {
     return { minutes: Math.round((session.endTime.getTime() - session.startTime.getTime()) / 60_000), estimated: false };
   }
-  const sets = session.exercises.reduce((acc, e) => acc + effectiveSetUnits(completedWorkSets(e)), 0);
+  const sets = session.exercises.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0);
   return { minutes: Math.round(sets * MINUTES_PER_SET_ESTIMATE), estimated: true };
 }
 
@@ -49,10 +55,10 @@ export interface WeekGroupData {
   sessions: WorkoutSession[];
 }
 
-/** Regroupe les séances (déjà triées plus récent en premier) par semaine ISO, semaine la plus récente en premier. */
+/** Regroupe les séances par semaine ISO et normalise aussi l'ordre interne, quel que soit l'appelant. */
 export function groupSessionsByIsoWeek(sessions: WorkoutSession[]): WeekGroupData[] {
   const map = new Map<number, WeekGroupData>();
-  for (const session of sessions) {
+  for (const session of sessionsNewestFirst(sessions)) {
     const weekStart = startOfIsoWeek(session.date);
     const key = weekStart.getTime();
     const existing = map.get(key);
@@ -72,8 +78,18 @@ export function groupSessionsByIsoWeek(sessions: WorkoutSession[]): WeekGroupDat
  */
 export function countRecordSetsInSession(session: WorkoutSession, allSessions: WorkoutSession[], exercises: Exercise[]): number {
   const exerciseById = new Map(exercises.map((e) => [e.id, e]));
-  // Chronologique (plus ancien en premier) jusqu'à la séance incluse.
-  const chronological = [...allSessions].filter((s) => s.date <= session.date).reverse();
+  // Chronologique (plus ancien en premier) jusqu'à la séance incluse. On
+  // tranche par date métier PUIS startTime (et id), via l'invariant global :
+  // comparer seulement `date` omettait tout historique antérieur effectué le
+  // même jour et pouvait aussi inclure une séance plus tardive dans le calcul.
+  const allChronological = sessionsNewestFirst(
+    allSessions.some((candidate) => candidate.id === session.id)
+      ? allSessions
+      : [...allSessions, session]
+  ).reverse();
+  const targetIndex = allChronological.findIndex((candidate) => candidate.id === session.id);
+  const chronological = allChronological.slice(0, targetIndex + 1);
+  const priorSessions = allChronological.slice(0, targetIndex);
 
   let total = 0;
   for (const logged of session.exercises) {
@@ -82,11 +98,8 @@ export function countRecordSetsInSession(session: WorkoutSession, allSessions: W
 
     // Un "record" suppose un historique antérieur à battre : le tout premier
     // passage d'un exercice n'est pas un PR (on ne bat pas un record inexistant).
-    const hadPriorHistory = allSessions.some(
-      (s) =>
-        s.id !== session.id &&
-        s.date < session.date &&
-        s.exercises.some((le) => le.exerciseId === logged.exerciseId),
+    const hadPriorHistory = priorSessions.some((prior) =>
+      prior.exercises.some((loggedExercise) => loggedExercise.exerciseId === logged.exerciseId)
     );
     if (!hadPriorHistory) continue;
 

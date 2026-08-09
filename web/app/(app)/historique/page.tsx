@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { deleteSession, saveSession } from "@/lib/db/actions";
+import { writeThrough } from "@/lib/sync/write-through";
 import { useWorkoutStore } from "@/lib/store/workout";
-import type { WorkoutSession } from "@/lib/models/types";
+import { sessionsNewestFirst, type WorkoutSession } from "@/lib/models/types";
 import { HistoryOverviewCard } from "@/components/history/HistoryOverviewCard";
 import { WeekGroup } from "@/components/history/WeekGroup";
 import { buildPrCountBySessionId, groupSessionsByIsoWeek } from "@/components/history/historyHelpers";
@@ -18,6 +19,8 @@ export default function HistoriquePage() {
   const goals = useWorkoutStore((s) => s.goals);
 
   const [deletedSession, setDeletedSession] = useState<WorkoutSession | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -30,29 +33,58 @@ export default function HistoriquePage() {
   const prCountBySessionId = useMemo(() => buildPrCountBySessionId(history, catalog), [history, catalog]);
 
   const handleDelete = useCallback(async (id: string) => {
-    const removed = history.find((sess) => sess.id === id) ?? null;
+    // Lire au moment du geste : deux swipes rapides peuvent précéder le
+    // rerender et la closure `history` serait alors obsolète.
+    const removed = useWorkoutStore.getState().history.find((sess) => sess.id === id) ?? null;
+    setMutationError(null);
     // Optimistic-ish : on retire immédiatement de la vue via le store local en
     // attendant la revalidation serveur (le layout hydrate `history` à
     // nouveau après `revalidatePath`).
     useWorkoutStore.setState((s) => ({ history: s.history.filter((sess) => sess.id !== id) }));
-    await deleteSession(id);
+    try {
+      await writeThrough({ kind: "session_delete", sessionId: id }, () => deleteSession(id));
+    } catch (cause) {
+      // Seule panne non récupérable ici : ni serveur ni outbox locale. Remet la séance dans la vue.
+      if (removed) {
+        useWorkoutStore.setState((s) => ({
+          history: sessionsNewestFirst([removed, ...s.history.filter((session) => session.id !== removed.id)]),
+        }));
+      }
+      setMutationError(cause instanceof Error ? cause.message : "Impossible de sécuriser la suppression.");
+      return;
+    }
 
     if (removed) {
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
       setDeletedSession(removed);
       undoTimeoutRef.current = setTimeout(() => setDeletedSession(null), UNDO_TIMEOUT_MS);
     }
-  }, [history]);
+  }, []);
 
   async function handleUndoDelete() {
-    if (!deletedSession) return;
+    if (!deletedSession || undoing) return;
     const restored = deletedSession;
+    setUndoing(true);
+    setMutationError(null);
     if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     setDeletedSession(null);
     useWorkoutStore.setState((s) => ({
-      history: [restored, ...s.history.filter((sess) => sess.id !== restored.id)],
+      history: sessionsNewestFirst([restored, ...s.history.filter((sess) => sess.id !== restored.id)]),
     }));
-    await saveSession(restored);
+    try {
+      await writeThrough({ kind: "session", session: restored }, () => saveSession(restored));
+    } catch (cause) {
+      // La restauration n'est ni en base ni dans l'outbox : retire l'état
+      // optimiste et redonne un bouton d'annulation au lieu d'une séance
+      // fantôme qui disparaîtrait au prochain chargement.
+      useWorkoutStore.setState((state) => ({
+        history: state.history.filter((session) => session.id !== restored.id),
+      }));
+      setDeletedSession(restored);
+      setMutationError(cause instanceof Error ? cause.message : "Impossible de sécuriser la restauration.");
+    } finally {
+      setUndoing(false);
+    }
   }
 
   if (!hasHydratedStorage) {
@@ -81,6 +113,12 @@ export default function HistoriquePage() {
         </div>
 
         <HistoryOverviewCard sessions={history} prCountBySessionId={prCountBySessionId} />
+
+        {mutationError && (
+          <p role="alert" className="mt-3 rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs text-rose-200">
+            {mutationError}
+          </p>
+        )}
 
         {history.length === 0 ? (
           <motion.div
@@ -124,10 +162,11 @@ export default function HistoriquePage() {
             <button
               type="button"
               onClick={handleUndoDelete}
-              className="pill shrink-0"
+              disabled={undoing}
+              className="pill shrink-0 disabled:opacity-50"
               style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
             >
-              Annuler
+              {undoing ? "Restauration…" : "Annuler"}
             </button>
           </motion.div>
         )}

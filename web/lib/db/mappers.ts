@@ -31,16 +31,21 @@ import type {
   WorkoutSessionRow,
   WorkoutTemplateRow,
 } from "./schema";
-import { FatigueClass, SetPatternMode, SetType } from "@/lib/models/enums";
+import { BenchmarkUnit, FatigueClass, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType } from "@/lib/models/enums";
 import type {
+  BenchmarkUnit as BenchmarkUnitT,
   FatigueClass as FatigueClassT,
+  MovementPattern as MovementPatternT,
+  PlateauWeakPoint,
   ProgressionPolicy,
+  ResistanceProfile as ResistanceProfileT,
   SetPatternMode as SetPatternModeT,
   SetType as SetTypeT,
 } from "@/lib/models/enums";
 import type { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
 import type {
   CardioEntry,
+  CardioActivityType,
   Exercise,
   LoggedExercise,
   LoggedSet,
@@ -53,6 +58,7 @@ import type {
   WorkoutSession,
   WorkoutTemplate,
 } from "@/lib/models/types";
+import { CARDIO_ACTIVITY_TYPES } from "@/lib/models/types";
 
 // ---------------------------------------------------------------------------
 // Helpers de coercition (les colonnes text ne sont pas validées par Postgres)
@@ -68,10 +74,44 @@ function asSetType(raw: string): SetTypeT {
   return values.includes(raw) ? (raw as SetTypeT) : SetType.work;
 }
 
+function asCardioActivityType(raw: string): CardioActivityType {
+  return (CARDIO_ACTIVITY_TYPES as readonly string[]).includes(raw)
+    ? (raw as CardioActivityType)
+    : "other";
+}
+
 function asProgressionPolicy(raw: string | null): ProgressionPolicy | null {
   if (!raw) return null;
   const values = ["generic", "overreachJump", "testThenPromote", "voluntaryCap"];
   return values.includes(raw) ? (raw as ProgressionPolicy) : null;
+}
+
+/** VARIATION_CYCLING_SPEC §5/§9 — colonne nullable, valeur inconnue/absente -> null (dégradation gracieuse). */
+function asMovementPattern(raw: string | null): MovementPatternT | null {
+  if (!raw) return null;
+  const values = Object.values(MovementPattern) as string[];
+  return values.includes(raw) ? (raw as MovementPatternT) : null;
+}
+
+/** VARIATION_CYCLING_SPEC §5.2/§9 (P2.1) — colonne nullable, valeur inconnue/absente -> null. */
+function asResistanceProfile(raw: string | null): ResistanceProfileT | null {
+  if (!raw) return null;
+  const values = Object.values(ResistanceProfile) as string[];
+  return values.includes(raw) ? (raw as ResistanceProfileT) : null;
+}
+
+/** VARIATION_CYCLING_SPEC §5.3/§9 (P2.1) — colonne nullable, valeur inconnue/absente -> null. */
+function asPlateauWeakPoint(raw: string | null): PlateauWeakPoint | null {
+  if (!raw) return null;
+  const values = PLATEAU_WEAK_POINTS as readonly string[];
+  return values.includes(raw) ? (raw as PlateauWeakPoint) : null;
+}
+
+/** BENCHMARK_LEVEL_SPEC.md §1/§9 (P3.1) — colonne nullable, valeur inconnue/absente -> null. */
+function asBenchmarkUnit(raw: string | null): BenchmarkUnitT | null {
+  if (!raw) return null;
+  const values = Object.values(BenchmarkUnit) as string[];
+  return values.includes(raw) ? (raw as BenchmarkUnitT) : null;
 }
 
 /** La colonne `fatigue_class` stocke la valeur interne ("heavy"/"medium"/"light"), pas le rawValue Swift H/M/L. */
@@ -111,10 +151,22 @@ export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]
         coefficient: m.coefficient,
       })),
     lastUsed: row.lastUsed,
+    movementPattern: asMovementPattern(row.movementPattern),
+    resistanceProfile: asResistanceProfile(row.resistanceProfile),
+    strengthStandardKey: row.strengthStandardKey ?? null,
+    benchmarkUnit: asBenchmarkUnit(row.benchmarkUnit),
   };
 }
 
-export function exerciseToRow(exercise: Exercise): NewExerciseRow {
+/**
+ * Colonnes qu'une édition utilisateur d'exercice peut réellement modifier.
+ * `lastUsed` est volontairement absent : cette valeur est dérivée des séries
+ * complétées et recalculée par les mutations de séance, jamais pilotée par un
+ * snapshot potentiellement ancien du catalogue client.
+ */
+export function exerciseToUpsertUpdateRow(
+  exercise: Exercise
+): Omit<NewExerciseRow, "lastUsed"> {
   return {
     id: exercise.id,
     name: exercise.name,
@@ -134,6 +186,17 @@ export function exerciseToRow(exercise: Exercise): NewExerciseRow {
     fatigueClass: exercise.fatigueClass,
     progressionPolicy: exercise.progressionPolicy,
     voluntaryRepCap: exercise.voluntaryRepCap,
+    movementPattern: exercise.movementPattern,
+    resistanceProfile: exercise.resistanceProfile,
+    strengthStandardKey: exercise.strengthStandardKey,
+    benchmarkUnit: exercise.benchmarkUnit,
+  };
+}
+
+/** L'INSERT initial conserve la date importée; les UPDATE ne la touchent pas. */
+export function exerciseToRow(exercise: Exercise): NewExerciseRow {
+  return {
+    ...exerciseToUpsertUpdateRow(exercise),
     lastUsed: exercise.lastUsed,
   };
 }
@@ -154,10 +217,17 @@ export function exerciseToMappingRows(exercise: Exercise): NewMuscleMappingRow[]
 export function mapCardioEntryRow(row: CardioEntryRow): CardioEntry {
   return {
     id: row.id,
+    activityType: asCardioActivityType(row.activityType),
     activityName: row.activityName,
+    machineName: row.machineName,
+    machineModel: row.machineModel,
     durationSeconds: row.durationSeconds,
     level: row.level,
+    resistance: row.resistance,
     distanceKm: row.distanceKm,
+    averageWatts: row.averageWatts,
+    averageHeartRateBpm: row.averageHeartRateBpm,
+    inclinePercent: row.inclinePercent,
     orderIndex: row.orderIndex,
   };
 }
@@ -187,6 +257,7 @@ function mapLoggedExerciseRow(row: LoggedExerciseRow, setRows: LoggedSetRow[]): 
       .sort((a, b) => a.setSlotIndex - b.setSlotIndex)
       .map(mapLoggedSetRow),
     supersetGroupId: row.supersetGroupId,
+    plateauWeakPoint: asPlateauWeakPoint(row.plateauWeakPoint),
   };
 }
 
@@ -262,10 +333,17 @@ export function sessionToCardioEntryRows(session: WorkoutSession): NewCardioEntr
   return (session.cardioEntries ?? []).map((entry) => ({
     id: entry.id,
     sessionId: session.id,
+    activityType: entry.activityType,
     activityName: entry.activityName,
+    machineName: entry.machineName,
+    machineModel: entry.machineModel,
     durationSeconds: entry.durationSeconds,
     level: entry.level,
+    resistance: entry.resistance,
     distanceKm: entry.distanceKm,
+    averageWatts: entry.averageWatts,
+    averageHeartRateBpm: entry.averageHeartRateBpm,
+    inclinePercent: entry.inclinePercent,
     orderIndex: entry.orderIndex,
   }));
 }
@@ -279,6 +357,7 @@ export function sessionToLoggedExerciseRows(session: WorkoutSession): NewLoggedE
     exerciseId: e.exerciseId,
     exerciseName: e.exerciseName,
     supersetGroupId: e.supersetGroupId,
+    plateauWeakPoint: e.plateauWeakPoint,
   }));
 }
 
@@ -373,6 +452,8 @@ export function mapSettingsRow(row: UserSettingsRow): UserSettings {
     userName: row.userName,
     supersetRestSeconds: row.supersetRestSeconds,
     bodyWeightKg: row.bodyWeightKg ?? null,
+    gender: row.gender === "male" || row.gender === "female" ? row.gender : null,
+    ageYears: row.ageYears ?? null,
   };
 }
 
@@ -387,6 +468,8 @@ export function settingsToRow(settings: UserSettings): NewUserSettingsRow {
     userName: settings.userName,
     supersetRestSeconds: settings.supersetRestSeconds,
     bodyWeightKg: settings.bodyWeightKg,
+    gender: settings.gender,
+    ageYears: settings.ageYears,
   };
 }
 
@@ -412,6 +495,6 @@ export function recoveryCheckinToRow(checkin: RecoveryCheckinInput): NewRecovery
     tookCreatine: checkin.tookCreatine,
     proteinTargetMet: checkin.proteinTargetMet,
     sleepHours: checkin.sleepHours,
-    hadAlcohol: checkin.hadAlcohol ?? false,
+    hadAlcohol: checkin.hadAlcohol,
   };
 }

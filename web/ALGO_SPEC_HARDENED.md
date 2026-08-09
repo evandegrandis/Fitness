@@ -444,24 +444,39 @@ après le set lesté :
 - **Trop haut** : `reps < repTargetMin` sur le set concerné → la référence de ce rôle ne monte pas ;
   la charge ne DESCEND que si `reps < repTargetMin − 2` (mauvais jour ≠ régression durable, §4.2).
 - **Bande de succès** = [repMin, 10] ; cap 10 (§5.4).
-- **Plateau** : `plateauCounter ≥ PLATEAU_THRESHOLD (3)` sur le couple (charge, reps) du rôle
-  dominant (top pour TOP_SET_BACKOFF, ancre pour STRAIGHT). Actions, appliquées **uniquement sur
-  les 1–2 derniers sets de la séance** (jamais l'amorce), **max 2 techniques par groupe musculaire
-  et par séance** (le store compte via `priorLoads`), en cycle déterministe selon la parité de
-  `plateauCounter − 3` :
-    - pair (1re tentative, 3e séance identique) : **surcharge** `+1 incrément × 5 reps`
-      (`plateau_break`, existant) ;
-    - impair : **rest-pause** au même poids : `intensityTechnique: "rest_pause"`,
-      `reps = predictReps + 2`, explication « Rest-pause : mini-pauses 10–15 s pour dépasser ».
+- **Plateau (AUTORITÉ : `VARIATION_CYCLING_SPEC.md` §2-§8, remplace intégralement le paragraphe
+  précédent — surcharge/rest-pause RETIRÉES, décision #3)** : le trigger officiel n'est plus
+  `plateauCounter ≥ PLATEAU_THRESHOLD (3)` mais **daté** — `isPlateau` : ≥14 jours calendaires sans
+  nouveau record d'e1RM (Epley) sur le rôle dominant (top pour TOP_SET_BACKOFF/WEIGHTED_BW_VARIABLE,
+  ancre sinon), ET ≥2 séances de ce rôle dans cette fenêtre de 14j (anti faux-positif d'absence ;
+  `plateauCounter` reste calculé comme valeur dérivée annexe, plus comme trigger). `plateauCounter`
+  legacy reste le trigger sur le chemin v1 (`assisted_bodyweight`/`ramping`, décision d'impl. tracée,
+  pas de date-based v1 en Phase 1). Un état préemptif à 3 niveaux (`progressing`/`slowing`/`plateaued`,
+  dérivé de `progressVelocityScore`) prépare la réaction avant même le trigger officiel.
+  **Aucune technique d'intensité n'est prescrite par l'app** : `plateauEscalation()` (surcharge
+  `+1 incrément × 5 reps` / rest-pause `intensityTechnique:"rest_pause"`) est **supprimée**. Le
+  levier devient la **rotation de variation** : sur `isPlateau`, `suggest()` cherche un candidat
+  (`lib/engines/variation-select.ts::selectAlternative` — même pattern de mouvement, carry-over
+  musculaire, lifecycle/novelty/goalFit, §6 pour le détail du score) et pose UNIQUEMENT
+  `switchToVariantId` (un `Exercise.id` réel) + `reasonCodes: +"variation"` sur la suggestion —
+  **aucune mutation de weight/reps/mode** (non destructif). La proposition « accepter/refuser »
+  vit dans le **bilan** de fin de séance (`buildPlateauReview`, `PlateauReview.suggestedVariant`) ;
+  accepter précharge la variante pour la **séance suivante** (`store/workout.ts::acceptVariantSwitch`,
+  jamais en pleine séance — la bascule vide les sets). `intensityTechnique` reste dans le type
+  `SetSuggestion` pour compat mais vaut désormais **toujours `null`**.
 - **`failedOverreachLoads`** : charges des sets de la fenêtre 10 avec
   `weight ≥ topRef(à l'époque) + 1 incr` et `reps < repMin − 2` (ex. Chest 140×2). `topTarget`
-  reste strictement inférieur (§4.3) tant qu'un palier intermédiaire n'a pas été validé.
-- **Anti-plateau échoué** : si la séance k−1 contenait une tentative `plateau_break` dont les reps
+  reste strictement inférieur (§4.3) tant qu'un palier intermédiaire n'a pas été validé. Ce
+  mécanisme (référence de charge, pas une technique d'intensité) est **conservé**.
+- **Anti-plateau échoué (CONSERVÉ, inchangé)** : si la séance k−1 contenait une tentative
+  `plateau_break` (overreach v1 hors plateau, ou tout mode `plateauBreak` legacy) dont les reps
   < repMin − 2 → pour les séances k et k+1 (`ANTIPLATEAU_SESSIONS = 2`), toutes les références de
   charge sont multipliées par `ANTIPLATEAU_FACTOR (0.9)` (arrondi incrément), promotion gelée,
   `reasonCodes: +"antiplateau_deload"`. Détection **stateless** : compter les séances écoulées
-  depuis la dernière tentative échouée dans la fenêtre. Le bilan signale « méthode à changer » si
-  un 2e cycle échoue sur le même exercice dans la fenêtre 10.
+  depuis la dernière tentative échouée dans la fenêtre. C'est le fallback §4 étape 4 de
+  `VARIATION_CYCLING_SPEC.md` si la rotation de variation ne relance pas non plus (ou pas de
+  candidat). Le bilan signale « méthode à changer » si un 2e cycle échoue sur le même exercice dans
+  la fenêtre 10.
 
 ---
 

@@ -10,6 +10,7 @@
 import "dotenv/config";
 import { createHash } from "node:crypto";
 import { neon, type NeonQueryInTransaction } from "@neondatabase/serverless";
+import { assertDbWriteAllowed } from "./_safety";
 
 type MappingRow = {
   exercise_name: string;
@@ -59,6 +60,9 @@ function mappingSignature(rows: MappingRow[], exerciseName: string): string {
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL absent");
+  // Script historique : définitivement limité aux bases locales. Le lot prod
+  // actuel passe exclusivement par migrate-prod-2026-08-09.ts.
+  assertDbWriteAllowed("backfill-2026-08-04 (historique)");
   const sql = neon(databaseUrl);
 
   const sessions = await sql.query(

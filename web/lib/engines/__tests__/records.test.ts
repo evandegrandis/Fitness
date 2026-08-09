@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { RecordsEngine, EMPTY_RECORDS } from "@/lib/engines/records";
+import {
+  buildFinisherRecords,
+  classifyFinisher,
+  EMPTY_RECORDS,
+  isFinisherRepRecord,
+  RecordsEngine,
+} from "@/lib/engines/records";
 import { SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
 
@@ -24,6 +30,10 @@ const BENCH: Exercise = {
   voluntaryRepCap: 0,
   muscleMappings: [],
   lastUsed: null,
+  movementPattern: null,
+  resistanceProfile: null,
+  strengthStandardKey: null,
+  benchmarkUnit: null,
 };
 
 const PULLUPS: Exercise = { ...BENCH, id: "ex-pullups", name: "Tractions", repTargetMin: 8, repTargetMax: 15 };
@@ -70,6 +80,37 @@ describe("buildRecords", () => {
     const sets = [set({ weight: 0, reps: 4 }), set({ weight: 0, reps: 12 })];
     const records = RecordsEngine.buildRecords(PULLUPS, sets);
     expect(records.bestBodyweightReps).toBe(12);
+  });
+
+  it("une continuation composite ne modifie jamais les records normaux", () => {
+    const started = new Date("2026-07-10T10:00:00");
+    const lead = set({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started });
+    const continuation = set({
+      weight: 75,
+      reps: 12,
+      setType: SetType.backoff,
+      setSlotIndex: 1,
+      timestamp: new Date(started.getTime() + 10_000),
+    });
+
+    const records = RecordsEngine.buildRecords(BENCH, [lead, continuation]);
+    expect(records.heaviestEver).toBe(100);
+    expect(records.heaviestValidated).toBe(0);
+    expect(records.bestRepsByWeight[75]).toBeUndefined();
+
+    const logged = {
+      id: "le-composite",
+      orderIndex: 0,
+      notes: "",
+      exerciseId: BENCH.id,
+      exerciseName: BENCH.name,
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+      sets: [lead, continuation],
+    };
+    const displayed = RecordsEngine.displayedRecordSetIDs(logged, [lead, continuation], BENCH);
+    expect(displayed.has(lead.id)).toBe(true);
+    expect(displayed.has(continuation.id)).toBe(false);
   });
 });
 
@@ -148,6 +189,7 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
       exerciseId: BENCH.id,
       exerciseName: BENCH.name,
       supersetGroupId: null,
+      plateauWeakPoint: null,
       sets: [set({ weight: 80, reps: 10 }), set({ weight: 85, reps: 3 })],
     };
     const ids = RecordsEngine.displayedRecordSetIDs(le, le.sets, BENCH);
@@ -155,5 +197,38 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
     expect(ids.size).toBe(2);
     expect(ids.has(le.sets[0].id)).toBe(true);
     expect(ids.has(le.sets[1].id)).toBe(true);
+  });
+});
+
+describe("records finishers séparés", () => {
+  it("compare uniquement les reps à la même charge sans contaminer les PR normaux", () => {
+    const history = [set({ weight: 0, reps: 16, setType: SetType.finisher })];
+    const priorNormal = RecordsEngine.buildRecords(PULLUPS, history);
+    const priorFinisher = buildFinisherRecords(history);
+    const improved = set({ weight: 0, reps: 18, setType: SetType.finisher });
+
+    expect(priorNormal.isEmpty).toBe(true);
+    expect(RecordsEngine.classify(improved, PULLUPS, priorNormal)).toBeNull();
+    expect(isFinisherRepRecord(improved, priorFinisher)).toBe(true);
+    expect(classifyFinisher(improved, priorFinisher)).toBe("finisherReps");
+    expect(isFinisherRepRecord(set({ weight: 0, reps: 15, setType: SetType.finisher }), priorFinisher)).toBe(false);
+  });
+
+  it("affiche l'étoile finisher uniquement sur le meilleur nombre de reps à cette charge", () => {
+    const previous = set({ id: "finisher-old", weight: 0, reps: 16, setType: SetType.finisher });
+    const improved = set({ id: "finisher-new", weight: 0, reps: 18, setType: SetType.finisher });
+    const logged = {
+      id: "le-finisher",
+      orderIndex: 0,
+      notes: "",
+      exerciseId: PULLUPS.id,
+      exerciseName: PULLUPS.name,
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+      sets: [improved],
+    };
+
+    const displayed = RecordsEngine.displayedRecordSetIDs(logged, [previous, improved], PULLUPS);
+    expect(displayed).toEqual(new Set([improved.id]));
   });
 });

@@ -27,7 +27,28 @@ export async function login(formData: FormData): Promise<void> {
     maxAge: 60 * 60 * 24 * 365,
   });
 
-  redirect(from.startsWith("/") ? from : "/");
+  // Refuse aussi les URLs protocol-relative (`//evil.example`) : elles commencent bien par `/`
+  // mais quitteraient l'origine dans un navigateur.
+  redirect(from.startsWith("/") && !from.startsWith("//") ? from : "/");
+}
+
+/**
+ * Les Server Actions sont des endpoints réseau à part entière. Le proxy protège l'UI, mais chaque
+ * mutation revérifie aussi le cookie au point d'écriture (défense en profondeur). En développement
+ * local sans `SESSION_SECRET`, on conserve le mode sans authentification déjà prévu par le proxy.
+ */
+export async function requireAuthenticatedSession(): Promise<void> {
+  const expected = process.env.SESSION_SECRET;
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Authentification serveur non configurée");
+    }
+    return;
+  }
+  const store = await cookies();
+  if (store.get("jeera_session")?.value !== expected) {
+    throw new Error("Non autorisé");
+  }
 }
 
 export async function logout(): Promise<void> {

@@ -63,7 +63,7 @@ function ExerciseSetsList({
             </div>
             <div className="flex flex-col gap-1.5">
               {finisherSets.map(({ set, slot }) => (
-                <SetLine key={set.id} set={set} slot={slot} isRecord={false} />
+                <SetLine key={set.id} set={set} slot={slot} isRecord={recordSetIds.has(set.id)} />
               ))}
             </div>
           </div>

@@ -16,8 +16,9 @@ import {
   rolling7DayProgress,
   type ParentMuscleProgress,
 } from "@/lib/engines/effective-sets";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { leafShortName, parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
-import { aggregateCoefficient, completedWorkSets, type Exercise, type WorkoutSession } from "@/lib/models/types";
+import { aggregateCoefficient, type Exercise, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
 import { buildWeekBuckets, type WeekBucket } from "@/components/progress/utils";
 import { WeeklyBarChart, type WeekDatum } from "@/components/progress/WeeklyBarChart";
@@ -292,7 +293,9 @@ function topContributingExercises(
       if (!exercise) continue;
       const coeff = aggregateCoefficient(exercise, parent);
       if (coeff <= 0) continue;
-      const completed = completedWorkSets(logged).length;
+      const completed = physiologicalSetUnits(logged.sets, {
+        increment: exercise.smallestIncrement,
+      });
       if (completed <= 0) continue;
       const key = logged.exerciseName;
       totals.set(key, (totals.get(key) ?? 0) + completed * coeff);

@@ -12,24 +12,40 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { buildRecords, classify, EMPTY_RECORDS, type ExerciseRecords, type RecordKind } from "@/lib/engines/records";
+import {
+  buildFinisherRecords,
+  buildRecords,
+  classify,
+  classifyFinisher,
+  EMPTY_RECORDS,
+  type ExerciseRecords,
+  type RecordKind,
+} from "@/lib/engines/records";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import {
+  stepLoad,
   suggest,
-  type HistoryPosition,
   type SetSuggestion,
   type SuggestParams,
 } from "@/lib/engines/progression";
-import { compositeSetBlocks, immediateCompositeKind } from "@/lib/engines/set-structure";
+import { collectExerciseHistory } from "@/lib/engines/patterns";
+import {
+  compositeSetBlocks,
+  immediateCompositeKind,
+  physiologicalSetUnits,
+  SET_STRUCTURE,
+} from "@/lib/engines/set-structure";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
-import { HISTORY_WINDOW, RECORDS_HISTORY_WINDOW } from "@/lib/engines/constants";
+import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
+import type { PlateauWeakPoint } from "@/lib/models/enums";
 import type { MuscleParent } from "@/lib/models/muscles";
 import {
   completedWorkSets,
   orderedSets,
   primaryParent,
+  sessionsNewestFirst,
   warmupSets,
   type CardioEntry,
   type Exercise,
@@ -45,12 +61,14 @@ import type { WorkoutMode } from "@/lib/theme/modes";
 import {
   applyReorderAfterValidate,
   autoDetectSupersetIfNeeded,
+  cloneSupersetTopology,
   detachFromSupersetGroup as detachFromSupersetGroupPure,
   handleSupersetLink as handleSupersetLinkPure,
-  isLastInSuperset,
-  isLinkedToNext,
+  isSupersetRoundComplete,
   moveExercise as moveExercisePure,
+  recomputeSupersetRoundIndices,
   toggleSuperset as toggleSupersetPure,
+  wouldCompleteSupersetPattern,
 } from "@/lib/store/superset";
 import { buildFinishedWorkoutSnapshot, type FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 
@@ -109,7 +127,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   defaultRepTargetMax: 12,
   userName: "",
   supersetRestSeconds: 180,
-    bodyWeightKg: null,
+  bodyWeightKg: null,
+  gender: null,
+  ageYears: null,
 };
 
 export interface WorkoutState extends ReferenceData {
@@ -142,9 +162,25 @@ export interface WorkoutState extends ReferenceData {
   /** true une fois que le store a été réhydraté depuis localStorage côté client. */
   hasHydratedStorage: boolean;
   setHasHydratedStorage: (value: boolean) => void;
+  /** Watermark du dernier snapshot SSR effectivement appliqué aux données de référence. */
+  lastServerSnapshotAt: string | null;
 
   // -- Hydration reference data -------------------------------------------
   hydrate: (data: ReferenceData) => void;
+
+  /**
+   * OFFLINE_PWA_SPEC §4 (P4.4) — reflète immédiatement un changement de réglages dans le store,
+   * QUE l'écriture Neon (`updateSettings`) ait réussi, échoué, ou soit mise en file hors-ligne
+   * (`lib/sync/write-through.ts`). Sans ça, une modification offline (ex. corriger son poids de
+   * corps à la salle sans réseau) ne serait visible QUE dans l'état local du composant Réglages —
+   * `suggestion()` (qui lit `state.settings.bodyWeightKg`) continuerait de voir l'ANCIENNE valeur
+   * pour le reste de la séance hors-ligne. Persisté par le cache offline (P4.1, `partialize`).
+   */
+  setSettings: (settings: UserSettings) => void;
+  /** OFFLINE_PWA_SPEC §4 (P4.4) — miroir de `setSettings` pour un exercice du catalogue (création/édition). */
+  upsertExerciseInCatalog: (exercise: Exercise) => void;
+  /** OFFLINE_PWA_SPEC §4 (P4.4) — miroir de `setSettings` pour une suppression d'exercice du catalogue. */
+  removeExerciseFromCatalog: (exerciseId: string) => void;
 
   // -- Lifecycle -------------------------------------------------------------
   startEmpty: (mode?: WorkoutMode) => void;
@@ -158,8 +194,57 @@ export interface WorkoutState extends ReferenceData {
    * `session` n'a pas besoin d'être déjà dans `history` — appelable aussi bien
    * juste avant `finish()` (session = `active`) que juste après (session =
    * `finish().session`), tant que `history` ne contient pas déjà `session`.
+   * VARIATION_CYCLING_SPEC §8 — masque `plateau.suggestedVariant` pour tout exercice déjà
+   * accepté/refusé POUR CETTE séance précise (`treatedVariantSuggestions`, scope = `session.id`,
+   * jamais permanent — un même exercice peut re-plateauer plus tard sur une AUTRE séance et
+   * redevenir suggérable, cf. décision tracée dans la note P1.6).
    */
   sessionReview: (session: WorkoutSession) => SessionReview;
+
+  /**
+   * VARIATION_CYCLING_SPEC §8 — rotation de variation proposée dans le bilan : `oldExerciseId ->
+   * newExerciseId` en attente d'application à la PROCHAINE séance (non destructif — jamais en pleine
+   * séance, §8). Consommé (et retiré) au prochain `startEmpty`/`startFromTemplate`/`repeatLast` qui
+   * seedrait `oldExerciseId`. Persisté (`partialize`) : l'acceptation peut précéder de plusieurs
+   * jours (et un reload) le début de la séance suivante.
+   */
+  pendingVariantSwitches: Record<string, string>;
+  /**
+   * VARIATION_CYCLING_SPEC §8 — bookkeeping INTERNE (pas une API UI : lire `plateau.suggestedVariant`,
+   * qui est déjà `null` une fois traité). Clé `${sessionId}:${exerciseId}` — scope volontairement
+   * limité à une séance précise (voir doc de `sessionReview`).
+   */
+  treatedVariantSuggestions: Record<string, true>;
+  /**
+   * VARIATION_CYCLING_SPEC §8 — accepte la rotation de variation suggérée dans le bilan de
+   * `sessionId` pour `oldExerciseId` vers `newExerciseId`. Si `oldExerciseId` est DÉJÀ présent dans
+   * la séance ACTIVE avec 0 set complété (cas : une nouvelle séance a déjà démarré avant que le
+   * bilan de la précédente soit traité), la bascule s'applique immédiatement (mêmes règles que
+   * `replaceExercise` : sets vidés) plutôt que de rester en attente.
+   */
+  acceptVariantSwitch: (sessionId: string, oldExerciseId: string, newExerciseId: string) => void;
+  /** VARIATION_CYCLING_SPEC §8 — refuse la suggestion : la carte disparaît pour CETTE séance, sans planifier de bascule. */
+  dismissVariantSwitch: (sessionId: string, oldExerciseId: string) => void;
+  /**
+   * VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : horodatage (ISO) de la dernière rotation
+   * ACCEPTÉE vers cet `exerciseId` (la variante ADOPTÉE, PAS celle quittée — `acceptVariantSwitch`
+   * l'écrit sous `newExerciseId`). Consommé par `isRotationCooldownActive` pour geler toute
+   * nouvelle proposition (bilan ET indice live) sur CETTE variante pendant `ROTATION_COOLDOWN_DAYS`
+   * jours (ne pas re-proposer en boucle juste après l'avoir adoptée, §8). Persisté (`partialize`),
+   * même raison que `pendingVariantSwitches` : l'acceptation peut précéder de plusieurs jours (et un
+   * reload) les séances qui suivront sur la nouvelle variante.
+   */
+  rotationAcceptedAt: Record<string, string>;
+  /**
+   * VARIATION_CYCLING_SPEC §5.3/§8 (P2.1) — capture 1-tap « où ça a calé ? » à l'entrée en
+   * plateau. SEULE donnée utilisateur réellement nouvelle persistée par cette feature (input brut,
+   * pas un état dérivé — ne viole pas l'invariant de pureté HARDENED §0.2). Mute la séance
+   * `sessionId` DANS `history` (la revue post-séance porte toujours sur une séance déjà terminée
+   * par `finish()`, donc déjà dans `history` — jamais `active`, cf. doc de `sessionReview`). Pure
+   * côté store ; c'est à l'appelant (composant UI) d'écrire en base via `saveSession` (même
+   * découplage que le reste du store — voir `ActiveSession.tsx`/`PostWorkoutSheet.tsx`).
+   */
+  setPlateauWeakPoint: (sessionId: string, loggedExerciseId: string, weakPoint: PlateauWeakPoint) => void;
 
   // -- Exercises ---------------------------------------------------------
   addExercise: (exerciseId: string) => void;
@@ -210,20 +295,76 @@ function findExercise(catalog: Exercise[], exerciseId: string): Exercise | undef
   return catalog.find((e) => e.id === exerciseId);
 }
 
-/** Reconvertit en Date les champs date d'une séance rechargée depuis localStorage (JSON → string). */
-function reviveSessionDates(active: WorkoutSession | null): WorkoutSession | null {
-  if (!active) return null;
-  const toDate = (v: unknown): Date => (v instanceof Date ? v : new Date(v as string));
+/** `Date instanceof` sinon reconstruit depuis une string ISO (JSON localStorage). */
+function toDate(v: unknown): Date {
+  return v instanceof Date ? v : new Date(v as string);
+}
+
+/** Reconvertit en Date les champs date d'UNE séance rechargée depuis localStorage (JSON → string). */
+function reviveSessionDatesNonNull(session: WorkoutSession): WorkoutSession {
   return {
-    ...active,
-    date: toDate(active.date),
-    startTime: toDate(active.startTime),
-    endTime: active.endTime == null ? null : toDate(active.endTime),
-    exercises: active.exercises.map((ex) => ({
+    ...session,
+    date: toDate(session.date),
+    startTime: toDate(session.startTime),
+    endTime: session.endTime == null ? null : toDate(session.endTime),
+    cardioEntries: (session.cardioEntries ?? []).map((entry) => ({
+      ...entry,
+      activityType: entry.activityType ?? "other",
+      machineName: entry.machineName ?? null,
+      machineModel: entry.machineModel ?? null,
+      level: entry.level ?? null,
+      resistance: entry.resistance ?? null,
+      distanceKm: entry.distanceKm ?? null,
+      averageWatts: entry.averageWatts ?? null,
+      averageHeartRateBpm: entry.averageHeartRateBpm ?? null,
+      inclinePercent: entry.inclinePercent ?? null,
+    })),
+    exercises: session.exercises.map((ex) => ({
       ...ex,
       sets: ex.sets.map((s) => ({ ...s, timestamp: toDate(s.timestamp) })),
     })),
   };
+}
+
+/** Reconvertit en Date les champs date d'une séance rechargée depuis localStorage (JSON → string). */
+function reviveSessionDates(active: WorkoutSession | null): WorkoutSession | null {
+  return active ? reviveSessionDatesNonNull(active) : null;
+}
+
+/**
+ * OFFLINE_PWA_SPEC §2 (P4.1) — `history` est désormais mis en cache offline (`partialize`) : chaque
+ * séance doit subir la MÊME revivification de Date que `active` (`reviveSessionDatesNonNull`), sinon
+ * `.getTime()` casse partout où l'historique est lu après un cold-start hors-ligne (moteurs de
+ * suggestion, records, lifecycle…).
+ */
+function reviveHistoryDates(history: WorkoutSession[]): WorkoutSession[] {
+  return sessionsNewestFirst(history.map(reviveSessionDatesNonNull));
+}
+
+/** OFFLINE_PWA_SPEC §2 (P4.1) — revit `Exercise.lastUsed` (seul champ Date du catalogue). */
+function reviveCatalogDates(catalog: Exercise[]): Exercise[] {
+  return catalog.map((exercise) => ({
+    ...exercise,
+    lastUsed: exercise.lastUsed == null ? null : toDate(exercise.lastUsed),
+  }));
+}
+
+/**
+ * Décision tracée (au-delà de la lettre d'OFFLINE_PWA_SPEC §2, qui ne nomme explicitement que
+ * `history`/`catalog.lastUsed`) : `recoveryCheckins[].date` et `templates[].createdAt` sont AUSSI des
+ * champs `Date` désormais mis en cache offline par ce même lot (`partialize` ci-dessous les inclut
+ * tous). Sans revivification, `shouldExtendBeastSession` (`.date.getTime()`, appelable hors-ligne au
+ * démarrage d'une séance Beast) et l'export backup (`SettingsBackupSection.tsx`,
+ * `t.createdAt.toISOString()`) planteraient sur un cold-start hors-ligne — un bug que ce lot
+ * introduirait lui-même s'il n'était pas corrigé ici. Mêmes garde-fous `instanceof Date` que les
+ * autres revivals (idempotent si jamais appelé sur un état déjà revivifié).
+ */
+function reviveRecoveryCheckinDates(checkins: RecoveryCheckin[]): RecoveryCheckin[] {
+  return checkins.map((checkin) => ({ ...checkin, date: toDate(checkin.date) }));
+}
+
+function reviveTemplateDates(templates: WorkoutTemplate[]): WorkoutTemplate[] {
+  return templates.map((template) => ({ ...template, createdAt: toDate(template.createdAt) }));
 }
 
 function findLoggedExercise(session: WorkoutSession | null, loggedExerciseId: string): LoggedExercise | undefined {
@@ -238,7 +379,7 @@ function findLoggedExercise(session: WorkoutSession | null, loggedExerciseId: st
  */
 export function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId: string, maxSessions: number): LoggedSet[][] {
   const found: LoggedSet[][] = [];
-  for (const session of history) {
+  for (const session of sessionsNewestFirst(history)) {
     for (const logged of session.exercises) {
       if (logged.exerciseId === exerciseId) {
         found.push(orderedSets(logged).filter((s) => s.setType === SetType.work || s.setType === SetType.topSet || s.setType === SetType.backoff));
@@ -250,47 +391,15 @@ export function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId:
   return found;
 }
 
-/** Historique + position réelle de l'exercice, alignés pour isoler les finishers tardifs. */
-function recentHistoryContextForExercise(
-  history: WorkoutSession[],
-  exerciseId: string,
-  maxSessions: number
-): { sets: LoggedSet[][]; positions: HistoryPosition[] } {
-  const sets: LoggedSet[][] = [];
-  const positions: HistoryPosition[] = [];
-
-  for (const session of history) {
-    const performed = [...session.exercises]
-      .sort((a, b) => a.orderIndex - b.orderIndex)
-      .filter((logged) => logged.sets.some((set) => set.completed && set.setType !== SetType.warmup));
-
-    for (const logged of performed) {
-      if (logged.exerciseId !== exerciseId) continue;
-      const normalSets = orderedSets(logged).filter(
-        (set) =>
-          set.setType === SetType.work ||
-          set.setType === SetType.topSet ||
-          set.setType === SetType.backoff
-      );
-      if (normalSets.length === 0) continue;
-      sets.push(normalSets);
-      positions.push({
-        position: performed.findIndex((candidate) => candidate.id === logged.id),
-        sessionExerciseCount: performed.length,
-      });
-      if (sets.length >= maxSessions) return { sets, positions };
-    }
-  }
-
-  return { sets, positions };
-}
-
 function shouldAutoMarkFinisher(
   session: WorkoutSession,
   loggedExercise: LoggedExercise,
   exercise: Exercise,
   input: { weight: number; reps: number }
 ): boolean {
+  // Un membre de superset/giant-set reste une série normale : son niveau de
+  // reps peut simplement provenir de l'alternance, pas d'un finisher.
+  if (loggedExercise.supersetGroupId !== null) return false;
   const normalizedName = exercise.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const finisherFriendly =
     exercise.setPatternMode === "bodyweight" ||
@@ -312,7 +421,7 @@ function shouldAutoMarkFinisher(
   return completedWorkSets(loggedExercise).length <= 1;
 }
 
-/** Proposition immédiate pour compléter un mini-set en un bloc de 10 reps. */
+/** Proposition immédiate pour compléter un mini-set jusqu'au seuil effectif de 8 reps. */
 function compositeCompletionSuggestion(
   loggedExercise: LoggedExercise,
   exercise: Exercise
@@ -325,16 +434,16 @@ function compositeCompletionSuggestion(
   const tail = blocks.at(-1);
   const tailEndsAtLast = tail?.sets.at(-1)?.id === last.id;
   const repsAlreadyDone = tailEndsAtLast && tail.kind !== "standard" ? tail.totalReps : last.reps;
-  if (repsAlreadyDone >= 10) return null;
+  if (repsAlreadyDone >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET) return null;
 
   const increment = Math.max(0.5, exercise.smallestIncrement);
-  const lowerWeight = Math.max(0, last.weight - increment);
-  const remainingReps = Math.max(1, 10 - repsAlreadyDone);
+  const easierWeight = stepLoad(last.weight, increment, exercise.setPatternMode, false);
+  const remainingReps = Math.max(1, SET_STRUCTURE.EFFECTIVE_REPS_PER_SET - repsAlreadyDone);
   return {
-    weight: Math.round(lowerWeight * 100) / 100,
+    weight: Math.round(easierWeight * 100) / 100,
     reps: remainingReps,
     setType: SetType.backoff,
-    explanation: `Série courte : baisse d’un cran et enchaîne ${remainingReps} rep${remainingReps > 1 ? "s" : ""} maintenant pour former 1 série effective.`,
+    explanation: `Série courte : passe à la variante plus facile d’un cran et enchaîne ${remainingReps} rep${remainingReps > 1 ? "s" : ""} maintenant pour former 1 série effective.`,
     confidence: 0.94,
     reasonCodes: ["drop_set_completion"],
     mode: "fallback_hypertrophy",
@@ -350,7 +459,7 @@ function compositeCompletionSuggestion(
  * comme "inconnu" (pas de deload, comme si l'exercice était neuf).
  */
 export function daysSinceLastExercise(history: WorkoutSession[], exerciseId: string, now: Date = new Date()): number | null {
-  for (const session of history) {
+  for (const session of sessionsNewestFirst(history)) {
     const hasCompletedWorkSet = session.exercises.some(
       (logged) => logged.exerciseId === exerciseId && completedWorkSets(logged).length > 0
     );
@@ -362,53 +471,64 @@ export function daysSinceLastExercise(history: WorkoutSession[], exerciseId: str
   return null;
 }
 
+/** Jours depuis le dernier vrai set lesté, distincts du simple retour de l'exercice. */
+export function daysSinceLastWeightedExercise(
+  history: WorkoutSession[],
+  exerciseId: string,
+  now: Date = new Date()
+): number | null {
+  for (const session of sessionsNewestFirst(history)) {
+    const hasCompletedWeightedSet = session.exercises.some(
+      (logged) =>
+        logged.exerciseId === exerciseId &&
+        logged.sets.some(
+          (set) =>
+            set.completed &&
+            set.weight > 0 &&
+            (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff)
+        )
+    );
+    if (hasCompletedWeightedSet) {
+      const diffMs = now.getTime() - session.date.getTime();
+      return Math.max(0, Math.floor(diffMs / 86_400_000));
+    }
+  }
+  return null;
+}
+
 /**
- * Miroir de `WorkoutViewModel.sessionFatigueContext(before:)` : accumule les
- * exercices déjà complétés avant `loggedExerciseId` dans l'ordre de la
- * séance active. ALGO_V2 §6.2 — inclut aussi les PARTENAIRES du groupe de
- * superset EN COURS (même `supersetGroupId` que `loggedExerciseId`, sets déjà
- * complétés dans les rounds précédents) : ils comptent l'un pour l'autre dans
- * la fatigue intra-séance, round par round, en plus des exercices précédents
- * dans l'ordre de la séance (déjà couvert par la boucle `ordered.slice(0, idx)`).
+ * Contexte live : accumule tous les AUTRES exercices déjà réellement effectués, selon leurs sets
+ * complétés — pas selon leur position visuelle. Cela couvre naturellement les supersets de 2, 3
+ * ou 4 exercices et les séances exécutées dans un ordre différent de la liste.
  */
 function buildSessionFatigueContext(
   session: WorkoutSession | null,
   catalog: Exercise[],
   loggedExerciseId: string,
-  baselines?: { baselineSystemicCost: number; baselineSameParentSets: number }
+  baselines?: { baselineSystemicCost: number; baselineSameParentSets: number },
+  after?: Date
 ): SessionFatigueContext {
   if (!session) return SessionFatigueContext.empty;
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
   const idx = ordered.findIndex((e) => e.id === loggedExerciseId);
   if (idx === -1) return SessionFatigueContext.empty;
 
-  const current = ordered[idx];
   const priorLoads: PriorLoad[] = [];
 
-  for (const prior of ordered.slice(0, idx)) {
+  for (const prior of ordered) {
+    if (prior.id === loggedExerciseId) continue;
     const exercise = findExercise(catalog, prior.exerciseId);
     if (!exercise) continue;
     const parent = primaryParent(exercise);
     if (!parent) continue;
-    const workSetsCompleted = completedWorkSets(prior).length;
+    const relevantSets = after
+      ? prior.sets.filter((set) => set.timestamp.getTime() > after.getTime())
+      : prior.sets;
+    const workSetsCompleted = physiologicalSetUnits(relevantSets, {
+      increment: exercise.smallestIncrement,
+    });
     if (workSetsCompleted <= 0) continue;
     priorLoads.push({ primaryParent: parent, workSetsCompleted, fatigueClass: exercise.fatigueClass });
-  }
-
-  // §6.2 — partenaires du groupe de superset EN COURS (positionnés APRÈS `current` dans l'ordre,
-  // donc non couverts par la boucle ci-dessus) : leurs sets déjà complétés dans les rounds
-  // précédents comptent aussi pour la fatigue de `current`.
-  if (current?.supersetGroupId !== null && current?.supersetGroupId !== undefined) {
-    for (const partner of ordered.slice(idx + 1)) {
-      if (partner.supersetGroupId !== current.supersetGroupId) continue;
-      const exercise = findExercise(catalog, partner.exerciseId);
-      if (!exercise) continue;
-      const parent = primaryParent(exercise);
-      if (!parent) continue;
-      const workSetsCompleted = completedWorkSets(partner).length;
-      if (workSetsCompleted <= 0) continue;
-      priorLoads.push({ primaryParent: parent, workSetsCompleted, fatigueClass: exercise.fatigueClass });
-    }
   }
 
   return new SessionFatigueContext(priorLoads, baselines);
@@ -418,10 +538,8 @@ function buildSessionFatigueContext(
  * ALGO_V2 §6.1 — baselines de fatigue "habituelle" pour cet exercice : médiane du coût
  * systémique / des sets sur le même parent, mesurés AVANT cet exercice, sur ses 5 dernières
  * occurrences historiques. Sert à ne pénaliser que l'EXCÈS de fatigue (le profil empirique de
- * `predictReps` intègre déjà la fatigue habituelle). `history` déjà triée plus récent -> plus
- * ancien. Coûteux à calculer exactement (nécessiterait de rejouer position-par-position chaque
- * séance passée) : approximé par la position moyenne de CET exercice dans les séances où il
- * apparaît (nombre de sets des exercices précédents dans la séance, sommés par fatigueClass).
+ * `predictReps` intègre déjà la fatigue habituelle). Le contexte est reconstruit par chronologie
+ * réelle : seuls les sets des autres exercices terminés avant le dernier set de la cible comptent.
  */
 function buildFatigueBaselines(
   history: WorkoutSession[],
@@ -434,19 +552,37 @@ function buildFatigueBaselines(
   const sameParentCounts: number[] = [];
 
   let occurrences = 0;
-  for (const session of history) {
+  for (const session of sessionsNewestFirst(history)) {
     const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-    const idx = ordered.findIndex((e) => e.exerciseId === exerciseId);
-    if (idx <= 0) continue; // premier exercice de la séance ou absent -> pas de contexte "avant"
+    const targets = ordered.filter((logged) => logged.exerciseId === exerciseId);
+    const targetSets = targets.flatMap((logged) =>
+      logged.sets.filter(
+        (set) =>
+          set.completed &&
+          (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff)
+      )
+    );
+    if (targetSets.length === 0) continue;
     occurrences += 1;
     if (occurrences > 5) break;
 
     let systemicCost = 0;
     let sameParentSets = 0;
-    for (const prior of ordered.slice(0, idx)) {
+    const cutoff = targetSets.reduce(
+      (latest, set) => (set.timestamp > latest ? set.timestamp : latest),
+      targetSets[0].timestamp
+    );
+    const targetIds = new Set(targets.map((target) => target.id));
+    for (const prior of ordered) {
+      if (targetIds.has(prior.id)) continue;
       const exercise = findExercise(catalog, prior.exerciseId);
       if (!exercise) continue;
-      const workSetsCompleted = completedWorkSets(prior).length;
+      const workSetsCompleted = physiologicalSetUnits(
+        prior.sets.filter((set) => set.timestamp <= cutoff),
+        {
+        increment: exercise.smallestIncrement,
+        }
+      );
       if (workSetsCompleted <= 0) continue;
       systemicCost += workSetsCompleted * FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
       if (parent && primaryParent(exercise) === parent) sameParentSets += workSetsCompleted;
@@ -560,7 +696,62 @@ function makeLoggedExercise(exercise: Exercise, orderIndex: number): LoggedExerc
     exerciseName: exercise.name,
     sets: [],
     supersetGroupId: null,
+    plateauWeakPoint: null,
   };
+}
+
+/**
+ * VARIATION_CYCLING_SPEC §8 — applique les rotations de variation ACCEPTÉES en attente
+ * (`pendingVariantSwitches`, oldExerciseId -> newExerciseId) à une séance fraîchement construite,
+ * AVANT qu'elle ne devienne `active` (jamais en pleine séance — la bascule efface les sets, donc
+ * elle ne doit jamais s'appliquer à un exercice déjà en cours). Renvoie les ids CONSOMMÉS pour que
+ * l'appelant les retire de `pendingVariantSwitches` dans le même `set()` (atomique, §8 "carte
+ * disparaît une fois traitée").
+ */
+function applyPendingVariantSwitches(
+  session: WorkoutSession,
+  catalog: Exercise[],
+  pending: Record<string, string>
+): { session: WorkoutSession; consumedIds: string[] } {
+  if (Object.keys(pending).length === 0) return { session, consumedIds: [] };
+  const consumedIds: string[] = [];
+  const exercises = session.exercises.map((logged) => {
+    const newExerciseId = pending[logged.exerciseId];
+    if (!newExerciseId) return logged;
+    const newExercise = findExercise(catalog, newExerciseId);
+    if (!newExercise) return logged;
+    consumedIds.push(logged.exerciseId);
+    return { ...logged, exerciseId: newExercise.id, exerciseName: newExercise.name };
+  });
+  return { session: { ...session, exercises }, consumedIds };
+}
+
+/** Copie `record` en retirant `keys` (no-op si `keys` est vide — évite une recréation d'objet inutile). */
+function withoutKeys<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
+  if (keys.length === 0) return record;
+  const copy = { ...record };
+  for (const key of keys) delete copy[key];
+  return copy;
+}
+
+/**
+ * VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : `true` si `exerciseId` a été la CIBLE d'une
+ * rotation acceptée il y a moins de `ALGO_V2.ROTATION_COOLDOWN_DAYS` jours (`rotationAcceptedAt`).
+ * Décision d'impl. tracée (pas dans le code du spec littéral) : le "OU jusqu'à un nouveau
+ * isPlateau" du §8 n'est PAS recalculé séparément ici — `PLATEAU_STALL_DAYS` (14) ==
+ * `ROTATION_COOLDOWN_DAYS` (14) dans `constants.ts`, donc un isPlateau structurellement "frais"
+ * (calculé sur le run de la nouvelle variante, qui vient de démarrer) ne peut de toute façon pas
+ * survenir avant l'expiration de ce cooldown ; distinguer un isPlateau "frais" d'un isPlateau
+ * "hérité" de l'historique pré-rotation de la même variante nécessiterait le même bookkeeping de
+ * "run courant" cross-exercice déjà différé en P1.2/P2.2 — hors scope explicite de ce lot, signalé
+ * pas oublié (cf. note P2.3 dans VARIATION_CYCLING_IMPL.md).
+ */
+function isRotationCooldownActive(exerciseId: string, rotationAcceptedAt: Record<string, string>, now: Date): boolean {
+  const acceptedAtIso = rotationAcceptedAt[exerciseId];
+  if (!acceptedAtIso) return false;
+  const acceptedAt = new Date(acceptedAtIso);
+  const daysSinceAcceptance = Math.floor((now.getTime() - acceptedAt.getTime()) / 86_400_000);
+  return daysSinceAcceptance < ALGO_V2.ROTATION_COOLDOWN_DAYS;
 }
 
 function makeEmptySession(templateName: string | null = null): WorkoutSession {
@@ -577,6 +768,52 @@ function makeEmptySession(templateName: string | null = null): WorkoutSession {
     supersetGroups: [],
     cardioEntries: [],
   };
+}
+
+/**
+ * Nettoyage irréversible appliqué uniquement à la clôture : un exercice
+ * planifié mais jamais validé n'est ni une performance, ni un membre de
+ * superset. Les groupes devenus solos sont dissous et tous les ordres sont
+ * recalculés avant la persistance.
+ */
+export function pruneEmptyExercisesForFinish(session: WorkoutSession): WorkoutSession {
+  const kept = [...session.exercises]
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .filter((exercise) => exercise.sets.some((set) => set.completed))
+    .map((exercise, orderIndex) => ({ ...exercise, orderIndex }));
+  const keptIds = new Set(kept.map((exercise) => exercise.id));
+
+  const groups = session.supersetGroups
+    .map((group) => ({
+      ...group,
+      memberOrder: group.memberOrder.filter((memberId) => keptIds.has(memberId)),
+    }))
+    .filter((group) => group.memberOrder.length >= 2)
+    .map((group) => ({
+      ...group,
+      orderIndex: Math.min(
+        ...group.memberOrder.map((memberId) => kept.find((exercise) => exercise.id === memberId)?.orderIndex ?? Infinity)
+      ),
+    }));
+  const validGroupIds = new Set(groups.map((group) => group.id));
+
+  let normalized: WorkoutSession = {
+    ...session,
+    exercises: kept.map((exercise) =>
+      exercise.supersetGroupId !== null && validGroupIds.has(exercise.supersetGroupId)
+        ? exercise
+        : {
+            ...exercise,
+            supersetGroupId: null,
+            sets: exercise.sets.map((set) =>
+              set.supersetRoundIndex === null ? set : { ...set, supersetRoundIndex: null }
+            ),
+          }
+    ),
+    supersetGroups: groups,
+  };
+  for (const group of groups) normalized = recomputeSupersetRoundIndices(normalized, group.id);
+  return normalized;
 }
 
 /**
@@ -723,9 +960,13 @@ function shouldExtendBeastSession(recoveryCheckins: RecoveryCheckin[]): boolean 
   const window = sorted.slice(0, 2);
   // Une nuit longue après alcool n'est pas traitée comme un signal de bonne
   // récupération et ne déclenche jamais automatiquement une extension Beast.
-  if (window.some((checkin) => checkin.hadAlcohol)) return false;
-  const avgSleep = window.reduce((acc, c) => acc + c.sleepHours, 0) / window.length;
-  const adherence = window.filter((c) => c.tookCreatine || c.proteinTargetMet).length;
+  if (window.some((checkin) => checkin.hadAlcohol === true)) return false;
+  const knownSleep = window
+    .map((checkin) => checkin.sleepHours)
+    .filter((hours): hours is number => hours !== null);
+  if (knownSleep.length === 0) return false;
+  const avgSleep = knownSleep.reduce((acc, hours) => acc + hours, 0) / knownSleep.length;
+  const adherence = window.filter((c) => c.tookCreatine === true || c.proteinTargetMet === true).length;
   return avgSleep >= 7.0 && adherence >= 1;
 }
 
@@ -811,11 +1052,28 @@ export const useWorkoutStore = create<WorkoutState>()(
       justHitRecord: {},
       recordsCache: {},
       freshOverrides: new Set<string>(),
+      pendingVariantSwitches: {},
+      treatedVariantSuggestions: {},
+      rotationAcceptedAt: {},
 
       hasHydratedStorage: false,
       setHasHydratedStorage: (value) => set({ hasHydratedStorage: value }),
+      lastServerSnapshotAt: null,
 
-      hydrate: (data) => set({ ...data }),
+      hydrate: (data) => set({ ...data, history: sessionsNewestFirst(data.history) }),
+
+      setSettings: (settings) => set({ settings }),
+      upsertExerciseInCatalog: (exercise) =>
+        set((state) => {
+          const exists = state.catalog.some((e) => e.id === exercise.id);
+          return {
+            catalog: exists
+              ? state.catalog.map((e) => (e.id === exercise.id ? exercise : e))
+              : [...state.catalog, exercise],
+          };
+        }),
+      removeExerciseFromCatalog: (exerciseId) =>
+        set((state) => ({ catalog: state.catalog.filter((e) => e.id !== exerciseId) })),
 
       // -----------------------------------------------------------------
       // Lifecycle
@@ -824,8 +1082,17 @@ export const useWorkoutStore = create<WorkoutState>()(
       startEmpty: (mode) => {
         const state = get();
         const resolvedMode = mode ?? state.selectedStartMode;
-        const session = seedSessionForMode(makeEmptySession(), resolvedMode, state);
-        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {}, freshOverrides: new Set() });
+        let session = seedSessionForMode(makeEmptySession(), resolvedMode, state);
+        const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
+        session = switched;
+        set({
+          active: session,
+          activeMode: resolvedMode,
+          recordsCache: {},
+          justHitRecord: {},
+          freshOverrides: new Set(),
+          pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
+        });
       },
 
       startFromTemplate: (templateId, mode) => {
@@ -840,7 +1107,16 @@ export const useWorkoutStore = create<WorkoutState>()(
           .filter((e): e is Exercise => e !== undefined);
         let session = seedExercisesInto(makeEmptySession(template.name), exercises);
         session = applyModeOverlay(session, resolvedMode, state);
-        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {}, freshOverrides: new Set() });
+        const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
+        session = switched;
+        set({
+          active: session,
+          activeMode: resolvedMode,
+          recordsCache: {},
+          justHitRecord: {},
+          freshOverrides: new Set(),
+          pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
+        });
       },
 
       repeatLast: (mode) => {
@@ -851,14 +1127,25 @@ export const useWorkoutStore = create<WorkoutState>()(
         const ordered = [...lastSession.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
         const exercises = ordered.map((e) => findExercise(state.catalog, e.exerciseId)).filter((e): e is Exercise => e !== undefined);
         let session = seedExercisesInto(makeEmptySession(lastSession.templateName), exercises);
+        session = cloneSupersetTopology(lastSession, session, newId);
         session = applyModeOverlay(session, resolvedMode, state);
-        set({ active: session, activeMode: resolvedMode, recordsCache: {}, justHitRecord: {}, freshOverrides: new Set() });
+        const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
+        session = switched;
+        set({
+          active: session,
+          activeMode: resolvedMode,
+          recordsCache: {},
+          justHitRecord: {},
+          freshOverrides: new Set(),
+          pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
+        });
       },
 
       finish: () => {
         const state = get();
         if (!state.active) return null;
-        const finishedSession: WorkoutSession = { ...state.active, isActive: false, endTime: new Date() };
+        const normalized = pruneEmptyExercisesForFinish(state.active);
+        const finishedSession: WorkoutSession = { ...normalized, isActive: false, endTime: new Date() };
         const snapshot = buildFinishedWorkoutSnapshot({
           session: finishedSession,
           exercises: state.catalog,
@@ -869,7 +1156,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         set({
           active: null,
           activeMode: "normal",
-          history: [finishedSession, ...state.history],
+          history: sessionsNewestFirst([finishedSession, ...state.history]),
           rest: null,
           justHitRecord: {},
           armedSupersetExerciseId: null,
@@ -891,11 +1178,104 @@ export const useWorkoutStore = create<WorkoutState>()(
 
       sessionReview: (session) => {
         const state = get();
+        // VARIATION_CYCLING_SPEC §5.3/§8 (P2.1) — relit TOUJOURS la copie la plus fraîche de la
+        // séance depuis `history` (par id), pas le paramètre `session` reçu (qui peut être une
+        // référence gelée côté composant, cf. `PostWorkoutSheet.tsx`) : sans ça, une capture 1-tap
+        // (`setPlateauWeakPoint`) qui vient de muter `history` ne serait jamais vue par un appel
+        // `sessionReview(session)` fait avec l'ancienne référence — même piège de réactivité que
+        // `treatedVariantSuggestions` déjà lu en direct via `get()` ci-dessous (note P1.6).
+        const liveSession = state.history.find((s) => s.id === session.id) ?? session;
         // `history` ne doit jamais contenir `session` elle-même (voir doc `buildSessionReview`) :
         // filtre défensif au cas où l'appelant passe la séance juste finie (déjà en tête de `history`
         // après `finish()`).
-        const history = state.history.filter((s) => s.id !== session.id);
-        return buildSessionReview(session, history, state.catalog, state.goals);
+        const history = state.history.filter((s) => s.id !== liveSession.id);
+        const review = buildSessionReview(liveSession, history, state.catalog, state.goals);
+        const now = new Date();
+        // VARIATION_CYCLING_SPEC §8 — masque la carte de suggestion pour tout exercice déjà
+        // accepté/refusé POUR CETTE séance (§8 "disparaît une fois traitée"). `buildSessionReview`
+        // reste pur et la recalcule à chaque appel ; ce filtre est le SEUL endroit qui sait ce qui a
+        // déjà été décidé (bookkeeping store, pas moteur).
+        return {
+          ...review,
+          exercises: review.exercises.map((exerciseReview) => {
+            const treated =
+              exerciseReview.plateau.suggestedVariant !== null &&
+              state.treatedVariantSuggestions[`${session.id}:${exerciseReview.exerciseId}`];
+            // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : cet exercice EST la variante adoptée
+            // par une rotation récemment acceptée -> gèle la carte (ET la capture 1-tap, qui n'a
+            // plus lieu d'être proposée si on ne va pas re-proposer de rotation dans l'immédiat).
+            const cooling = isRotationCooldownActive(exerciseReview.exerciseId, state.rotationAcceptedAt, now);
+            if (!treated && !cooling) return exerciseReview;
+            return {
+              ...exerciseReview,
+              plateau: {
+                ...exerciseReview.plateau,
+                suggestedVariant: null,
+                needsWeakPointCapture: cooling ? false : exerciseReview.plateau.needsWeakPointCapture,
+              },
+            };
+          }),
+        };
+      },
+
+      acceptVariantSwitch: (sessionId, oldExerciseId, newExerciseId) => {
+        const state = get();
+        const treatedKey = `${sessionId}:${oldExerciseId}`;
+        // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : horodate l'acceptation sur la variante
+        // ADOPTÉE (`newExerciseId`), dans les DEUX branches ci-dessous (immédiate ET en attente).
+        const acceptedAtIso = new Date().toISOString();
+        // Cas où une nouvelle séance a déjà démarré (avant que ce bilan soit traité) ET contient
+        // encore `oldExerciseId` sans set complété : applique tout de suite (comme `replaceExercise`,
+        // sets vidés) plutôt que de laisser une bascule en attente inutile.
+        const activeLoggedExercise = state.active?.exercises.find(
+          (e) => e.exerciseId === oldExerciseId && !e.sets.some((s) => s.completed)
+        );
+        if (state.active && activeLoggedExercise) {
+          const newExercise = findExercise(state.catalog, newExerciseId);
+          if (newExercise) {
+            set({
+              active: {
+                ...state.active,
+                exercises: state.active.exercises.map((e) =>
+                  e.id === activeLoggedExercise.id
+                    ? { ...e, exerciseId: newExercise.id, exerciseName: newExercise.name, sets: [], plateauWeakPoint: null }
+                    : e
+                ),
+              },
+              treatedVariantSuggestions: { ...state.treatedVariantSuggestions, [treatedKey]: true },
+              rotationAcceptedAt: { ...state.rotationAcceptedAt, [newExerciseId]: acceptedAtIso },
+            });
+            return;
+          }
+        }
+        set({
+          pendingVariantSwitches: { ...state.pendingVariantSwitches, [oldExerciseId]: newExerciseId },
+          treatedVariantSuggestions: { ...state.treatedVariantSuggestions, [treatedKey]: true },
+          rotationAcceptedAt: { ...state.rotationAcceptedAt, [newExerciseId]: acceptedAtIso },
+        });
+      },
+
+      dismissVariantSwitch: (sessionId, oldExerciseId) => {
+        const state = get();
+        set({
+          treatedVariantSuggestions: { ...state.treatedVariantSuggestions, [`${sessionId}:${oldExerciseId}`]: true },
+        });
+      },
+
+      setPlateauWeakPoint: (sessionId, loggedExerciseId, weakPoint) => {
+        const state = get();
+        set({
+          history: state.history.map((s) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  exercises: s.exercises.map((e) =>
+                    e.id === loggedExerciseId ? { ...e, plateauWeakPoint: weakPoint } : e
+                  ),
+                }
+              : s
+          ),
+        });
       },
 
       // -----------------------------------------------------------------
@@ -922,7 +1302,7 @@ export const useWorkoutStore = create<WorkoutState>()(
             ...state.active,
             exercises: state.active.exercises.map((e) =>
               e.id === loggedExerciseId
-                ? { ...e, exerciseId: newExercise.id, exerciseName: newExercise.name, sets: [] }
+                ? { ...e, exerciseId: newExercise.id, exerciseName: newExercise.name, sets: [], plateauWeakPoint: null }
                 : e
             ),
           },
@@ -934,12 +1314,13 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!state.active) return;
         const exerciseName = state.active.exercises.find((e) => e.id === loggedExerciseId)?.exerciseName ?? "Exercice";
         const snapshot = state.active;
-        const remaining = state.active.exercises
+        const detached = detachFromSupersetGroupPure(state.active, loggedExerciseId);
+        const remaining = detached.exercises
           .filter((e) => e.id !== loggedExerciseId)
           .sort((a, b) => a.orderIndex - b.orderIndex)
           .map((e, i) => ({ ...e, orderIndex: i }));
         set({
-          active: { ...state.active, exercises: remaining },
+          active: { ...detached, exercises: remaining },
           undo: { message: `${exerciseName} supprimé`, snapshot },
         });
       },
@@ -966,6 +1347,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           exerciseName: source.exerciseName,
           sets: [],
           supersetGroupId: null,
+          plateauWeakPoint: null,
         };
         set({ active: { ...state.active, exercises: [...shifted, duplicate] } });
       },
@@ -1006,17 +1388,24 @@ export const useWorkoutStore = create<WorkoutState>()(
         const exercise = findExercise(state.catalog, loggedExercise.exerciseId);
 
         const requestedSetType = input.setType ?? SetType.work;
+        const nextSlot = (orderedSets(loggedExercise).reduce((max, s) => Math.max(max, s.setSlotIndex), -1)) + 1;
+        const timestamp = new Date();
+        const completesSupersetPattern = wouldCompleteSupersetPattern(state.active, loggedExerciseId, {
+          weight: input.weight,
+          reps: input.reps,
+          setType: requestedSetType,
+          timestamp,
+          setSlotIndex: nextSlot,
+        });
         const setType =
           requestedSetType !== SetType.warmup &&
           requestedSetType !== SetType.finisher &&
           exercise &&
+          !completesSupersetPattern &&
           shouldAutoMarkFinisher(state.active, loggedExercise, exercise, input)
             ? SetType.finisher
             : requestedSetType;
-        const priorRecords = exercise ? get().records(exercise.id) : EMPTY_RECORDS;
 
-        const nextSlot = (orderedSets(loggedExercise).reduce((max, s) => Math.max(max, s.setSlotIndex), -1)) + 1;
-        const timestamp = new Date();
         const previousWorkSet = completedWorkSets(loggedExercise).at(-1);
         const provisionalSet: LoggedSet = {
           id: "pending",
@@ -1034,6 +1423,10 @@ export const useWorkoutStore = create<WorkoutState>()(
                 increment: exercise.smallestIncrement,
               }) !== null
             : false;
+        const priorRecords =
+          exercise && setType !== SetType.warmup && setType !== SetType.finisher && !continuesPreviousRound
+            ? get().records(exercise.id)
+            : EMPTY_RECORDS;
         const nextRoundIndex =
           orderedSets(loggedExercise).reduce(
             (max, loggedSet) => Math.max(max, loggedSet.supersetRoundIndex ?? 0),
@@ -1063,12 +1456,37 @@ export const useWorkoutStore = create<WorkoutState>()(
         };
 
         session = autoDetectSupersetIfNeeded(session, loggedExerciseId, newId);
+        const activeGroupId = findLoggedExercise(session, loggedExerciseId)?.supersetGroupId;
+        if (activeGroupId) session = recomputeSupersetRoundIndices(session, activeGroupId);
 
         let justHitRecord = state.justHitRecord;
-        let recordsCache = state.recordsCache;
+        // `get().records()` peut avoir rempli le cache après la capture de
+        // `state` ci-dessus : repartir de la valeur fraîche évite de l'effacer.
+        let recordsCache = get().recordsCache;
         let achievement = state.achievement;
+        let createdAchievement = false;
 
-        if (exercise && setType !== SetType.warmup && setType !== SetType.finisher) {
+        if (exercise && setType === SetType.finisher) {
+          const historicalFinishers = collectExerciseHistory(state.history, exercise.id).sets.flat();
+          const currentFinishers = state.active.exercises
+            .filter((candidate) => candidate.exerciseId === exercise.id)
+            .flatMap((candidate) => orderedSets(candidate));
+          const kind = classifyFinisher(
+            newSet,
+            buildFinisherRecords([...historicalFinishers, ...currentFinishers])
+          );
+          if (kind) {
+            justHitRecord = { ...justHitRecord, [newSet.id]: kind };
+            achievement = {
+              setId: newSet.id,
+              kind,
+              exerciseName: exercise.name,
+              weight: newSet.weight,
+              reps: newSet.reps,
+            };
+            createdAchievement = true;
+          }
+        } else if (exercise && setType !== SetType.warmup && !continuesPreviousRound) {
           const kind = classify(newSet, exercise, priorRecords);
           if (kind) {
             justHitRecord = { ...justHitRecord, [newSet.id]: kind };
@@ -1079,6 +1497,7 @@ export const useWorkoutStore = create<WorkoutState>()(
               weight: newSet.weight,
               reps: newSet.reps,
             };
+            createdAchievement = true;
 
             const updatedHeaviest =
               newSet.weight > 0 && newSet.weight > priorRecords.heaviestValidated && newSet.reps >= exercise.repTargetMin
@@ -1116,14 +1535,20 @@ export const useWorkoutStore = create<WorkoutState>()(
         // Rest timer rules.
         const updatedLogged = findLoggedExercise(session, loggedExerciseId)!;
         let rest = state.rest;
-        if (isLinkedToNext(session, updatedLogged)) {
-          rest = null;
+        if (updatedLogged.supersetGroupId !== null) {
+          rest = isSupersetRoundComplete(session, loggedExerciseId, newSet.id)
+            ? {
+                exerciseId: loggedExerciseId,
+                startedAtMs: Date.now(),
+                targetSeconds: state.settings.supersetRestSeconds,
+              }
+            : null;
         } else {
-          const isEndOfSupersetBlock = isLastInSuperset(session, updatedLogged);
-          const restSeconds = isEndOfSupersetBlock
-            ? state.settings.supersetRestSeconds
-            : exercise?.suggestedRestSeconds ?? state.settings.defaultRestTimerSeconds;
-          rest = { exerciseId: loggedExerciseId, startedAtMs: Date.now(), targetSeconds: restSeconds };
+          rest = {
+            exerciseId: loggedExerciseId,
+            startedAtMs: Date.now(),
+            targetSeconds: exercise?.suggestedRestSeconds ?? state.settings.defaultRestTimerSeconds,
+          };
         }
 
         session = applyReorderAfterValidate(session, loggedExerciseId);
@@ -1139,7 +1564,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           rest,
         });
 
-        if (achievement) {
+        if (createdAchievement && achievement) {
           setTimeout(() => {
             const current = get().achievement;
             if (current?.setId === achievement!.setId) {
@@ -1153,9 +1578,11 @@ export const useWorkoutStore = create<WorkoutState>()(
         const state = get();
         if (!state.active) return;
         let exerciseId: string | null = null;
+        let loggedExerciseId: string | null = null;
         const exercises = state.active.exercises.map((e) => {
           if (!e.sets.some((s) => s.id === setId)) return e;
           exerciseId = e.exerciseId;
+          loggedExerciseId = e.id;
           return {
             ...e,
             sets: e.sets.map((s) =>
@@ -1168,7 +1595,12 @@ export const useWorkoutStore = create<WorkoutState>()(
         const justHitRecord = omitKey(state.justHitRecord, setId);
         const recordsCache = { ...state.recordsCache };
         if (exerciseId) delete recordsCache[exerciseId];
-        set({ active: { ...state.active, exercises }, justHitRecord, recordsCache });
+        let session = { ...state.active, exercises };
+        const groupId = loggedExerciseId
+          ? findLoggedExercise(session, loggedExerciseId)?.supersetGroupId
+          : null;
+        if (groupId) session = recomputeSupersetRoundIndices(session, groupId);
+        set({ active: session, justHitRecord, recordsCache });
       },
 
       deleteSet: (loggedExerciseId, setId) => {
@@ -1190,8 +1622,13 @@ export const useWorkoutStore = create<WorkoutState>()(
           ? `Set supprimé — ${removedSet.weight > 0 ? cleanWeight(removedSet.weight) : "BW"}x${removedSet.reps}`
           : "Set supprimé";
 
+        let session = { ...state.active, exercises };
+        if (loggedExercise.supersetGroupId) {
+          session = recomputeSupersetRoundIndices(session, loggedExercise.supersetGroupId);
+        }
+
         set({
-          active: { ...state.active, exercises },
+          active: session,
           justHitRecord,
           recordsCache,
           undo: { message, snapshot },
@@ -1214,11 +1651,24 @@ export const useWorkoutStore = create<WorkoutState>()(
         const existing = state.active.cardioEntries ?? [];
         const entry: CardioEntry = {
           id: newId(),
+          activityType: input.activityType,
           activityName: input.activityName.trim() || "Cardio",
+          machineName: input.machineName?.trim() || null,
+          machineModel: input.machineModel?.trim() || null,
           durationSeconds: Math.max(0, Math.round(input.durationSeconds)),
           level: input.level == null ? null : Math.max(0, Math.round(input.level)),
+          resistance:
+            input.resistance == null ? null : Math.max(0, Math.round(input.resistance * 10) / 10),
           distanceKm:
             input.distanceKm == null ? null : Math.max(0, Math.round(input.distanceKm * 100) / 100),
+          averageWatts:
+            input.averageWatts == null ? null : Math.max(0, Math.round(input.averageWatts)),
+          averageHeartRateBpm:
+            input.averageHeartRateBpm == null
+              ? null
+              : Math.max(20, Math.min(260, Math.round(input.averageHeartRateBpm))),
+          inclinePercent:
+            input.inclinePercent == null ? null : Math.round(input.inclinePercent * 10) / 10,
           orderIndex: existing.length,
         };
         set({ active: { ...state.active, cardioEntries: [...existing, entry] } });
@@ -1273,14 +1723,27 @@ export const useWorkoutStore = create<WorkoutState>()(
           } as SetSuggestion;
         }
 
-        const recentContext = recentHistoryContextForExercise(state.history, exercise.id, HISTORY_WINDOW);
+        const recentContext = collectExerciseHistory(state.history, exercise.id, HISTORY_WINDOW);
         const recentHistory = recentContext.sets;
         const currentSessionSets = orderedSets(loggedExercise).filter((s) => s.completed);
         const fatigueBaselines = buildFatigueBaselines(state.history, state.catalog, exercise.id);
-        const sessionFatigue = buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, fatigueBaselines);
+        const latestPrAt = completedWorkSets(loggedExercise)
+          .filter((set) => state.justHitRecord[set.id] !== undefined)
+          .reduce<Date | null>(
+            (latest, set) => (!latest || set.timestamp > latest ? set.timestamp : latest),
+            null
+          );
+        // Un PR invalide le contexte qui le précédait, pas la fatigue accumulée ensuite. Après
+        // un PR, on repart donc d'un contexte incrémental sans baseline historique ; si aucun
+        // autre bloc physiologique n'a suivi, le PR reste bien la preuve la plus récente.
+        const sessionFatigue = latestPrAt
+          ? buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, undefined, latestPrAt)
+          : buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, fatigueBaselines);
+        const prIsLatestEvidence = latestPrAt !== null && sessionFatigue.priorLoads.length === 0;
         // WS4 — gap daté sur CET exercice exact (pas de fusion de variantes), et override
         // "Je suis frais" éventuellement armé par l'utilisateur pour cet exercice loggé.
         const gapDays = daysSinceLastExercise(state.history, exercise.id) ?? undefined;
+        const gapLestDays = daysSinceLastWeightedExercise(state.history, exercise.id) ?? undefined;
         const freshOverride = state.freshOverrides.has(loggedExerciseId);
 
         const params: SuggestParams = {
@@ -1293,11 +1756,36 @@ export const useWorkoutStore = create<WorkoutState>()(
           currentSessionSets,
           sessionFatigue,
           gapDays,
+          gapLestDays,
           freshOverride,
+          prAchievedToday: prIsLatestEvidence,
           // ALGO_V2 §5.1 — poids de corps pour weighted/assisted bodyweight (predictReps).
           bodyweightKg: readBodyweightKg(state.settings),
+          // VARIATION_CYCLING_SPEC §6/§8 — nécessaire pour résoudre `switchToVariantId` en
+          // `Exercise.id` réel (§7.4/§9) et proposer une rotation de variation sur plateau daté (§2/§4).
+          catalog: state.catalog,
+          sessionHistory: state.history,
+          goals: state.goals,
+          // BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — profil StrengthLevel pour `readyForLevelUp`/
+          // `nextLevelName` (signal feu). DISTINCT de `bodyweightKg` ci-dessus (celui-là a un défaut
+          // algorithmique, PAS un vrai profil) : ici, `bodyWeightKg` non renseigné => `resolveStandard`
+          // dégrade gracieusement (§9), jamais de valeur inventée pour peupler la jauge.
+          profile: { bodyWeightKg: state.settings.bodyWeightKg, gender: state.settings.gender, ageYears: state.settings.ageYears },
         };
         let result = compositeCompletionSuggestion(loggedExercise, exercise) ?? suggest(params);
+
+        // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : `exercise` EST la variante adoptée par
+        // une rotation récemment acceptée -> masque l'indice live (`switchToVariantId`/reasonCodes)
+        // ici, même si le moteur pur (`suggest()`, qui ne connaît pas `rotationAcceptedAt`) en a
+        // posé un. Même filtre bookkeeping-store que `sessionReview()` ci-dessus, appliqué au chemin
+        // "suggestion live" plutôt qu'au bilan.
+        if (result.switchToVariantId && isRotationCooldownActive(exercise.id, state.rotationAcceptedAt, new Date())) {
+          result = {
+            ...result,
+            switchToVariantId: null,
+            reasonCodes: result.reasonCodes.filter((code) => code !== "variation" && code !== "variation_preemptive"),
+          };
+        }
 
         const currentSetIndex = compositeSetBlocks(completedWorkSets(loggedExercise), {
           increment: exercise.smallestIncrement,
@@ -1307,7 +1795,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           const bumpedReps = result.mode === "plateau_break" ? result.reps : Math.max(exercise.repTargetMin, result.reps - 1);
           result = {
             ...result,
-            weight: result.weight + bump,
+            weight: stepLoad(result.weight, bump, exercise.setPatternMode, true),
             reps: bumpedReps,
             explanation: `Beast mode: ${result.explanation}`,
             reasonCodes: [...result.reasonCodes, "beast_mode_weight_bias"],
@@ -1322,7 +1810,11 @@ export const useWorkoutStore = create<WorkoutState>()(
         const loggedExercise = findLoggedExercise(state.active, loggedExerciseId);
         const exercise = loggedExercise ? findExercise(state.catalog, loggedExercise.exerciseId) : undefined;
         if (!loggedExercise || !exercise) return null;
-        if (completedWorkSets(loggedExercise).length > 0) return null;
+        if (
+          orderedSets(loggedExercise).some(
+            (set) => set.completed && set.setType !== SetType.warmup
+          )
+        ) return null;
         if (warmupSets(loggedExercise).some((s) => s.completed)) return null;
         if (exercise.setPatternMode !== "straight" && exercise.setPatternMode !== "top_set_backoff") return null;
 
@@ -1357,11 +1849,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         const exercise = findExercise(state.catalog, exerciseId);
         if (!exercise) return EMPTY_RECORDS;
 
-        // Fenêtre volontairement plus large que HISTORY_WINDOW (10) : les records (PRs) doivent
-        // rester visibles même s'ils datent de plus de 10 séances, contrairement à la décision de
-        // charge/reps qui ne doit regarder que le passé récent. Ne pas aligner sur HISTORY_WINDOW.
-        const sessions = recentWorkSetsForExerciseSessions(state.history, exerciseId, RECORDS_HISTORY_WINDOW);
-        const historicalSets = sessions.flat();
+        // Les records sont all-time. Le moteur de suggestion garde, lui, sa
+        // fenêtre récente séparée via HISTORY_WINDOW.
+        const historicalSets = collectExerciseHistory(state.history, exerciseId).sets.flat();
         const records = buildRecords(exercise, historicalSets);
         set({ recordsCache: { ...state.recordsCache, [exerciseId]: records } });
         return records;
@@ -1404,15 +1894,49 @@ export const useWorkoutStore = create<WorkoutState>()(
       partialize: (state) => ({
         active: state.active,
         activeMode: state.activeMode,
+        selectedStartMode: state.selectedStartMode,
+        lastServerSnapshotAt: state.lastServerSnapshotAt,
         rest: state.rest,
         justHitRecord: state.justHitRecord,
         armedSupersetExerciseId: state.armedSupersetExerciseId,
+        // VARIATION_CYCLING_SPEC §8 — l'acceptation d'une rotation de variation peut précéder de
+        // plusieurs jours (et un reload) le début de la séance suivante qui la consommera.
+        pendingVariantSwitches: state.pendingVariantSwitches,
+        treatedVariantSuggestions: state.treatedVariantSuggestions,
+        // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : le cooldown (ROTATION_COOLDOWN_DAYS)
+        // doit survivre à un reload, sinon il suffirait de rafraîchir la page pour le contourner.
+        rotationAcceptedAt: state.rotationAcceptedAt,
+        // OFFLINE_PWA_SPEC §2 (P4.1) — cache OFFLINE UNIQUEMENT des données de référence : Neon
+        // reste la source de vérité (StoreHydrator écrase ce cache dès que le serveur répond, cf.
+        // P4.2/§3). Sans ce cache, un cold-start hors-ligne n'a ni catalogue ni historique ni
+        // réglages -> `suggestion()` tomberait en fallback générique (20x10, poids de corps par
+        // défaut) au lieu d'utiliser le poids de corps/historique réels de l'utilisateur.
+        catalog: state.catalog,
+        history: state.history,
+        goals: state.goals,
+        settings: state.settings,
+        templates: state.templates,
+        recoveryCheckins: state.recoveryCheckins,
       }),
       // localStorage sérialise les Date en chaînes ISO : on les revit à la
       // réhydratation, sinon `session.startTime.getTime()` casse (string).
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<WorkoutState>;
-        return { ...current, ...p, active: reviveSessionDates(p.active ?? null) };
+        return {
+          ...current,
+          ...p,
+          active: reviveSessionDates(p.active ?? null),
+          // OFFLINE_PWA_SPEC §2 (P4.1) — mêmes garanties que `active` ci-dessus, étendues aux
+          // données de référence désormais cachées : ne revivifier QUE si `p.<clé>` est bien
+          // présent dans le cache persisté (sinon garder `current`, qui porte déjà les valeurs par
+          // défaut du store à la construction — jamais de tableau vide écrasant une valeur utile).
+          catalog: p.catalog ? reviveCatalogDates(p.catalog) : current.catalog,
+          history: p.history ? reviveHistoryDates(p.history) : current.history,
+          goals: p.goals ?? current.goals,
+          settings: p.settings ?? current.settings,
+          templates: p.templates ? reviveTemplateDates(p.templates) : current.templates,
+          recoveryCheckins: p.recoveryCheckins ? reviveRecoveryCheckinDates(p.recoveryCheckins) : current.recoveryCheckins,
+        };
       },
       onRehydrateStorage: () => (state) => {
         state?.setHasHydratedStorage(true);
@@ -1420,13 +1944,6 @@ export const useWorkoutStore = create<WorkoutState>()(
     }
   )
 );
-
-// `records()` needs to see the FULL set of historical sessions for an
-// exercise (not just work sets from the primary session) — this helper
-// mirrors `fetchRecentSets(maxSessions: 20)` used for the records cache.
-function recentWorkSetsForExerciseSessions(history: WorkoutSession[], exerciseId: string, maxSessions: number): LoggedSet[][] {
-  return recentWorkSetsForExercise(history, exerciseId, maxSessions);
-}
 
 // ---------------------------------------------------------------------------
 // Selectors / helpers exposés pour l'UI

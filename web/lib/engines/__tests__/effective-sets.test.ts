@@ -48,6 +48,10 @@ const BENCH: Exercise = {
     { muscleGroup: MuscleGroup.tricepsLong, coefficient: 0.3 },
   ],
   lastUsed: null,
+  movementPattern: null,
+  resistanceProfile: null,
+  strengthStandardKey: null,
+  benchmarkUnit: null,
 };
 
 function set(overrides: Partial<LoggedSet>): LoggedSet {
@@ -73,6 +77,7 @@ function loggedExercise(exerciseId: string, sets: LoggedSet[], overrides: Partia
     exerciseName: "Développé couché",
     sets,
     supersetGroupId: null,
+    plateauWeakPoint: null,
     ...overrides,
   };
 }
@@ -114,6 +119,15 @@ describe("leafSets / parentSets", () => {
     expect(parents.get(MuscleParent.triceps)).toBeCloseTo(0.3);
   });
 
+  it("un finisher contribue au volume physiologique sans compter un warmup", () => {
+    const le = loggedExercise("ex-bench", [
+      set({ reps: 8, setType: SetType.finisher }),
+      set({ reps: 8, setType: SetType.warmup, setSlotIndex: 1 }),
+    ]);
+    const parents = parentSets(le, BENCH);
+    expect(parents.get(MuscleParent.pectoraux)).toBeCloseTo(1);
+  });
+
   it("retourne une map vide si aucun set de travail complété", () => {
     const le = loggedExercise("ex-bench", [set({ completed: false })]);
     expect(leafSets(le, BENCH).size).toBe(0);
@@ -137,14 +151,14 @@ describe("leafSets / parentSets", () => {
     expect(leafSets(le, BENCH).get(MuscleGroup.pectClav)).toBeCloseTo(0.8);
   });
 
-  it("un composite sous 10 reps contribue proportionnellement mais ne vaut jamais une série pleine", () => {
+  it("un composite sous 8 reps ne compte pas comme série effective", () => {
     const started = new Date("2026-07-10T10:00:00.000Z");
     const le = loggedExercise("ex-bench", [
       set({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started }),
       set({ weight: 75, reps: 3, setSlotIndex: 1, timestamp: new Date(started.getTime() + 10_000) }),
     ]);
 
-    expect(parentSets(le, BENCH).get(MuscleParent.pectoraux)).toBeCloseTo(0.7);
+    expect(parentSets(le, BENCH).size).toBe(0);
   });
 });
 

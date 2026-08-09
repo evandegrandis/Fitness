@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, History, Snowflake, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, Check, Flame, History, Snowflake, Sparkles, Zap } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Stepper } from "@/components/ui/Stepper";
 import { SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
@@ -13,14 +14,53 @@ function cleanWeight(weight: number): string {
   return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
 }
 
-/** ReasonCodes signalant une escalade / un changement de méthode — affichés via `suggestion.explanation`. */
+/**
+ * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — signal feu intra-séance : flamme animée + libellé court quand
+ * `suggestion.readyForLevelUp` et/ou `.readyForPR` sont vrais (jamais la jauge complète en séance,
+ * cf. `BenchmarkGauge` qui n'est jamais importée ici — elle reste sur l'onglet Progrès).
+ *
+ * `prefers-reduced-motion` : la règle CSS globale (`app/globals.css`, `animation-duration:0.01ms`)
+ * neutralise les `animation`/`transition` CSS mais PAS une boucle `animate` framer-motion (WAAPI/JS,
+ * hors du système CSS ciblé par cette règle) — d'où `useReducedMotion()` explicite ici, qui coupe la
+ * boucle et retombe sur un rendu statique (aucun `animate`, `transition` à durée nulle).
+ */
+function FlameBadge({ label }: { label: string }) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div
+      className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold"
+      style={{ color: "#fb923c", background: "rgba(251,146,60,0.14)" }}
+    >
+      <motion.span
+        className="grid shrink-0 place-items-center"
+        animate={reduceMotion ? undefined : { scale: [1, 1.22, 1], rotate: [0, -6, 6, 0] }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <Flame size={14} fill="#fb923c" strokeWidth={1.5} />
+      </motion.span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/**
+ * ReasonCodes signalant une escalade / un changement de méthode — affichés via `suggestion.explanation`.
+ * VARIATION_CYCLING_SPEC §8 — `"variant_switch"` corrigé en `"variant_switch_easier"` (mismatch réel :
+ * `progression.ts` émet `"variant_switch_easier"`, jamais `"variant_switch"` — cette liste ne
+ * matchait donc jamais la bascule de variante facile BW, §7.4). `"variation"` (rotation sur plateau
+ * daté, §2/§4/§6) était déjà correct ici — 0 hit avant P1.6 faute de valeur produite côté moteur.
+ * `"variation_preemptive"` (rotation PRÉEMPTIVE sur `slowing`, §3/§4.2, P2.3) est volontairement
+ * ABSENT de cette liste : elle doit rester discrète (pas l'encart accentué/icône éclair réservé aux
+ * vraies escalades) — voir le rendu `variantCandidateName` dans le paragraphe muet ci-dessous.
+ */
 const INTENSITY_REASON_CODES = [
   "overreach",
   "add_set",
   "rest_pause",
   "variation",
   "reactive_deload",
-  "variant_switch",
+  "variant_switch_easier",
   "drop_set_completion",
 ];
 
@@ -40,6 +80,7 @@ export function SetEntry({
   warmup,
   lastSessionSet,
   onLogSet,
+  variantCandidateName = null,
 }: {
   loggedExerciseId: string;
   exercise: Exercise;
@@ -47,6 +88,12 @@ export function SetEntry({
   warmup: SetSuggestion | null;
   lastSessionSet: LoggedSet | null;
   onLogSet: (input: { weight: number; reps: number; setType?: SetType }) => void;
+  /**
+   * VARIATION_CYCLING_SPEC §8 — nom résolu (catalogue) de `suggestion.switchToVariantId`, calculé
+   * par l'appelant (`ExerciseCard.tsx`, qui a accès au catalogue) : `SetEntry` reste découplé du
+   * store. `null`/absent => pas de bascule proposée, comportement inchangé.
+   */
+  variantCandidateName?: string | null;
 }) {
   const freshOverrides = useWorkoutStore((s) => s.freshOverrides);
   const setFreshOverride = useWorkoutStore((s) => s.setFreshOverride);
@@ -61,6 +108,20 @@ export function SetEntry({
 
   const showFreshChip = isFresh || suggestion.reasonCodes.includes("deload_after_gap");
   const intensityReasonCode = suggestion.reasonCodes.find((code) => INTENSITY_REASON_CODES.includes(code));
+
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — le feu ne promet que ce que `suggest()` a réellement
+   * calculé pour LE POIDS/REPS SUGGÉRÉS : masqué en échauffement (poids volontairement réduit) et
+   * si l'utilisateur a modifié les steppers loin de la suggestion (sinon la promesse ne tiendrait
+   * plus pour ce qui va être réellement loggé — même logique que le chip "revenir à la suggestion"
+   * ci-dessous, mutuellement exclusif avec lui par construction).
+   */
+  const matchesSuggestion = !useWarmup && weight === suggestion.weight && reps === suggestion.reps;
+  const flameLabels: string[] = [];
+  if (matchesSuggestion && suggestion.readyForPR) flameLabels.push("PR en vue");
+  if (matchesSuggestion && suggestion.readyForLevelUp && suggestion.nextLevelName) {
+    flameLabels.push(`passage ${suggestion.nextLevelName}`);
+  }
 
   const toggleWarmup = () => {
     const next = !useWarmup;
@@ -138,17 +199,36 @@ export function SetEntry({
         )}
       </div>
 
+      {flameLabels.length > 0 && <FlameBadge label={flameLabels.join(" · ")} />}
+
       {!useWarmup && intensityReasonCode && (
         <p
           className="flex items-start gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium"
           style={{ color: "var(--accent)", background: "rgba(255,138,61,0.10)" }}
         >
           <Zap size={12} className="mt-0.5 shrink-0" />
-          <span>{suggestion.explanation}</span>
+          {/* VARIATION_CYCLING_SPEC §8 — nomme la variante candidate quand `switchToVariantId` est
+              posé (résolu par l'appelant). Purement informatif ici : la bascule elle-même ne
+              s'accepte que dans le bilan (§8, non destructif, jamais en pleine séance). */}
+          <span>
+            {suggestion.explanation}
+            {variantCandidateName && <> → envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
+          </span>
         </p>
       )}
 
-      {!useWarmup && !intensityReasonCode && <p className="text-xs text-[--color-fg-muted]">{suggestion.explanation}</p>}
+      {!useWarmup && !intensityReasonCode && (
+        <p className="text-xs text-[--color-fg-muted]">
+          {suggestion.explanation}
+          {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 (P2.3) — rotation PRÉEMPTIVE ("slowing",
+              `reasonCodes` contient "variation_preemptive", volontairement PAS dans
+              `INTENSITY_REASON_CODES`) : même phrase que le cas plateau, mais SANS l'encart
+              accentué/icône éclair réservé aux vraies escalades — reste discret, non intrusif,
+              cohérent avec "progressing: zéro bruit" et le simple indice visuel de `slowing`
+              (chip `ExerciseCard.tsx`). */}
+          {variantCandidateName && <> → envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
+        </p>
+      )}
 
       <div className="flex items-center justify-center gap-6">
         <Stepper label="Poids" value={weight} onChange={setWeight} step={increment} min={0} suffix="kg" />

@@ -6,7 +6,16 @@
  * l'ISO 8601 du backup par `lib/models/backup.ts`).
  */
 
-import type { FatigueClass, ProgressionPolicy, SetPatternMode, SetType } from "./enums";
+import type {
+  BenchmarkUnit,
+  FatigueClass,
+  MovementPattern,
+  PlateauWeakPoint,
+  ProgressionPolicy,
+  ResistanceProfile,
+  SetPatternMode,
+  SetType,
+} from "./enums";
 import { SetType as SetTypeValues } from "./enums";
 import type { MuscleGroup, MuscleParent } from "./muscles";
 import { LEAVES_OF_PARENT } from "./muscles";
@@ -45,6 +54,34 @@ export interface Exercise {
   voluntaryRepCap: number;
   muscleMappings: MuscleMapping[];
   lastUsed: Date | null;
+  /**
+   * VARIATION_CYCLING_SPEC §5 — clé de carry-over pour la rotation de variation (§6). `null` si
+   * non tagué (exercice créé avant P1.4, ou jamais renseigné) : dégradation gracieuse, la sélection
+   * de variante retombe alors sur le recouvrement musculaire seul (§9), jamais de crash.
+   */
+  movementPattern: MovementPattern | null;
+  /**
+   * VARIATION_CYCLING_SPEC §5.2 — où l'exercice est le plus dur (cible du point faible
+   * mesuré, §6 `weakPointFit`). `null` si non tagué : dégradation gracieuse, `weakPointFit`
+   * reste neutre (§9), jamais de crash.
+   */
+  resistanceProfile: ResistanceProfile | null;
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §1 — clé dans `data/strength_standards_corrected.json::standards`
+   * (le nom d'affichage FR utilisé comme clé JSON, PAS le `slSlug` strengthlevel.com interne
+   * à l'entrée). `null` = pas encore de table sourcée pour cet exercice : `lib/engines/benchmark.ts`
+   * dégrade gracieusement (`hasBenchmark:false`), jamais de crash — s'active automatiquement dès
+   * que le JSON gagne l'entrée correspondante (aucun code à changer).
+   */
+  strengthStandardKey: string | null;
+  /**
+   * BENCHMARK_LEVEL_SPEC.md §1 — miroir dénormalisé de `standards[strengthStandardKey].unit`
+   * (tenu à jour par `ExerciseEditorSheet.tsx`/le script de peuplement, PAS relu par le moteur
+   * qui fait toujours confiance à l'entrée JSON elle-même). Sert aussi de fallback pour
+   * interpréter `benchmarkLow`/`benchmarkHigh` (legacy, §1) quand `strengthStandardKey` est
+   * `null` et qu'un repère manuel a été saisi. `null` si non renseigné.
+   */
+  benchmarkUnit: BenchmarkUnit | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +109,13 @@ export interface LoggedExercise {
   sets: LoggedSet[];
   /** Groupe de superset auquel appartient cet exercice loggé, null si standalone. */
   supersetGroupId: string | null;
+  /**
+   * VARIATION_CYCLING_SPEC §5.3/§8 — point faible mesuré, capturé 1-tap à l'entrée en
+   * plateau (« où ça a calé ? »). SEULE donnée utilisateur réellement nouvelle persistée par
+   * cette feature (input brut, pas un état dérivé). `null` = pas encore répondu (ou plateau
+   * jamais atteint sur cette occurrence) : `weakPointFit` reste neutre côté moteur (§9).
+   */
+  plateauWeakPoint: PlateauWeakPoint | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,12 +133,32 @@ export interface SupersetGroup {
 // CardioEntry / WorkoutSession
 // ---------------------------------------------------------------------------
 
+export const CARDIO_ACTIVITY_TYPES = [
+  "running",
+  "rowing",
+  "cycling",
+  "swimming",
+  "elliptical",
+  "stairs",
+  "other",
+] as const;
+
+export type CardioActivityType = (typeof CARDIO_ACTIVITY_TYPES)[number];
+
 export interface CardioEntry {
   id: string;
+  /** Modalité canonique pour les analyses; `activityName` reste le libellé affiché. */
+  activityType: CardioActivityType;
   activityName: string;
+  machineName: string | null;
+  machineModel: string | null;
   durationSeconds: number;
   level: number | null;
+  resistance: number | null;
   distanceKm: number | null;
+  averageWatts: number | null;
+  averageHeartRateBpm: number | null;
+  inclinePercent: number | null;
   orderIndex: number;
 }
 
@@ -114,6 +178,20 @@ export interface WorkoutSession {
    * lectures DB et toutes les nouvelles séances normalisent ce champ à `[]`.
    */
   cardioEntries?: CardioEntry[];
+}
+
+/**
+ * Copie triée selon l'invariant global du store : séance la plus récente en premier.
+ * Le départage par heure puis par id rend le résultat déterministe pour deux imports
+ * portant la même date civile.
+ */
+export function sessionsNewestFirst(sessions: readonly WorkoutSession[]): WorkoutSession[] {
+  return [...sessions].sort(
+    (a, b) =>
+      b.date.getTime() - a.date.getTime() ||
+      b.startTime.getTime() - a.startTime.getTime() ||
+      a.id.localeCompare(b.id)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -155,21 +233,22 @@ export interface UserSettings {
   supersetRestSeconds: number;
   /** Poids de corps (kg) — utilisé par le moteur pour les exercices au poids du corps / lestés. */
   bodyWeightKg: number | null;
+  /** Profil utilisé pour contextualiser les repères; null signifie non renseigné. */
+  gender: "male" | "female" | null;
+  ageYears: number | null;
 }
 
 export interface RecoveryCheckin {
   id: string;
   date: Date;
-  tookCreatine: boolean;
-  proteinTargetMet: boolean;
-  sleepHours: number;
-  hadAlcohol: boolean;
+  /** null = inconnu/non confirmé; false et true sont des réponses explicites. */
+  tookCreatine: boolean | null;
+  proteinTargetMet: boolean | null;
+  sleepHours: number | null;
+  hadAlcohol: boolean | null;
 }
 
-/** Entrée rétrocompatible avec l'UI déployée avant l'ajout du suivi alcool. */
-export type RecoveryCheckinInput = Omit<RecoveryCheckin, "hadAlcohol"> & {
-  hadAlcohol?: boolean;
-};
+export type RecoveryCheckinInput = RecoveryCheckin;
 
 // ---------------------------------------------------------------------------
 // Fonctions utilitaires PURES — miroir des propriétés calculées Swift.
@@ -198,6 +277,15 @@ export function workSets(exercise: LoggedExercise): LoggedSet[] {
 /** Miroir de `LoggedExercise.completedWorkSets` : work sets avec `completed === true`. */
 export function completedWorkSets(exercise: LoggedExercise): LoggedSet[] {
   return workSets(exercise).filter((set) => set.completed);
+}
+
+/**
+ * Sets éligibles au repère StrengthLevel : uniquement `work`, `topSet`, `backoff` complétés.
+ * Les warmups ET finishers sont exclus : les finishers gardent leur piste de record séparée et ne
+ * doivent jamais gonfler un niveau, une tendance ou une prédiction normale.
+ */
+export function completedBenchmarkSets(exercise: LoggedExercise): LoggedSet[] {
+  return completedWorkSets(exercise);
 }
 
 /** Miroir de `LoggedExercise.warmupSets`. */

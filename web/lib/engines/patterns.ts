@@ -10,7 +10,7 @@
 import { ALGO_V2 } from "@/lib/engines/constants";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { SetPatternMode as SPM, SetType as ST } from "@/lib/models/enums";
-import type { Exercise, LoggedSet } from "@/lib/models/types";
+import { sessionsNewestFirst, type Exercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
 
 // ---------------------------------------------------------------------------
 // Rôles de sets (§0) — dérivés, jamais persistés.
@@ -28,6 +28,62 @@ export interface PreprocessHistoryOptions {
   positions?: HistoryPosition[];
   /** La branche ISOLATION_FINISHER garde ses sets dédiés comme profil spécifique. */
   preserveDedicatedFinishers?: boolean;
+}
+
+export interface CollectedExerciseHistory {
+  /** Une entrée par vraie séance, doublons intra-séance déjà concaténés. */
+  sets: LoggedSet[][];
+  /** Position de la première occurrence de l'exercice dans chaque séance. */
+  positions: HistoryPosition[];
+}
+
+/**
+ * P2/P5 côté intégration : extrait l'historique brut directement depuis les
+ * séances, sans jeter les warmups, et fusionne les occurrences répétées d'un
+ * exercice dans une même séance. Le store et le bilan doivent utiliser ce
+ * helper avant `suggest()` ; une matrice `LoggedSet[][]` déjà amputée ne peut
+ * pas être réparée a posteriori par le moteur.
+ */
+export function collectExerciseHistory(
+  history: WorkoutSession[],
+  exerciseId: string,
+  maxSessions = Number.POSITIVE_INFINITY
+): CollectedExerciseHistory {
+  const sets: LoggedSet[][] = [];
+  const positions: HistoryPosition[] = [];
+
+  for (const session of sessionsNewestFirst(history)) {
+    const performed = [...session.exercises]
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .filter((logged) => logged.sets.some((set) => set.completed));
+    const matches = performed.filter((logged) => logged.exerciseId === exerciseId);
+    if (matches.length === 0) continue;
+
+    const merged = matches
+      .flatMap((logged) =>
+        logged.sets.map((set) => ({ set, orderIndex: logged.orderIndex }))
+      )
+      .sort(
+        (a, b) =>
+          a.set.timestamp.getTime() - b.set.timestamp.getTime() ||
+          a.orderIndex - b.orderIndex ||
+          a.set.setSlotIndex - b.set.setSlotIndex
+      )
+      // Les slots repartent souvent à zéro sur la seconde occurrence. On les
+      // renumérote uniquement dans cette vue dérivée pour conserver la vraie
+      // chronologie dans les helpers qui trient d'abord par setSlotIndex.
+      .map(({ set }, setSlotIndex) => ({ ...set, setSlotIndex }));
+
+    if (!merged.some((set) => set.completed)) continue;
+    sets.push(merged);
+    positions.push({
+      position: performed.findIndex((logged) => logged.exerciseId === exerciseId),
+      sessionExerciseCount: performed.length,
+    });
+    if (sets.length >= maxSessions) break;
+  }
+
+  return { sets, positions };
 }
 
 // ---------------------------------------------------------------------------
@@ -70,9 +126,10 @@ export function median(xs: number[]): number {
 function provisionalAmorceLoad(priorSessions: LoggedSet[][]): number | null {
   const loads: number[] = [];
   for (const session of priorSessions.slice(0, 5)) {
-    const completed = session.filter(
-      (s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher
-    );
+    const completed = session
+      .filter((s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher)
+      .sort((a, b) => a.setSlotIndex - b.setSlotIndex || a.timestamp.getTime() - b.timestamp.getTime())
+      .slice(0, 3);
     if (completed.length === 0) continue;
     const maxReps = Math.max(...completed.map((s) => s.reps));
     const first = completed.find((s) => s.reps === maxReps);
@@ -89,13 +146,15 @@ function provisionalAmorceLoad(priorSessions: LoggedSet[][]): number | null {
 function preprocessSession(
   rawSession: LoggedSet[],
   exercise: Exercise,
-  priorSessions: LoggedSet[][]
+  priorSessions: LoggedSet[][],
+  preserveExplicitFinishers: boolean
 ): LoggedSet[] {
   const completed = rawSession.filter((s) => s.completed);
   const provisional = provisionalAmorceLoad(priorSessions);
 
   return completed.filter((s) => {
-    if (s.setType !== ST.warmup) return s.setType !== ST.finisher;
+    if (s.setType === ST.finisher) return preserveExplicitFinishers;
+    if (s.setType !== ST.warmup) return true;
     if (provisional === null) return false;
     return s.weight >= 0.9 * provisional && s.reps >= exercise.repTargetMin;
   });
@@ -111,33 +170,29 @@ export function classifySessionRoles(workSets: LoggedSet[], increment: number): 
   const chrono = [...workSets].sort((a, b) => a.setSlotIndex - b.setSlotIndex);
   if (chrono.length === 0) return { workSets: [], roles: [], amorce: null, top: null, backoffs: [] };
 
-  const maxReps = Math.max(...chrono.map((s) => s.reps));
-  const amorce = chrono.find((s) => s.reps === maxReps) ?? chrono[0];
-
+  // P5 : le rappel tardif reste disponible dans les données brutes pour le
+  // volume et les records, mais ne doit jamais devenir un échantillon set 1/2/3.
   const structural = chrono.slice(0, 3);
-  const structuralHasAmorce = structural.includes(amorce);
-  const effectiveAmorce = structuralHasAmorce ? amorce : structural[0];
+  const maxReps = Math.max(...structural.map((s) => s.reps));
+  const amorce = structural.find((s) => s.reps === maxReps) ?? structural[0];
 
   const topCandidates = structural.filter(
-    (s) => s !== effectiveAmorce && s.weight >= effectiveAmorce.weight + increment - 1e-9 && s.reps >= 3
+    (s) => s !== amorce && s.weight >= amorce.weight + increment - 1e-9 && s.reps >= 3
   );
   const top = topCandidates.length > 0 ? topCandidates.reduce((best, cur) => (cur.weight > best.weight ? cur : best)) : null;
+  const topIndex = top ? structural.indexOf(top) : -1;
+  const backoffs = top
+    ? structural.filter((s, index) => index > topIndex && s !== amorce)
+    : [];
 
-  const backoffs = top ? structural.filter((s) => s !== effectiveAmorce && s !== top) : [];
-
-  // Rôle par défaut pour un set structurel qui n'est ni l'amorce ni le top : "backoff" (c'est
-  // un set de suivi dans un exercice top/backoff, même si aucun set n'a battu l'amorce cette
-  // séance-là — cf. données Chest Press 100x5 après 120x4 raté). "straight" n'est PAS un rôle
-  // valide de repli ici : le mélanger avec "amorce" dans le pool "tous rôles confondus" de
-  // `predictReps` (§5.2, sameRoleOnly=false) fausserait la médiane empirique en pontant deux
-  // rôles sans rapport à la même charge (ex: amorce 80x10 + set raté 80x6 -> médiane 8 illusoire).
-  const roles: SetRole[] = chrono.map((s) => {
-    if (s === effectiveAmorce) return "amorce";
+  const roles: SetRole[] = structural.map((s, index) => {
+    if (s === amorce) return "amorce";
     if (top && s === top) return "top";
-    return "backoff";
+    if (top && index > topIndex) return "backoff";
+    return "straight";
   });
 
-  return { workSets: chrono, roles, amorce: effectiveAmorce, top, backoffs };
+  return { workSets: structural, roles, amorce, top, backoffs };
 }
 
 /**
@@ -154,16 +209,18 @@ export function preprocessHistory(
   for (let i = 0; i < history.length; i++) {
     const priorSessions = history.slice(i + 1); // plus anciennes que la séance i
     const eligibleSets =
-      exercise.setPatternMode === SPM.weightedBodyweight
+      exercise.setPatternMode === SPM.weightedBodyweight && !options.preserveDedicatedFinishers
         ? history[i].filter(
             (s) => s.completed && s.setType !== ST.warmup && s.setType !== ST.finisher
           ) // §P3 : les sets weight===0 sont des sets bw
-        : preprocessSession(history[i], exercise, priorSessions);
+        : preprocessSession(history[i], exercise, priorSessions, options.preserveDedicatedFinishers === true);
 
     // P2 est une reclassification dérivée : le tag persisté reste warmup, mais l'analyse de
     // structure doit le voir comme un work set. Aucun objet source n'est muté.
     const structurallyWorkSets = eligibleSets.map((set) =>
-      set.setType === ST.warmup ? { ...set, setType: ST.work } : set
+      set.setType === ST.warmup || set.setType === ST.finisher
+        ? { ...set, setType: ST.work }
+        : set
     );
     const workSets = setsForNormalPrediction(structurallyWorkSets, {
       increment,
@@ -214,16 +271,24 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
   // 1. Verrou assisted_bodyweight : jamais overridé.
   if (exercise.setPatternMode === SPM.assistedBodyweight) return "ASSISTED_BW";
 
+  const completedSessions = rawHistory
+    .map((sets) => sets.filter((set) => set.completed && set.setType !== ST.warmup))
+    .filter((sets) => sets.length > 0);
+  const explicitlyDedicatedFinisher =
+    completedSessions.length > 0 &&
+    completedSessions.every((sets) => sets.every((set) => set.setType === ST.finisher));
+  if (explicitlyDedicatedFinisher) return "ISOLATION_FINISHER";
+
   // Les continuations de drop-set/rest-pause ne doivent ni gonfler le nombre de sets, ni faire
   // basculer artificiellement BW/TOP_SET_BACKOFF. On garde toutefois les finishers dédiés ici :
   // leur position et leur faible nombre de sets sont précisément les signaux de l'étape 6.
   const sessions = rawHistory
     .map((sets, index) => ({
-      sets: setsForNormalPrediction(sets, {
+      sets: setsForNormalPrediction(sets.filter((set) => set.setType !== ST.finisher), {
         increment: exercise.smallestIncrement,
         position: positions?.[index],
         preserveDedicatedFinisher: true,
-      }),
+      }).slice(0, 3),
       position: positions?.[index],
     }))
     .filter((entry) => entry.sets.length > 0);
@@ -241,14 +306,27 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
   }).length;
   if (mixedSessions >= ALGO_V2.WBW_MIXED_SESSIONS) return "WEIGHTED_BW_VARIABLE";
 
-  // 4. BW_REP : part des sets à weight === 0 >= BW_SET_SHARE.
+  // 4. ISOLATION_FINISHER : sa position doit gagner avant BW_REP, sinon les
+  // finishers Dips/Tractions (100 % PDC) sont classés BW puis vidés au prétraitement.
+  if (positions && sessions.every((session) => session.position !== undefined)) {
+    const setsPerSession = sessions.map((session) => session.sets.length);
+    const medSets = median(setsPerSession);
+    const posRatios = sessions
+      .map((session) => session.position!)
+      .filter((p) => p.sessionExerciseCount > 1)
+      .map((p) => p.position / (p.sessionExerciseCount - 1));
+    const medPos = posRatios.length > 0 ? median(posRatios) : 0;
+    if (medSets <= ALGO_V2.FINISHER_MAX_SETS && medPos >= ALGO_V2.FINISHER_POS_RATIO) return "ISOLATION_FINISHER";
+  }
+
+  // 5. BW_REP : part des sets à weight === 0 >= BW_SET_SHARE.
   const allSets = sessions.flatMap((session) => session.sets);
   if (allSets.length > 0) {
     const bwShare = allSets.filter((s) => s.weight === 0).length / allSets.length;
     if (bwShare >= ALGO_V2.BW_SET_SHARE) return "BW_REP";
   }
 
-  // 5. TOP_SET_BACKOFF : parmi les séances à >= 2 sets de travail, part des séances où le set le
+  // 6. TOP_SET_BACKOFF : parmi les séances à >= 2 sets de travail, part des séances où le set le
   // plus lourd n'est PAS le premier chronologique ET dépasse le premier d'au moins 1 incrément.
   const multiSetSessions = sessions
     .map((session) => session.sets)
@@ -260,18 +338,6 @@ export function detectPattern(exercise: Exercise, rawHistory: LoggedSet[][], pos
       return heaviest !== first && heaviest.weight >= first.weight + exercise.smallestIncrement - 1e-9;
     }).length;
     if (topSetLaterCount / multiSetSessions.length >= ALGO_V2.TOPSET_SHARE) return "TOP_SET_BACKOFF";
-  }
-
-  // 6. ISOLATION_FINISHER : nécessite `positions` alignés sur rawHistory ; si absent, on saute.
-  if (positions && sessions.every((session) => session.position !== undefined)) {
-    const setsPerSession = sessions.map((session) => session.sets.length);
-    const medSets = median(setsPerSession);
-    const posRatios = sessions
-      .map((session) => session.position!)
-      .filter((p) => p.sessionExerciseCount > 1)
-      .map((p) => p.position / (p.sessionExerciseCount - 1));
-    const medPos = posRatios.length > 0 ? median(posRatios) : 0;
-    if (medSets <= ALGO_V2.FINISHER_MAX_SETS && medPos >= ALGO_V2.FINISHER_POS_RATIO) return "ISOLATION_FINISHER";
   }
 
   // 7. STRAIGHT : défaut.

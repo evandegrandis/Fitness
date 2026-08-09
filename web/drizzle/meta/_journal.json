@@ -22,6 +22,34 @@
       "when": 1785766254958,
       "tag": "0002_dashing_tinkerer",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785850365956,
+      "tag": "0003_curly_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785868149908,
+      "tag": "0004_certain_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785922331734,
+      "tag": "0005_dusty_justice",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785936353748,
+      "tag": "0006_happy_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }

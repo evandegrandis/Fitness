@@ -128,7 +128,7 @@
   "Leg extension": {
     "exerciseName": "Leg extension",
     "weight": 82.5,
-    "reps": 10,
+    "reps": 8,
     "mode": "record_attempt",
     "reasonCodes": [
       "top_set_anchor_v2"
@@ -164,7 +164,7 @@
   "Tirage horizontal large": {
     "exerciseName": "Tirage horizontal large",
     "weight": 60,
-    "reps": 10,
+    "reps": 7,
     "mode": "record_attempt",
     "reasonCodes": [
       "top_set_anchor_v2"
@@ -199,11 +199,11 @@
   },
   "Dips": {
     "exerciseName": "Dips",
-    "weight": 2.5,
-    "reps": 10,
-    "mode": "transition_mode",
+    "weight": 0,
+    "reps": 11,
+    "mode": "record_attempt",
     "reasonCodes": [
-      "promotion_gate_passed"
+      "bw_anchor_reps_plus_one"
     ]
   },
   "Ab roller debout": {

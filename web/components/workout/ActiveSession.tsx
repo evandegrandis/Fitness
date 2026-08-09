@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { saveSession, deleteSession } from "@/lib/db/actions";
 import { enqueue, flush, pendingCount } from "@/lib/sync/outbox";
+import { defaultOutboxHandlers } from "@/lib/sync/handlers";
+import { writeThrough } from "@/lib/sync/write-through";
 import { useSyncStatus } from "@/lib/sync/status";
 import type { LoggedSet, WorkoutSession } from "@/lib/models/types";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
@@ -60,17 +62,35 @@ export function ActiveSession({
   const setPending = useSyncStatus((s) => s.setPending);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlight = useRef<Promise<void>>(Promise.resolve());
   const finishing = useRef(false);
 
   const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
-  // Empreinte STABLE des sets : ne change QUE quand un set est ajouté/édité/
-  // supprimé (pas à chaque changement de référence de `session`).
+  // Empreinte stable de toute la topologie persistée : sets, ordre et groupes.
+  // Un simple lien/détachement de superset doit lui aussi déclencher l'autosave.
   const setFingerprint = session.exercises
-    .map((e) => `${e.id}:${e.sets.map((s) => `${s.id}=${s.weight}x${s.reps}:${s.setType}:${s.completed ? 1 : 0}`).join(",")}`)
+    .map(
+      (e) =>
+        `${e.id}@${e.orderIndex}:${e.supersetGroupId ?? "-"}:` +
+        e.sets
+          .map(
+            (s) =>
+              `${s.id}=${s.weight}x${s.reps}:${s.setType}:${s.completed ? 1 : 0}:r${s.supersetRoundIndex ?? "-"}`
+          )
+          .join(",")
+    )
     .join("|") +
+    `#groups:${session.supersetGroups
+      .map((group) => `${group.id}@${group.orderIndex}=${group.memberOrder.join(",")}`)
+      .join("|")}` +
     `#cardio:${(session.cardioEntries ?? [])
-      .map((entry) => `${entry.id}=${entry.activityName}:${entry.durationSeconds}:${entry.level}:${entry.distanceKm}`)
+      .map(
+        (entry) =>
+          `${entry.id}=${entry.activityType}:${entry.activityName}:${entry.machineName}:${entry.machineModel}:` +
+          `${entry.durationSeconds}:${entry.level}:${entry.resistance}:${entry.distanceKm}:` +
+          `${entry.averageWatts}:${entry.averageHeartRateBpm}:${entry.inclinePercent}`
+      )
       .join(",")}`;
   const totalSetsCount = session.exercises.reduce((acc, e) => acc + e.sets.length, 0);
   const totalCardioCount = session.cardioEntries?.length ?? 0;
@@ -83,19 +103,31 @@ export function ActiveSession({
     if (finishing.current || (totalSetsCount === 0 && totalCardioCount === 0)) return;
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (isOffline()) {
-      setSyncStatus("offline");
-      return;
-    }
-    setSyncStatus("saving");
+    setSyncStatus(isOffline() ? "offline" : "saving");
     const snapshot = session;
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await saveSession(snapshot, false);
-        setSyncStatus("saved");
-      } catch {
-        setSyncStatus(isOffline() ? "offline" : "error");
-      }
+    saveTimer.current = setTimeout(() => {
+      const task = saveInFlight.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (finishing.current) return;
+          try {
+            // Une active a la même garantie que la séance finale : hors-ligne ou si Neon échoue,
+            // son dernier snapshot rejoint l'outbox (dédoublonnée par session.id) au lieu de vivre
+            // uniquement dans localStorage jusqu'au bouton Terminer.
+            await writeThrough(
+              { kind: "session", session: snapshot },
+              () => saveSession(snapshot, false)
+            );
+            const pending = pendingCount();
+            setPending(pending);
+            if (!finishing.current) {
+              setSyncStatus(pending === 0 ? "saved" : isOffline() ? "offline" : "error");
+            }
+          } catch {
+            if (!finishing.current) setSyncStatus(isOffline() ? "offline" : "error");
+          }
+        });
+      saveInFlight.current = task;
     }, 800);
 
     return () => {
@@ -106,32 +138,48 @@ export function ActiveSession({
 
   const handleFinish = async () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    finishing.current = true;
+
+    // Une sauvegarde active déjà partie sur le réseau doit finir AVANT l'upsert final. Sinon sa
+    // réponse peut arriver après et ressusciter la séance avec `isActive=true`/un ancien snapshot.
+    await saveInFlight.current.catch(() => undefined);
+    const beforeFinish = useWorkoutStore.getState();
 
     // Séance vide → on jette et on nettoie la base (au cas où un autosave l'a écrite).
-    if (session.exercises.every((e) => e.sets.length === 0) && (session.cardioEntries?.length ?? 0) === 0) {
-      finishing.current = true;
+    if (session.exercises.every((e) => !e.sets.some((set) => set.completed)) && (session.cardioEntries?.length ?? 0) === 0) {
       const id = session.id;
       discard();
       try {
-        await deleteSession(id);
+        await writeThrough({ kind: "session_delete", sessionId: id }, () => deleteSession(id));
+        setPending(pendingCount());
+        setSyncStatus(isOffline() ? "offline" : "saved");
       } catch {
-        /* best-effort */
+        // Si même la persistance locale de la suppression échoue, ne prétend pas avoir jeté la
+        // séance : restaure-la pour qu'aucune copie autosavée ne devienne un orphelin invisible.
+        useWorkoutStore.setState(beforeFinish);
+        finishing.current = false;
+        setSyncStatus("error");
       }
       return;
     }
 
-    finishing.current = true;
     const result = finish();
     if (!result) {
       finishing.current = false;
       return;
     }
 
-    // OFFLINE-FIRST : la séance finie est mise en FILE LOCALE d'abord (opération
-    // localStorage, ne peut PAS échouer) → jamais perdue, même sans réseau.
-    // On affiche le bilan immédiatement, puis on tente de synchroniser.
-    enqueue(result.session);
-    setPending(pendingCount());
+    // La séance n'est retirée de l'écran qu'une fois sa copie locale vérifiée.
+    // En cas d'échec de persistance, on restaure exactement l'état pré-finish.
+    try {
+      enqueue({ kind: "session", session: result.session });
+      setPending(pendingCount());
+    } catch {
+      useWorkoutStore.setState(beforeFinish);
+      finishing.current = false;
+      setSyncStatus("error");
+      return;
+    }
     onFinished(result);
 
     if (isOffline()) {
@@ -139,9 +187,13 @@ export function ActiveSession({
       return;
     }
     setSyncStatus("saving");
-    const remaining = await flush(saveSession);
-    setPending(remaining);
-    setSyncStatus(remaining === 0 ? "saved" : isOffline() ? "offline" : "error");
+    try {
+      const remaining = await flush(defaultOutboxHandlers);
+      setPending(remaining);
+      setSyncStatus(remaining === 0 ? "saved" : isOffline() ? "offline" : "error");
+    } catch {
+      setSyncStatus("error");
+    }
   };
 
   const handlePickExercise = (exerciseId: string) => {

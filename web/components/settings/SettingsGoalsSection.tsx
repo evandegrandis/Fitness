@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Stepper } from "@/components/ui/Stepper";
 import { setGoals } from "@/lib/db/actions";
+import { useWorkoutStore } from "@/lib/store/workout";
+import { writeThrough } from "@/lib/sync/write-through";
 import { MUSCLE_PARENTS, parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import type { MuscleGoal } from "@/lib/models/types";
 
@@ -25,18 +27,39 @@ export function SettingsGoalsSection({ goals }: { goals: MuscleGoal[] }) {
   const [pending, setPending] = useState<Record<MuscleParent, number> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mutationVersion = useRef(0);
+  const lastDurable = useRef<MuscleGoal[]>(goals);
 
   const values = pending ?? toMap(goals);
 
   async function update(parent: MuscleParent, value: number) {
-    const next = { ...values, [parent]: value };
+    const version = ++mutationVersion.current;
+    const previousGoals = useWorkoutStore.getState().goals;
+    // Un scrub/tap sur un autre muscle peut avoir mis le store à jour avant
+    // que React ne rerende `values`; repartir du store évite de perdre ce tap.
+    const next = { ...toMap(previousGoals), [parent]: value };
     setPending(next);
     setSaving(true);
     setSaved(false);
+    setError(null);
     const goalList: MuscleGoal[] = MUSCLE_PARENTS.map((p) => ({ parent: p, weeklyGoalSets: next[p] }));
-    await setGoals(goalList);
-    setSaving(false);
-    setSaved(true);
+    useWorkoutStore.setState({ goals: goalList });
+    try {
+      await writeThrough({ kind: "goals", goals: goalList }, () => setGoals(goalList));
+      lastDurable.current = goalList;
+      if (version === mutationVersion.current) setSaved(true);
+    } catch (cause) {
+      if (useWorkoutStore.getState().goals === goalList) {
+        useWorkoutStore.setState({ goals: lastDurable.current });
+      }
+      if (version === mutationVersion.current) {
+        setPending(toMap(lastDurable.current));
+        setError(cause instanceof Error ? cause.message : "Impossible de sécuriser les objectifs.");
+      }
+    } finally {
+      if (version === mutationVersion.current) setSaving(false);
+    }
   }
 
   return (
@@ -54,6 +77,7 @@ export function SettingsGoalsSection({ goals }: { goals: MuscleGoal[] }) {
           </div>
         ))}
       </div>
+      {error && <p role="alert" className="mt-2 text-xs text-rose-200">{error}</p>}
     </GlassCard>
   );
 }

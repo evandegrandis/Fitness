@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "purpose": "Benchmarks StrengthLevel sourcés pour un point de référence fixe: homme, 80 kg, tranche adulte 25–40 ans. Aucun autre poids ne doit être interpolé à partir de ce fichier.",
+    "profile": { "gender": "male", "bodyWeightKg": 80, "ageYears": 25 },
+    "source": "strengthlevel.com (données arrêtées ~2026-03)",
+    "dataCutoff": "2026-03-05",
+    "tiers": ["beginner", "novice", "intermediate", "advanced", "elite"],
+    "engineNote": "Chaque entrée est un point de référence UNIQUE à 80 kg (pas une courbe multi-poids). lib/engines/benchmark.ts masque le repère absolu pour tout autre poids. Les conversions propres aux logs Jeera sont portées explicitement par loggedLoadMultiplier et loadNote."
+  },
+  "standards": {
+    "Lateral raises":     { "slSlug": "dumbbell-lateral-raise", "unit": "load", "convention": "per_arm", "isMachine": false, "load": [5, 10, 16, 25, 34] },
+    "Plate loaded lat raise": { "slSlug": "machine-lateral-raise", "unit": "load", "convention": "total", "isMachine": true, "loggedLoadMultiplier": 2, "load": [25, 41, 61, 84, 111], "loadNote": "charge Jeera saisie par bras ×2 → charge totale du standard", "caveat": "Charge loggée par bras dans Jeera puis convertie explicitement ×2. Machine à disques: géométrie et résistance réelle non standardisées, comparaison indicative." },
+    "Curl debout":        { "slSlug": "dumbbell-curl", "unit": "load", "convention": "per_arm", "isMachine": false, "load": [8, 14, 22, 32, 42] },
+    "Curl incliné":       { "slSlug": "incline-dumbbell-curl", "unit": "load", "convention": "per_arm", "isMachine": false, "load": [10, 14, 20, 26, 33] },
+    "Développé incliné haltères": { "slSlug": "incline-dumbbell-press", "unit": "load", "convention": "per_arm", "isMachine": false, "load": [22, 29, 39, 50, 62] },
+    "Extension triceps poulie": { "slSlug": "tricep-pushdown", "unit": "load", "convention": "total", "isMachine": true, "load": [22, 36, 56, 80, 107], "caveat": "poulie: charge ressentie dépend du nombre de poulies — comparaison indicative, voir aussi progression perso" },
+    "Tractions SN":       { "slSlug": "neutral-grip-pull-ups", "unit": "reps", "convention": "reps", "isMachine": false, "reps": [1, 8, 14, 22, 30], "loadNote": "répétitions au poids de corps · ligne homme 80 kg" },
+    "Traction pronation large": { "slSlug": "pull-ups", "unit": "reps_and_load", "convention": "added", "isMachine": false, "reps": [1, 7, 13, 21, 30], "load": [-2, 14, 33, 54, 75] },
+    "Dips":               { "slSlug": "dips", "unit": "reps_and_load", "convention": "added", "isMachine": false, "reps": [3, 10, 20, 31, 43], "load": [5, 26, 52, 81, 111] },
+    "Leg extension":      { "slSlug": "leg-extension", "unit": "load", "convention": "total", "isMachine": true, "load": [45, 69, 99, 135, 175], "caveat": "machine: stack de ta salle ≠ StrengthLevel, comparaison indicative" },
+    "Leg curl":           { "slSlug": "seated-leg-curl", "unit": "load", "convention": "total", "isMachine": true, "load": [36, 55, 79, 108, 139], "caveat": "machine: comparaison indicative" },
+    "Shoulder press":     { "slSlug": "machine-shoulder-press", "unit": "load", "convention": "total", "isMachine": true, "load": [29, 50, 76, 109, 145], "caveat": "machine à disques: poids total, comparaison indicative" },
+    "Extension triceps haltère": { "slSlug": "dumbbell-tricep-extension", "unit": "load", "convention": "per_arm", "isMachine": false, "load": [6, 12, 22, 33, 47] },
+    "Curl marteau poulie": { "slSlug": "hammer-curl", "unit": "load", "convention": "per_arm", "isMachine": true, "load": [11, 16, 24, 33, 42], "loadNote": "proxy Hammer Curl haltère (version poulie non publiée)", "caveat": "poulie: charge ressentie dépend des poulies — indicatif + progression perso" },
+    "Tirage vertical muscle up": { "slSlug": "lat-pulldown", "unit": "load", "convention": "total", "isMachine": true, "load": [47, 64, 85, 108, 133], "caveat": "HYBRIDE poulie (lat pulldown partie facile + pushdown triceps non strict) — comparaison très indicative, s'appuyer sur progression perso" },
+    "Pulley serré":       { "slSlug": "seated-cable-row", "unit": "load", "convention": "total", "isMachine": true, "load": [47, 65, 87, 112, 140], "caveat": "machine: comparaison indicative" },
+    "Tirage horizontal large": { "slSlug": "seated-cable-row", "unit": "load", "convention": "total", "isMachine": true, "load": [47, 65, 87, 112, 140], "caveat": "machine: comparaison indicative" },
+    "Pec deck":           { "slSlug": "machine-fly", "unit": "load", "convention": "total", "isMachine": true, "load": [42, 63, 89, 119, 152], "caveat": "machine: comparaison indicative" },
+    "Chest Press":        { "slSlug": "chest-press", "unit": "load", "convention": "total", "isMachine": true, "load": [39, 61, 89, 123, 160], "caveat": "machine à disques: poids total, comparaison indicative" },
+    "DC assisté":         { "slSlug": "chest-press", "unit": "load", "convention": "total", "isMachine": true, "load": [39, 61, 89, 123, 160], "caveat": "développé couché machine à disques: poids total, comparaison indicative" },
+    "Wrist curl":         { "slSlug": "wrist-curl", "unit": "load", "convention": "total", "isMachine": false, "load": [7, 21, 44, 74, 110], "loadNote": "standard barre (total)" },
+    "Crunch déclinés":    { "slSlug": "cable-crunch", "unit": "load", "convention": "total", "isMachine": true, "load": [26, 44, 68, 97, 130], "loadNote": "proxy Cable Crunch (crunch lesté) — décliné non publié", "caveat": "poulie: charge ressentie dépend des poulies — indicatif + progression perso" },
+    "Relevé de jambes chaise romaine": { "slSlug": "hanging-leg-raise", "unit": "reps", "convention": "reps", "isMachine": false, "reps": [1, 9, 17, 28, 39], "loadNote": "reps (jambes tendues ~ vertical/hanging leg raise) — les valeurs [32,94] stockées étaient erronées" },
+    "Ab roller genoux":   { "slSlug": "ab-wheel-rollout", "unit": "reps", "convention": "reps", "isMachine": false, "reps": [1, 8, 21, 37, 55], "loadNote": "variante plus facile (genoux) — même standard en proxy" },
+    "Row uni":            { "slSlug": "machine-row", "unit": "load", "convention": "total", "isMachine": true, "load": [47, 72, 104, 142, 184], "loadNote": "logué en TOTAL (Machine Row total, pas par bras)", "caveat": "machine: comparaison indicative" },
+    "Rear delt fly":      { "slSlug": "reverse-fly", "unit": "load", "convention": "per_arm", "isMachine": false, "load": [3, 9, 17, 29, 42] },
+    "Dips machine":       { "slSlug": "seated-dip-machine", "unit": "load", "convention": "total", "isMachine": true, "load": [56, 81, 112, 149, 188], "caveat": "machine à disques: poids total, comparaison indicative" },
+    "Isolateral row":     { "slSlug": "machine-row", "unit": "load", "convention": "total", "isMachine": true, "load": [47, 72, 104, 142, 184], "loadNote": "logué en TOTAL (pas par côté) — confirmé par max 120 = Avancé cohérent", "caveat": "machine: comparaison indicative" },
+    "HSPU":               { "slSlug": "handstand-push-ups", "unit": "reps", "convention": "reps", "isMachine": false, "reps": [1, 3, 11, 21, 32], "loadNote": "répétitions au poids de corps · ligne homme 80 kg (le seuil publié <1 est représenté par 1)" }
+  },
+  "resistanceProfiles": {
+    "_doc": "Où l'exercice est le plus dur (sticking point) → sert au ciblage de point faible de l'anti-plateau. bottom=étirement, mid=milieu, lockout=contraction/fin de course.",
+    "Chest Press": "bottom", "DC assisté": "bottom", "Développé incliné haltères": "bottom",
+    "Pec deck": "bottom", "Dips machine": "bottom", "Dips": "bottom", "HSPU": "bottom",
+    "Shoulder press": "mid",
+    "Lateral raises": "lockout",
+    "Isolateral row": "lockout", "Row uni": "lockout", "Tirage horizontal large": "lockout", "Pulley serré": "lockout",
+    "Tirage vertical muscle up": "lockout", "Traction pronation large": "lockout", "Tractions SN": "lockout",
+    "Rear delt fly": "lockout",
+    "Curl debout": "mid", "Curl incliné": "mid", "Curl marteau poulie": "mid", "Wrist curl": "mid",
+    "Extension triceps haltère": "bottom", "Extension triceps poulie": "lockout",
+    "Leg extension": "lockout", "Leg curl": "lockout",
+    "Crunch déclinés": "lockout", "Relevé de jambes chaise romaine": "bottom",
+    "Ab roller debout": "bottom", "Ab roller genoux": "bottom"
+  },
+  "stillAmbiguous": {
+    "_doc": "Exercices encore sans standard activé. Les proxies déjà décidés vivent uniquement dans standards avec leur caveat; ils ne sont plus dupliqués ici comme s'ils restaient à trancher.",
+    "Ab roller debout": "La variante debout est nettement plus difficile que l'Ab Wheel Rollout à genoux publié; ne pas réutiliser ce proxy sans validation."
+  }
+}

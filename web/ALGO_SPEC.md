@@ -129,8 +129,8 @@ Prédire `reps_attendues(poids P aujourd'hui)` :
 - **Promotion** : à un poids donné, si Evan fait **> 8 reps** → la séance suivante, **viser le poids suivant** (+1 incrément) sur le set concerné.
 - **Trop haut** : si **< 6 reps** → il a visé trop haut pour ce set/ce jour/ce moment → réduire (−1 incrément) sans casser la référence (mauvais jour ≠ régression durable).
 - **Bande de succès** ≈ 6–10 reps ; cap 10.
-- **Plateau** : ≥ 3 séances même charge/reps sur un exercice → proposer une **surcharge (top set +1 incr, ~5 reps)** OU une technique d'intensité (backoff plus lourd, rest-pause) — **sur les 1-2 derniers sets seulement**, 1–2 par groupe musculaire, à cycler (science).
-- **Anti-plateau échoué** : si la surcharge tentée donne une ancre < plancher la fois suivante → **deload −10 % sur 2 séances** puis re-tentative ; le **bilan** le signale (« méthode à changer »).
+- **Plateau (mis à jour, `VARIATION_CYCLING_SPEC.md` — AUTORITÉ sur ce point, abroge la version précédente de cette ligne)** : le trigger est **daté** (≥ 14 jours calendaires sans nouveau record d'e1RM sur le rôle dominant, ET ≥ 2 séances dans cette fenêtre — `isPlateau`, pas un simple compteur de séances). **Aucune technique d'intensité n'est prescrite par l'app** (l'ancienne « surcharge top set +1 incr / rest-pause » est retirée, décision #3) : le levier est la **rotation de variation** (même pattern de mouvement, carry-over musculaire, cible le point faible — `lib/engines/variation-select.ts::selectAlternative`), proposée dans le **bilan** de fin de séance (carte accepter/refuser, non destructive — la bascule ne prend effet qu'à la séance suivante). Un indicateur préemptif discret (« progrès qui ralentit », `slowing`) apparaît dès qu'il stagne depuis ≥7 jours, avant même le plateau officiel.
+- **Anti-plateau échoué** : si la rotation de variation ne relance pas non plus (ou aucun candidat trouvé) → **deload réactif −10 % sur 2 séances** (mécanisme inchangé, `detectAntiPlateauActive`) puis re-tentative ; le **bilan** le signale (« méthode à changer »).
 
 ---
 

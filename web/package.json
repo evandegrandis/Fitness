@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "tsx scripts/generate-sw.ts",
     "dev": "next dev",
+    "prebuild": "tsx scripts/generate-sw.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
