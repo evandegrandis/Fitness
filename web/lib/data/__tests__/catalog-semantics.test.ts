@@ -74,6 +74,19 @@ describe("invariants sémantiques du catalogue", () => {
     expect(backup.exercises.find((item) => item.name === "Dips")?.setPatternMode).toBe(
       SetPatternMode.bodyweight
     );
+    expect(backup.exercises.find((item) => item.name === "HSPU")?.setPatternMode).toBe(
+      SetPatternMode.bodyweight
+    );
+    expect(backup.exercises.find((item) => item.name === "Tractions SN")?.setPatternMode).toBe(
+      SetPatternMode.weightedBodyweight
+    );
+
+    const weightedPullups = backup.sessions
+      .flatMap((session) => session.exercises)
+      .filter((logged) => logged.exerciseName === "Tractions SN")
+      .flatMap((logged) => logged.sets)
+      .filter((set) => set.completed && set.weight > 0);
+    expect(weightedPullups.length).toBeGreaterThan(0);
 
     const dataset = buildFullDataset(backup, readJson("recent_sessions.json"));
     for (const name of ["HSPU", "Relevé de jambes chaise romaine", "Ab roller genoux"]) {

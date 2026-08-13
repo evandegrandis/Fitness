@@ -929,7 +929,7 @@
       "name": "HSPU",
       "repTargetMax": 10,
       "repTargetMin": 5,
-      "setPatternMode": "weighted_bodyweight",
+      "setPatternMode": "bodyweight",
       "setupNotes": "",
       "smallestIncrement": 1.25,
       "sortOrder": 0,
