@@ -22,17 +22,28 @@ const MINUTES_PER_SET_ESTIMATE = 3.5;
  * nombre de séries de travail (séances transcrites du carnet, sans horaires).
  * `estimated: true` → l'UI préfixe la durée d'un « ~ ».
  */
-export function sessionDurationMinutes(session: WorkoutSession): { minutes: number; estimated: boolean } {
+export function sessionDurationMinutes(
+  session: WorkoutSession,
+  exercises: Exercise[] = []
+): { minutes: number; estimated: boolean } {
   if (session.endTime) {
     return { minutes: Math.round((session.endTime.getTime() - session.startTime.getTime()) / 60_000), estimated: false };
   }
-  const sets = session.exercises.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0);
+  const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+  const sets = session.exercises.reduce(
+    (acc, logged) =>
+      acc +
+      physiologicalSetUnits(logged.sets, {
+        increment: exerciseById.get(logged.exerciseId)?.smallestIncrement,
+      }),
+    0
+  );
   return { minutes: Math.round(sets * MINUTES_PER_SET_ESTIMATE), estimated: true };
 }
 
 /** Libellé court d'une durée de séance, avec « ~ » si estimée. Ex : « ~1 h 03 », « 45 min ». */
-export function sessionDurationLabel(session: WorkoutSession): string {
-  const { minutes, estimated } = sessionDurationMinutes(session);
+export function sessionDurationLabel(session: WorkoutSession, exercises: Exercise[] = []): string {
+  const { minutes, estimated } = sessionDurationMinutes(session, exercises);
   const prefix = estimated ? "~" : "";
   if (minutes < 60) return `${prefix}${minutes} min`;
   const h = Math.floor(minutes / 60);

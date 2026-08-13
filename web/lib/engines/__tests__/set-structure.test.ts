@@ -75,6 +75,30 @@ describe("séries composites — drop-set / rest-pause", () => {
     expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
   });
 
+  it("regroupe une série logique explicitement complétée même si la saisie est espacée", () => {
+    const sets = [
+      set(0, 0, 80, 9, { logicalSetId: "pec-1" }),
+      set(1, 192, 85, 5, { logicalSetId: "pec-2" }),
+      set(2, 425, 75, 5, { logicalSetId: "pec-2", setTechnique: "completion" }),
+    ];
+    const blocks = compositeSetBlocks(sets, { increment: 5 });
+
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1]).toMatchObject({ kind: "completion", totalReps: 10, effectiveSetUnits: 1 });
+    expect(effectiveSetUnits(sets, { increment: 5 })).toBe(2);
+  });
+
+  it("ne fusionne jamais deux groupes logiques explicites distincts", () => {
+    const sets = [
+      set(0, 0, 100, 4, { logicalSetId: "group-a" }),
+      set(1, 120, 75, 4, { logicalSetId: "group-a", setTechnique: "completion" }),
+      set(2, 240, 100, 4, { logicalSetId: "group-b" }),
+      set(3, 360, 75, 4, { logicalSetId: "group-b", setTechnique: "completion" }),
+    ];
+    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(2);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(2);
+  });
+
   it("ne considère jamais les timestamps identiques d'un import legacy comme une preuve", () => {
     const timestamp = new Date("2026-04-10T18:00:00.000Z");
     const sets = [

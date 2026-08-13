@@ -49,7 +49,7 @@ function EditSetForm({
       <h2 className="font-display text-base font-bold text-[--color-fg]">Modifier le set</h2>
       <div className="flex items-center justify-center gap-6">
         <Stepper label="Poids" value={weight} onChange={setWeight} step={increment} min={0} suffix="kg" />
-        <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={0} />
+        <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={1} />
       </div>
       <button
         type="button"

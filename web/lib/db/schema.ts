@@ -231,8 +231,26 @@ export const loggedSets = pgTable(
     setSlotIndex: integer("set_slot_index").notNull().default(0),
     completed: boolean("completed").notNull().default(true),
     supersetRoundIndex: integer("superset_round_index"),
+    /** Snapshot de la suggestion vue avant validation, pour calibrage futur du moteur. */
+    suggestedWeight: doublePrecision("suggested_weight"),
+    suggestedReps: integer("suggested_reps"),
+    predictedRepsAtActualWeight: integer("predicted_reps_at_actual_weight"),
+    suggestedSetType: text("suggested_set_type"),
+    suggestionMode: text("suggestion_mode"),
+    suggestionReasonCodes: jsonb("suggestion_reason_codes").$type<string[]>().notNull().default([]),
+    suggestionEngineVersion: text("suggestion_engine_version"),
+    /** Plusieurs lignes peuvent représenter une seule série physiologique. */
+    logicalSetId: text("logical_set_id"),
+    setTechnique: text("set_technique"),
   },
-  (table) => [index("logged_sets_logged_exercise_id_idx").on(table.loggedExerciseId)]
+  (table) => [
+    index("logged_sets_logged_exercise_id_idx").on(table.loggedExerciseId),
+    index("logged_sets_logical_set_id_idx").on(table.logicalSetId),
+    check(
+      "logged_sets_set_technique_check",
+      sql`${table.setTechnique} IS NULL OR ${table.setTechnique} IN ('completion', 'drop_set', 'rest_pause')`
+    ),
+  ]
 );
 
 export const loggedSetsRelations = relations(loggedSets, ({ one }) => ({

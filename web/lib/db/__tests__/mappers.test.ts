@@ -9,10 +9,12 @@ import {
   recoveryCheckinToRow,
   sessionToCardioEntryRows,
   sessionToLoggedExerciseRows,
+  sessionToLoggedSetRows,
 } from "../mappers";
 import type {
   CardioEntryRow,
   ExerciseRow,
+  LoggedSetRow,
   RecoveryCheckinRow,
   WorkoutSessionRow,
 } from "../schema";
@@ -206,6 +208,112 @@ describe("logged exercise mappers — plateauWeakPoint (capture 1-tap)", () => {
       []
     );
     expect(session.exercises[0].plateauWeakPoint).toBeNull();
+  });
+});
+
+describe("logged set mappers — suggestion snapshot and logical groups", () => {
+  const sessionRow: WorkoutSessionRow = {
+    id: "session-1",
+    date: new Date("2026-08-13T10:00:00.000Z"),
+    startTime: new Date("2026-08-13T10:00:00.000Z"),
+    endTime: null,
+    notes: "",
+    isActive: true,
+    templateName: null,
+  };
+
+  it("normalizes missing cache-era metadata to null/[] before a DB write", () => {
+    const rows = sessionToLoggedSetRows({
+      ...sessionRow,
+      exercises: [
+        {
+          id: "logged-1",
+          orderIndex: 0,
+          notes: "",
+          exerciseId: "exercise-1",
+          exerciseName: "Pec deck",
+          supersetGroupId: null,
+          plateauWeakPoint: null,
+          sets: [
+            {
+              id: "set-1",
+              weight: 80,
+              reps: 9,
+              setType: "work",
+              timestamp: new Date("2026-08-13T10:05:00.000Z"),
+              setSlotIndex: 0,
+              completed: true,
+              supersetRoundIndex: null,
+            },
+          ],
+        },
+      ],
+      supersetGroups: [],
+    });
+
+    expect(rows[0]).toMatchObject({
+      suggestedWeight: null,
+      suggestedReps: null,
+      predictedRepsAtActualWeight: null,
+      suggestedSetType: null,
+      suggestionMode: null,
+      suggestionReasonCodes: [],
+      suggestionEngineVersion: null,
+      logicalSetId: null,
+      setTechnique: null,
+    });
+  });
+
+  it("hydrates every persisted snapshot field", () => {
+    const setRow: LoggedSetRow = {
+      id: "set-1",
+      loggedExerciseId: "logged-1",
+      weight: 75,
+      reps: 5,
+      setType: "backoff",
+      timestamp: new Date("2026-08-13T10:06:00.000Z"),
+      setSlotIndex: 1,
+      completed: true,
+      supersetRoundIndex: null,
+      suggestedWeight: 80,
+      suggestedReps: 8,
+      predictedRepsAtActualWeight: 10,
+      suggestedSetType: "top_set",
+      suggestionMode: "fallback_hypertrophy",
+      suggestionReasonCodes: ["lighter_followup"],
+      suggestionEngineVersion: "progression-v2",
+      logicalSetId: "logical-set-1",
+      setTechnique: "completion",
+    };
+    const session = mapSessionRow(
+      sessionRow,
+      [
+        {
+          id: "logged-1",
+          sessionId: "session-1",
+          orderIndex: 0,
+          notes: "",
+          exerciseId: "exercise-1",
+          exerciseName: "Pec deck",
+          supersetGroupId: null,
+          plateauWeakPoint: null,
+        },
+      ],
+      [setRow],
+      []
+    );
+
+    expect(session.exercises[0].sets[0]).toMatchObject({
+      suggestedWeight: 80,
+      suggestedReps: 8,
+      predictedRepsAtActualWeight: 10,
+      suggestedSetType: "top_set",
+      suggestionMode: "fallback_hypertrophy",
+      suggestionReasonCodes: ["lighter_followup"],
+      suggestionEngineVersion: "progression-v2",
+      logicalSetId: "logical-set-1",
+      setTechnique: "completion",
+    });
   });
 });
 

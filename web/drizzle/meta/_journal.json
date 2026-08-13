@@ -50,6 +50,13 @@
       "when": 1785936353748,
       "tag": "0006_happy_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786648063876,
+      "tag": "0007_kind_romulus",
+      "breakpoints": true
     }
   ]
 }

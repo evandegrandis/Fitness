@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { Copy, Flame, GripVertical, Link2, Repeat, TrendingDown, Unlink } from "lucide-react";
+import { Copy, Flame, GripVertical, Link2, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { SwipeRow } from "@/components/ui/SwipeRow";
-import { buildRecords } from "@/lib/engines/records";
-import { compositeSetBlocks, physiologicalSetUnits, SET_STRUCTURE } from "@/lib/engines/set-structure";
+import { allTimeRecordSet } from "@/lib/engines/records";
+import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
 import { completedWorkSets } from "@/lib/models/types";
@@ -17,6 +17,10 @@ import { SetEntry } from "./SetEntry";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
 import { nextSupersetExerciseId, nextSupersetRoundIndex } from "@/lib/store/superset";
+
+function cleanWeight(weight: number): string {
+  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
+}
 
 function supersetRoundLabel(session: WorkoutSession, loggedExercise: LoggedExercise): string | null {
   const group = session.supersetGroups.find((g) => g.id === loggedExercise.supersetGroupId);
@@ -84,8 +88,12 @@ export function ExerciseCard({
   const sets = orderedSets(loggedExercise);
   const finisherSets = sets.filter((set) => set.setType === SetType.finisher);
   const normalSets = sets.filter((set) => set.setType !== SetType.finisher);
-  const compositeBlocks = compositeSetBlocks(normalSets, { increment: exercise?.smallestIncrement }).filter(
+  const workBlocks = compositeSetBlocks(normalSets, { increment: exercise?.smallestIncrement });
+  const compositeBlocks = workBlocks.filter(
     (block) => block.sets.length > 1
+  );
+  const seriesNumberBySetId = new Map(
+    workBlocks.flatMap((block, index) => block.sets.map((set) => [set.id, index + 1] as const))
   );
   const compositeByLeadId = new Map(compositeBlocks.map((block) => [block.leadSet.id, block]));
   const compositeContinuationIds = new Set(compositeBlocks.flatMap((block) => block.sets.slice(1).map((set) => set.id)));
@@ -122,16 +130,20 @@ export function ExerciseCard({
     () => (exercise ? lastSessionSetFor(exercise.id, history) : null),
     [exercise, history]
   );
-  // Calcul PUR (pas d'écriture de store en render) — évite le setState-in-render.
-  const exerciseRecords = useMemo(() => {
+  // Record réellement all-time, séance active comprise, pour donner le bon repère au moment
+  // où l'utilisateur ouvre la carte et choisit sa prochaine charge.
+  const allTimeRecord = useMemo(() => {
     if (!exercise) return undefined;
     const historicalSets = history
       .filter((s) => !s.isActive)
       .flatMap((s) => s.exercises)
       .filter((e) => e.exerciseId === exercise.id)
       .flatMap((e) => e.sets);
-    return buildRecords(exercise, historicalSets);
-  }, [exercise, history]);
+    const activeSets = session.exercises
+      .filter((candidate) => candidate.exerciseId === exercise.id)
+      .flatMap((candidate) => candidate.sets);
+    return allTimeRecordSet(exercise, [...historicalSets, ...activeSets]);
+  }, [exercise, history, session.exercises]);
 
   if (!exercise) return null;
 
@@ -261,24 +273,31 @@ export function ExerciseCard({
                 transition={{ duration: 0.25 }}
                 className="flex flex-col gap-3 overflow-hidden"
               >
+                {allTimeRecord && (
+                  <div className="pill w-fit" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.10)" }}>
+                    <Trophy size={11} />
+                    Record all-time · {allTimeRecord.weight > 0 ? `${cleanWeight(allTimeRecord.weight)}kg` : "BW"} × {allTimeRecord.reps}
+                  </div>
+                )}
                 {normalSets.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     {normalSets.map((set) => {
                       if (compositeContinuationIds.has(set.id)) return null;
                       const block = compositeByLeadId.get(set.id);
                       if (!block) {
-                        return <SetRow key={set.id} set={set} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />;
+                        return <SetRow key={set.id} set={set} seriesNumber={seriesNumberBySetId.get(set.id)} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />;
                       }
                       return (
                         <div key={set.id} className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.035] p-2">
                           <div className="mb-1.5 px-1 text-[0.68rem] font-semibold text-sky-200">
-                            {block.kind === "drop_set" ? "Drop set" : "Rest-pause"} · {block.totalReps}/{SET_STRUCTURE.EFFECTIVE_REPS_PER_SET} reps · {Math.round(block.effectiveSetUnits * 10) / 10} série{block.effectiveSetUnits === 1 ? "" : "s"} effective{block.effectiveSetUnits === 1 ? "" : "s"}
+                            {block.kind === "completion" ? "Série complétée" : block.kind === "drop_set" ? "Drop set" : "Rest-pause"} · {block.totalReps} reps cumulées · {Math.round(block.effectiveSetUnits * 10) / 10} série{block.effectiveSetUnits === 1 ? "" : "s"} effective{block.effectiveSetUnits === 1 ? "" : "s"}
                           </div>
                           <div className="flex flex-col gap-1.5">
                             {block.sets.map((blockSet) => (
                               <SetRow
                                 key={blockSet.id}
                                 set={blockSet}
+                                seriesNumber={seriesNumberBySetId.get(blockSet.id)}
                                 isRecord={justHitRecord[blockSet.id]}
                                 onTap={() => onEditSet(blockSet)}
                               />
@@ -324,7 +343,7 @@ export function ExerciseCard({
                     const requiresImmediateCompletion = useWorkoutStore
                       .getState()
                       .suggestion(loggedExercise.id)
-                      .reasonCodes.includes("drop_set_completion");
+                      .reasonCodes.includes("logical_set_completion");
                     const nextId =
                       updatedSession && advancesSuperset && !requiresImmediateCompletion
                         ? nextSupersetExerciseId(updatedSession, loggedExercise.id)
@@ -343,9 +362,9 @@ export function ExerciseCard({
                   ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"} · dernière ${currentLastSet.weight > 0 ? `${currentLastSet.weight}kg` : "BW"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
                   : "À faire"}
               </span>
-              {exerciseRecords && !exerciseRecords.isEmpty && (
+              {allTimeRecord && (
                 <span className="shrink-0">
-                  Record {exerciseRecords.heaviestValidated}kg × {exerciseRecords.repsAtHeaviestValidated}
+                  Record {allTimeRecord.weight > 0 ? `${cleanWeight(allTimeRecord.weight)}kg` : "BW"} × {allTimeRecord.reps}
                 </span>
               )}
             </div>

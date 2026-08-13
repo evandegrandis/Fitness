@@ -444,10 +444,10 @@ describe("useWorkoutStore", () => {
     store.logSet(loggedExerciseId, { weight: 100, reps: 4 });
     const completion = useWorkoutStore.getState().suggestion(loggedExerciseId);
 
-    expect(completion.reasonCodes).toContain("drop_set_completion");
+    expect(completion.reasonCodes).toContain("logical_set_completion");
     expect(completion.weight).toBe(97.5);
     expect(completion.reps).toBe(4);
-    expect(completion.setType).toBe("backoff");
+    expect(completion.setType).toBe("work");
 
     // Rend le signal temporel non ambigu (les imports à timestamp identique ne
     // sont volontairement jamais fusionnés), puis complète bien à 4+4=8.
@@ -469,11 +469,68 @@ describe("useWorkoutStore", () => {
           }
         : null,
     }));
-    store.logSet(loggedExerciseId, { weight: completion.weight, reps: completion.reps, setType: completion.setType });
+    store.logSet(loggedExerciseId, {
+      weight: completion.weight,
+      reps: completion.reps,
+      setType: completion.setType,
+      suggestedWeight: completion.weight,
+      suggestedReps: completion.reps,
+      suggestedSetType: completion.setType,
+      suggestionMode: completion.mode,
+      suggestionReasonCodes: completion.reasonCodes,
+    });
 
     const afterCompletion = useWorkoutStore.getState().suggestion(loggedExerciseId);
     expect(afterCompletion.reasonCodes).not.toContain("drop_set_completion");
     expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
+  });
+
+  it("ne fusionne pas deux mini-séries séparées par un autre exercice", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    store.addExercise(DIPS.id);
+    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+
+    store.logSet(benchLogged.id, { weight: 100, reps: 5 });
+    store.logSet(dipsLogged.id, { weight: 0, reps: 8 });
+    const completion = useWorkoutStore.getState().suggestion(benchLogged.id);
+    store.logSet(benchLogged.id, {
+      weight: 97.5,
+      reps: 5,
+      suggestionReasonCodes: completion.reasonCodes,
+    });
+
+    const benchSets = useWorkoutStore.getState().active!.exercises[0].sets;
+    expect(benchSets[0].logicalSetId).not.toBe(benchSets[1].logicalSetId);
+  });
+
+  it("répare les groupes logiques et invalide la projection quand un set est édité", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
+
+    store.logSet(loggedExerciseId, { weight: 85, reps: 5 });
+    const completion = useWorkoutStore.getState().suggestion(loggedExerciseId);
+    store.logSet(loggedExerciseId, {
+      weight: 75,
+      reps: 8,
+      predictedRepsAtActualWeight: 5,
+      suggestionReasonCodes: completion.reasonCodes,
+    });
+    const before = useWorkoutStore.getState().active!.exercises[0].sets;
+    expect(before[0].logicalSetId).toBe(before[1].logicalSetId);
+
+    store.editSet(before[0].id, { weight: 85, reps: 10 });
+    const after = useWorkoutStore.getState().active!.exercises[0].sets;
+    expect(after[0].logicalSetId).not.toBe(after[1].logicalSetId);
+    expect(after[1].setTechnique).toBeNull();
+    store.editSet(after[1].id, { weight: 75, reps: 8 });
+    expect(useWorkoutStore.getState().active!.exercises[0].sets[1].predictedRepsAtActualWeight).toBeNull();
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(2);
   });
 
   it("garde la continuation immédiate d'un drop-set dans le même round de superset", () => {

@@ -174,8 +174,70 @@ describe("backup v3 lossless fields", () => {
 
   it("refuse une version future avant tout import destructif", () => {
     const backup = v3Backup();
-    backup.version = 4;
+    backup.version = 5;
     expect(() => parseBackup(backup)).toThrow();
+  });
+
+  it("normalise les nouveaux champs absents d'un backup v3", () => {
+    const parsed = parseBackup(v3Backup());
+
+    expect(parsed.sessions[0].exercises[0].sets[0]).toMatchObject({
+      suggestedWeight: null,
+      suggestedReps: null,
+      predictedRepsAtActualWeight: null,
+      suggestedSetType: null,
+      suggestionMode: null,
+      suggestionReasonCodes: [],
+      suggestionEngineVersion: null,
+      logicalSetId: null,
+      setTechnique: null,
+    });
+  });
+
+  it("préserve le snapshot suggestion/réel et le groupe logique en v4", () => {
+    const backup = v3Backup();
+    backup.version = 4;
+    Object.assign(backup.sessions[0].exercises[0].sets[0], {
+      suggestedWeight: 12.5,
+      suggestedReps: 9,
+      predictedRepsAtActualWeight: 8,
+      suggestedSetType: "top_set",
+      suggestionMode: "record_attempt",
+      suggestionReasonCodes: ["top_set_anchor_v2"],
+      suggestionEngineVersion: "progression-v2",
+      logicalSetId: "logical-set-1",
+      setTechnique: "completion",
+    });
+
+    const parsed = parseBackup(backup);
+    const json = createBackupJson({
+      catalog: parsed.exercises,
+      history: parsed.sessions,
+      active: null,
+      goals: parsed.goals,
+      settings: parsed.settings,
+      templates: parsed.templates,
+      recoveryCheckins: parsed.recoveryCheckins,
+      activeMode: parsed.activeMode,
+      selectedStartMode: parsed.selectedStartMode,
+      pendingVariantSwitches: parsed.pendingVariantSwitches,
+      treatedVariantSuggestions: parsed.treatedVariantSuggestions,
+      rotationAcceptedAt: parsed.rotationAcceptedAt,
+    });
+    const restored = parseBackup(json);
+
+    expect(json.version).toBe(4);
+    expect(restored.sessions[0].exercises[0].sets[0]).toMatchObject({
+      suggestedWeight: 12.5,
+      suggestedReps: 9,
+      predictedRepsAtActualWeight: 8,
+      suggestedSetType: "top_set",
+      suggestionMode: "record_attempt",
+      suggestionReasonCodes: ["top_set_anchor_v2"],
+      suggestionEngineVersion: "progression-v2",
+      logicalSetId: "logical-set-1",
+      setTechnique: "completion",
+    });
   });
 
   it("exige l'ID de chaque exercice loggué en v3", () => {

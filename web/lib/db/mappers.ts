@@ -57,8 +57,9 @@ import type {
   UserSettings,
   WorkoutSession,
   WorkoutTemplate,
+  SetTechnique,
 } from "@/lib/models/types";
-import { CARDIO_ACTIVITY_TYPES } from "@/lib/models/types";
+import { CARDIO_ACTIVITY_TYPES, SET_TECHNIQUES } from "@/lib/models/types";
 
 // ---------------------------------------------------------------------------
 // Helpers de coercition (les colonnes text ne sont pas validées par Postgres)
@@ -72,6 +73,17 @@ function asSetPatternMode(raw: string): SetPatternModeT {
 function asSetType(raw: string): SetTypeT {
   const values = Object.values(SetType) as string[];
   return values.includes(raw) ? (raw as SetTypeT) : SetType.work;
+}
+
+function asNullableSetType(raw: string | null): SetTypeT | null {
+  if (!raw) return null;
+  const values = Object.values(SetType) as string[];
+  return values.includes(raw) ? (raw as SetTypeT) : null;
+}
+
+function asSetTechnique(raw: string | null): SetTechnique | null {
+  if (!raw) return null;
+  return (SET_TECHNIQUES as readonly string[]).includes(raw) ? (raw as SetTechnique) : null;
 }
 
 function asCardioActivityType(raw: string): CardioActivityType {
@@ -242,6 +254,17 @@ function mapLoggedSetRow(row: LoggedSetRow): LoggedSet {
     setSlotIndex: row.setSlotIndex,
     completed: row.completed,
     supersetRoundIndex: row.supersetRoundIndex,
+    suggestedWeight: row.suggestedWeight,
+    suggestedReps: row.suggestedReps,
+    predictedRepsAtActualWeight: row.predictedRepsAtActualWeight,
+    suggestedSetType: asNullableSetType(row.suggestedSetType),
+    suggestionMode: row.suggestionMode,
+    suggestionReasonCodes: Array.isArray(row.suggestionReasonCodes)
+      ? row.suggestionReasonCodes.filter((code): code is string => typeof code === "string")
+      : [],
+    suggestionEngineVersion: row.suggestionEngineVersion,
+    logicalSetId: row.logicalSetId,
+    setTechnique: asSetTechnique(row.setTechnique),
   };
 }
 
@@ -373,6 +396,15 @@ export function sessionToLoggedSetRows(session: WorkoutSession): NewLoggedSetRow
       setSlotIndex: s.setSlotIndex,
       completed: s.completed,
       supersetRoundIndex: s.supersetRoundIndex,
+      suggestedWeight: s.suggestedWeight ?? null,
+      suggestedReps: s.suggestedReps ?? null,
+      predictedRepsAtActualWeight: s.predictedRepsAtActualWeight ?? null,
+      suggestedSetType: s.suggestedSetType ?? null,
+      suggestionMode: s.suggestionMode ?? null,
+      suggestionReasonCodes: s.suggestionReasonCodes ?? [],
+      suggestionEngineVersion: s.suggestionEngineVersion ?? null,
+      logicalSetId: s.logicalSetId ?? null,
+      setTechnique: s.setTechnique ?? null,
     }))
   );
 }

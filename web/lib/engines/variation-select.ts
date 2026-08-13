@@ -62,8 +62,9 @@ const FATIGUE_PENALTY = 0.15;
 const FATIGUE_RANK: Record<Exercise["fatigueClass"], number> = { light: 0, medium: 1, heavy: 2 };
 
 /**
- * §2/§9 — seuil de recouvrement musculaire (cosinus) utilisé UNIQUEMENT en
- * fallback quand `movementPattern` est `null` des deux côtés.
+ * §2/§9 — seuil minimal de recouvrement musculaire (cosinus), même lorsque le
+ * `movementPattern` correspond. Un libellé large comme `isolation` ne suffit pas
+ * à rendre interchangeables un mouvement de pectoraux et un exercice d'abdominaux.
  */
 const MUSCLE_OVERLAP_FALLBACK_THRESHOLD = 0.5;
 
@@ -206,7 +207,10 @@ function fatiguePenalty(current: Exercise, candidate: Exercise): number {
 function passesHardFilter(current: Exercise, candidate: Exercise): boolean {
   if (candidate.id === current.id) return false;
   if (current.movementPattern !== null && candidate.movementPattern !== null) {
-    return current.movementPattern === candidate.movementPattern;
+    return (
+      current.movementPattern === candidate.movementPattern &&
+      muscleOverlap(current, candidate) >= MUSCLE_OVERLAP_FALLBACK_THRESHOLD
+    );
   }
   if (current.movementPattern === null && candidate.movementPattern === null) {
     return muscleOverlap(current, candidate) >= MUSCLE_OVERLAP_FALLBACK_THRESHOLD;

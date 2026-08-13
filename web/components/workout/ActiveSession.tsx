@@ -76,7 +76,10 @@ export function ActiveSession({
         e.sets
           .map(
             (s) =>
-              `${s.id}=${s.weight}x${s.reps}:${s.setType}:${s.completed ? 1 : 0}:r${s.supersetRoundIndex ?? "-"}`
+              `${s.id}=${s.weight}x${s.reps}:${s.setType}:${s.completed ? 1 : 0}:r${s.supersetRoundIndex ?? "-"}:` +
+              `plan=${s.suggestedWeight ?? "-"}x${s.suggestedReps ?? "-"}:${s.suggestedSetType ?? "-"}:` +
+              `pred=${s.predictedRepsAtActualWeight ?? "-"}:mode=${s.suggestionMode ?? "-"}:engine=${s.suggestionEngineVersion ?? "-"}:` +
+              `logical=${s.logicalSetId ?? "-"}:${s.setTechnique ?? "-"}:reasons=${(s.suggestionReasonCodes ?? []).join("+")}`
           )
           .join(",")
     )

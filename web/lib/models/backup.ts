@@ -1,6 +1,6 @@
 /**
- * Validation + parsing du format d'export JSON de l'app iOS (version 2), tel
- * que produit par `Jeera/Utilities/DataExporter.swift::exportAll`. Les
+ * Validation + parsing du format d'export JSON Jeera (versions 1 à 4), dont
+ * le socle est produit par `Jeera/Utilities/DataExporter.swift::exportAll`. Les
  * schémas Zod ci-dessous suivent EXACTEMENT les structs Codable Swift
  * (`ExerciseData`, `SessionData`, `LoggedExerciseData`, `LoggedSetData`,
  * `SupersetGroupData`, `TemplateData`, `GoalData`, `SettingsData`).
@@ -39,8 +39,9 @@ import type {
   UserSettings,
   WorkoutSession,
   WorkoutTemplate,
+  SetTechnique,
 } from "./types";
-import { CARDIO_ACTIVITY_TYPES, sessionsNewestFirst } from "./types";
+import { CARDIO_ACTIVITY_TYPES, SET_TECHNIQUES, sessionsNewestFirst } from "./types";
 import type { WorkoutMode } from "@/lib/theme/modes";
 
 // ---------------------------------------------------------------------------
@@ -49,7 +50,7 @@ import type { WorkoutMode } from "@/lib/theme/modes";
 
 const finiteNumber = z.number().finite();
 const isoDateString = z.string().refine((value) => Number.isFinite(Date.parse(value)), "Date ISO invalide");
-export const CURRENT_BACKUP_VERSION = 3;
+export const CURRENT_BACKUP_VERSION = 4;
 const workoutModeSchema = z.enum(["normal", "beast", "monk"]);
 
 const muscleMappingSchema = z.object({
@@ -116,6 +117,15 @@ const loggedSetSchema = z.object({
   setSlotIndex: finiteNumber.int().nonnegative(),
   completed: z.boolean(),
   supersetRoundIndex: finiteNumber.int().positive().nullish(),
+  suggestedWeight: finiteNumber.nonnegative().nullish(),
+  suggestedReps: finiteNumber.int().nonnegative().nullish(),
+  predictedRepsAtActualWeight: finiteNumber.int().nonnegative().nullish(),
+  suggestedSetType: z.string().nullish(),
+  suggestionMode: z.string().nullish(),
+  suggestionReasonCodes: z.array(z.string()).default([]),
+  suggestionEngineVersion: z.string().nullish(),
+  logicalSetId: z.string().min(1).nullish(),
+  setTechnique: z.enum(SET_TECHNIQUES).nullish(),
 });
 
 const loggedExerciseSchema = z.object({
@@ -232,7 +242,7 @@ export interface BackupData {
   recoveryCheckins: RecoveryCheckin[];
 }
 
-/** Sous-ensemble sérialisable du store nécessaire à un export web v3 complet. */
+/** Sous-ensemble sérialisable du store nécessaire à un export web v4 complet. */
 export interface BackupExportSource {
   catalog: Exercise[];
   history: WorkoutSession[];
@@ -304,6 +314,15 @@ export function createBackupJson(
           setSlotIndex: set.setSlotIndex,
           completed: set.completed,
           supersetRoundIndex: set.supersetRoundIndex,
+          suggestedWeight: set.suggestedWeight ?? null,
+          suggestedReps: set.suggestedReps ?? null,
+          predictedRepsAtActualWeight: set.predictedRepsAtActualWeight ?? null,
+          suggestedSetType: set.suggestedSetType ?? null,
+          suggestionMode: set.suggestionMode ?? null,
+          suggestionReasonCodes: set.suggestionReasonCodes ?? [],
+          suggestionEngineVersion: set.suggestionEngineVersion ?? null,
+          logicalSetId: set.logicalSetId ?? null,
+          setTechnique: set.setTechnique ?? null,
         })),
       })),
       supersetGroups: session.supersetGroups.map((group) => ({
@@ -366,6 +385,12 @@ function resolveSetType(raw: string): SetType {
   return values.includes(raw) ? (raw as SetType) : SetType.work;
 }
 
+function resolveOptionalSetType(raw: string | null | undefined): SetType | null {
+  if (!raw) return null;
+  const values = Object.values(SetType) as string[];
+  return values.includes(raw) ? (raw as SetType) : null;
+}
+
 function resolveCardioActivityType(raw: CardioActivityType | null | undefined, name: string): CardioActivityType {
   if (raw) return raw;
   const normalized = name.toLocaleLowerCase("fr");
@@ -425,7 +450,7 @@ function toDateOrNull(raw: string | null | undefined): Date | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Valide un JSON brut (format d'export v2) avec Zod puis le convertit en
+ * Valide un JSON brut (formats d'export historiques jusqu'à v4) avec Zod puis le convertit en
  * objets du domaine. Lève une `ZodError` si la forme générale ne correspond
  * pas au schéma (le contenu défectueux au niveau champ individuel est
  * plutôt neutralisé par des valeurs par défaut, comme le fait l'importeur
@@ -471,6 +496,19 @@ export function parseBackup(json: unknown): BackupData {
       .flatMap((exercise) => exercise.sets)
       .find((set) => !(Object.values(SetType) as string[]).includes(set.setType));
     if (invalidSet) throw new Error(`Type de série inconnu: ${invalidSet.setType}`);
+    if (raw.version >= 4) {
+      const invalidSuggestedSet = raw.sessions
+        .flatMap((session) => session.exercises)
+        .flatMap((exercise) => exercise.sets)
+        .find(
+          (set) =>
+            set.suggestedSetType != null &&
+            !(Object.values(SetType) as string[]).includes(set.suggestedSetType)
+        );
+      if (invalidSuggestedSet) {
+        throw new Error(`Type de série suggéré inconnu: ${invalidSuggestedSet.suggestedSetType}`);
+      }
+    }
     if (raw.templates.some((template) => !template.id || !template.createdAt)) {
       throw new Error("Un backup v3 doit préserver les IDs et dates des templates.");
     }
@@ -695,6 +733,15 @@ export function parseBackup(json: unknown): BackupData {
           setSlotIndex: setData.setSlotIndex,
           completed: setData.completed,
           supersetRoundIndex: setData.supersetRoundIndex ?? null,
+          suggestedWeight: setData.suggestedWeight ?? null,
+          suggestedReps: setData.suggestedReps ?? null,
+          predictedRepsAtActualWeight: setData.predictedRepsAtActualWeight ?? null,
+          suggestedSetType: resolveOptionalSetType(setData.suggestedSetType),
+          suggestionMode: setData.suggestionMode ?? null,
+          suggestionReasonCodes: setData.suggestionReasonCodes ?? [],
+          suggestionEngineVersion: setData.suggestionEngineVersion ?? null,
+          logicalSetId: setData.logicalSetId ?? null,
+          setTechnique: (setData.setTechnique ?? null) as SetTechnique | null,
         }));
 
         return {

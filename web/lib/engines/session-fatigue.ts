@@ -16,6 +16,23 @@ export interface PriorLoad {
   primaryParent: MuscleParent;
   workSetsCompleted: number;
   fatigueClass: FatigueClass;
+  /** Libellé facultatif utilisé pour expliquer le signal dans l'interface. */
+  exerciseName?: string;
+}
+
+export interface SessionFatigueEvidence {
+  kind: "local" | "systemic";
+  parent: MuscleParent | null;
+  sameParentSets: number;
+  /** null = historique insuffisant, distinct d'une vraie baseline à zéro. */
+  baselineSameParentSets: number | null;
+  excessSameParentSets: number;
+  totalSystemicCost: number;
+  /** null = historique insuffisant, distinct d'une vraie baseline à zéro. */
+  baselineSystemicCost: number | null;
+  excessSystemicCost: number;
+  repPenalty: number;
+  contributors: { exerciseName: string; effectiveSets: number }[];
 }
 
 export class SessionFatigueContext {
@@ -101,5 +118,32 @@ export class SessionFatigueContext {
       return `Fatigue locale ${parentDisplayName[parent]} détectée`;
     }
     return "Fatigue systémique de séance détectée";
+  }
+
+  /** Preuve chiffrée dérivée, destinée au détail cliquable de l'alerte. */
+  fatigueEvidence(parent: MuscleParent | null): SessionFatigueEvidence | null {
+    if (!this.isSignificant(parent)) return null;
+    const local = parent !== null && this.excessSameParentSets(parent) >= 3;
+    const contributorMap = new Map<string, number>();
+    for (const load of this.priorLoads) {
+      if (local && load.primaryParent !== parent) continue;
+      const name = load.exerciseName?.trim() || parentDisplayName[load.primaryParent];
+      contributorMap.set(name, (contributorMap.get(name) ?? 0) + load.workSetsCompleted);
+    }
+    return {
+      kind: local ? "local" : "systemic",
+      parent,
+      sameParentSets: parent === null ? 0 : this.sameParentSets(parent),
+      baselineSameParentSets: this.baselineSameParentSets ?? null,
+      excessSameParentSets: parent === null ? 0 : this.excessSameParentSets(parent),
+      totalSystemicCost: this.totalSystemicCost,
+      baselineSystemicCost: this.baselineSystemicCost ?? null,
+      excessSystemicCost: this.excessSystemicCost,
+      repPenalty: this.fatiguePenalty(parent),
+      contributors: [...contributorMap.entries()].map(([exerciseName, effectiveSets]) => ({
+        exerciseName,
+        effectiveSets,
+      })),
+    };
   }
 }

@@ -98,11 +98,14 @@ describe("selectAlternative — filtre dur movementPattern (SPEC §6)", () => {
       movementPattern: MovementPattern.verticalPress,
       muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1.0 }],
     });
-    // Même pattern que `current`, mais recouvrement musculaire FAIBLE (score naturellement bas).
+    // Même pattern et recouvrement suffisant : candidat réellement substituable.
     const samePattern = makeExercise({
       name: "Dips",
       movementPattern: MovementPattern.verticalPress,
-      muscleMappings: [{ muscleGroup: MuscleGroup.tricepsLat, coefficient: 0.3 }],
+      muscleMappings: [
+        { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.7 },
+        { muscleGroup: MuscleGroup.tricepsLat, coefficient: 0.3 },
+      ],
     });
     // Pattern DIFFÉRENT, mais recouvrement musculaire PARFAIT (score naturellement maximal si le
     // filtre dur ne l'excluait pas) — piège volontaire pour vérifier que le filtre prime sur le score.
@@ -121,6 +124,24 @@ describe("selectAlternative — filtre dur movementPattern (SPEC §6)", () => {
 
     expect(result).not.toBeNull();
     expect(result!.exerciseId).toBe(samePattern.id);
+  });
+
+  it("exclut Crunch déclinés comme variante d'un Pec deck malgré le pattern isolation commun", () => {
+    const pecDeck = makeExercise({
+      name: "Pec deck",
+      movementPattern: MovementPattern.isolation,
+      muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1 }],
+    });
+    const declinedCrunch = makeExercise({
+      name: "Crunch déclinés",
+      movementPattern: MovementPattern.isolation,
+      muscleMappings: [
+        { muscleGroup: MuscleGroup.absHaut, coefficient: 0.6 },
+        { muscleGroup: MuscleGroup.absBas, coefficient: 0.4 },
+      ],
+    });
+
+    expect(selectAlternative(pecDeck, [pecDeck, declinedCrunch], [], NO_GOALS)).toBeNull();
   });
 
   it("movementPattern null des DEUX côtés -> repli sur le recouvrement musculaire seul (§9)", () => {

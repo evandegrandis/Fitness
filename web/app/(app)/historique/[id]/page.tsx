@@ -98,7 +98,7 @@ export default function SessionDetailPage() {
       </div>
 
       <div className="mt-3 flex flex-col gap-3">
-        <SessionDetailHeader session={session} />
+        <SessionDetailHeader session={session} exercises={catalog} />
 
         {blocks.map((block) =>
           block.kind === "solo" ? (

@@ -65,6 +65,7 @@ export function WeekGroup({
             <SessionRow
               key={session.id}
               session={session}
+              exercises={exercises}
               prCount={prCountBySessionId.get(session.id) ?? 0}
               onDelete={onDeleteSession}
             />

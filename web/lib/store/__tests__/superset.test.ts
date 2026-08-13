@@ -21,7 +21,9 @@ function loggedSet(
   id: string,
   timestampMs: number,
   slot: number,
-  options: Partial<Pick<LoggedSet, "weight" | "reps" | "setType" | "supersetRoundIndex">> = {}
+  options: Partial<
+    Pick<LoggedSet, "weight" | "reps" | "setType" | "supersetRoundIndex" | "logicalSetId" | "setTechnique">
+  > = {}
 ): LoggedSet {
   return {
     id,
@@ -32,6 +34,8 @@ function loggedSet(
     setSlotIndex: slot,
     completed: true,
     supersetRoundIndex: options.supersetRoundIndex ?? null,
+    logicalSetId: options.logicalSetId ?? null,
+    setTechnique: options.setTechnique ?? null,
   };
 }
 
@@ -268,6 +272,40 @@ describe("rounds globaux et composites", () => {
     expect(b.sets.map((set) => set.supersetRoundIndex)).toEqual([1, 2]);
     expect(completedSupersetRounds(repaired, "group")).toBe(2);
     expect(nextSupersetRoundIndex(repaired, "A")).toBe(3);
+  });
+
+  it("conserve une complétion logique explicite dans le même round au-delà de 30 secondes", () => {
+    const group: SupersetGroup = { id: "group", orderIndex: 0, memberOrder: ["A", "B"] };
+    const session = workoutSession(
+      [
+        loggedExercise(
+          "A",
+          0,
+          [
+            loggedSet("a-lead", 1_000, 0, { weight: 85, reps: 5, logicalSetId: "a-lead" }),
+            loggedSet("a-completion", 241_000, 1, {
+              weight: 75,
+              reps: 5,
+              logicalSetId: "a-lead",
+              setTechnique: "completion",
+            }),
+            loggedSet("a-2", 500_000, 2, { logicalSetId: "a-2" }),
+          ],
+          "group"
+        ),
+        loggedExercise(
+          "B",
+          1,
+          [loggedSet("b-1", 300_000, 0), loggedSet("b-2", 600_000, 1)],
+          "group"
+        ),
+      ],
+      [group]
+    );
+
+    const repaired = recomputeSupersetRoundIndices(session, "group");
+    expect(repaired.exercises[0].sets.map((set) => set.supersetRoundIndex)).toEqual([1, 1, 2]);
+    expect(completedSupersetRounds(repaired, "group")).toBe(2);
   });
 
   it.each([

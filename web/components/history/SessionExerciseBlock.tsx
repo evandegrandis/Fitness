@@ -1,7 +1,7 @@
 "use client";
 
 import { Flame, Link2, Star } from "lucide-react";
-import { SetType, setTypeShortLabel } from "@/lib/models/enums";
+import { SetType } from "@/lib/models/enums";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +18,7 @@ function SetLine({
   slot: number;
   isRecord: boolean;
 }) {
-  const typeLabel = setTypeShortLabel[set.setType];
+  const typeLabel = set.setType === SetType.warmup ? "Échauff." : set.setType === SetType.finisher ? "Finisher" : null;
   return (
     <div className="flex items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2">
       <span className="tnum w-5 shrink-0 text-center text-xs text-[--color-fg-faint]">{slot}</span>

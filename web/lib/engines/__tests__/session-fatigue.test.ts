@@ -83,6 +83,42 @@ describe("SessionFatigueContext", () => {
     expect(ctx.isSignificant(MuscleParent.grandDorsal)).toBe(true);
   });
 
+  it("expose une justification locale chiffrée et ses exercices contributeurs", () => {
+    const ctx = new SessionFatigueContext(
+      [
+        {
+          primaryParent: MuscleParent.pectoraux,
+          workSetsCompleted: 2,
+          fatigueClass: "medium",
+          exerciseName: "Chest Press",
+        },
+        {
+          primaryParent: MuscleParent.pectoraux,
+          workSetsCompleted: 2,
+          fatigueClass: "light",
+          exerciseName: "Dips",
+        },
+      ],
+      { baselineSystemicCost: 2, baselineSameParentSets: 1 }
+    );
+
+    expect(ctx.fatigueEvidence(MuscleParent.pectoraux)).toEqual({
+      kind: "local",
+      parent: MuscleParent.pectoraux,
+      sameParentSets: 4,
+      baselineSameParentSets: 1,
+      excessSameParentSets: 3,
+      totalSystemicCost: 5,
+      baselineSystemicCost: 2,
+      excessSystemicCost: 3,
+      repPenalty: 1,
+      contributors: [
+        { exerciseName: "Chest Press", effectiveSets: 2 },
+        { exerciseName: "Dips", effectiveSets: 2 },
+      ],
+    });
+  });
+
   it("isSignificant/fatigueNote avec parent null retombe sur le seul critère systémique", () => {
     const ctxLow = new SessionFatigueContext([
       { primaryParent: MuscleParent.pectoraux, workSetsCompleted: 3, fatigueClass: "heavy" },

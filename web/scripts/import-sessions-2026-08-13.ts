@@ -115,9 +115,9 @@ const IDS = {
 const CANONICAL_EXERCISES = [
   { id: IDS.hspu, name: "HSPU", increment: 1.25 },
   { id: IDS.pullupsSn, name: "Tractions SN", increment: 1.25 },
-  { id: IDS.muscleUpPulldown, name: "Tirage vertical muscle up", increment: 2.5 },
-  { id: IDS.pecDeck, name: "Pec deck", increment: 2.5 },
-  { id: IDS.closePulley, name: "Pulley serré", increment: 2.5 },
+  { id: IDS.muscleUpPulldown, name: "Tirage vertical muscle up", increment: 5 },
+  { id: IDS.pecDeck, name: "Pec deck", increment: 5 },
+  { id: IDS.closePulley, name: "Pulley serré", increment: 5 },
   {
     id: IDS.plateLateralRaise,
     name: "Plate loaded lateral raises",

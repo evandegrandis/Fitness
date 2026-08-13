@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { AlertTriangle, Check, Flame, History, Snowflake, Sparkles, Zap } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Stepper } from "@/components/ui/Stepper";
 import { SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
-import type { SetSuggestion } from "@/lib/engines/progression";
+import {
+  reprojectSuggestionAtWeight,
+  SUGGESTION_ENGINE_VERSION,
+  type SetSuggestion,
+} from "@/lib/engines/progression";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +65,7 @@ const INTENSITY_REASON_CODES = [
   "variation",
   "reactive_deload",
   "variant_switch_easier",
-  "drop_set_completion",
+  "logical_set_completion",
 ];
 
 /**
@@ -87,7 +91,18 @@ export function SetEntry({
   suggestion: SetSuggestion;
   warmup: SetSuggestion | null;
   lastSessionSet: LoggedSet | null;
-  onLogSet: (input: { weight: number; reps: number; setType?: SetType }) => void;
+  onLogSet: (input: {
+    weight: number;
+    reps: number;
+    setType?: SetType;
+    suggestedWeight?: number | null;
+    suggestedReps?: number | null;
+    suggestedSetType?: SetType | null;
+    predictedRepsAtActualWeight?: number | null;
+    suggestionMode?: string | null;
+    suggestionReasonCodes?: string[];
+    suggestionEngineVersion?: string | null;
+  }) => void;
   /**
    * VARIATION_CYCLING_SPEC §8 — nom résolu (catalogue) de `suggestion.switchToVariantId`, calculé
    * par l'appelant (`ExerciseCard.tsx`, qui a accès au catalogue) : `SetEntry` reste découplé du
@@ -98,6 +113,7 @@ export function SetEntry({
   const freshOverrides = useWorkoutStore((s) => s.freshOverrides);
   const setFreshOverride = useWorkoutStore((s) => s.setFreshOverride);
   const clearFreshOverride = useWorkoutStore((s) => s.clearFreshOverride);
+  const bodyweightKg = useWorkoutStore((s) => s.settings.bodyWeightKg ?? undefined);
   const isFresh = freshOverrides.has(loggedExerciseId);
 
   const [useWarmup, setUseWarmup] = useState(false);
@@ -105,6 +121,8 @@ export function SetEntry({
 
   const [weight, setWeight] = useState(active.weight);
   const [reps, setReps] = useState(active.reps);
+  const [showFatigueDetails, setShowFatigueDetails] = useState(false);
+  const fatigueDetailsId = useId();
 
   const showFreshChip = isFresh || suggestion.reasonCodes.includes("deload_after_gap");
   const intensityReasonCode = suggestion.reasonCodes.find((code) => INTENSITY_REASON_CODES.includes(code));
@@ -132,6 +150,7 @@ export function SetEntry({
   };
 
   const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 2.5;
+  const projectedSuggestion = reprojectSuggestionAtWeight(suggestion, exercise, weight, bodyweightKg);
 
   return (
     <div className="flex flex-col gap-3">
@@ -176,10 +195,17 @@ export function SetEntry({
           </button>
         )}
         {suggestion.sessionFatigueWarning && !useWarmup && (
-          <span className="pill" style={{ color: "#fb7185", background: "rgba(251,113,133,0.12)" }}>
+          <button
+            type="button"
+            onClick={() => setShowFatigueDetails((value) => !value)}
+            aria-expanded={showFatigueDetails}
+            aria-controls={suggestion.sessionFatigueEvidence ? fatigueDetailsId : undefined}
+            className="pill min-h-11"
+            style={{ color: "#fb7185", background: "rgba(251,113,133,0.12)" }}
+          >
             <AlertTriangle size={11} />
             {suggestion.sessionFatigueWarning}
-          </span>
+          </button>
         )}
         {showFreshChip && !useWarmup && (
           <button
@@ -198,6 +224,42 @@ export function SetEntry({
           </button>
         )}
       </div>
+
+      {showFatigueDetails && suggestion.sessionFatigueEvidence && !useWarmup && (
+        <div
+          id={fatigueDetailsId}
+          role="region"
+          aria-label="Justification de la fatigue détectée"
+          className="rounded-xl border border-rose-300/20 bg-rose-300/[0.055] px-3 py-2 text-xs text-rose-100"
+        >
+          {suggestion.sessionFatigueEvidence.kind === "local" ? (
+            <p>
+              {suggestion.sessionFatigueEvidence.sameParentSets} séries effectives du même groupe avant cet exercice
+              {suggestion.sessionFatigueEvidence.baselineSameParentSets === null
+                ? " ; pas encore assez d’historique pour établir l’habitude."
+                : `, contre ${suggestion.sessionFatigueEvidence.baselineSameParentSets} habituellement (+${suggestion.sessionFatigueEvidence.excessSameParentSets}).`}
+            </p>
+          ) : (
+            <p>
+              Coût de séance {Math.round(suggestion.sessionFatigueEvidence.totalSystemicCost * 10) / 10}
+              {suggestion.sessionFatigueEvidence.baselineSystemicCost === null
+                ? " ; pas encore assez d’historique pour établir l’habitude."
+                : `, contre ${Math.round(suggestion.sessionFatigueEvidence.baselineSystemicCost * 10) / 10} habituellement.`}
+            </p>
+          )}
+          {suggestion.sessionFatigueEvidence.contributors.length > 0 && (
+            <p className="mt-1 text-rose-100/70">
+              {suggestion.sessionFatigueEvidence.contributors
+                .map((item) => `${item.exerciseName} : ${item.effectiveSets} série${item.effectiveSets > 1 ? "s" : ""}`)
+                .join(" · ")}
+            </p>
+          )}
+          <p className="mt-1 text-rose-100/70">
+            Ajustement estimé : {suggestion.sessionFatigueEvidence.repPenalty} rep
+            {suggestion.sessionFatigueEvidence.repPenalty > 1 ? "s" : ""} au maximum.
+          </p>
+        </div>
+      )}
 
       {flameLabels.length > 0 && <FlameBadge label={flameLabels.join(" · ")} />}
 
@@ -231,14 +293,37 @@ export function SetEntry({
       )}
 
       <div className="flex items-center justify-center gap-6">
-        <Stepper label="Poids" value={weight} onChange={setWeight} step={increment} min={0} suffix="kg" />
-        <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={0} />
+        <Stepper
+          label="Poids"
+          value={weight}
+          onChange={(nextWeight) => {
+            setWeight(nextWeight);
+            if (!useWarmup) {
+              setReps(reprojectSuggestionAtWeight(suggestion, exercise, nextWeight, bodyweightKg).reps);
+            }
+          }}
+          step={increment}
+          min={0}
+          suffix="kg"
+        />
+        <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={1} />
       </div>
 
       <button
         type="button"
         onClick={() => {
-          onLogSet({ weight, reps, setType: useWarmup ? SetType.warmup : suggestion.setType });
+          onLogSet({
+            weight,
+            reps,
+            setType: useWarmup ? SetType.warmup : SetType.work,
+            suggestedWeight: useWarmup ? warmup?.weight ?? null : suggestion.weight,
+            suggestedReps: useWarmup ? warmup?.reps ?? null : suggestion.reps,
+            suggestedSetType: useWarmup ? SetType.warmup : suggestion.setType,
+            predictedRepsAtActualWeight: useWarmup ? null : projectedSuggestion.reps,
+            suggestionMode: useWarmup ? warmup?.mode ?? null : suggestion.mode,
+            suggestionReasonCodes: useWarmup ? warmup?.reasonCodes ?? [] : suggestion.reasonCodes,
+            suggestionEngineVersion: SUGGESTION_ENGINE_VERSION,
+          });
           setUseWarmup(false);
         }}
         className="btn-accent flex w-full items-center justify-center gap-2 py-3.5 text-base active:scale-[0.97] transition"

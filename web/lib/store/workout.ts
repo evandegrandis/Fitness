@@ -18,12 +18,14 @@ import {
   classify,
   classifyFinisher,
   EMPTY_RECORDS,
+  normalRecordSets,
   type ExerciseRecords,
   type RecordKind,
 } from "@/lib/engines/records";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import {
+  effectiveLoad,
   stepLoad,
   suggest,
   type SetSuggestion,
@@ -259,7 +261,21 @@ export interface WorkoutState extends ReferenceData {
   detachFromSupersetGroup: (loggedExerciseId: string) => void;
 
   // -- Sets ------------------------------------------------------------------
-  logSet: (loggedExerciseId: string, input: { weight: number; reps: number; setType?: SetType }) => void;
+  logSet: (
+    loggedExerciseId: string,
+    input: {
+      weight: number;
+      reps: number;
+      setType?: SetType;
+      suggestedWeight?: number | null;
+      suggestedReps?: number | null;
+      suggestedSetType?: SetType | null;
+      predictedRepsAtActualWeight?: number | null;
+      suggestionMode?: string | null;
+      suggestionReasonCodes?: string[];
+      suggestionEngineVersion?: string | null;
+    }
+  ) => void;
   editSet: (setId: string, input: { weight: number; reps: number; setType?: SetType }) => void;
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
@@ -307,7 +323,9 @@ function reviveSessionDatesNonNull(session: WorkoutSession): WorkoutSession {
     date: toDate(session.date),
     startTime: toDate(session.startTime),
     endTime: session.endTime == null ? null : toDate(session.endTime),
-    cardioEntries: (session.cardioEntries ?? []).map((entry) => ({
+    // Préserve `undefined` pour les anciens caches : à la synchro, cette valeur signifie
+    // « conserver le cardio déjà présent en base », tandis que `[]` signifie « tout retirer ».
+    cardioEntries: session.cardioEntries?.map((entry) => ({
       ...entry,
       activityType: entry.activityType ?? "other",
       machineName: entry.machineName ?? null,
@@ -321,7 +339,21 @@ function reviveSessionDatesNonNull(session: WorkoutSession): WorkoutSession {
     })),
     exercises: session.exercises.map((ex) => ({
       ...ex,
-      sets: ex.sets.map((s) => ({ ...s, timestamp: toDate(s.timestamp) })),
+      sets: ex.sets.map((s) => ({
+        ...s,
+        timestamp: toDate(s.timestamp),
+        suggestedWeight: s.suggestedWeight ?? null,
+        suggestedReps: s.suggestedReps ?? null,
+        predictedRepsAtActualWeight: s.predictedRepsAtActualWeight ?? null,
+        suggestedSetType: s.suggestedSetType ?? null,
+        suggestionMode: s.suggestionMode ?? null,
+        suggestionReasonCodes: Array.isArray(s.suggestionReasonCodes)
+          ? s.suggestionReasonCodes.filter((code): code is string => typeof code === "string")
+          : [],
+        suggestionEngineVersion: s.suggestionEngineVersion ?? null,
+        logicalSetId: s.logicalSetId ?? null,
+        setTechnique: s.setTechnique ?? null,
+      })),
     })),
   };
 }
@@ -428,27 +460,105 @@ function compositeCompletionSuggestion(
 ): SetSuggestion | null {
   const normalSets = completedWorkSets(loggedExercise);
   const last = normalSets.at(-1);
-  if (!last || last.weight <= 0 || last.reps > 4) return null;
+  if (!last) return null;
 
   const blocks = compositeSetBlocks(normalSets, { increment: exercise.smallestIncrement });
   const tail = blocks.at(-1);
   const tailEndsAtLast = tail?.sets.at(-1)?.id === last.id;
-  const repsAlreadyDone = tailEndsAtLast && tail.kind !== "standard" ? tail.totalReps : last.reps;
-  if (repsAlreadyDone >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET) return null;
+  const repsAlreadyDone = tailEndsAtLast ? tail.totalReps : last.reps;
+  if (repsAlreadyDone <= 0 || repsAlreadyDone >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET) return null;
 
   const increment = Math.max(0.5, exercise.smallestIncrement);
-  const easierWeight = stepLoad(last.weight, increment, exercise.setPatternMode, false);
+  const easierWeight = last.weight === 0
+    ? 0
+    : stepLoad(last.weight, increment, exercise.setPatternMode, false);
   const remainingReps = Math.max(1, SET_STRUCTURE.EFFECTIVE_REPS_PER_SET - repsAlreadyDone);
   return {
     weight: Math.round(easierWeight * 100) / 100,
     reps: remainingReps,
-    setType: SetType.backoff,
-    explanation: `Série courte : passe à la variante plus facile d’un cran et enchaîne ${remainingReps} rep${remainingReps > 1 ? "s" : ""} maintenant pour former 1 série effective.`,
+    setType: SetType.work,
+    explanation: `Série courte : complète-la avec ${remainingReps} rep${remainingReps > 1 ? "s" : ""}${last.weight > 0 ? " à la charge inférieure" : ""} pour former exactement 1 série effective.`,
     confidence: 0.94,
-    reasonCodes: ["drop_set_completion"],
+    reasonCodes: ["logical_set_completion"],
     mode: "fallback_hypertrophy",
     sessionFatigueWarning: null,
   };
+}
+
+function isNormalWorkSet(set: LoggedSet): boolean {
+  return (
+    set.completed &&
+    set.reps > 0 &&
+    (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff)
+  );
+}
+
+/**
+ * Répare les métadonnées de séries logiques après édition/suppression. Une complétion automatique
+ * ne reste fusionnée que si son lead est encore sous 8 reps et si sa difficulté n'a pas augmenté.
+ * Les techniques d'intensification explicitement enregistrées restent groupées, tant que leur
+ * lead existe et qu'elles ne sont pas devenues plus difficiles que lui.
+ */
+function normalizeLogicalSetLinks(sets: LoggedSet[], exercise: Exercise | undefined): LoggedSet[] {
+  if (!exercise) return sets;
+  const normalizedById = new Map<string, LoggedSet>();
+  const groups = new Map<string, { lead: LoggedSet; totalReps: number }>();
+
+  for (const original of [...sets].sort(
+    (a, b) => a.setSlotIndex - b.setSlotIndex || a.timestamp.getTime() - b.timestamp.getTime()
+  )) {
+    if (!isNormalWorkSet(original)) {
+      normalizedById.set(original.id, { ...original, logicalSetId: null, setTechnique: null });
+      continue;
+    }
+
+    const requestedGroup = original.logicalSetId ? groups.get(original.logicalSetId) : undefined;
+    const notHarderThanLead = requestedGroup
+      ? effectiveLoad(original.weight, exercise.setPatternMode) <=
+        effectiveLoad(requestedGroup.lead.weight, exercise.setPatternMode) + 1e-9
+      : false;
+    const explicitIntensity =
+      original.setTechnique === "drop_set" || original.setTechnique === "rest_pause";
+    const validCompletion =
+      original.setTechnique === "completion" &&
+      requestedGroup !== undefined &&
+      requestedGroup.totalReps < SET_STRUCTURE.EFFECTIVE_REPS_PER_SET;
+    const continues =
+      requestedGroup !== undefined && notHarderThanLead && (explicitIntensity || validCompletion);
+
+    if (continues) {
+      const normalized = { ...original, logicalSetId: requestedGroup.lead.id };
+      normalizedById.set(original.id, normalized);
+      requestedGroup.totalReps += original.reps;
+      continue;
+    }
+
+    const lead = { ...original, logicalSetId: original.id, setTechnique: null };
+    normalizedById.set(original.id, lead);
+    groups.set(original.id, { lead, totalReps: original.reps });
+  }
+
+  return sets.map((set) => normalizedById.get(set.id) ?? set);
+}
+
+function hasInterveningExerciseSince(
+  session: WorkoutSession,
+  loggedExerciseId: string,
+  previousSet: LoggedSet,
+  nextTimestamp: Date
+): boolean {
+  const after = previousSet.timestamp.getTime();
+  const before = nextTimestamp.getTime();
+  return session.exercises.some(
+    (candidate) =>
+      candidate.id !== loggedExerciseId &&
+      candidate.sets.some(
+        (set) =>
+          set.completed &&
+          set.timestamp.getTime() > after &&
+          set.timestamp.getTime() < before
+      )
+  );
 }
 
 /**
@@ -528,7 +638,12 @@ function buildSessionFatigueContext(
       increment: exercise.smallestIncrement,
     });
     if (workSetsCompleted <= 0) continue;
-    priorLoads.push({ primaryParent: parent, workSetsCompleted, fatigueClass: exercise.fatigueClass });
+    priorLoads.push({
+      primaryParent: parent,
+      workSetsCompleted,
+      fatigueClass: exercise.fatigueClass,
+      exerciseName: exercise.name,
+    });
   }
 
   return new SessionFatigueContext(priorLoads, baselines);
@@ -623,6 +738,26 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
     if (k !== key) result[k] = v;
   }
   return result;
+}
+
+/** Reconstitue les PR de la séance active depuis les faits, y compris après un reload. */
+function latestDerivedPrAt(
+  history: WorkoutSession[],
+  loggedExercise: LoggedExercise,
+  exercise: Exercise
+): Date | null {
+  const historicalSets = collectExerciseHistory(history, exercise.id).sets.flat();
+  const priorSets = [...historicalSets];
+  let priorRecords = buildRecords(exercise, priorSets);
+  let latest: Date | null = null;
+  for (const set of normalRecordSets(orderedSets(loggedExercise), exercise)) {
+    if (classify(set, exercise, priorRecords) !== null && (!latest || set.timestamp > latest)) {
+      latest = set.timestamp;
+    }
+    priorSets.push(set);
+    priorRecords = buildRecords(exercise, priorSets);
+  }
+  return latest;
 }
 
 /** Miroir de `WorkoutViewModel.dominantParent` : muscle au coefficient le plus élevé. */
@@ -1389,7 +1524,17 @@ export const useWorkoutStore = create<WorkoutState>()(
 
         const requestedSetType = input.setType ?? SetType.work;
         const nextSlot = (orderedSets(loggedExercise).reduce((max, s) => Math.max(max, s.setSlotIndex), -1)) + 1;
-        const timestamp = new Date();
+        // Ordre strict même pour plusieurs validations dans la même milliseconde : les moteurs
+        // de supersets/composites doivent pouvoir distinguer A→B→A sans égalité d'horloge.
+        const latestSessionTimestamp = state.active.exercises.reduce(
+          (latest, candidate) =>
+            candidate.sets.reduce(
+              (setLatest, set) => Math.max(setLatest, set.timestamp.getTime()),
+              latest
+            ),
+          0
+        );
+        const timestamp = new Date(Math.max(Date.now(), latestSessionTimestamp + 1));
         const completesSupersetPattern = wouldCompleteSupersetPattern(state.active, loggedExerciseId, {
           weight: input.weight,
           reps: input.reps,
@@ -1417,12 +1562,44 @@ export const useWorkoutStore = create<WorkoutState>()(
           completed: true,
           supersetRoundIndex: previousWorkSet?.supersetRoundIndex ?? null,
         };
-        const continuesPreviousRound =
-          previousWorkSet && exercise
+        const hasInterveningExercise = previousWorkSet
+          ? hasInterveningExerciseSince(state.active, loggedExerciseId, previousWorkSet, timestamp)
+          : false;
+        const immediateKind =
+          previousWorkSet && exercise && !hasInterveningExercise
             ? immediateCompositeKind(previousWorkSet, provisionalSet, {
                 increment: exercise.smallestIncrement,
-              }) !== null
-            : false;
+              })
+            : null;
+        const priorBlocks = exercise
+          ? compositeSetBlocks(completedWorkSets(loggedExercise), {
+              increment: exercise.smallestIncrement,
+            })
+          : [];
+        const incompleteTail = priorBlocks.at(-1);
+        const tailEndsAtPrevious =
+          previousWorkSet !== undefined && incompleteTail?.sets.at(-1)?.id === previousWorkSet.id;
+        const normalCandidate = setType !== SetType.warmup && setType !== SetType.finisher;
+        // Une tentative sous le seuil de 8 reste une série logique ouverte. La prochaine
+        // tentative de difficulté égale ou moindre la complète, sans dépendre du délai de saisie.
+        const continuesLogicalSet = Boolean(
+          exercise &&
+            normalCandidate &&
+            incompleteTail &&
+            tailEndsAtPrevious &&
+            incompleteTail.totalReps > 0 &&
+            incompleteTail.totalReps < SET_STRUCTURE.EFFECTIVE_REPS_PER_SET &&
+            previousWorkSet &&
+            !hasInterveningExercise &&
+            (immediateKind !== null ||
+              (input.suggestionReasonCodes?.includes("logical_set_completion") === true &&
+                (previousWorkSet.weight === 0 ||
+                  effectiveLoad(input.weight, exercise.setPatternMode) <
+                    effectiveLoad(incompleteTail.leadSet.weight, exercise.setPatternMode) - 1e-9))) &&
+            effectiveLoad(input.weight, exercise.setPatternMode) <=
+              effectiveLoad(incompleteTail.leadSet.weight, exercise.setPatternMode) + 1e-9
+        );
+        const continuesPreviousRound = continuesLogicalSet || immediateKind !== null;
         const priorRecords =
           exercise && setType !== SetType.warmup && setType !== SetType.finisher && !continuesPreviousRound
             ? get().records(exercise.id)
@@ -1439,8 +1616,15 @@ export const useWorkoutStore = create<WorkoutState>()(
               : nextRoundIndex
             : null;
 
+        const setId = newId();
+        const groupedWithPrevious = continuesLogicalSet || immediateKind !== null;
+        const logicalSetId = normalCandidate
+          ? groupedWithPrevious
+            ? incompleteTail?.leadSet.logicalSetId ?? incompleteTail?.leadSet.id ?? setId
+            : setId
+          : null;
         const newSet: LoggedSet = {
-          id: newId(),
+          id: setId,
           weight: input.weight,
           reps: input.reps,
           setType,
@@ -1448,6 +1632,18 @@ export const useWorkoutStore = create<WorkoutState>()(
           setSlotIndex: nextSlot,
           completed: true,
           supersetRoundIndex: roundIndex,
+          suggestedWeight: input.suggestedWeight ?? null,
+          suggestedReps: input.suggestedReps ?? null,
+          predictedRepsAtActualWeight: input.predictedRepsAtActualWeight ?? null,
+          suggestedSetType: input.suggestedSetType ?? null,
+          suggestionMode: input.suggestionMode ?? null,
+          suggestionReasonCodes: [...(input.suggestionReasonCodes ?? [])],
+          suggestionEngineVersion: input.suggestionEngineVersion ?? null,
+          logicalSetId,
+          // Une série sous 8 reps complétée ensuite est une seule série physiologique, même si
+          // la baisse de charge ressemble mécaniquement à un drop-set. L'intention enregistrée
+          // est donc `completion`; les vrais drop/rest-pause restent détectables séparément.
+          setTechnique: continuesLogicalSet ? "completion" : immediateKind,
         };
 
         let session: WorkoutSession = {
@@ -1583,13 +1779,22 @@ export const useWorkoutStore = create<WorkoutState>()(
           if (!e.sets.some((s) => s.id === setId)) return e;
           exerciseId = e.exerciseId;
           loggedExerciseId = e.id;
+          const editedSets = e.sets.map((s) =>
+            s.id === setId
+              ? {
+                  ...s,
+                  weight: input.weight,
+                  reps: input.reps,
+                  setType: input.setType ?? s.setType,
+                  // La projection était attachée à l'ancien poids réel : ne jamais conserver
+                  // une cible d'apprentissage devenue fausse après correction manuelle.
+                  predictedRepsAtActualWeight: null,
+                }
+              : s
+          );
           return {
             ...e,
-            sets: e.sets.map((s) =>
-              s.id === setId
-                ? { ...s, weight: input.weight, reps: input.reps, setType: input.setType ?? s.setType }
-                : s
-            ),
+            sets: normalizeLogicalSetLinks(editedSets, findExercise(state.catalog, e.exerciseId)),
           };
         });
         const justHitRecord = omitKey(state.justHitRecord, setId);
@@ -1612,7 +1817,15 @@ export const useWorkoutStore = create<WorkoutState>()(
         const snapshot = state.active;
 
         const exercises = state.active.exercises.map((e) =>
-          e.id === loggedExerciseId ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e
+          e.id === loggedExerciseId
+            ? {
+                ...e,
+                sets: normalizeLogicalSetLinks(
+                  e.sets.filter((s) => s.id !== setId),
+                  findExercise(state.catalog, e.exerciseId)
+                ),
+              }
+            : e
         );
         const justHitRecord = omitKey(state.justHitRecord, setId);
         const recordsCache = { ...state.recordsCache };
@@ -1727,19 +1940,27 @@ export const useWorkoutStore = create<WorkoutState>()(
         const recentHistory = recentContext.sets;
         const currentSessionSets = orderedSets(loggedExercise).filter((s) => s.completed);
         const fatigueBaselines = buildFatigueBaselines(state.history, state.catalog, exercise.id);
-        const latestPrAt = completedWorkSets(loggedExercise)
+        const transientLatestPrAt = completedWorkSets(loggedExercise)
           .filter((set) => state.justHitRecord[set.id] !== undefined)
           .reduce<Date | null>(
             (latest, set) => (!latest || set.timestamp > latest ? set.timestamp : latest),
             null
           );
+        const derivedLatestPrAt = latestDerivedPrAt(state.history, loggedExercise, exercise);
+        const latestPrAt =
+          transientLatestPrAt && derivedLatestPrAt
+            ? transientLatestPrAt > derivedLatestPrAt
+              ? transientLatestPrAt
+              : derivedLatestPrAt
+            : transientLatestPrAt ?? derivedLatestPrAt;
+        const anyPrAchievedToday = latestPrAt !== null;
         // Un PR invalide le contexte qui le précédait, pas la fatigue accumulée ensuite. Après
         // un PR, on repart donc d'un contexte incrémental sans baseline historique ; si aucun
         // autre bloc physiologique n'a suivi, le PR reste bien la preuve la plus récente.
         const sessionFatigue = latestPrAt
           ? buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, undefined, latestPrAt)
           : buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, fatigueBaselines);
-        const prIsLatestEvidence = latestPrAt !== null && sessionFatigue.priorLoads.length === 0;
+        const prIsLatestEvidence = anyPrAchievedToday && sessionFatigue.priorLoads.length === 0;
         // WS4 — gap daté sur CET exercice exact (pas de fusion de variantes), et override
         // "Je suis frais" éventuellement armé par l'utilisateur pour cet exercice loggé.
         const gapDays = daysSinceLastExercise(state.history, exercise.id) ?? undefined;
@@ -1758,7 +1979,11 @@ export const useWorkoutStore = create<WorkoutState>()(
           gapDays,
           gapLestDays,
           freshOverride,
-          prAchievedToday: prIsLatestEvidence,
+          // Le PR invalide toujours le diagnostic de cycle « slowing » et toute rotation de
+          // variante. `prIsLatestEvidence` reste réservé au masquage de la fatigue apparue avant
+          // ou après le PR (sémantique distincte).
+          prAchievedToday: anyPrAchievedToday,
+          prIsLatestEvidence,
           // ALGO_V2 §5.1 — poids de corps pour weighted/assisted bodyweight (predictReps).
           bodyweightKg: readBodyweightKg(state.settings),
           // VARIATION_CYCLING_SPEC §6/§8 — nécessaire pour résoudre `switchToVariantId` en

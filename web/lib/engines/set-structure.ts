@@ -37,7 +37,7 @@ export interface ExercisePositionSignal {
   sessionExerciseCount: number;
 }
 
-export type CompositeSetKind = "standard" | "drop_set" | "rest_pause";
+export type CompositeSetKind = "standard" | "completion" | "drop_set" | "rest_pause";
 
 export interface CompositeSetBlock {
   kind: CompositeSetKind;
@@ -125,6 +125,21 @@ function compositeLinkKind(
   options: SetStructureOptions
 ): Exclude<CompositeSetKind, "standard"> | null {
   if (!sameSupersetRound(previous, next)) return null;
+  const previousLogicalSetId = previous.logicalSetId ?? null;
+  const nextLogicalSetId = next.logicalSetId ?? null;
+  if (
+    nextLogicalSetId &&
+    (previousLogicalSetId === nextLogicalSetId ||
+      (previousLogicalSetId === null && previous.id === nextLogicalSetId))
+  ) {
+    if (next.setTechnique === "drop_set" || next.setTechnique === "rest_pause") {
+      return next.setTechnique;
+    }
+    return "completion";
+  }
+  // Deux IDs logiques explicites différents expriment deux séries distinctes. L'heuristique
+  // temporelle ne sert plus qu'aux anciens historiques qui ne stockaient pas cette intention.
+  if (nextLogicalSetId !== null) return null;
   return immediateCompositeKind(previous, next, options);
 }
 
@@ -149,7 +164,12 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
     }
 
     previousBlock.sets.push(set);
-    previousBlock.kind = previousBlock.kind === "drop_set" || linkKind === "drop_set" ? "drop_set" : "rest_pause";
+    previousBlock.kind =
+      previousBlock.kind === "drop_set" || linkKind === "drop_set"
+        ? "drop_set"
+        : previousBlock.kind === "rest_pause" || linkKind === "rest_pause"
+          ? "rest_pause"
+          : "completion";
     previousBlock.totalReps += set.reps;
     previousBlock.effectiveSetUnits =
       previousBlock.totalReps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET ? 1 : 0;

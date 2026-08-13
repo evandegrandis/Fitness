@@ -37,7 +37,7 @@
   },
   "Lateral raises": {
     "exerciseName": "Lateral raises",
-    "weight": 10,
+    "weight": 12,
     "reps": 10,
     "mode": "record_attempt",
     "reasonCodes": [
@@ -145,8 +145,8 @@
   },
   "Tirage vertical muscle up": {
     "exerciseName": "Tirage vertical muscle up",
-    "weight": 37.5,
-    "reps": 9,
+    "weight": 35,
+    "reps": 10,
     "mode": "record_attempt",
     "reasonCodes": [
       "top_set_anchor_v2"

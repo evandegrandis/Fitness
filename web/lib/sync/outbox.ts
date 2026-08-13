@@ -74,10 +74,26 @@ function reviveSession(session: WorkoutSession): WorkoutSession {
     date: toDate(session.date),
     startTime: toDate(session.startTime),
     endTime: session.endTime == null ? null : toDate(session.endTime),
-    cardioEntries: session.cardioEntries ?? [],
+    // `undefined` signifie « ne pas écraser les entrées serveur » dans saveSession.
+    // Un ancien item d'outbox ne doit donc jamais devenir artificiellement `[]` au reload.
+    cardioEntries: session.cardioEntries,
     exercises: session.exercises.map((ex) => ({
       ...ex,
-      sets: ex.sets.map((s) => ({ ...s, timestamp: toDate(s.timestamp) })),
+      sets: ex.sets.map((s) => ({
+        ...s,
+        timestamp: toDate(s.timestamp),
+        suggestedWeight: s.suggestedWeight ?? null,
+        suggestedReps: s.suggestedReps ?? null,
+        predictedRepsAtActualWeight: s.predictedRepsAtActualWeight ?? null,
+        suggestedSetType: s.suggestedSetType ?? null,
+        suggestionMode: s.suggestionMode ?? null,
+        suggestionReasonCodes: Array.isArray(s.suggestionReasonCodes)
+          ? s.suggestionReasonCodes.filter((code): code is string => typeof code === "string")
+          : [],
+        suggestionEngineVersion: s.suggestionEngineVersion ?? null,
+        logicalSetId: s.logicalSetId ?? null,
+        setTechnique: s.setTechnique ?? null,
+      })),
     })),
   };
 }

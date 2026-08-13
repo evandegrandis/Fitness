@@ -21,7 +21,7 @@ function sleepTone(hours: number): { label: string; color: string } {
   return { label: "bas", color: "#fb7185" };
 }
 
-function formatSleepHours(hours: number): string {
+export function formatSleepHours(hours: number): string {
   const wholeHours = Math.floor(hours);
   const minutes = Math.round((hours - wholeHours) * 60);
   return minutes === 0 ? `${wholeHours}h` : `${wholeHours}h${minutes}`;
@@ -37,7 +37,9 @@ export function RecoveryCheckinRow({
   value: RecoveryDraft;
   onChange: (next: RecoveryDraft) => void;
 }) {
-  const tone = value.sleepHours === null ? null : sleepTone(value.sleepHours);
+  const displayedSleepHours = value.sleepHours ?? 7;
+  const tone = sleepTone(displayedSleepHours);
+  const hasConfirmedSleep = value.sleepHours !== null;
 
   return (
     <div className="glass glass-card flex flex-col gap-3">
@@ -65,40 +67,46 @@ export function RecoveryCheckinRow({
         onChange={(next) => onChange({ ...value, hadAlcohol: next })}
       />
 
-      <div className="flex items-center gap-3">
-        <Moon size={16} className="shrink-0" style={{ color: tone?.color ?? "var(--color-fg-faint)" }} />
-        {value.sleepHours === null ? (
+      <div className="flex flex-col gap-1">
+        <div className="flex min-h-11 items-center gap-2">
+          <Moon
+            size={16}
+            className="shrink-0"
+            style={{ color: hasConfirmedSleep ? tone.color : "var(--color-fg-faint)" }}
+          />
+          <span className="text-xs text-[--color-fg-muted]">Sommeil</span>
+          <span
+            className="tnum ml-auto whitespace-nowrap text-right text-sm font-semibold leading-none"
+            style={{ color: hasConfirmedSleep ? tone.color : "var(--color-fg-muted)" }}
+          >
+            {formatSleepHours(displayedSleepHours)} · {tone.label}
+          </span>
           <button
             type="button"
-            onClick={() => onChange({ ...value, sleepHours: 7 })}
-            className="flex-1 rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-[--color-fg-muted]"
+            onClick={() => onChange({ ...value, sleepHours: null })}
+            disabled={!hasConfirmedSleep}
+            className="grid min-h-11 min-w-11 shrink-0 place-items-center text-base text-[--color-fg-faint] disabled:opacity-30"
+            aria-label="Remettre le sommeil à inconnu"
           >
-            Renseigner le sommeil
+            ×
           </button>
-        ) : (
-          <>
-            <input
-              type="range"
-              min={0}
-              max={12}
-              step={0.5}
-              value={value.sleepHours}
-              onChange={(event) => onChange({ ...value, sleepHours: Number(event.target.value) })}
-              className="h-1.5 min-w-0 flex-1 appearance-none rounded-full bg-white/10 accent-[color:var(--accent)]"
-            />
-            <span className="tnum w-20 text-right text-sm font-semibold" style={{ color: tone?.color }}>
-              {formatSleepHours(value.sleepHours)} · {tone?.label}
-            </span>
-            <button
-              type="button"
-              onClick={() => onChange({ ...value, sleepHours: null })}
-              className="text-xs text-[--color-fg-faint]"
-              aria-label="Remettre le sommeil à inconnu"
-            >
-              ×
-            </button>
-          </>
-        )}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={12}
+          step={0.5}
+          value={displayedSleepHours}
+          onPointerDown={() => {
+            // Afficher 7 h comme point de départ ne doit pas l'enregistrer. Un contact
+            // volontaire avec le slider le confirme toutefois, même sans déplacement.
+            if (!hasConfirmedSleep) onChange({ ...value, sleepHours: displayedSleepHours });
+          }}
+          onChange={(event) => onChange({ ...value, sleepHours: Number(event.target.value) })}
+          aria-label={`${label} : durée de sommeil`}
+          aria-valuetext={`${formatSleepHours(displayedSleepHours)}${hasConfirmedSleep ? "" : ", valeur proposée non confirmée"}`}
+          className="h-11 w-full accent-[color:var(--accent)]"
+        />
       </div>
     </div>
   );

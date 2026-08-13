@@ -115,19 +115,45 @@ const WORK_KINDS = new Set<string>([SetType.work, SetType.topSet, SetType.backof
  */
 export function normalRecordSets(sets: LoggedSet[], exercise: Exercise): LoggedSet[] {
   const leads: LoggedSet[] = [];
+  const seenLogicalSetIds = new Set<string>();
   let previousWorkSet: LoggedSet | undefined;
 
   for (const set of sets) {
-    if (!set.completed || !WORK_KINDS.has(set.setType)) continue;
+    if (!set.completed || set.reps <= 0 || !WORK_KINDS.has(set.setType)) continue;
+    const logicalSetId = set.logicalSetId ?? null;
+    const continuesExplicitLogicalSet =
+      logicalSetId !== null &&
+      (seenLogicalSetIds.has(logicalSetId) || leads.some((lead) => lead.id === logicalSetId));
     const continuesPrevious =
-      previousWorkSet !== undefined &&
-      previousWorkSet.supersetRoundIndex === set.supersetRoundIndex &&
-      immediateCompositeKind(previousWorkSet, set, { increment: exercise.smallestIncrement }) !== null;
+      continuesExplicitLogicalSet ||
+      (logicalSetId === null &&
+        previousWorkSet !== undefined &&
+        previousWorkSet.supersetRoundIndex === set.supersetRoundIndex &&
+        immediateCompositeKind(previousWorkSet, set, { increment: exercise.smallestIncrement }) !== null);
     if (!continuesPrevious) leads.push(set);
+    if (logicalSetId !== null) seenLogicalSetIds.add(logicalSetId);
     previousWorkSet = set;
   }
 
   return leads;
+}
+
+/**
+ * Set source du record de charge all-time affiché pendant la séance.
+ * Pour un exercice uniquement au poids du corps, le record est le maximum de reps.
+ * Pour une charge externe, la charge la plus haute gagne puis les reps départagent.
+ */
+export function allTimeRecordSet(exercise: Exercise, sets: LoggedSet[]): LoggedSet | null {
+  const candidates = normalRecordSets(sets, exercise);
+  if (candidates.length === 0) return null;
+  const weighted = candidates.filter((set) => set.weight > 0);
+  const pool = weighted.length > 0 ? weighted : candidates.filter((set) => set.weight === 0);
+  if (pool.length === 0) return null;
+  return pool.reduce((best, current) => {
+    if (current.weight > best.weight) return current;
+    if (Math.abs(current.weight - best.weight) < 1e-9 && current.reps > best.reps) return current;
+    return best;
+  });
 }
 
 export const RecordsEngine = {

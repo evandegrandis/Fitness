@@ -88,6 +88,15 @@ export interface Exercise {
 // LoggedSet / LoggedExercise
 // ---------------------------------------------------------------------------
 
+/**
+ * Technique qui relie plusieurs lignes loggées à une seule série physiologique.
+ * `completion` couvre notamment une mini-série complétée à charge réduite ;
+ * les deux autres valeurs conservent l'intention explicite d'une technique
+ * d'intensification. Le regroupement lui-même est porté par `logicalSetId`.
+ */
+export const SET_TECHNIQUES = ["completion", "drop_set", "rest_pause"] as const;
+export type SetTechnique = (typeof SET_TECHNIQUES)[number];
+
 export interface LoggedSet {
   id: string;
   weight: number;
@@ -98,6 +107,22 @@ export interface LoggedSet {
   completed: boolean;
   /** Round (1-based) à l'intérieur d'un superset. null si standalone / set pré-superset. */
   supersetRoundIndex: number | null;
+  /**
+   * Snapshot de la recommandation affichée au moment du log. Les propriétés
+   * restent optionnelles pour hydrater sans casse les anciens caches
+   * localStorage ; les frontières DB/backup les normalisent en `null` / `[]`.
+   */
+  suggestedWeight?: number | null;
+  suggestedReps?: number | null;
+  predictedRepsAtActualWeight?: number | null;
+  suggestedSetType?: SetType | null;
+  suggestionMode?: string | null;
+  suggestionReasonCodes?: string[];
+  suggestionEngineVersion?: string | null;
+  /** ID commun aux lignes qui forment une seule série physiologique. */
+  logicalSetId?: string | null;
+  /** Technique de regroupement, null pour une série standalone classique. */
+  setTechnique?: SetTechnique | null;
 }
 
 export interface LoggedExercise {

@@ -112,7 +112,11 @@ export default function HistoriquePage() {
           <h1 className="font-display text-2xl font-bold text-accent-gradient">Historique</h1>
         </div>
 
-        <HistoryOverviewCard sessions={history} prCountBySessionId={prCountBySessionId} />
+        <HistoryOverviewCard
+          sessions={history}
+          exercises={catalog}
+          prCountBySessionId={prCountBySessionId}
+        />
 
         {mutationError && (
           <p role="alert" className="mt-3 rounded-xl border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs text-rose-200">

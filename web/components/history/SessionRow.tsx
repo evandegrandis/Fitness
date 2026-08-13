@@ -6,7 +6,7 @@ import { fr } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { ChevronRight, Star } from "lucide-react";
 import { SwipeRow } from "@/components/ui/SwipeRow";
-import type { WorkoutSession } from "@/lib/models/types";
+import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 
@@ -27,20 +27,35 @@ function relativeDay(date: Date): string {
  */
 export function SessionRow({
   session,
+  exercises,
   prCount,
   onDelete,
 }: {
   session: WorkoutSession;
+  exercises: Exercise[];
   prCount: number;
   onDelete: (id: string) => void;
 }) {
+  const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   const ordered = session.exercises
-    .filter((exercise) => physiologicalSetUnits(exercise.sets) > 0)
+    .filter(
+      (logged) =>
+        physiologicalSetUnits(logged.sets, {
+          increment: exerciseById.get(logged.exerciseId)?.smallestIncrement,
+        }) > 0
+    )
     .sort((a, b) => a.orderIndex - b.orderIndex);
   const totalSets = Math.round(
-    ordered.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0) * 10
+    ordered.reduce(
+      (acc, logged) =>
+        acc +
+        physiologicalSetUnits(logged.sets, {
+          increment: exerciseById.get(logged.exerciseId)?.smallestIncrement,
+        }),
+      0
+    ) * 10
   ) / 10;
-  const duration = sessionDurationLabel(session);
+  const duration = sessionDurationLabel(session, exercises);
   const supersetCount = session.supersetGroups.length;
   const names = ordered.map((e) => e.exerciseName);
   const shown = names.slice(0, 2);

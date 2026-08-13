@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * Feuille modale ascendante (bottom sheet) avec fond flouté.
@@ -12,19 +12,37 @@ export function Sheet({
   onClose,
   children,
   full,
+  ariaLabel = "Fenêtre de dialogue",
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
   /** occupe presque tout l'écran (résumé post-séance) */
   full?: boolean;
+  ariaLabel?: string;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => dialogRef.current?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCloseRef.current();
+    };
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
+      cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = prev;
+      previouslyFocused?.focus();
     };
   }, [open]);
 
@@ -38,10 +56,16 @@ export function Sheet({
           exit={{ opacity: 0 }}
         >
           <div
+            aria-hidden="true"
             className="absolute inset-0 bg-black/55 backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={ariaLabel}
+            tabIndex={-1}
             className={`glass glass-strong relative w-full max-w-md rounded-t-3xl px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] ${
               full ? "h-[92vh] overflow-y-auto" : "max-h-[85vh] overflow-y-auto"
             }`}

@@ -47,10 +47,16 @@ function completedWorkVisits(session: WorkoutSession, exercise: LoggedExercise):
               candidateSet.timestamp.getTime() < set.timestamp.getTime()
           )
       );
+    const explicitLogicalContinuation =
+      set.logicalSetId !== null &&
+      set.logicalSetId !== undefined &&
+      (set.logicalSetId === previousSet?.logicalSetId || set.logicalSetId === previousSet?.id);
     const continuesVisit =
       previousSet !== undefined &&
       !hasInterveningExercise &&
-      immediateCompositeKind(previousSet, set, {}) !== null;
+      (set.logicalSetId !== null && set.logicalSetId !== undefined
+        ? explicitLogicalContinuation
+        : immediateCompositeKind(previousSet, set, {}) !== null);
 
     if (previousVisit && continuesVisit) {
       previousVisit.sets.push(set);

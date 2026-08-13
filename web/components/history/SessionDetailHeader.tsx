@@ -2,19 +2,36 @@
 
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import type { WorkoutSession } from "@/lib/models/types";
+import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 
 /** En-tête du détail de séance : jour + heure + sets + durée. */
-export function SessionDetailHeader({ session }: { session: WorkoutSession }) {
+export function SessionDetailHeader({
+  session,
+  exercises,
+}: {
+  session: WorkoutSession;
+  exercises: Exercise[];
+}) {
+  const exerciseById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   const totalSets = Math.round(
-    session.exercises.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0) * 10
+    session.exercises.reduce(
+      (acc, logged) =>
+        acc +
+        physiologicalSetUnits(logged.sets, {
+          increment: exerciseById.get(logged.exerciseId)?.smallestIncrement,
+        }),
+      0
+    ) * 10
   ) / 10;
   const completedExerciseCount = session.exercises.filter(
-    (exercise) => physiologicalSetUnits(exercise.sets) > 0
+    (logged) =>
+      physiologicalSetUnits(logged.sets, {
+        increment: exerciseById.get(logged.exerciseId)?.smallestIncrement,
+      }) > 0
   ).length;
-  const duration = sessionDurationLabel(session);
+  const duration = sessionDurationLabel(session, exercises);
 
   return (
     <div className="glass glass-card">

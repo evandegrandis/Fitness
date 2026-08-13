@@ -5,7 +5,15 @@
  * escalade plateau, bascule de variante, cluster machine.
  */
 import { describe, expect, it } from "vitest";
-import { suggest, SuggestionMode, detectPattern, predictReps } from "@/lib/engines/progression";
+import {
+  SUGGESTION_ENGINE_VERSION,
+  deriveStateV2,
+  detectPattern,
+  predictReps,
+  reprojectSuggestionAtWeight,
+  suggest,
+  SuggestionMode,
+} from "@/lib/engines/progression";
 import {
   activeCluster,
   classifySessionRoles,
@@ -17,6 +25,7 @@ import { SetType, SetPatternMode, FatigueClass, MovementPattern } from "@/lib/mo
 import { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
 import { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
+import type { SetSuggestion } from "@/lib/engines/progression";
 
 let idCounter = 0;
 function nextId(): string {
@@ -128,7 +137,7 @@ describe("ALGO_V2 §2 — detectPattern", () => {
     expect(detectPattern(exercise, history)).toBe("STRAIGHT");
   });
 
-  it("ISOLATION_FINISHER : exercice court placé tard dans les séances", () => {
+  it("une position tardive et peu de sets ne suffisent jamais à inventer un finisher", () => {
     const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 8, repTargetMax: 12 });
     const history = [sTSB([12, 10], [12, 7]), sTSB([12, 10], [12, 8]), sTSB([12, 10], [12, 7])];
     const positions = [
@@ -136,7 +145,7 @@ describe("ALGO_V2 §2 — detectPattern", () => {
       { position: 7, sessionExerciseCount: 9 },
       { position: 9, sessionExerciseCount: 11 },
     ];
-    expect(detectPattern(exercise, history, positions)).toBe("ISOLATION_FINISHER");
+    expect(detectPattern(exercise, history, positions)).toBe("STRAIGHT");
   });
 });
 
@@ -189,12 +198,12 @@ describe("structure intra-exercice — historique normalisé pour la prédiction
     expect(processed[0].workSets).toHaveLength(2);
   });
 
-  it("un finisher PDC tardif gagne sur BW_REP et garde son profil", () => {
+  it("un exercice PDC tardif reste BW_REP sans setType finisher explicite", () => {
     const exercise = makeExercise({ setPatternMode: SetPatternMode.bodyweight, repTargetMin: 6, repTargetMax: 12 });
     const history = [s1(0, 16), s1(0, 14), s1(0, 13)];
     const positions = history.map(() => ({ position: 7, sessionExerciseCount: 8 }));
 
-    expect(detectPattern(exercise, history, positions)).toBe("ISOLATION_FINISHER");
+    expect(detectPattern(exercise, history, positions)).toBe("BW_REP");
     const processed = preprocessHistory(history, exercise, exercise.smallestIncrement, {
       positions,
       preserveDedicatedFinishers: true,
@@ -326,6 +335,32 @@ describe("ALGO_V2 §4.2/§7.1 — amorce = set au max de reps (inversion)", () =
   });
 });
 
+describe("ALGO_V2 §4.2 — ancre STRAIGHT = set chargé valide", () => {
+  it("garde 80x7 comme ancre plutôt que le set plus léger à davantage de reps", () => {
+    const exercise = makeExercise({
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 8,
+      repTargetMax: 12,
+      smallestIncrement: 5,
+    });
+    const descendingSession = (day: number): LoggedSet[] => [
+      makeSet({ weight: 80, reps: 7, setSlotIndex: 0, timestamp: new Date(`2026-08-0${day}T10:00:00Z`) }),
+      makeSet({ weight: 75, reps: 10, setSlotIndex: 1, timestamp: new Date(`2026-08-0${day}T10:03:00Z`) }),
+    ];
+    const history = [descendingSession(7), descendingSession(4), descendingSession(1)];
+
+    const state = deriveStateV2(exercise, history, exercise.smallestIncrement, undefined, undefined);
+    const suggestion = suggest({ exercise, currentSetIndex: 0, recentHistory: history, currentSessionSets: [] });
+
+    expect(state.pattern).toBe("STRAIGHT");
+    expect(state.amorceHistory[0]).toEqual({ weight: 80, reps: 7 });
+    // Le premier record du run est daté sur le set-ancre 80x7 (10:00), jamais sur le 75x10
+    // sélectionné auparavant comme `p.amorce` (10:03).
+    expect(state.lastProgressDate).toEqual(new Date("2026-08-01T10:00:00Z"));
+    expect(suggestion.weight).toBe(80);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // predictReps — pente 7.5%/rep (§5.2)
 // ---------------------------------------------------------------------------
@@ -370,6 +405,107 @@ describe("ALGO_V2 §5.2 — predictReps pente REP_SLOPE_PCT (7.5%/rep)", () => {
       samples: [],
     });
     expect(reps).toBe(8); // ceil((6+10)/2)
+  });
+});
+
+describe("régression intra-séance — BW_REP indexé par position", () => {
+  it("HSPU après BW×10 ne retombe jamais à BW×8 sans fatigue, même si la médiane historique vaut 8", () => {
+    const exercise = makeExercise({
+      name: "HSPU",
+      setPatternMode: SetPatternMode.bodyweight,
+      repTargetMin: 5,
+      repTargetMax: 10,
+      smallestIncrement: 1.25,
+    });
+    const bwSession = (secondReps: number): LoggedSet[] => [
+      makeSet({ weight: 0, reps: 10, setSlotIndex: 0 }),
+      makeSet({ weight: 0, reps: secondReps, setSlotIndex: 1 }),
+    ];
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: [bwSession(13), bwSession(8), bwSession(7)],
+      currentSessionSets: [makeSet({ weight: 0, reps: 10, setSlotIndex: 0 })],
+    });
+
+    expect(suggestion.reasonCodes).toContain("bw_rep_v2_predicted");
+    expect(suggestion.weight).toBe(0);
+    expect(suggestion.reps).toBe(10);
+  });
+});
+
+describe("reprojectSuggestionAtWeight", () => {
+  const baseSuggestion: SetSuggestion = {
+    weight: 80,
+    reps: 8,
+    setType: SetType.work,
+    explanation: "Tentative de record · 80 kg × 8",
+    confidence: 0.9,
+    reasonCodes: [],
+    mode: SuggestionMode.recordAttempt,
+    sessionFatigueWarning: null,
+  };
+
+  it("reprojette les reps à la hausse/baisse sans dépasser le cap de travail", () => {
+    const exercise = makeExercise({ repTargetMin: 6, repTargetMax: 12, smallestIncrement: 5 });
+    const heavier = reprojectSuggestionAtWeight(baseSuggestion, exercise, 85);
+    const lighter = reprojectSuggestionAtWeight(baseSuggestion, exercise, 65);
+
+    expect(heavier.weight).toBe(85);
+    expect(heavier.reps).toBeLessThan(baseSuggestion.reps);
+    expect(heavier.explanation).toContain(`85 kg × ${heavier.reps}`);
+    expect(lighter.reps).toBe(10);
+  });
+
+  it("intègre le poids du corps pour le lest et inverse correctement l'assistance", () => {
+    const weighted = makeExercise({ setPatternMode: SetPatternMode.weightedBodyweight, smallestIncrement: 5 });
+    const assisted = makeExercise({ setPatternMode: SetPatternMode.assistedBodyweight, smallestIncrement: 5 });
+    const weightedBase = { ...baseSuggestion, weight: 20 };
+    const assistedBase = { ...baseSuggestion, weight: 30 };
+
+    expect(reprojectSuggestionAtWeight(weightedBase, weighted, 25, 80).reps).toBeLessThan(weightedBase.reps);
+    expect(reprojectSuggestionAtWeight(assistedBase, assisted, 25, 80).reps).toBeLessThan(assistedBase.reps);
+    expect(reprojectSuggestionAtWeight(assistedBase, assisted, 35, 80).reps).toBeGreaterThan(assistedBase.reps);
+  });
+
+  it("expose la version stable destinée aux snapshots suggestion/réel", () => {
+    expect(SUGGESTION_ENGINE_VERSION).toBe("web-v2.1-2026-08-13");
+  });
+});
+
+describe("calibration suggestion → performance réelle", () => {
+  it("corrige progressivement un biais répété sans dépasser deux reps", () => {
+    const exercise = makeExercise({
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 15,
+      smallestIncrement: 5,
+    });
+    const actualHistory = [s1(80, 6), s1(80, 6), s1(80, 6)];
+    const measuredHistory = actualHistory.map((session) =>
+      session.map((set) => ({
+        ...set,
+        logicalSetId: set.id,
+        predictedRepsAtActualWeight: 4,
+      }))
+    );
+
+    const baseline = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory: actualHistory,
+      currentSessionSets: [],
+    });
+    const calibrated = suggest({
+      exercise,
+      currentSetIndex: 0,
+      recentHistory: measuredHistory,
+      currentSessionSets: [],
+    });
+
+    expect(calibrated.reasonCodes).toContain("prediction_bias_calibrated");
+    expect(calibrated.reps).toBe(Math.min(10, baseline.reps + 1));
+    expect(calibrated.explanation).toMatch(new RegExp(`× ${calibrated.reps}$`));
   });
 });
 
@@ -446,6 +582,45 @@ describe("ALGO_V2 §4.4/§4.2 — promotion réactive vs démotion stricte", () 
     const history = [s1(80, 7), s1(80, 9), s1(80, 9)];
     const suggestion = suggest({ exercise, currentSetIndex: 0, recentHistory: history, currentSessionSets: [] });
     expect(suggestion.weight).toBeCloseTo(80);
+  });
+
+  it("ne traite pas 7 reps sur un minimum de 8 comme un overreach raté", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 8, repTargetMax: 12, smallestIncrement: 5 });
+    const history = [s1(80, 8), s1(80, 8), s1(80, 8)];
+    const moderateMiss = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets: [makeSet({ weight: 85, reps: 7 })],
+    });
+    const trueOverreach = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets: [makeSet({ weight: 85, reps: 5 })],
+    });
+
+    expect(moderateMiss.reasonCodes).not.toContain("post_overreach_return_to_anchor");
+    expect(trueOverreach.reasonCodes).toContain("post_overreach_return_to_anchor");
+    expect(trueOverreach.weight).toBe(80);
+  });
+
+  it("garde l'explication synchronisée quand le cap v2 réduit les reps", () => {
+    const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 10, repTargetMax: 15, smallestIncrement: 2.5 });
+    const fatigue = new SessionFatigueContext([
+      { primaryParent: MuscleParent.pectoraux, workSetsCompleted: 5, fatigueClass: FatigueClass.medium },
+    ]);
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: [s1(80, 10), s1(80, 10), s1(80, 10)],
+      currentSessionSets: [makeSet({ weight: 80, reps: 10 })],
+      sessionFatigue: fatigue,
+    });
+
+    expect(suggestion.reasonCodes).toContain("rep_cap_v2");
+    expect(suggestion.reps).toBe(10);
+    expect(suggestion.explanation).toMatch(/× 10$/);
   });
 });
 
@@ -585,6 +760,38 @@ describe("VARIATION_CYCLING_SPEC §2/§4/§6/§8 — rotation de variation sur p
       catalog: [current, candidate],
       sessionHistory: [],
       goals: [],
+      now: TODAY,
+    });
+
+    expect(suggestion.progressionState).toBe("progressing");
+    expect(suggestion.switchToVariantId).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("variation");
+    expect(suggestion.reasonCodes).not.toContain("variation_preemptive");
+  });
+
+  it("un PR du jour annule un état stale et toute rotation de variante", () => {
+    const current = makeExercise({
+      name: "Développé militaire machine",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1 }],
+    });
+    const candidate = makeExercise({
+      name: "Développé militaire haltères",
+      movementPattern: MovementPattern.verticalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.deltAnt, coefficient: 1 }],
+    });
+    const history = [datedSession(80, 7, 3), datedSession(80, 7, 10), datedSession(80, 7, 21)];
+    const suggestion = suggest({
+      exercise: current,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets: [makeSet({ weight: 82.5, reps: 7, setSlotIndex: 0, timestamp: TODAY })],
+      catalog: [current, candidate],
+      sessionHistory: [],
+      prAchievedToday: true,
       now: TODAY,
     });
 
@@ -750,6 +957,29 @@ describe("ALGO_V2 §7.4/§9 — bascule de variante (Ab roller debout -> genoux)
     expect(suggestion.switchToVariantId).toBe(easierVariant.id);
     expect(suggestion.reasonCodes).toContain("variant_switch_easier");
     expect(suggestion.reps).toBe(10);
+  });
+
+  it("un PR déjà réalisé aujourd'hui interdit aussi la bascule BW vers une variante facile", () => {
+    const exercise = makeExercise({
+      name: "Ab roller debout",
+      setPatternMode: SetPatternMode.bodyweight,
+      repTargetMin: 4,
+      repTargetMax: 10,
+    });
+    const easierVariant = makeExercise({ name: "Ab roller genoux" });
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 2,
+      recentHistory: [s1(0, 4), s1(0, 6), s1(0, 3)],
+      currentSessionSets: [makeSet({ weight: 0, reps: 10 }), makeSet({ weight: 0, reps: 3, setSlotIndex: 1 })],
+      catalog: [exercise, easierVariant],
+      prAchievedToday: true,
+    });
+
+    expect(suggestion.progressionState).toBe("progressing");
+    expect(suggestion.switchToVariantId).toBeNull();
+    expect(suggestion.reasonCodes).not.toContain("variant_switch_easier");
+    expect(suggestion.explanation).not.toContain("Variante facile");
   });
 
   it("< VARIANT_SWITCH_FLOOR(4) reps mais `catalog` non fourni -> switchToVariantId reste null (plus jamais un nom brut, dégradation gracieuse)", () => {

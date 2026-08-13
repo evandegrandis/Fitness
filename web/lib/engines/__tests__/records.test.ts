@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allTimeRecordSet,
   buildFinisherRecords,
   classifyFinisher,
   EMPTY_RECORDS,
@@ -111,6 +112,49 @@ describe("buildRecords", () => {
     const displayed = RecordsEngine.displayedRecordSetIDs(logged, [lead, continuation], BENCH);
     expect(displayed.has(lead.id)).toBe(true);
     expect(displayed.has(continuation.id)).toBe(false);
+  });
+
+  it("affiche le vrai record all-time sans traiter un complément de série comme un nouveau record", () => {
+    const lead80 = set({ id: "logical-80", weight: 80, reps: 9, setSlotIndex: 0, logicalSetId: "logical-80" });
+    const lead85 = set({ id: "logical-85", weight: 85, reps: 5, setSlotIndex: 1, logicalSetId: "logical-85" });
+    const completion75 = set({
+      id: "completion-75",
+      weight: 75,
+      reps: 5,
+      setSlotIndex: 2,
+      logicalSetId: "logical-85",
+      setTechnique: "completion",
+    });
+
+    expect(allTimeRecordSet(BENCH, [lead80, lead85, completion75])).toBe(lead85);
+  });
+
+  it("n'affiche jamais une validation accidentelle à zéro rep comme record all-time", () => {
+    const valid = set({ weight: 80, reps: 9 });
+    const zeroRep = set({ weight: 100, reps: 0 });
+    expect(allTimeRecordSet(BENCH, [valid, zeroRep])).toBe(valid);
+  });
+
+  it("respecte deux IDs logiques distincts même si les validations sont rapprochées", () => {
+    const started = new Date("2026-07-10T10:00:00Z");
+    const first = set({
+      id: "standalone-1",
+      logicalSetId: "standalone-1",
+      weight: 100,
+      reps: 10,
+      timestamp: started,
+      setSlotIndex: 0,
+    });
+    const second = set({
+      id: "standalone-2",
+      logicalSetId: "standalone-2",
+      weight: 75,
+      reps: 12,
+      timestamp: new Date(started.getTime() + 10_000),
+      setSlotIndex: 1,
+    });
+
+    expect(RecordsEngine.buildRecords(BENCH, [first, second]).bestRepsByWeight[75]).toBe(12);
   });
 });
 

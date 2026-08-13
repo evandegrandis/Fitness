@@ -17,6 +17,9 @@ describe("invariants sémantiques du catalogue", () => {
       id: string;
       name: string;
       setPatternMode: string;
+      smallestIncrement: number;
+      repTargetMin: number;
+      repTargetMax: number;
       strengthStandardKey?: string;
       benchmarkUnit?: string;
     }>;
@@ -108,6 +111,16 @@ describe("invariants sémantiques du catalogue", () => {
     expect(standards.standards["Plate loaded lat raise"].caveat).toContain(
       "géométrie et résistance réelle non standardisées"
     );
+  });
+
+  it("utilise les crans matériels réels des trois machines à piles de 5 kg", () => {
+    for (const name of ["Tirage vertical muscle up", "Pec deck", "Pulley serré"]) {
+      expect(backup.exercises.find((item) => item.name === name)?.smallestIncrement, name).toBe(5);
+    }
+    expect(backup.exercises.find((item) => item.name === "Pec deck")).toMatchObject({
+      repTargetMin: 6,
+      repTargetMax: 10,
+    });
   });
 
   it("réserve les seuils de charge négatifs aux standards de charge ajoutée", () => {

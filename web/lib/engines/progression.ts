@@ -45,6 +45,7 @@ import {
   type ResolvedStandard,
 } from "@/lib/engines/benchmark";
 import { SessionFatigueContext } from "@/lib/engines/session-fatigue";
+import type { SessionFatigueEvidence } from "@/lib/engines/session-fatigue";
 import { applyDeload, deloadMessage } from "@/lib/engines/deload";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { estimated1RM } from "@/lib/engines/e1rm";
@@ -69,7 +70,13 @@ import {
   computeTopRef,
   type AnchorLoad,
 } from "@/lib/engines/references";
-import { predictReps as predictRepsPure, type LoadMode, type PredictContext, type RepSample } from "@/lib/engines/predict";
+import {
+  effTotal,
+  predictReps as predictRepsPure,
+  type LoadMode,
+  type PredictContext,
+  type RepSample,
+} from "@/lib/engines/predict";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { easierVariantName } from "@/lib/engines/variants";
 import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
@@ -92,6 +99,9 @@ export const SuggestionMode = {
 
 export type SuggestionMode = (typeof SuggestionMode)[keyof typeof SuggestionMode];
 
+/** Persisted with suggestion/actual snapshots so later model tuning can segment engine eras. */
+export const SUGGESTION_ENGINE_VERSION = "web-v2.1-2026-08-13";
+
 // ---------------------------------------------------------------------------
 // SetSuggestion
 // ---------------------------------------------------------------------------
@@ -106,6 +116,8 @@ export interface SetSuggestion {
   mode: SuggestionMode;
   /** Non-null quand une fatigue de séance a été détectée avant cet exercice. */
   sessionFatigueWarning: string | null;
+  /** Preuve dérivée affichable au clic; jamais persistée. */
+  sessionFatigueEvidence?: SessionFatigueEvidence | null;
   /** ALGO_V2 §0/§11 — rôle du set suggéré (dérivé, jamais persisté). */
   role?: SetRole;
   /**
@@ -569,15 +581,15 @@ function loadModeOf(exercise: Exercise): LoadMode {
 }
 
 /** Ancre v2 d'une séance déjà traitée (P1-P5) : amorce pour TOP_SET_BACKOFF, sinon le set le plus lourd non-échec. */
-function v2AnchorOf(processed: ProcessedSession, pattern: DetectedPattern, exercise: Exercise): AnchorLoad | null {
+function v2AnchorOf(processed: ProcessedSession, pattern: DetectedPattern, exercise: Exercise): LoggedSet | null {
   if (processed.workSets.length === 0) return null;
   if (pattern === "TOP_SET_BACKOFF" && processed.amorce) {
-    return { weight: processed.amorce.weight, reps: processed.amorce.reps };
+    return processed.amorce;
   }
   const validCandidates = processed.workSets.filter((s) => s.reps >= Math.max(1, exercise.repTargetMin - 1));
   const pool = validCandidates.length > 0 ? validCandidates : processed.workSets;
   const best = pool.reduce((b, c) => (c.weight > b.weight ? c : b));
-  return { weight: best.weight, reps: best.reps };
+  return best;
 }
 
 /** §8 — failedOverreachLoads : weight >= topRef(à l'époque)+1incr ET reps < repMin-2, approximé par weight >= (amorce+2incr) comme proxy de "tentative overreach". */
@@ -792,9 +804,15 @@ function deriveStateV2(
   const amorceHistory: AnchorLoad[] = [];
   const topHistory: AnchorLoad[] = [];
   const repSamples: RepSample[] = [];
-  for (const p of processedHistory) {
-    const inCluster = clusterSessionIdx.has(processedHistory.indexOf(p));
-    if (p.amorce && (inCluster || !isClusterable)) amorceHistory.push({ weight: p.amorce.weight, reps: p.amorce.reps });
+  processedHistory.forEach((p, index) => {
+    const inCluster = clusterSessionIdx.has(index);
+    const sessionAmorce =
+      pattern === "STRAIGHT" || pattern === "ISOLATION_FINISHER"
+        ? v2AnchorOf(p, pattern, exercise)
+        : p.amorce;
+    if (sessionAmorce && (inCluster || !isClusterable)) {
+      amorceHistory.push({ weight: sessionAmorce.weight, reps: sessionAmorce.reps });
+    }
     if (p.top && (inCluster || !isClusterable)) topHistory.push({ weight: p.top.weight, reps: p.top.reps });
     if (inCluster || !isClusterable) {
       p.workSets.forEach((s, i) => {
@@ -802,7 +820,7 @@ function deriveStateV2(
         // triplet amorce/top/backoff (qui n'a pas de sens hors TOP_SET_BACKOFF). Un seul type
         // d'entrée par set physique : les mélanger ferait compter le même set deux fois dans le
         // pool "tous rôles confondus" de `empiricalBase` (nearestWithMinSamples sameRoleOnly=false).
-        if (pattern === "STRAIGHT" || pattern === "ISOLATION_FINISHER") {
+        if (pattern === "STRAIGHT" || pattern === "ISOLATION_FINISHER" || pattern === "BW_REP") {
           const position = Math.min(i + 1, 3);
           repSamples.push({ role: position, weight: s.weight, reps: s.reps });
         } else {
@@ -811,7 +829,7 @@ function deriveStateV2(
         }
       });
     }
-  }
+  });
 
   // VARIATION_CYCLING_SPEC §2 — mêmes ancres que amorceHistory/topHistory (même filtre cluster),
   // mais avec leur date réelle (`LoggedSet.timestamp`) : `AnchorLoad` (ci-dessus) ne porte pas la
@@ -820,8 +838,16 @@ function deriveStateV2(
   const topHistoryDated: DatedAnchor[] = [];
   processedHistory.forEach((p, idx) => {
     const inCluster = clusterSessionIdx.has(idx);
-    if (p.amorce && (inCluster || !isClusterable)) {
-      amorceHistoryDated.push({ weight: p.amorce.weight, reps: p.amorce.reps, timestamp: p.amorce.timestamp });
+    const sessionAmorce =
+      pattern === "STRAIGHT" || pattern === "ISOLATION_FINISHER"
+        ? v2AnchorOf(p, pattern, exercise)
+        : p.amorce;
+    if (sessionAmorce && (inCluster || !isClusterable)) {
+      amorceHistoryDated.push({
+        weight: sessionAmorce.weight,
+        reps: sessionAmorce.reps,
+        timestamp: sessionAmorce.timestamp,
+      });
     }
     if (p.top && (inCluster || !isClusterable)) {
       topHistoryDated.push({ weight: p.top.weight, reps: p.top.reps, timestamp: p.top.timestamp });
@@ -962,6 +988,77 @@ function render(candidate: Candidate, confidence: number, setTypeOverride?: SetT
     role,
     mode: candidate.mode,
   });
+}
+
+/**
+ * Reprojects only the expected repetitions when the user manually changes the suggested load.
+ * The suggestion remains the immutable reference point: editing reps in the UI must never call
+ * this helper (and therefore can never move the load in the opposite direction).
+ *
+ * `bodyweightKg` is optional for the same reason as in `predictReps`: the engine's documented
+ * default is used when the profile is unavailable. Assistance is expressed as a positive weight,
+ * so increasing it lowers effective load and raises the projected repetitions.
+ */
+export function reprojectSuggestionAtWeight(
+  suggestion: SetSuggestion,
+  exercise: Exercise,
+  requestedWeight: number,
+  bodyweightKg?: number
+): SetSuggestion {
+  const weight = Math.max(0, requestedWeight);
+  const mode = loadModeOf(exercise);
+  const fromEffectiveLoad = effTotal(suggestion.weight, mode, bodyweightKg);
+  const toEffectiveLoad = effTotal(weight, mode, bodyweightKg);
+  const kgPerRep = Math.max(
+    exercise.smallestIncrement,
+    ALGO_V2.REP_SLOPE_PCT * Math.max(1, fromEffectiveLoad)
+  );
+  const projected = roundHalfAwayFromZero(
+    suggestion.reps - (toEffectiveLoad - fromEffectiveLoad) / kgPerRep
+  );
+  const standardCap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
+  const cap =
+    exercise.setPatternMode === SPM.bodyweight && suggestion.mode === SuggestionMode.plateauBreak
+      ? Math.max(standardCap, suggestion.reps)
+      : standardCap;
+  const reps = clampInt(projected, 1, Math.max(1, cap));
+  const modeLabel = MODE_LABEL_FR[suggestion.mode] ?? suggestion.mode.replace(/_/g, " ");
+  const loadLabel = weight > 0 ? `${cleanWeight(weight)} kg` : "PDC";
+
+  return {
+    ...suggestion,
+    weight,
+    reps,
+    explanation: `${modeLabel} · ${loadLabel} × ${reps}`,
+  };
+}
+
+/**
+ * Correction empirique bornée du biais « prédit à la charge réellement choisie » → performance
+ * obtenue. Trois observations amorcent seulement un cran ; six permettent au maximum ±2 reps.
+ * Les continuations, finishers et séries volontairement plafonnées sont exclues pour ne pas
+ * apprendre sur une mesure censurée ou sur deux lignes d'une même série physiologique.
+ */
+function learnedPredictionOffset(history: LoggedSet[][], exercise: Exercise): number {
+  const residuals = history
+    .flatMap((session) => session)
+    .filter(
+      (set) =>
+        set.completed &&
+        set.reps > 0 &&
+        set.predictedRepsAtActualWeight !== null &&
+        set.predictedRepsAtActualWeight !== undefined &&
+        set.setType !== ST.warmup &&
+        set.setType !== ST.finisher &&
+        set.setTechnique == null &&
+        (set.logicalSetId == null || set.logicalSetId === set.id) &&
+        !(exercise.voluntaryRepCap > 0 && set.reps >= exercise.voluntaryRepCap)
+    )
+    .slice(0, 12)
+    .map((set) => clampInt(set.reps - set.predictedRepsAtActualWeight!, -3, 3));
+  if (residuals.length < 3) return 0;
+  const shrinkage = Math.min(1, residuals.length / 6);
+  return clampInt(roundHalfAwayFromZero(median(residuals) * shrinkage), -2, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -1407,7 +1504,7 @@ function buildCandidates(
   // gaspille des sets ; on saute directement à l'ancre pour que la séance reste productive.
   if (
     last.weight > derived.targetLoad + increment * 0.5 &&
-    last.reps < exercise.repTargetMin &&
+    last.reps < exercise.repTargetMin - ALGO_V2.DEMOTION_MARGIN &&
     exercise.setPatternMode !== SPM.assistedBodyweight
   ) {
     const recoveryReps = clampInt(backoffReps, exercise.repTargetMin, exercise.repTargetMax);
@@ -1720,7 +1817,8 @@ function suggestBWRepV2(
   doneToday: LoggedSet[],
   v2: DeriveStateV2Result,
   predictCtx: Omit<PredictContext, "samples">,
-  fatigueConfirmed: boolean
+  fatigueConfirmed: boolean,
+  prAchievedToday: boolean
 ): SetSuggestion {
   const ctx: PredictContext = { ...predictCtx, samples: v2.repSamples };
   const cap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
@@ -1738,7 +1836,7 @@ function suggestBWRepV2(
   const last = doneToday[doneToday.length - 1];
   const easierVariant = easierVariantName(exercise.name);
 
-  if (last.reps < ALGO_V2.VARIANT_SWITCH_FLOOR && easierVariant) {
+  if (!prAchievedToday && last.reps < ALGO_V2.VARIANT_SWITCH_FLOOR && easierVariant) {
     return makeSuggestion({
       weight: 0,
       reps: 10,
@@ -1762,7 +1860,10 @@ function suggestBWRepV2(
     return render({ load: 0, reps, mode: SuggestionMode.plateauBreak, reasonCodes: ["bw_plateau_rep_target_v2"] }, 0.82, ST.work, "bw");
   }
 
-  const pred = predictRepsPure(0, doneToday.length + 1 > 3 ? 3 : doneToday.length + 1, ctx);
+  const rawPrediction = predictRepsPure(0, doneToday.length + 1 > 3 ? 3 : doneToday.length + 1, ctx);
+  // Sans signal de fatigue, ne jamais annoncer immédiatement moins que le set qui vient d'être
+  // validé. Le plafond propre à l'exercice reste prioritaire (HSPU : BW×10 reste BW×10, jamais 8).
+  const pred = fatigueConfirmed ? rawPrediction : Math.max(rawPrediction, Math.min(last.reps, cap));
 
   // Ajout de set (progression par sets) : les 2 dernières séances toutes au cap ET on est à la
   // position habituelle -> suggérer un set de plus.
@@ -1887,7 +1988,14 @@ function suggestStraightV2(
   const derivedV2: DerivedExerciseState = { ...derived, targetLoad: v2.amorceTarget || derived.targetLoad };
   const result = suggestGeneric(exercise, doneToday, derivedV2, increment, fatigueConfirmed);
   if (result.reps > cap && result.mode !== SuggestionMode.plateauBreak) {
-    return { ...result, reps: cap, reasonCodes: [...result.reasonCodes, "rep_cap_v2"] };
+    const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
+    const loadLabel = result.weight > 0 ? `${cleanWeight(result.weight)} kg` : "PDC";
+    return {
+      ...result,
+      reps: cap,
+      explanation: `${modeLabel} · ${loadLabel} × ${cap}`,
+      reasonCodes: [...result.reasonCodes, "rep_cap_v2"],
+    };
   }
   return result;
 }
@@ -1931,6 +2039,8 @@ export interface SuggestParams {
   gapLestDays?: number;
   /** Un PR déjà réalisé aujourd'hui masque au minimum l'alerte de fatigue contradictoire. */
   prAchievedToday?: boolean;
+  /** Un PR est encore la preuve la plus récente : masque aussi l'alerte de fatigue. */
+  prIsLatestEvidence?: boolean;
   /**
    * VARIATION_CYCLING_SPEC §6/§8 — catalogue complet des exercices, nécessaire pour :
    *   (1) résoudre en `Exercise.id` réel le nom `VARIANT_LINKS` (§7.4/§9, bascule BW facile) ;
@@ -1985,6 +2095,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
     historyPositions,
     gapLestDays,
     prAchievedToday = false,
+    prIsLatestEvidence = prAchievedToday,
     catalog,
     sessionHistory,
     goals = [],
@@ -2034,15 +2145,14 @@ export function suggest(params: SuggestParams): SetSuggestion {
     rawHistory.some((session) => session.some((set) => set.completed && set.setType === ST.finisher));
   const preserveDedicatedFinisher = rawPattern === "ISOLATION_FINISHER";
   const history = rawHistory
-    .map((session, index) =>
+    .map((session) =>
       setsForNormalPrediction(
         preserveDedicatedFinisher
           ? session.map((set) => (set.setType === ST.finisher ? { ...set, setType: ST.work } : set))
           : session,
         {
-        increment,
-        position: alignedPositions?.[index],
-        preserveDedicatedFinisher,
+          increment,
+          preserveDedicatedFinisher,
         }
       )
     )
@@ -2072,7 +2182,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
   // Un PR obtenu sur cet exercice est une preuve directe que la fatigue contextuelle n'a pas
   // invalidé sa performance du jour. On conserve la fatigue intra-exercice réellement observée
   // (`autoFatigueFlag`) mais on n'abaisse plus artificiellement la suite à cause du seul contexte.
-  const sessionFatiguePenalty = prAchievedToday ? 0 : sessionFatigue.fatiguePenalty(parent);
+  const sessionFatiguePenalty = prIsLatestEvidence ? 0 : sessionFatigue.fatiguePenalty(parent);
   // La fatigue contextuelle est confirmée sur l'excès (pénalité >= 2), pas sur
   // le coût brut déjà absorbé par le profil historique.
   const fatigueConfirmed = autoFatigueFlag(exercise, doneToday) || sessionFatiguePenalty >= 2;
@@ -2157,7 +2267,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
         result = suggestTopSetBackoffV2(exercise, doneToday, v2, increment, fatigueConfirmed, predictCtxBase, antiPlateauActive);
         break;
       case "BW_REP":
-        result = suggestBWRepV2(exercise, doneToday, v2, predictCtxBase, fatigueConfirmed);
+        result = suggestBWRepV2(exercise, doneToday, v2, predictCtxBase, fatigueConfirmed, prAchievedToday);
         break;
       case "WEIGHTED_BW_VARIABLE":
         result = suggestWeightedBWVariableV2(
@@ -2257,10 +2367,55 @@ export function suggest(params: SuggestParams): SetSuggestion {
     }
   }
 
+  // A record established today is stronger evidence than a stale cycle-state estimate. It also
+  // makes every exercise-switch proposal contradictory, whether it came from a dated plateau or
+  // the BW easier-variant branch.
+  if (prAchievedToday) {
+    result = {
+      ...result,
+      progressionState: "progressing",
+      switchToVariantId: null,
+      reasonCodes: result.reasonCodes.filter(
+        (code) =>
+          code !== "variation" &&
+          code !== "variation_preemptive" &&
+          code !== "variant_switch_easier"
+      ),
+    };
+  }
+
+  const learnedOffset = learnedPredictionOffset(rawHistory, exercise);
+  if (
+    learnedOffset !== 0 &&
+    result.mode === SuggestionMode.recordAttempt &&
+    result.switchToVariantId == null
+  ) {
+    const cap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
+    const currentBwFloor =
+      exercise.setPatternMode === SPM.bodyweight && !fatigueConfirmed && doneToday.length > 0
+        ? Math.min(doneToday.at(-1)!.reps, cap)
+        : 1;
+    const calibratedReps = clampInt(result.reps + learnedOffset, currentBwFloor, Math.max(1, cap));
+    if (calibratedReps !== result.reps) {
+      const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
+      const loadLabel = result.weight > 0 ? `${cleanWeight(result.weight)} kg` : "PDC";
+      result = {
+        ...result,
+        reps: calibratedReps,
+        explanation: `${modeLabel} · ${loadLabel} × ${calibratedReps}`,
+        reasonCodes: [...result.reasonCodes, "prediction_bias_calibrated"],
+      };
+    }
+  }
+
   // Attache l'avertissement de fatigue de séance si pertinent (ne change pas la suggestion elle-même)
-  const note = prAchievedToday ? null : sessionFatigue.fatigueNote(parent);
+  const note = prIsLatestEvidence ? null : sessionFatigue.fatigueNote(parent);
   if (note !== null) {
-    result = { ...result, sessionFatigueWarning: note };
+    result = {
+      ...result,
+      sessionFatigueWarning: note,
+      sessionFatigueEvidence: sessionFatigue.fatigueEvidence(parent),
+    };
   }
 
   // WS4 — signale le deload d'absence sans changer weight/reps déjà calculés par les branches
