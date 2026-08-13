@@ -13,5 +13,6 @@ scripts/_safety.ts
 scripts/backfill-*.ts
 scripts/export-backup.ts
 scripts/fix-catalog-profile-*.ts
+scripts/import-*.ts
 scripts/migrate-prod-*.ts
 scripts/seed.ts
