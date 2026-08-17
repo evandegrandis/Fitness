@@ -570,7 +570,7 @@ describe("useWorkoutStore", () => {
     expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(2);
   });
 
-  it("marque automatiquement un gros set tardif de dips comme finisher", () => {
+  it("propose — sans l'imposer — un finisher pour un set tardif de dips", () => {
     const store = useWorkoutStore.getState();
     store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
     store.startEmpty("normal");
@@ -578,22 +578,81 @@ describe("useWorkoutStore", () => {
     store.addExercise(DIPS.id);
     const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
 
-    for (let index = 0; index < 5; index += 1) {
+    // 10 séries effectives ouvrent la porte de position sans attendre 40 minutes.
+    for (let index = 0; index < 10; index += 1) {
       store.logSet(benchLogged.id, { weight: 80, reps: 8 });
     }
     store.logSet(dipsLogged.id, { weight: 0, reps: 16 });
 
+    // Le reclassement silencieux a disparu : la série reste une série de travail…
+    const logged = useWorkoutStore.getState().active!.exercises[1].sets[0];
+    expect(logged.setType).toBe("work");
+    // …et c'est une proposition explicite qui est mise en attente.
+    const prompt = useWorkoutStore.getState().pendingFinisherPrompt;
+    expect(prompt).toMatchObject({ setId: logged.id, loggedExerciseId: dipsLogged.id, reason: "late_addition" });
+
+    useWorkoutStore.getState().confirmFinisherPrompt();
+
     const finisher = useWorkoutStore.getState().active!.exercises[1].sets[0];
     expect(finisher.setType).toBe("finisher");
+    expect(useWorkoutStore.getState().pendingFinisherPrompt).toBeNull();
+    // La requalification décroche bien le record de la piste finisher.
     expect(useWorkoutStore.getState().justHitRecord[finisher.id]).toBe("finisherReps");
     expect(useWorkoutStore.getState().achievement?.kind).toBe("finisherReps");
     // La piste normale des dips reste vierge malgré le PR finisher.
     expect(useWorkoutStore.getState().records(DIPS.id).isEmpty).toBe(true);
 
     const result = useWorkoutStore.getState().finish()!;
-    expect(result.snapshot.setCount).toBe(6);
+    expect(result.snapshot.setCount).toBe(11);
     expect(result.snapshot.exerciseCount).toBe(2);
     expect(result.snapshot.prHighlights).toContainEqual({ title: DIPS.name, detail: "BW×16 · finisher" });
+  });
+
+  it("propose un finisher au retour sur un exercice déjà travaillé (cas HSPU d'Evan)", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(DIPS.id);
+    store.addExercise(BENCH.id);
+    const [dipsLogged, benchLogged] = useWorkoutStore.getState().active!.exercises;
+
+    // Bloc de travail sur les dips, puis on passe à un autre exercice…
+    for (let index = 0; index < 10; index += 1) {
+      store.logSet(dipsLogged.id, { weight: 0, reps: 10 });
+    }
+    store.logSet(benchLogged.id, { weight: 80, reps: 8 });
+    useWorkoutStore.getState().dismissFinisherPrompt();
+
+    // …puis on revient sur les dips pour une série courte : c'est le finisher.
+    store.logSet(dipsLogged.id, { weight: 0, reps: 3 });
+
+    expect(useWorkoutStore.getState().pendingFinisherPrompt).toMatchObject({
+      loggedExerciseId: dipsLogged.id,
+      reason: "late_return",
+    });
+  });
+
+  it("ne repose plus la question sur un exercice où le finisher a été refusé", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    store.addExercise(DIPS.id);
+    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+
+    for (let index = 0; index < 10; index += 1) {
+      store.logSet(benchLogged.id, { weight: 80, reps: 8 });
+    }
+    store.logSet(dipsLogged.id, { weight: 0, reps: 16 });
+    expect(useWorkoutStore.getState().pendingFinisherPrompt).not.toBeNull();
+
+    useWorkoutStore.getState().dismissFinisherPrompt();
+    expect(useWorkoutStore.getState().pendingFinisherPrompt).toBeNull();
+
+    // Deuxième série tardive sur le même exercice : plus aucune sollicitation.
+    store.logSet(dipsLogged.id, { weight: 0, reps: 18 });
+    expect(useWorkoutStore.getState().pendingFinisherPrompt).toBeNull();
+    expect(useWorkoutStore.getState().active!.exercises[1].sets.every((s) => s.setType === "work")).toBe(true);
   });
 
   it("ajoute et supprime le cardio sans créer de set de musculation", () => {

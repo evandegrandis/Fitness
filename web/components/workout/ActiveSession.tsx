@@ -17,6 +17,7 @@ import { AchievementOverlay } from "./AchievementOverlay";
 import { ExercisePicker } from "./ExercisePicker";
 import { EditSetSheet } from "./EditSetSheet";
 import { SupersetLinkBanner } from "./SupersetLinkBanner";
+import { FinisherPromptBanner } from "./FinisherPromptBanner";
 import { CardioSection } from "./CardioSection";
 
 /** Carte à garder ouverte lorsqu'une séance active est restaurée. */
@@ -236,6 +237,7 @@ export function ActiveSession({
       <UndoToast />
       <AchievementOverlay />
       <SupersetLinkBanner />
+      <FinisherPromptBanner />
 
       <ExercisePicker
         open={pickerOpen || replaceTarget !== null}
@@ -245,7 +247,12 @@ export function ActiveSession({
         }}
         catalog={catalog}
         onPick={handlePickExercise}
-        excludeIds={session.exercises.map((e) => e.exerciseId)}
+        // À l'AJOUT, un exercice déjà présent reste proposé : un finisher se greffe
+        // souvent sur un mouvement déjà travaillé (HSPU en fin de séance), et le
+        // modèle gère nativement deux blocs de même `exerciseId` (cf. `duplicateExercise`).
+        // Au REMPLACEMENT en revanche, viser un exercice déjà dans la séance ferait
+        // perdre le bloc remplacé au profit d'un doublon : on garde le filtre.
+        excludeIds={replaceTarget !== null ? session.exercises.map((e) => e.exerciseId) : undefined}
         history={history}
         goals={goals}
       />

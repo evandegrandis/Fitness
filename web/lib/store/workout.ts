@@ -38,6 +38,7 @@ import {
   physiologicalSetUnits,
   SET_STRUCTURE,
 } from "@/lib/engines/set-structure";
+import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/finisher";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
@@ -70,7 +71,6 @@ import {
   moveExercise as moveExercisePure,
   recomputeSupersetRoundIndices,
   toggleSuperset as toggleSupersetPure,
-  wouldCompleteSupersetPattern,
 } from "@/lib/store/superset";
 import { buildFinishedWorkoutSnapshot, type FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 
@@ -90,6 +90,17 @@ export interface UndoState {
   message: string;
   /** Séance à restaurer si l'utilisateur annule l'action. */
   snapshot: WorkoutSession;
+}
+
+/**
+ * Proposition de finisher en attente de réponse. La série est DÉJÀ loggée en série
+ * normale : on ne bloque jamais la saisie, on propose seulement de la requalifier.
+ */
+export interface FinisherPromptState {
+  setId: string;
+  loggedExerciseId: string;
+  exerciseName: string;
+  reason: FinisherPromptReason;
 }
 
 export interface AchievementState {
@@ -142,6 +153,17 @@ export interface WorkoutState extends ReferenceData {
   rest: RestState | null;
   undo: UndoState | null;
   achievement: AchievementState | null;
+
+  /**
+   * Finisher proposé pour la dernière série loggée, `null` s'il n'y a rien à demander.
+   * Non bloquant : ignorer la bande revient à garder une série normale.
+   */
+  pendingFinisherPrompt: FinisherPromptState | null;
+  /**
+   * `loggedExerciseId` pour lesquels Evan a déjà répondu « non » dans cette séance —
+   * on ne repose plus la question, pour que la proposition reste rare.
+   */
+  finisherPromptDeclined: string[];
   armedSupersetExerciseId: string | null;
   justHitRecord: Record<string, RecordKind>;
   recordsCache: Record<string, ExerciseRecords>;
@@ -291,6 +313,11 @@ export interface WorkoutState extends ReferenceData {
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
 
+  /** Requalifie en finisher la série visée par la proposition en cours. */
+  confirmFinisherPrompt: () => void;
+  /** Referme la proposition ; l'exercice ne la redemandera plus de la séance. */
+  dismissFinisherPrompt: () => void;
+
   // -- Cardio ----------------------------------------------------------------
   addCardioEntry: (input: Omit<CardioEntry, "id" | "orderIndex">) => void;
   deleteCardioEntry: (entryId: string) => void;
@@ -434,35 +461,13 @@ export function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId:
   return found;
 }
 
-function shouldAutoMarkFinisher(
-  session: WorkoutSession,
-  loggedExercise: LoggedExercise,
-  exercise: Exercise,
-  input: { weight: number; reps: number }
-): boolean {
-  // Un membre de superset/giant-set reste une série normale : son niveau de
-  // reps peut simplement provenir de l'alternance, pas d'un finisher.
-  if (loggedExercise.supersetGroupId !== null) return false;
-  const normalizedName = exercise.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const finisherFriendly =
-    exercise.setPatternMode === "bodyweight" ||
-    exercise.setPatternMode === "weighted_bodyweight" ||
-    normalizedName.includes("dip") ||
-    normalizedName.includes("traction") ||
-    normalizedName.includes("lateral") ||
-    normalizedName.includes("elev");
-  if (!finisherFriendly) return false;
-
-  const highRepThreshold = Math.max(15, exercise.repTargetMax);
-  if (input.reps < highRepThreshold) return false;
-
-  const priorNormalSets = session.exercises.flatMap((logged) => completedWorkSets(logged));
-  if (priorNormalSets.length < 5) return false;
-
-  // Un exercice dédié court, exécuté après un vrai bloc de travail, ressemble
-  // à un finisher. Au-delà de deux séries normales on reste conservateur.
-  return completedWorkSets(loggedExercise).length <= 1;
-}
+/**
+ * NOTE — le reclassement automatique en finisher a été retiré le 17/08/2026.
+ * Il exigeait `reps >= max(15, repTargetMax)` et ratait donc les vrais finishers
+ * courts (un HSPU ×3 en fin de séance), tout en requalifiant des séries en douce.
+ * La détection vit désormais dans `lib/engines/finisher.ts` et se contente de
+ * PROPOSER : voir `pendingFinisherPrompt` / `confirmFinisherPrompt`.
+ */
 
 /** Proposition immédiate pour compléter un mini-set jusqu'au seuil effectif de 8 reps. */
 function compositeCompletionSuggestion(
@@ -1194,6 +1199,8 @@ export const useWorkoutStore = create<WorkoutState>()(
       rest: null,
       undo: null,
       achievement: null,
+      pendingFinisherPrompt: null,
+      finisherPromptDeclined: [],
       armedSupersetExerciseId: null,
       justHitRecord: {},
       recordsCache: {},
@@ -1237,6 +1244,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           recordsCache: {},
           justHitRecord: {},
           freshOverrides: new Set(),
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: [],
           pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
         });
       },
@@ -1261,6 +1270,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           recordsCache: {},
           justHitRecord: {},
           freshOverrides: new Set(),
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: [],
           pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
         });
       },
@@ -1283,6 +1294,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           recordsCache: {},
           justHitRecord: {},
           freshOverrides: new Set(),
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: [],
           pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
         });
       },
@@ -1308,6 +1321,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           armedSupersetExerciseId: null,
           recordsCache: {},
           freshOverrides: new Set(),
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: [],
         });
         return { session: finishedSession, snapshot };
       },
@@ -1319,6 +1334,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           rest: null,
           armedSupersetExerciseId: null,
           freshOverrides: new Set(),
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: [],
         });
       },
 
@@ -1546,21 +1563,23 @@ export const useWorkoutStore = create<WorkoutState>()(
           0
         );
         const timestamp = new Date(Math.max(Date.now(), latestSessionTimestamp + 1));
-        const completesSupersetPattern = wouldCompleteSupersetPattern(state.active, loggedExerciseId, {
-          weight: input.weight,
-          reps: input.reps,
-          setType: requestedSetType,
-          timestamp,
-          setSlotIndex: nextSlot,
-        });
-        const setType =
-          requestedSetType !== SetType.warmup &&
-          requestedSetType !== SetType.finisher &&
-          exercise &&
-          !completesSupersetPattern &&
-          shouldAutoMarkFinisher(state.active, loggedExercise, exercise, input)
-            ? SetType.finisher
-            : requestedSetType;
+        // Le type demandé est toujours respecté : aucune série n'est requalifiée en
+        // finisher sans un tap explicite (cf. `pendingFinisherPrompt` plus bas).
+        //
+        // `wouldCompleteSupersetPattern` n'est volontairement plus consulté ici : il ne
+        // servait qu'à empêcher le reclassement AUTOMATIQUE de casser une détection de
+        // superset en cours, et ce reclassement n'existe plus. L'utiliser pour taire la
+        // proposition la rendrait muette exactement dans le cas qu'elle doit couvrir —
+        // un retour A→B→A est mécaniquement le préfixe d'un second cycle de superset.
+        // Les supersets déjà constitués restent exclus via `supersetGroupId`.
+        const setType = requestedSetType;
+
+        // Un finisher se reconnaît à sa position en fin de séance, pas à ses reps.
+        // On se contente de PROPOSER, et jamais deux fois pour le même exercice.
+        const promptReason =
+          exercise && !state.finisherPromptDeclined.includes(loggedExerciseId)
+            ? finisherPromptReason(state.active, loggedExercise, exercise, { reps: input.reps, timestamp }, requestedSetType)
+            : null;
 
         const previousWorkSet = completedWorkSets(loggedExercise).at(-1);
         const provisionalSet: LoggedSet = {
@@ -1771,6 +1790,14 @@ export const useWorkoutStore = create<WorkoutState>()(
           recordsCache,
           achievement,
           rest,
+          // Proposer MÊME si la série vient de décrocher un record : un finisher à
+          // hautes reps bat justement souvent un record de la piste NORMALE, et c'est
+          // le cas qu'il faut pouvoir corriger. L'overlay de record s'efface au bout
+          // de 2 s, la bande reste en bas de l'écran.
+          pendingFinisherPrompt:
+            promptReason && exercise
+              ? { setId, loggedExerciseId, exerciseName: exercise.name, reason: promptReason }
+              : state.pendingFinisherPrompt,
         });
 
         if (createdAchievement && achievement) {
@@ -1860,6 +1887,9 @@ export const useWorkoutStore = create<WorkoutState>()(
           justHitRecord,
           recordsCache,
           undo: { message, snapshot },
+          // Une proposition qui vise une série supprimée n'a plus de cible.
+          pendingFinisherPrompt:
+            state.pendingFinisherPrompt?.setId === setId ? null : state.pendingFinisherPrompt,
         });
       },
 
@@ -1867,6 +1897,89 @@ export const useWorkoutStore = create<WorkoutState>()(
         const state = get();
         if (!state.undo) return;
         set({ active: state.undo.snapshot, undo: null });
+      },
+
+      confirmFinisherPrompt: () => {
+        const state = get();
+        const prompt = state.pendingFinisherPrompt;
+        if (!state.active || !prompt) return;
+        const target = findLoggedExercise(state.active, prompt.loggedExerciseId);
+        const original = target?.sets.find((s) => s.id === prompt.setId);
+        if (!target || !original) {
+          set({ pendingFinisherPrompt: null });
+          return;
+        }
+
+        // Un finisher sort de la piste de prédiction normale : la série ne doit plus
+        // traîner de rattachement logique ni de projection apprise sur son ancien rôle.
+        const promoted: LoggedSet = {
+          ...original,
+          setType: SetType.finisher,
+          logicalSetId: null,
+          setTechnique: null,
+          predictedRepsAtActualWeight: null,
+        };
+        const session: WorkoutSession = {
+          ...state.active,
+          exercises: state.active.exercises.map((e) =>
+            e.id === prompt.loggedExerciseId
+              ? { ...e, sets: e.sets.map((s) => (s.id === prompt.setId ? promoted : s)) }
+              : e
+          ),
+        };
+
+        // La piste finisher a ses propres records : la requalification doit pouvoir en
+        // décrocher un, exactement comme si la série avait été loggée en finisher.
+        const exercise = findExercise(state.catalog, target.exerciseId);
+        // La série quitte la piste normale : tout record qu'elle y avait décroché doit
+        // disparaître, et le cache doit se reconstruire depuis l'historique (l'invariant
+        // du moteur interdit de garder un état dérivé devenu faux).
+        let justHitRecord = omitKey(state.justHitRecord, prompt.setId);
+        const recordsCache = { ...state.recordsCache };
+        delete recordsCache[target.exerciseId];
+        let achievement = state.achievement?.setId === prompt.setId ? null : state.achievement;
+        let createdAchievement = false;
+        if (exercise) {
+          const historical = collectExerciseHistory(state.history, exercise.id).sets.flat();
+          const current = state.active.exercises
+            .filter((candidate) => candidate.exerciseId === exercise.id)
+            .flatMap((candidate) => orderedSets(candidate))
+            // La série promue est déjà dans la séance : elle ne peut pas être sa propre référence.
+            .filter((candidate) => candidate.id !== prompt.setId);
+          const kind = classifyFinisher(promoted, buildFinisherRecords([...historical, ...current]));
+          if (kind) {
+            justHitRecord = { ...justHitRecord, [promoted.id]: kind };
+            achievement = {
+              setId: promoted.id,
+              kind,
+              exerciseName: exercise.name,
+              weight: promoted.weight,
+              reps: promoted.reps,
+            };
+            createdAchievement = true;
+          }
+        }
+
+        set({ active: session, pendingFinisherPrompt: null, justHitRecord, recordsCache, achievement });
+
+        if (createdAchievement && achievement) {
+          setTimeout(() => {
+            const current = get().achievement;
+            if (current?.setId === achievement.setId) set({ achievement: null });
+          }, 2000);
+        }
+      },
+
+      dismissFinisherPrompt: () => {
+        const state = get();
+        const prompt = state.pendingFinisherPrompt;
+        if (!prompt) return;
+        set({
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: state.finisherPromptDeclined.includes(prompt.loggedExerciseId)
+            ? state.finisherPromptDeclined
+            : [...state.finisherPromptDeclined, prompt.loggedExerciseId],
+        });
       },
 
       // -----------------------------------------------------------------
@@ -2139,6 +2252,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         rest: state.rest,
         justHitRecord: state.justHitRecord,
         armedSupersetExerciseId: state.armedSupersetExerciseId,
+        // Un reload en pleine séance ne doit pas reposer une question déjà refusée.
+        // (`pendingFinisherPrompt` reste volontairement éphémère, comme `freshOverrides`.)
+        finisherPromptDeclined: state.finisherPromptDeclined,
         // VARIATION_CYCLING_SPEC §8 — l'acceptation d'une rotation de variation peut précéder de
         // plusieurs jours (et un reload) le début de la séance suivante qui la consommera.
         pendingVariantSwitches: state.pendingVariantSwitches,
