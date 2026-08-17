@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { sendPushToAll } from "@/lib/push/server";
+import { findSubscription, sendPushTo } from "@/lib/push/server";
 
 /**
  * Programme la notification de fin de repos.
@@ -22,6 +22,10 @@ export const maxDuration = 300;
 const MAX_DELAY_SECONDS = 240;
 
 const bodySchema = z.object({
+  // L'appelant ne peut viser QUE son propre abonnement : l'app tourne en accès public
+  // (`JEERA_PUBLIC_MODE`), une route capable de notifier tout le monde serait ouverte au spam.
+  // L'endpoint n'est connu que du navigateur qui s'est abonné, il fait donc office de jeton.
+  endpoint: z.string().url(),
   delaySeconds: z.number().int().min(1).max(MAX_DELAY_SECONDS),
   title: z.string().min(1).max(80).optional(),
   body: z.string().min(1).max(160).optional(),
@@ -31,7 +35,12 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "invalid_request" }, { status: 400 });
 
-  const { delaySeconds, title, body } = parsed.data;
+  const { endpoint, delaySeconds, title, body } = parsed.data;
+
+  // Vérifié AVANT l'attente : un endpoint inconnu ne doit jamais pouvoir immobiliser une
+  // fonction pendant plusieurs minutes.
+  const subscription = await findSubscription(endpoint);
+  if (!subscription) return Response.json({ error: "unknown_subscription" }, { status: 404 });
 
   // Abandonne l'attente si le client se déconnecte (séance terminée, repos passé) : inutile de
   // garder la fonction en vie, et surtout de notifier un repos que l'utilisateur a déjà zappé.
@@ -46,7 +55,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: true, skipped: "aborted" });
   }
 
-  const result = await sendPushToAll({
+  const result = await sendPushTo(subscription, {
     title: title ?? "Repos terminé",
     body: body ?? "C'est reparti !",
     tag: "jeera-rest",

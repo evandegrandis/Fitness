@@ -99,18 +99,30 @@ export async function disablePush(): Promise<void> {
  * Demande au serveur de notifier la fin du repos. Volontairement « fire-and-forget » : la requête
  * reste ouverte pendant tout le repos côté serveur, l'appelant ne doit surtout pas l'attendre.
  * Renvoie un AbortController pour annuler si le repos est passé ou la séance terminée.
+ *
+ * Sans abonnement (notifications non activées), on ne tente rien : inutile de tenir une requête
+ * ouverte pendant deux minutes pour un push qui ne partira pas.
  */
 export function scheduleRestNotification(delaySeconds: number, body?: string): AbortController | null {
   if (delaySeconds < 1 || delaySeconds > 240) return null;
   const controller = new AbortController();
-  void fetch("/api/push/rest", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ delaySeconds: Math.round(delaySeconds), body }),
-    signal: controller.signal,
-    keepalive: false,
-  }).catch(() => {
-    // Réseau coupé ou repos annulé : le minuteur visuel reste la source de vérité.
-  });
+
+  void (async () => {
+    const subscription = await currentSubscription().catch(() => null);
+    if (!subscription || controller.signal.aborted) return;
+    await fetch("/api/push/rest", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        delaySeconds: Math.round(delaySeconds),
+        body,
+      }),
+      signal: controller.signal,
+    }).catch(() => {
+      // Réseau coupé ou repos annulé : le minuteur visuel reste la source de vérité.
+    });
+  })();
+
   return controller;
 }

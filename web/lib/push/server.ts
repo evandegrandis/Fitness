@@ -28,37 +28,47 @@ function configured(): boolean {
   return true;
 }
 
+/** L'abonnement existe-t-il ? Sert de contrôle d'accès avant toute attente côté serveur. */
+export async function findSubscription(endpoint: string) {
+  const [row] = await db
+    .select()
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.endpoint, endpoint))
+    .limit(1);
+  return row ?? null;
+}
+
 /**
- * Envoie à tous les abonnements enregistrés (app mono-utilisateur : quelques appareils au plus).
- * Un abonnement révoqué par le navigateur (404/410) est purgé — sinon la table accumulerait
- * indéfiniment des cibles mortes à chaque réinstallation de la PWA.
+ * Notifie UN abonnement précis — celui qui a demandé le minuteur.
+ *
+ * Volontairement pas un « envoyer à tous » : d'une part l'app est déployée en accès public
+ * (`JEERA_PUBLIC_MODE`), donc une route capable d'arroser tous les abonnés serait un vecteur de
+ * spam pour quiconque connaît l'URL ; d'autre part, avec plusieurs appareils enregistrés, seul
+ * celui qui est en séance a une raison de sonner.
+ *
+ * Un abonnement révoqué par le navigateur (404/410) est purgé — sinon la table accumulerait des
+ * cibles mortes à chaque réinstallation de la PWA.
  */
-export async function sendPushToAll(payload: PushPayload): Promise<{ sent: number; pruned: number }> {
+export async function sendPushTo(
+  subscription: { endpoint: string; p256dh: string; auth: string },
+  payload: PushPayload
+): Promise<{ sent: number; pruned: number }> {
   if (!configured()) return { sent: 0, pruned: 0 };
 
-  const subscriptions = await db.select().from(pushSubscriptions);
-  let sent = 0;
-  let pruned = 0;
-
-  await Promise.all(
-    subscriptions.map(async (row) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
-          JSON.stringify(payload)
-        );
-        sent += 1;
-      } catch (error) {
-        const status = (error as { statusCode?: number }).statusCode;
-        if (status === 404 || status === 410) {
-          await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, row.endpoint));
-          pruned += 1;
-        }
-        // Toute autre erreur (réseau, 5xx du service de push) est absorbée : une notification
-        // de confort ne doit jamais faire échouer la requête qui l'a déclenchée.
-      }
-    })
-  );
-
-  return { sent, pruned };
+  try {
+    await webpush.sendNotification(
+      { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+      JSON.stringify(payload)
+    );
+    return { sent: 1, pruned: 0 };
+  } catch (error) {
+    const status = (error as { statusCode?: number }).statusCode;
+    if (status === 404 || status === 410) {
+      await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, subscription.endpoint));
+      return { sent: 0, pruned: 1 };
+    }
+    // Toute autre erreur (réseau, 5xx du service de push) est absorbée : une notification de
+    // confort ne doit jamais faire échouer la requête qui l'a déclenchée.
+    return { sent: 0, pruned: 0 };
+  }
 }
