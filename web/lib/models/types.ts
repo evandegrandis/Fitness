@@ -15,6 +15,7 @@ import type {
   ResistanceProfile,
   SetPatternMode,
   SetType,
+  StopReason,
 } from "./enums";
 import { SetType as SetTypeValues } from "./enums";
 import type { MuscleGroup, MuscleParent } from "./muscles";
@@ -123,6 +124,17 @@ export interface LoggedSet {
   logicalSetId?: string | null;
   /** Technique de regroupement, null pour une série standalone classique. */
   setTechnique?: SetTechnique | null;
+  /**
+   * RIR rapporté par l'utilisateur (0..4 ; 4 = « 4+ »). `null`/absent = non rapporté.
+   * Input brut (pas un état dérivé), facultatif et éditable — oui.rtf #1/#2.
+   */
+  reportedRir?: number | null;
+  /**
+   * Raison d'arrêt si la série ne s'est pas terminée à l'échec musculaire visé.
+   * `null`/absent = arrêt normal. `pain`/`equipment` excluent la série des baselines
+   * de performance (oui.rtf #7, nerf ulnaire).
+   */
+  stopReason?: StopReason | null;
 }
 
 export interface LoggedExercise {

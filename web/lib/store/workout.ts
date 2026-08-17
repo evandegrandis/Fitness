@@ -41,7 +41,7 @@ import {
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
-import type { PlateauWeakPoint } from "@/lib/models/enums";
+import type { PlateauWeakPoint, StopReason } from "@/lib/models/enums";
 import type { MuscleParent } from "@/lib/models/muscles";
 import {
   completedWorkSets,
@@ -274,9 +274,20 @@ export interface WorkoutState extends ReferenceData {
       suggestionMode?: string | null;
       suggestionReasonCodes?: string[];
       suggestionEngineVersion?: string | null;
+      reportedRir?: number | null;
+      stopReason?: StopReason | null;
     }
   ) => void;
-  editSet: (setId: string, input: { weight: number; reps: number; setType?: SetType }) => void;
+  editSet: (
+    setId: string,
+    input: {
+      weight: number;
+      reps: number;
+      setType?: SetType;
+      reportedRir?: number | null;
+      stopReason?: StopReason | null;
+    }
+  ) => void;
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
 
@@ -1644,6 +1655,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           // la baisse de charge ressemble mécaniquement à un drop-set. L'intention enregistrée
           // est donc `completion`; les vrais drop/rest-pause restent détectables séparément.
           setTechnique: continuesLogicalSet ? "completion" : immediateKind,
+          reportedRir: input.reportedRir ?? null,
+          stopReason: input.stopReason ?? null,
         };
 
         let session: WorkoutSession = {
@@ -1789,6 +1802,8 @@ export const useWorkoutStore = create<WorkoutState>()(
                   // La projection était attachée à l'ancien poids réel : ne jamais conserver
                   // une cible d'apprentissage devenue fausse après correction manuelle.
                   predictedRepsAtActualWeight: null,
+                  reportedRir: input.reportedRir !== undefined ? input.reportedRir : s.reportedRir ?? null,
+                  stopReason: input.stopReason !== undefined ? input.stopReason : s.stopReason ?? null,
                 }
               : s
           );

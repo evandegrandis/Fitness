@@ -31,7 +31,7 @@ import type {
   WorkoutSessionRow,
   WorkoutTemplateRow,
 } from "./schema";
-import { BenchmarkUnit, FatigueClass, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType } from "@/lib/models/enums";
+import { BenchmarkUnit, FatigueClass, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType, STOP_REASONS } from "@/lib/models/enums";
 import type {
   BenchmarkUnit as BenchmarkUnitT,
   FatigueClass as FatigueClassT,
@@ -41,6 +41,7 @@ import type {
   ResistanceProfile as ResistanceProfileT,
   SetPatternMode as SetPatternModeT,
   SetType as SetTypeT,
+  StopReason,
 } from "@/lib/models/enums";
 import type { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
 import type {
@@ -84,6 +85,18 @@ function asNullableSetType(raw: string | null): SetTypeT | null {
 function asSetTechnique(raw: string | null): SetTechnique | null {
   if (!raw) return null;
   return (SET_TECHNIQUES as readonly string[]).includes(raw) ? (raw as SetTechnique) : null;
+}
+
+function asStopReason(raw: string | null): StopReason | null {
+  if (!raw) return null;
+  return (STOP_REASONS as readonly string[]).includes(raw) ? (raw as StopReason) : null;
+}
+
+function asReportedRir(raw: number | null): number | null {
+  if (raw === null || raw === undefined || !Number.isFinite(raw)) return null;
+  const clamped = Math.round(raw);
+  if (clamped < 0 || clamped > 4) return null;
+  return clamped;
 }
 
 function asCardioActivityType(raw: string): CardioActivityType {
@@ -265,6 +278,8 @@ function mapLoggedSetRow(row: LoggedSetRow): LoggedSet {
     suggestionEngineVersion: row.suggestionEngineVersion,
     logicalSetId: row.logicalSetId,
     setTechnique: asSetTechnique(row.setTechnique),
+    reportedRir: asReportedRir(row.reportedRir),
+    stopReason: asStopReason(row.stopReason),
   };
 }
 
@@ -405,6 +420,8 @@ export function sessionToLoggedSetRows(session: WorkoutSession): NewLoggedSetRow
       suggestionEngineVersion: s.suggestionEngineVersion ?? null,
       logicalSetId: s.logicalSetId ?? null,
       setTechnique: s.setTechnique ?? null,
+      reportedRir: s.reportedRir ?? null,
+      stopReason: s.stopReason ?? null,
     }))
   );
 }

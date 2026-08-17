@@ -242,6 +242,10 @@ export const loggedSets = pgTable(
     /** Plusieurs lignes peuvent représenter une seule série physiologique. */
     logicalSetId: text("logical_set_id"),
     setTechnique: text("set_technique"),
+    /** RIR rapporté (0..4 ; 4 = « 4+ »). NULL = non rapporté. Cf. oui.rtf #1/#2. */
+    reportedRir: integer("reported_rir"),
+    /** Raison d'arrêt si ≠ échec musculaire ; NULL = arrêt normal. Cf. oui.rtf #7. */
+    stopReason: text("stop_reason"),
   },
   (table) => [
     index("logged_sets_logged_exercise_id_idx").on(table.loggedExerciseId),
@@ -249,6 +253,14 @@ export const loggedSets = pgTable(
     check(
       "logged_sets_set_technique_check",
       sql`${table.setTechnique} IS NULL OR ${table.setTechnique} IN ('completion', 'drop_set', 'rest_pause')`
+    ),
+    check(
+      "logged_sets_reported_rir_check",
+      sql`${table.reportedRir} IS NULL OR (${table.reportedRir} >= 0 AND ${table.reportedRir} <= 4)`
+    ),
+    check(
+      "logged_sets_stop_reason_check",
+      sql`${table.stopReason} IS NULL OR ${table.stopReason} IN ('muscular', 'technique', 'pain', 'equipment')`
     ),
   ]
 );

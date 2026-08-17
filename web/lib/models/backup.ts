@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 
-import { BenchmarkUnit, fatigueClassFromRaw, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType } from "./enums";
+import { BenchmarkUnit, fatigueClassFromRaw, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType, STOP_REASONS } from "./enums";
 import type {
   BenchmarkUnit as BenchmarkUnitT,
   FatigueClass,
@@ -24,6 +24,7 @@ import type {
   PlateauWeakPoint,
   ProgressionPolicy,
   ResistanceProfile as ResistanceProfileT,
+  StopReason,
 } from "./enums";
 import { LEAF_TO_PARENT, legacyMuscleMapping, MuscleGroup, MuscleParent } from "./muscles";
 import type {
@@ -126,6 +127,8 @@ const loggedSetSchema = z.object({
   suggestionEngineVersion: z.string().nullish(),
   logicalSetId: z.string().min(1).nullish(),
   setTechnique: z.enum(SET_TECHNIQUES).nullish(),
+  reportedRir: finiteNumber.int().min(0).max(4).nullish(),
+  stopReason: z.enum(STOP_REASONS).nullish(),
 });
 
 const loggedExerciseSchema = z.object({
@@ -323,6 +326,8 @@ export function createBackupJson(
           suggestionEngineVersion: set.suggestionEngineVersion ?? null,
           logicalSetId: set.logicalSetId ?? null,
           setTechnique: set.setTechnique ?? null,
+          reportedRir: set.reportedRir ?? null,
+          stopReason: set.stopReason ?? null,
         })),
       })),
       supersetGroups: session.supersetGroups.map((group) => ({
@@ -742,6 +747,8 @@ export function parseBackup(json: unknown): BackupData {
           suggestionEngineVersion: setData.suggestionEngineVersion ?? null,
           logicalSetId: setData.logicalSetId ?? null,
           setTechnique: (setData.setTechnique ?? null) as SetTechnique | null,
+          reportedRir: setData.reportedRir ?? null,
+          stopReason: (setData.stopReason ?? null) as StopReason | null,
         }));
 
         return {

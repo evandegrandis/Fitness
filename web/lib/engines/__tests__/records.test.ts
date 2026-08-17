@@ -276,3 +276,26 @@ describe("records finishers séparés", () => {
     expect(displayed).toEqual(new Set([improved.id]));
   });
 });
+
+describe("exclusion des séries arrêtées pour douleur/matériel (oui.rtf #7)", () => {
+  it("une série lourde stoppée pour douleur ne devient PAS le record de charge", () => {
+    const clean = set({ id: "clean", weight: 100, reps: 8 });
+    const painHeavy = set({ id: "pain", weight: 130, reps: 3, stopReason: "pain" });
+    const best = allTimeRecordSet(BENCH, [clean, painHeavy]);
+    expect(best?.id).toBe("clean");
+  });
+
+  it("une série stoppée pour matériel ne crée pas de PR et n'entre pas dans buildRecords", () => {
+    const equip = set({ id: "equip", weight: 140, reps: 6, stopReason: "equipment" });
+    const records = RecordsEngine.buildRecords(BENCH, [equip]);
+    expect(records).toEqual(EMPTY_RECORDS);
+    expect(RecordsEngine.isRecordSet(equip, [equip], BENCH)).toBe(false);
+  });
+
+  it("un arrêt musculaire (défaut) ou technique reste un record valide", () => {
+    const muscular = set({ id: "musc", weight: 120, reps: 6, stopReason: "muscular" });
+    const technique = set({ id: "tech", weight: 125, reps: 6, stopReason: "technique" });
+    expect(allTimeRecordSet(BENCH, [muscular, technique])?.id).toBe("tech");
+    expect(RecordsEngine.buildRecords(BENCH, [muscular, technique])).not.toEqual(EMPTY_RECORDS);
+  });
+});

@@ -152,6 +152,68 @@ export const setTypeShortLabel: Record<SetType, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// StopReason (raison d'arrêt d'une série)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pourquoi une série s'est arrêtée, quand ce n'est PAS l'échec musculaire visé.
+ * Issu de oui.rtf (point #7, nerf ulnaire) : une série interrompue pour douleur
+ * ou matériel ne reflète pas la vraie capacité → ne doit pas entraîner le modèle
+ * de performance (cf. `stopReasonTrainsModel`). Nouveau champ nullable sur
+ * `LoggedSet.stopReason` — `null` = arrêt normal (musculaire volontaire au RIR visé),
+ * comportement historique inchangé.
+ */
+export const StopReason = {
+  /** Arrêt musculaire volontaire (RIR visé atteint) — série représentative. */
+  muscular: "muscular",
+  /** Technique / forme cassée avant l'échec musculaire. */
+  technique: "technique",
+  /** Douleur ou symptôme (ex. nerf ulnaire) — série NON représentative. */
+  pain: "pain",
+  /** Contrainte matérielle (charge indisponible, machine prise…) — NON représentative. */
+  equipment: "equipment",
+} as const;
+
+export type StopReason = (typeof StopReason)[keyof typeof StopReason];
+
+export const STOP_REASONS: StopReason[] = Object.values(StopReason);
+
+export const stopReasonDisplayName: Record<StopReason, string> = {
+  muscular: "Musculaire",
+  technique: "Technique",
+  pain: "Douleur",
+  equipment: "Matériel",
+};
+
+/**
+ * Une série arrêtée pour douleur/matériel n'est pas une mesure valide de la
+ * capacité : elle est exclue des baselines de performance, records et ancres de
+ * progression. Un arrêt musculaire (défaut) ou technique reste représentatif.
+ */
+export function stopReasonTrainsModel(reason: StopReason | null | undefined): boolean {
+  return reason !== StopReason.pain && reason !== StopReason.equipment;
+}
+
+// ---------------------------------------------------------------------------
+// RIR (reps in reserve) rapporté
+// ---------------------------------------------------------------------------
+
+/**
+ * Options de RIR proposées après/pendant une série (oui.rtf point #1). L'estimation
+ * du RIR gagne en fiabilité près de l'échec ; au-delà, `4` signifie « 4+ » (borne
+ * inférieure), sans fausse précision entre 5/6/7. `LoggedSet.reportedRir` : entier
+ * 0..4 ou `null` (non rapporté). Jamais présélectionné, facultatif, non bloquant.
+ */
+export const REPORTED_RIR_MIN = 0;
+export const REPORTED_RIR_MAX = 4;
+export const REPORTED_RIR_OPTIONS = [0, 1, 2, 3, 4] as const;
+
+/** Libellé court d'un RIR (4 = « 4+ »). */
+export function reportedRirLabel(rir: number): string {
+  return rir >= REPORTED_RIR_MAX ? `${REPORTED_RIR_MAX}+` : String(rir);
+}
+
+// ---------------------------------------------------------------------------
 // ProgressionPolicy
 // ---------------------------------------------------------------------------
 

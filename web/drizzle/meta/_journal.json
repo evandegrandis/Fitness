@@ -57,6 +57,13 @@
       "when": 1786648063876,
       "tag": "0007_kind_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786734463876,
+      "tag": "0008_rir_stopreason",
+      "breakpoints": true
     }
   ]
 }

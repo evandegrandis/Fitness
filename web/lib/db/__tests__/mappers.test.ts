@@ -261,6 +261,8 @@ describe("logged set mappers — suggestion snapshot and logical groups", () => 
       suggestionEngineVersion: null,
       logicalSetId: null,
       setTechnique: null,
+      reportedRir: null,
+      stopReason: null,
     });
   });
 
@@ -284,6 +286,8 @@ describe("logged set mappers — suggestion snapshot and logical groups", () => 
       suggestionEngineVersion: "progression-v2",
       logicalSetId: "logical-set-1",
       setTechnique: "completion",
+      reportedRir: 1,
+      stopReason: "pain",
     };
     const session = mapSessionRow(
       sessionRow,
@@ -313,6 +317,8 @@ describe("logged set mappers — suggestion snapshot and logical groups", () => 
       suggestionEngineVersion: "progression-v2",
       logicalSetId: "logical-set-1",
       setTechnique: "completion",
+      reportedRir: 1,
+      stopReason: "pain",
     });
   });
 });

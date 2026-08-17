@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { AlertTriangle, Check, Flame, History, Snowflake, Sparkles, Zap } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Stepper } from "@/components/ui/Stepper";
-import { SetType } from "@/lib/models/enums";
+import { REPORTED_RIR_OPTIONS, reportedRirLabel, SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
 import {
   reprojectSuggestionAtWeight,
@@ -102,6 +102,7 @@ export function SetEntry({
     suggestionMode?: string | null;
     suggestionReasonCodes?: string[];
     suggestionEngineVersion?: string | null;
+    reportedRir?: number | null;
   }) => void;
   /**
    * VARIATION_CYCLING_SPEC §8 — nom résolu (catalogue) de `suggestion.switchToVariantId`, calculé
@@ -122,6 +123,9 @@ export function SetEntry({
   const [weight, setWeight] = useState(active.weight);
   const [reps, setReps] = useState(active.reps);
   const [showFatigueDetails, setShowFatigueDetails] = useState(false);
+  // RIR rapporté (oui.rtf #1) : facultatif, jamais présélectionné, non bloquant. L'état repart
+  // frais à chaque set (remount via `key` côté ExerciseCard). Non capté en échauffement.
+  const [rir, setRir] = useState<number | null>(null);
   const fatigueDetailsId = useId();
 
   const showFreshChip = isFresh || suggestion.reasonCodes.includes("deload_after_gap");
@@ -309,6 +313,35 @@ export function SetEntry({
         <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={1} />
       </div>
 
+      {/* RIR (reps en réserve) — oui.rtf #1 : facultatif, 1 tap, aucune présélection, jamais en
+          échauffement. Tap sur la valeur déjà choisie = désélection. Valider sans choisir loggue
+          `reportedRir=null` (zéro friction). Éditable ensuite via la ligne du set. */}
+      {!useWarmup && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-[--color-fg-muted]">RIR</span>
+          {REPORTED_RIR_OPTIONS.map((option) => {
+            const selected = rir === option;
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setRir((current) => (current === option ? null : option))}
+                aria-pressed={selected}
+                aria-label={`Reps en réserve ${reportedRirLabel(option)}${option === 0 ? " (échec)" : ""}`}
+                className={cn("pill min-h-11 min-w-11 justify-center", selected && "ring-1 ring-[color:var(--accent)]/70")}
+                style={
+                  selected
+                    ? { color: "var(--accent)", background: "rgba(255,138,61,0.14)" }
+                    : { color: "var(--color-fg-muted)" }
+                }
+              >
+                {reportedRirLabel(option)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <button
         type="button"
         onClick={() => {
@@ -323,8 +356,10 @@ export function SetEntry({
             suggestionMode: useWarmup ? warmup?.mode ?? null : suggestion.mode,
             suggestionReasonCodes: useWarmup ? warmup?.reasonCodes ?? [] : suggestion.reasonCodes,
             suggestionEngineVersion: SUGGESTION_ENGINE_VERSION,
+            reportedRir: useWarmup ? null : rir,
           });
           setUseWarmup(false);
+          setRir(null);
         }}
         className="btn-accent flex w-full items-center justify-center gap-2 py-3.5 text-base active:scale-[0.97] transition"
       >

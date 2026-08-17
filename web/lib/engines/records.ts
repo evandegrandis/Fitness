@@ -11,7 +11,7 @@
 import { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
 import { immediateCompositeKind } from "@/lib/engines/set-structure";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
-import { SetType } from "@/lib/models/enums";
+import { SetType, stopReasonTrainsModel } from "@/lib/models/enums";
 
 // ---------------------------------------------------------------------------
 // ExerciseRecords
@@ -120,6 +120,10 @@ export function normalRecordSets(sets: LoggedSet[], exercise: Exercise): LoggedS
 
   for (const set of sets) {
     if (!set.completed || set.reps <= 0 || !WORK_KINDS.has(set.setType)) continue;
+    // oui.rtf #7 (nerf ulnaire) : une série arrêtée pour douleur/matériel n'est pas une mesure
+    // valide de la capacité — jamais un record ni une ancre de performance. Elle reste dans
+    // l'historique (volume/affichage) mais n'entraîne pas le modèle.
+    if (!stopReasonTrainsModel(set.stopReason)) continue;
     const logicalSetId = set.logicalSetId ?? null;
     const continuesExplicitLogicalSet =
       logicalSetId !== null &&
