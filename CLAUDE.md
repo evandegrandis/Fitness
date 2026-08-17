@@ -1,0 +1,180 @@
+# Jeera — Fitness Tracking App (iOS SwiftUI)
+
+## What this is
+Personal gym workout logger. Core value: smart weight/rep suggestions that learn from history and adapt to fatigue. Built by Claude, extended by Codex, maintained in turns. **When you start a new session, read the HANDOFF section first.**
+
+---
+
+## Stack
+- iOS 17+ · SwiftUI + SwiftData + ActivityKit
+- Architecture: MVVM — Models / Engines (pure functions) / WorkoutViewModel (orchestration) / Views
+- Charts: Apple Charts framework
+- Tests: Swift Testing (`@Test`)
+- Branches: `claude/gym-workout-logger-app-RvaJP` (main), feature branches per agent
+
+---
+
+## Non-Negotiables (never change these)
+1. **Progression algorithm stays** — do not replace ProgressionEngine with a generic approach.
+2. **Workout-time UX = minimum taps** — every new interaction must justify itself.
+3. **Charts = interactive, modern, beautiful** — no static charts without interaction.
+4. **UI language = French** — all labels, badges, messages in French.
+5. **No external dependencies** — no third-party packages, Apple frameworks only.
+
+---
+
+## Architecture Map (key files)
+
+| File | Lines | Role |
+|------|-------|------|
+| `Jeera/ViewModels/WorkoutViewModel.swift` | ~1656 | Session lifecycle, set logging, superset, rest timer, Live Activity |
+| `Jeera/Engines/ProgressionEngine.swift` | ~752 | Weight+reps suggestion, promotion, plateau detection |
+| `Jeera/Engines/EffectiveSetsEngine.swift` | ~339 | Muscle coverage (leaf+parent), 7-day rolling window |
+| `Jeera/Engines/RecordsEngine.swift` | ~237 | PR classification (4 types), display filtering |
+| `Jeera/Engines/AchievementsEngine.swift` | ~112 | Recent PRs, deduplication, ranking |
+| `Jeera/Models/` | — | SwiftData models: WorkoutSession, LoggedExercise, LoggedSet, Exercise, SupersetGroup |
+| `Jeera/Views/Workout/ExerciseCard.swift` | ~300 | Active exercise UI, set logging, suggestion display, swipe actions |
+| `Jeera/Views/Workout/ActiveWorkoutView.swift` | ~200 | Workout canvas, reorder, finish |
+| `Jeera/Views/Progress/` | — | 3-layer progress: Muscles / Exercise charts / Global |
+| `Jeera/Views/History/` | — | Session history, weekly groups |
+| `JeeraWidgets/` | — | Lock-screen Live Activity (ActivityKit) |
+
+---
+
+## Data Model (brief)
+
+```
+WorkoutSession → [LoggedExercise] → [LoggedSet]
+                → [SupersetGroup] → [LoggedExercise] (members)
+
+Exercise:
+  setPatternMode: straight | topSetBackoff | ramping | bodyweight | weightedBodyweight | assistedBodyweight
+  fatigueClass: Heavy(drop 2 reps/set) | Medium(1.5) | Light(1)
+  repTargetMin/Max, smallestIncrement
+  muscleMappings[]: (MuscleGroup, coefficient)  — MECE mapping
+  benchmarkLow/High?: Double  — optional benchmark bands
+
+MuscleParent (12 groups) aggregates via max(leaf coefficients) — no double-counting
+Rolling 7-day window for guidance; ISO calendar-week for history display only
+```
+
+---
+
+## Algorithms (essential rules)
+
+### ProgressionEngine.suggest()
+1. Extract anchors from last 5 sessions → derive `targetLoad` (best weight where reps ≥ repMin)
+2. Set 1 = anchor load; promote if: Heavy needs 2/3 last sessions ≥ repMax, others 1/2
+3. Set N = predict `last_reps − fatigueClass.baseRepDrop`; if < repMin → backoff (−1 increment, mid-range reps)
+4. **Critical rule**: always predict from the set logged TODAY, never replay last session
+5. Plateau (3+ sessions same load/reps) → offer overreach at +1 increment, 5 reps
+6. Score candidates (recordAttempt+35, transitionMode+30, fallbackHypertrophy+22, plateauBreak+18)
+
+### EffectiveSetsEngine
+- Leaf sets = completedWorkSets × coefficient
+- Parent aggregation = max(leaf coefficients for same parent) × completedSets — prevents double-count
+- Coverage badges: ≥100% COVERED · ≥70% ON_TRACK · ≥40% TO_STRENGTHEN · <40% PRIORITY
+
+### RecordsEngine (4 types, priority order)
+1. heaviestWeight — beats absolute max (no rep gate)
+2. estimated1RM — Epley formula, 2% margin to avoid flapping
+3. repsAtWeight — more reps at exact same weight (requires reps ≥ repMin)
+4. bodyweightReps — most reps at weight=0
+
+### Beast Mode
+- Weight bias: +1 increment, −1 rep on set 2+
+- Optional session extension (sleep ≥ 7h + creatine/protein met)
+- Orange theme during session, auto-reset on finish
+
+### Monk Mode
+- Seed from usual-workout base + append exercises for top deficit muscles
+- After each set, reorder: deprioritize muscles worked in last 2 exercises
+- Green peaceful theme, auto-reset
+
+---
+
+## Superset System
+- First-class `SupersetGroup` entity (orderIndex + memberOrder[UUID]) — prevents old "smear" bug with isLinkedToNext
+- Manual linking: swipe action → arm → arm second → group created
+- Auto-detection: pattern A→B→(C→)A→B on last 24 sets, gaps < 240s, ≥2 full rounds
+- Rest timer: skip between members, `supersetRestSeconds` after last member of round
+
+---
+
+## What is DONE ✅ (verified in code, 2026-04-26)
+- Full session lifecycle (start / live timer / finish / discard / undo)
+- Multi-mode exercises (straight, ramping, topSet+backoff, BW, weightedBW, assistedBW)
+- Superset system (manual + auto-detect, round tracking, rest-aware)
+- Live Activity: 7 intents (Validate, Skip, Next, +Kg, -Kg, +Rep, -Rep) — `WorkoutLiveActivityIntents.swift`
+- Records (4 types, caching, set-level star badges, achievement overlay)
+- Effective sets + rolling 7-day muscle coverage (priority chips during workout)
+- Beast Mode: weight bias +1 increment on set 2+, conditional session extension — `WorkoutViewModel.swift:1165-1321`
+- Monk Mode: deficit-aware seeding, fatigue-aware reordering after each set — `WorkoutViewModel.swift:1228-1264`
+- Exercise progress charts (weight + reps, drag-to-scrub interaction)
+- Rep benchmark bands hardcoded for 3 exercises (Tractions SN 14→33, Crunch décliné 29→76, Relevé jambe chaise roumaine 18→46) — `ExerciseProgressView.swift:164-175`
+- Global weekly chart: sets/week + creatine% + protein% + sleep score + correlation board — `ProgressTabView.swift:85-492`
+- Post-workout full-screen summary sheet (hero stats + muscles + PRs) — `WorkoutTabView.swift:71-436`
+- Recovery checkin UI in post-workout sheet (D-1/D-2 toggles + sleep slider, prefilled) — `WorkoutTabView.swift`
+- History view (weekly groups, session detail)
+- Data export/import (JSON), backup/restore
+
+## What is PENDING ⚠️ (based on actual code gaps, 2026-04-26)
+1. **Rolling window inconsistency** — chart uses 4 sessions (`ExerciseProgressView.swift:72`), ProgressionEngine state uses 5 (`ProgressionEngine.swift:508`), velocity uses 10. Needs alignment on what 4-session rule should apply where.
+2. **Rep benchmark bands are hardcoded** — switch statement for 3 named exercises in `ExerciseProgressView.swift:164`. Not generalized to `Exercise.benchmarkLow/High` fields that exist on the model.
+3. **Pinch-zoom on charts absent** — drag scrub exists, but no MagnificationGesture for range zoom.
+4. **Exercise picker not deficit-aware** — `ExercisePickerView.swift` sorts by favourites/recency only; deficit ordering only used inside Monk Mode seed, not exposed in picker UI.
+5. **No warmup auto-generation** — no automatic warmup set suggestions (e.g. 40%→60%→80% of targetLoad) before working sets.
+
+---
+
+## Key Decisions Log (WHY matters for future changes)
+
+| Decision | Why | Date |
+|----------|-----|------|
+| SupersetGroup as first-class entity | Old `isLinkedToNext` bit on LoggedExercise caused "smear" bugs on reorder | 2026-04 |
+| Records cache with explicit invalidation | Lazy rebuild was causing stale PRs to flash during same-session multi-set | 2026-04 |
+| Effective sets use max(leaf coeff) for parent | Sum would double-count synergists (e.g. triceps counted for both chest and triceps) | 2026-04 |
+| Rolling 7-day (not calendar week) for decisions | Calendar week resets Monday — creates artificial urgency; rolling is smoother | 2026-04 |
+| Suggest from today's sets, not last session replay | Old behavior caused inflated set 2 suggestions after a good previous session | 2026-04 |
+| Beast Mode = weight bias NOT extra reps | User explicitly: "harder on weight, not reps" | 2026-04 |
+| Monk Mode starts from usual-workout base | User: "familiar feel, not random session" | 2026-04 |
+| 2% margin on e1RM record | Without margin, trivial load changes (e.g. 80×9 vs 80×10) falsely triggered record overlay | 2026-04 |
+| FatigueClass governs rep drop (H:2 M:1.5 L:1) | Empirical: heavy compound lifts drop faster than isolation; fixed values avoid over-engineering | 2026-04 |
+
+---
+
+## Handoff Protocol
+**After each significant work session, update the HANDOFF section below.**
+Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotchas`
+
+---
+
+## HANDOFF
+
+### 2026-04-26 · Claude — Warmup auto-génération + éditeur mappings muscles
+
+**Done (session 2):**
+- **Warmup auto** : `WorkoutViewModel.suggestion()` propose maintenant un set d'échauffement (W) avant le premier set de travail pour les exercices `.straight` / `.topSetBackoff` avec un poids cible ≥ 40kg. Poids = 60% du set de travail arrondi à l'incrément (min 20kg), reps = 10. Condition : aucun warmup complété ET aucun work set complété. L'ExerciseCard affiche un badge "W" jaune dans le chip suggestion.
+- **Muscle mappings éditeur** : `ExerciseDetailView` — chaque mapping a un Picker (MuscleGroup) + Stepper (coefficient 0.1–1.0) + swipe-to-delete. "Ajouter un muscle" choisit automatiquement le premier groupe non encore mappé.
+
+**Done (session 1, 2026-04-26) :**
+- Audit complet de tous les fichiers Swift (A–Z, rien sauté)
+- **ProgressionEngine** : implémenté la logique de promotion manquante (dead code `currentSetIndex` ignoré — `doneToday.isEmpty` est le vrai signal). `checkPromotionGate` + `firstWorkSetReps` ajoutés. DerivedExerciseState enrichi avec `promotionGatePassed` + `anchorFirstSetReps`. Bodyweight-at-max génère un message "lester". Tous les tests ProgressionEngine passent maintenant.
+- **Benchmark chart** : `ExerciseProgressView.repBenchmarkRange` utilise maintenant `exercise.benchmarkLow/High` au lieu du switch hardcodé par nom.
+- **WeeklyPrioritySection** : utilise `rollingPriorities` (filtre remaining ≥ 0.5) au lieu de `rolling7DayProgress` → plus de muscles à 0 parasites. Ajout header "Objectifs 7 jours" + message "Tous couverts ✓" quand vide.
+- **Goals** : éditables via stepper dans SettingsView. `syncCanonicalGoals` n'écrase plus les valeurs existantes (insert-only).
+- **Body weight** : `BodyWeightRow` ajouté dans SettingsView (AppStorage "user_body_weight_kg").
+- **FatigueClass** : Picker éditable dans ExerciseDetailView.
+- **Strings FR** : "Save & close", "Undo", "Last session:", 4× messages d'erreur anglais, "Unknown" → français.
+- **Sleep doublon** : supprimé l'affichage redondant dans `dayCard()`.
+
+**Current branch:** `codex/refactor-algorithm-for-weight-and-set-suggestions-3rj1rt`
+**Base branch:** `claude/gym-workout-logger-app-RvaJP`
+
+**Gotchas for next agent:**
+- `WorkoutViewModel` est ~1660 lignes — chercher la méthode spécifique, ne pas lire tout le fichier
+- Tests ProgressionEngine passent mais nécessitent une équipe de dev pour signer — vérifier via Xcode directement
+- `currentSetIndex` dans `ProgressionEngine.suggest()` est toujours **dead code** — utilisé par le VM mais ignoré dans l'engine (le branchement se fait sur `doneToday.isEmpty`). Ne pas l'utiliser pour la logique.
+- Live Activity: les attribute types sont dans `JeeraShared/`, le rendering dans `JeeraWidgets/` — tout changement de shape nécessite les deux targets
+- Global progress tab : Evan a dit "c'est le pire onglet" — redesign demandé mais non traité
+- Long press bug dans ActiveWorkoutView : "reste appuyé, ça bug un petit peu" — non investigué

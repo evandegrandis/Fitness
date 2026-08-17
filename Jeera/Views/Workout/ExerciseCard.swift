@@ -17,6 +17,9 @@ struct ExerciseCard: View {
     @State private var editSetWeight = ""
     @State private var editSetReps = ""
     @State private var cachedSuggestion = SetSuggestion(weight: 0, reps: 10, setType: .work, explanation: "")
+    @State private var cachedWarmupSuggestion: SetSuggestion?
+    @State private var pendingIsWarmup = false
+    @State private var lastTimeSlotSet: LoggedSet?
     @State private var showReplacePicker = false
     @State private var showQuickSwapHint = false
 
@@ -45,6 +48,10 @@ struct ExerciseCard: View {
 
     private func refreshSuggestion() {
         cachedSuggestion = viewModel.suggestion(for: loggedExercise)
+        cachedWarmupSuggestion = viewModel.warmupSuggestion(for: loggedExercise)
+        pendingIsWarmup = false
+        let slotIndex = loggedExercise.completedWorkSets.count
+        lastTimeSlotSet = viewModel.lastTimeSet(for: loggedExercise, slotIndex: slotIndex)
     }
 
     var body: some View {
@@ -340,6 +347,19 @@ struct ExerciseCard: View {
 
     private var inlineEditSection: some View {
         VStack(spacing: 7) {
+            if let warning = fatigueWarning {
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 8, weight: .bold))
+                    Text(warning)
+                        .font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(.orange.opacity(0.8))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.orange.opacity(0.10), in: Capsule())
+            }
+
             HStack(alignment: .center, spacing: 6) {
                 if exercise?.setPatternMode != .bodyweight {
                     weightStepper
@@ -371,23 +391,70 @@ struct ExerciseCard: View {
                         .buttonStyle(.plain)
                     }
 
-                    if shouldShowSuggestionChip {
+                    if let warmup = cachedWarmupSuggestion {
                         Button {
-                            refreshSuggestion()
-                            editWeight = cachedSuggestion.weight
-                            editReps = cachedSuggestion.reps
+                            editWeight = warmup.weight
+                            editReps = warmup.reps
+                            pendingIsWarmup = true
                             HapticManager.selection()
                         } label: {
                             HStack(spacing: 2) {
-                                if cachedSuggestion.setType == .warmup {
-                                    Text("W")
-                                        .font(.system(size: 8, weight: .bold))
-                                        .foregroundStyle(.yellow)
-                                } else {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 8))
-                                }
+                                Text("W")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.yellow)
+                                Text("\(warmup.weight.cleanWeight)×\(warmup.reps)")
+                                    .font(.caption2.weight(.medium).monospacedDigit())
+                            }
+                            .foregroundStyle(pendingIsWarmup ? .yellow : .secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(
+                                pendingIsWarmup
+                                    ? Color.yellow.opacity(0.18)
+                                    : Color.white.opacity(0.08),
+                                in: Capsule()
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if shouldShowSuggestionChip {
+                        Button {
+                            editWeight = cachedSuggestion.weight
+                            editReps = cachedSuggestion.reps
+                            pendingIsWarmup = false
+                            HapticManager.selection()
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 8))
                                 Text(cachedSuggestion.weight > 0 ? "\(cachedSuggestion.weight.cleanWeight)×\(cachedSuggestion.reps)" : "BW×\(cachedSuggestion.reps)")
+                                    .font(.caption2.weight(.medium).monospacedDigit())
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if let prev = lastTimeSlotSet {
+                        let slotLabel = "S\(loggedExercise.completedWorkSets.count + 1)"
+                        Button {
+                            editWeight = prev.weight
+                            editReps = prev.reps
+                            HapticManager.selection()
+                        } label: {
+                            HStack(spacing: 2) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 8))
+                                Text(slotLabel)
+                                    .font(.system(size: 8, weight: .bold))
+                                Text("·")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.tertiary)
+                                Text(prev.weight > 0 ? "\(prev.weight.cleanWeight)×\(prev.reps)" : "BW×\(prev.reps)")
                                     .font(.caption2.weight(.medium).monospacedDigit())
                             }
                             .foregroundStyle(.secondary)
@@ -399,9 +466,11 @@ struct ExerciseCard: View {
                     }
                 }
             }
-            .frame(height: shouldShowSuggestionChip || loggedExercise.lastCompletedSet != nil ? 22 : 0)
+            .frame(height: shouldShowSuggestionChip || loggedExercise.lastCompletedSet != nil || lastTimeSlotSet != nil ? 22 : 0)
         }
     }
+
+    private var fatigueWarning: String? { cachedSuggestion.sessionFatigueWarning }
 
     private var shouldShowSuggestionChip: Bool {
         guard let lastSet = loggedExercise.lastCompletedSet else { return true }
@@ -483,12 +552,13 @@ struct ExerciseCard: View {
 
     private var validerButton: some View {
         Button {
+            let setType: SetType = pendingIsWarmup ? .warmup : cachedSuggestion.setType
             withAnimation(.spring(response: 0.3)) {
                 viewModel.logSet(
                     for: loggedExercise,
                     weight: editWeight,
                     reps: editReps,
-                    setType: cachedSuggestion.setType
+                    setType: setType
                 )
             }
         } label: {

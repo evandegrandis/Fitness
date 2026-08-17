@@ -111,10 +111,16 @@ struct SettingsView: View {
                 } header: {
                     Text("Objectifs hebdo (sets)")
                 } footer: {
-                    Text("Valeurs fixes.")
+                    Text("Modifiable. Fenêtre glissante de 7 jours.")
                 }
                 .task(id: goals.count) {
                     SeedData.syncCanonicalGoals(context: modelContext)
+                }
+
+                Section {
+                    BodyWeightRow()
+                } header: {
+                    Text("Corps")
                 }
 
                 Section {
@@ -183,7 +189,7 @@ struct SettingsView: View {
             }
             topVC.present(vc, animated: true)
         } catch {
-            alertMessage = "Export failed: \(error.localizedDescription)"
+            alertMessage = "Export échoué : \(error.localizedDescription)"
             showAlert = true
         }
     }
@@ -195,7 +201,7 @@ struct SettingsView: View {
         case .success(let urls):
             guard let url = urls.first else { return }
             guard url.startAccessingSecurityScopedResource() else {
-                alertMessage = "Cannot access file."
+                alertMessage = "Impossible d'accéder au fichier."
                 showAlert = true
                 return
             }
@@ -205,11 +211,11 @@ struct SettingsView: View {
                 importData = try Data(contentsOf: url)
                 showImportConfirm = true
             } catch {
-                alertMessage = "Cannot read file: \(error.localizedDescription)"
+                alertMessage = "Impossible de lire le fichier : \(error.localizedDescription)"
                 showAlert = true
             }
         case .failure(let error):
-            alertMessage = "File picker error: \(error.localizedDescription)"
+            alertMessage = "Erreur sélection fichier : \(error.localizedDescription)"
             showAlert = true
         }
     }
@@ -227,6 +233,21 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Body Weight Row
+
+struct BodyWeightRow: View {
+    @AppStorage("user_body_weight_kg") private var bodyWeightKg: Double = 78.0
+
+    var body: some View {
+        Stepper(
+            "Poids : \(bodyWeightKg.cleanWeight) kg",
+            value: $bodyWeightKg,
+            in: 40...200,
+            step: 0.5
+        )
+    }
+}
+
 // MARK: - Parent Goal Row
 
 struct ParentGoalRow: View {
@@ -235,9 +256,8 @@ struct ParentGoalRow: View {
 
     /// Look up the goal on every render rather than caching in @State. Caching
     /// a @Model reference in @State bypasses SwiftUI field-level observation,
-    /// so the read-only "N sets" label would never refresh after the stepper
-    /// mutated `weeklyGoalSets` — and consumers (Weekly Priority, Progress)
-    /// would show stale targets until the next app launch.
+    /// so the stepper would mutate a stale copy and consumers (Weekly Priority,
+    /// Progress) would show stale targets until the next app launch.
     private var goal: MuscleGoal? {
         goals.first(where: { $0.parent == parent })
     }
@@ -248,13 +268,16 @@ struct ParentGoalRow: View {
                 .font(.subheadline)
             Spacer()
             if let goal {
-                Text("\(goal.weeklyGoalSets, specifier: "%.0f") sets")
-                    .font(.caption)
+                Text("\(Int(goal.weeklyGoalSets))")
+                    .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.secondary)
-            } else {
-                Text("0 sets")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 24, alignment: .trailing)
+                Stepper("", value: Binding(
+                    get: { goal.weeklyGoalSets },
+                    set: { goal.weeklyGoalSets = $0 }
+                ), in: 0...60, step: 1)
+                .labelsHidden()
+                .fixedSize()
             }
         }
     }
@@ -338,6 +361,23 @@ struct ExerciseDetailView: View {
                 Stepper("Max : \(exercise.repTargetMax)", value: $exercise.repTargetMax, in: 1...50)
                 Stepper("Incrément : \(exercise.smallestIncrement.cleanWeight)",
                         value: $exercise.smallestIncrement, in: 0.5...20, step: 0.5)
+                Picker("Fatigue", selection: $exercise.fatigueClass) {
+                    Text("Lourd (−2 reps/set)").tag(FatigueClass.heavy)
+                    Text("Moyen (−1.5 reps/set)").tag(FatigueClass.medium)
+                    Text("Léger (−1 rep/set)").tag(FatigueClass.light)
+                }
+                Picker("Politique", selection: Binding(
+                    get: { exercise.progressionPolicy ?? .generic },
+                    set: { exercise.progressionPolicy = $0 }
+                )) {
+                    ForEach(ProgressionPolicy.allCases) { policy in
+                        Text(policy.displayName).tag(policy)
+                    }
+                }
+                if (exercise.progressionPolicy ?? .generic) == .voluntaryCap {
+                    Stepper("Cap : \(exercise.voluntaryRepCap > 0 ? "\(exercise.voluntaryRepCap) reps" : "désactivé")",
+                            value: $exercise.voluntaryRepCap, in: 0...50)
+                }
             } header: {
                 Text("Reps")
             }
@@ -351,16 +391,18 @@ struct ExerciseDetailView: View {
 
             Section {
                 ForEach(exercise.muscleMappings) { mapping in
-                    HStack {
-                        Text(mapping.muscleGroup.displayName)
-                        Spacer()
-                        Text("\(mapping.coefficient, specifier: "%.1f")")
-                            .foregroundStyle(Color.accentColor)
-                    }
+                    MuscleMappingRow(mapping: mapping)
+                }
+                .onDelete { indexSet in
+                    let toDelete = indexSet.map { exercise.muscleMappings[$0] }
+                    exercise.muscleMappings.remove(atOffsets: indexSet)
+                    for mapping in toDelete { modelContext.delete(mapping) }
                 }
 
                 Button("Ajouter un muscle") {
-                    let mapping = MuscleMapping(muscleGroup: .pectStern, coefficient: 0.3)
+                    let used = Set(exercise.muscleMappings.map(\.muscleGroup))
+                    let group = MuscleGroup.allCases.first(where: { !used.contains($0) }) ?? .pectStern
+                    let mapping = MuscleMapping(muscleGroup: group, coefficient: 0.5)
                     mapping.exercise = exercise
                     modelContext.insert(mapping)
                     exercise.muscleMappings.append(mapping)
@@ -371,5 +413,32 @@ struct ExerciseDetailView: View {
         }
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Muscle Mapping Row
+
+private struct MuscleMappingRow: View {
+    @Bindable var mapping: MuscleMapping
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Picker("", selection: $mapping.muscleGroup) {
+                ForEach(MuscleGroup.allCases) { group in
+                    Text(group.displayName).tag(group)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("\(mapping.coefficient, specifier: "%.1f")")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(Color.accentColor)
+                .frame(minWidth: 24, alignment: .trailing)
+
+            Stepper("", value: $mapping.coefficient, in: 0.1...1.0, step: 0.1)
+                .labelsHidden()
+                .fixedSize()
+        }
     }
 }

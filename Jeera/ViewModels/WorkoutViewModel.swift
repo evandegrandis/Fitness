@@ -1154,12 +1154,14 @@ class WorkoutViewModel {
         let (primarySets, recentHistory) = fetchRecentSets(for: exercise, maxSessions: 3)
         let currentSetIndex = loggedExercise.completedWorkSets.count
 
+        let fatigue = sessionFatigueContext(before: loggedExercise)
         var suggestion = ProgressionEngine.suggest(
             for: exercise,
             previousSets: primarySets,
             currentSetIndex: currentSetIndex,
             recentHistory: recentHistory,
-            currentSessionSets: loggedExercise.completedWorkSets
+            currentSessionSets: loggedExercise.orderedSets.filter { $0.completed },
+            sessionFatigue: fatigue
         )
 
         if activeWorkoutMode == .beast,
@@ -1180,7 +1182,34 @@ class WorkoutViewModel {
                 mode: suggestion.mode
             )
         }
+
         return suggestion
+    }
+
+    /// Returns a warmup suggestion if appropriate, independent of the working suggestion.
+    /// The caller decides whether to offer it — it never overrides the working set steppers.
+    func warmupSuggestion(for loggedExercise: LoggedExercise) -> SetSuggestion? {
+        guard let exercise = loggedExercise.exercise else { return nil }
+        guard loggedExercise.completedWorkSets.isEmpty,
+              !loggedExercise.warmupSets.contains(where: \.completed),
+              exercise.setPatternMode == .straight || exercise.setPatternMode == .topSetBackoff
+        else { return nil }
+
+        let workingSuggestion = suggestion(for: loggedExercise)
+        guard workingSuggestion.weight >= 40 else { return nil }
+
+        let workWeight = workingSuggestion.weight
+        let inc = exercise.smallestIncrement
+        let warmupWeight = max(20, min(((workWeight * 0.6) / inc).rounded() * inc, workWeight - inc))
+        return SetSuggestion(
+            weight: warmupWeight,
+            reps: 10,
+            setType: .warmup,
+            explanation: "Échauffement à \(warmupWeight.cleanWeight)kg avant \(workWeight.cleanWeight)kg.",
+            confidence: 0.85,
+            reasonCodes: ["auto_warmup"],
+            mode: .recordAttempt
+        )
     }
 
     /// Fetch last N sessions for this exercise. Returns (mostRecent, [olderSessions]).
@@ -1211,6 +1240,48 @@ class WorkoutViewModel {
         let primary = found[0]
         let history = Array(found.dropFirst())
         return (primary, history)
+    }
+
+    func sessionFatigueContext(before loggedExercise: LoggedExercise) -> SessionFatigueContext {
+        guard let session = activeSession else { return .empty }
+        let ordered = session.orderedExercises
+        guard let idx = ordered.firstIndex(where: { $0.id == loggedExercise.id }), idx > 0 else {
+            return .empty
+        }
+        let priorLoads: [SessionFatigueContext.PriorLoad] = ordered.prefix(idx).compactMap { prior in
+            guard let ex = prior.exercise,
+                  let parent = ex.primaryParent else { return nil }
+            let workSets = prior.completedWorkSets.count
+            guard workSets > 0 else { return nil }
+            return SessionFatigueContext.PriorLoad(
+                primaryParent: parent,
+                workSetsCompleted: workSets,
+                fatigueClass: ex.fatigueClass
+            )
+        }
+        return SessionFatigueContext(priorLoads: priorLoads)
+    }
+
+    func lastTimeSet(for loggedExercise: LoggedExercise, slotIndex: Int) -> LoggedSet? {
+        guard let exercise = loggedExercise.exercise,
+              let context = modelContext else { return nil }
+
+        let descriptor = FetchDescriptor<WorkoutSession>(
+            predicate: #Predicate { !$0.isActive },
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+        )
+        guard let sessions = try? context.fetch(descriptor) else { return nil }
+
+        let exerciseId = exercise.id
+        for session in sessions {
+            for logged in session.loggedExercises where logged.exercise?.id == exerciseId {
+                let ws = logged.workSets
+                if slotIndex < ws.count {
+                    return ws[slotIndex]
+                }
+            }
+        }
+        return nil
     }
 
     // MARK: - Undo

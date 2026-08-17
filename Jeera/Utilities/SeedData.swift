@@ -322,6 +322,14 @@ struct SeedData {
              benchmarkLow: 32.2, benchmarkHigh: 94.5, fatigueClass: .light,
              muscles: [(.absBas, 1.0), (.absHaut, 0.3), (.transverse, 0.3), (.obliqueExt, 0.3), (.obliqueInt, 0.3), (.droitFemoral, 0.3)])
 
+        make("Ab roller", category: "Core", mode: .bodyweight, repMin: 5, repMax: 12, increment: 0, rest: 60,
+             fatigueClass: .light,
+             muscles: [(.transverse, 1.0), (.absHaut, 0.9), (.absBas, 0.9), (.obliqueExt, 0.3), (.obliqueInt, 0.3), (.latInf, 0.2), (.latSup, 0.2)])
+
+        make("Dips", category: "Push", mode: .bodyweight, repMin: 6, repMax: 12, increment: 0, rest: 120,
+             fatigueClass: .heavy,
+             muscles: [(.tricepsLat, 1.0), (.tricepsMed, 1.0), (.tricepsLong, 1.0), (.pectStern, 0.7), (.deltAnt, 0.3), (.pectClav, 0.2), (.transverse, 0.1)])
+
         return map
     }
 
@@ -398,6 +406,159 @@ struct SeedData {
                 ex.lastUsed = d
             }
         }
+
+        // July 14
+        session(date(7, 14), duration: 75, [
+            ("HSPU",                        [(0, 10), (0, 7)]),
+            ("Tractions SN",                [(0, 10)]),
+            ("Traction pronation large",    [(0, 8)]),
+            ("Ab roller",                   [(0, 3)]),
+            ("Tirage vertical muscle up",   [(40, 7), (35, 8), (35, 5)]),
+            ("Pec deck",                    [(75, 8), (70, 9)]),
+            ("Leg extension",               [(80, 10), (80, 6)]),
+            ("Lateral raises",              [(14, 5), (12, 7)]),
+            ("Shoulder press",              [(70, 4), (70, 2)]),
+            ("Leg curl",                    [(60, 8)]),
+            ("Isolateral row",              [(110, 6)]),
+        ])
+
+        // July 11
+        session(date(7, 11), duration: 65, [
+            ("HSPU",                        [(0, 10), (0, 10), (0, 10)]),
+            ("Tractions SN",                [(0, 10)]),
+            ("Traction pronation large",    [(0, 8)]),
+            ("Ab roller",                   [(0, 4)]),
+            ("DC assisté",                  [(80, 10), (100, 3)]),
+            ("Pec deck",                    [(75, 8)]),
+            ("Tirage vertical muscle up",   [(35, 10), (40, 6), (40, 5)]),
+            ("Lateral raises",              [(12, 8)]),
+        ])
+
+        // July 8
+        session(date(7, 8), duration: 65, [
+            ("HSPU",                        [(0, 10), (0, 10)]),
+            ("Tractions SN",                [(0, 10), (0, 7)]),
+            ("Dips",                        [(0, 10), (0, 10)]),
+            ("Ab roller",                   [(0, 6), (0, 3)]),
+            ("Tirage vertical muscle up",   [(35, 8), (35, 6)]),
+            ("Lateral raises",              [(12, 10), (12, 6)]),
+            ("Pec deck",                    [(75, 10), (80, 4)]),
+        ])
+
+        // July 6
+        session(date(7, 6), duration: 75, [
+            ("Tractions SN",                [(0, 10), (0, 9)]),
+            ("HSPU",                        [(0, 10), (0, 10), (0, 10), (0, 6)]),
+            ("Ab roller",                   [(0, 5), (0, 3)]),
+            ("Tirage vertical muscle up",   [(35, 10), (40, 5)]),
+            ("Isolateral row",              [(80, 8), (80, 8)]),
+            ("Lateral raises",              [(12, 10), (12, 7)]),
+            ("Chest Press",                 [(110, 10), (110, 7)]),
+            ("Curl debout",                 [(20, 6)]),
+        ])
+
+        // July 1
+        session(date(7, 1), duration: 75, [
+            ("HSPU",                        [(0, 10), (0, 10), (0, 6)]),
+            ("Tractions SN",                [(0, 10), (0, 9), (0, 7)]),
+            ("Ab roller",                   [(0, 6), (0, 3)]),
+            ("Tirage vertical muscle up",   [(35, 10), (40, 5), (30, 5)]),
+            ("Lateral raises",              [(12, 8), (12, 6)]),
+            ("Pec deck",                    [(70, 10), (75, 5)]),
+            ("Curl debout",                 [(18, 8)]),
+        ])
+
+        // June 29
+        session(date(6, 29), duration: 65, [
+            ("HSPU",                        [(0, 10), (0, 10)]),
+            ("Tractions SN",                [(0, 10), (0, 9)]),
+            ("Ab roller",                   [(0, 6)]),
+            ("Chest Press",                 [(120, 7), (100, 10), (100, 5)]),
+            ("Lateral raises",              [(12, 8), (12, 6)]),
+            ("Tirage vertical muscle up",   [(40, 8)]),
+        ])
+
+        // June 7
+        session(date(6, 7), duration: 55, [
+            ("Tractions SN",                [(0, 10)]),
+            ("HSPU",                        [(0, 10), (0, 10), (0, 10)]),
+            ("Ab roller",                   [(0, 10), (0, 7), (0, 7)]),
+            ("Tirage vertical muscle up",   [(35, 8), (35, 5)]),
+            ("Pec deck",                    [(70, 10), (75, 9)]),
+        ])
+
+        // June 5
+        session(date(6, 5), duration: 85, [
+            ("Tractions SN",                [(0, 10), (0, 10)]),
+            ("HSPU",                        [(0, 10), (0, 10), (0, 10)]),
+            ("Crunch déclinés",             [(50, 10), (50, 10)]),
+            ("Pec deck",                    [(70, 10), (80, 4), (70, 4)]),
+            ("Tirage vertical muscle up",   [(35, 10), (40, 5), (35, 7)]),
+            ("Lateral raises",              [(12, 10), (12, 7)]),
+            ("Curl debout",                 [(20, 5)]),
+            ("Chest Press",                 [(110, 10), (130, 4)]),
+            ("Tirage horizontal large",     [(60, 8), (60, 5)]),
+        ])
+
+        // June 1
+        session(date(6, 1), duration: 80, [
+            ("Tractions SN",                [(0, 11), (0, 10)]),
+            ("HSPU",                        [(0, 10), (0, 10)]),
+            ("Ab roller",                   [(0, 10)]),
+            ("Lateral raises",              [(12, 10), (12, 6)]),
+            ("Curl debout",                 [(20, 6), (20, 4)]),
+            ("Chest Press",                 [(100, 10), (130, 6), (110, 7)]),
+            ("Tirage horizontal large",     [(50, 10), (60, 7), (55, 7)]),
+            ("Tirage vertical muscle up",   [(35, 8), (40, 6)]),
+        ])
+
+        // May 30
+        session(date(5, 30), duration: 75, [
+            ("Tractions SN",                [(0, 10), (20, 4), (0, 7)]),
+            ("HSPU",                        [(0, 10), (0, 10)]),
+            ("Relevé de jambes chaise romaine", [(0, 10)]),
+            ("Ab roller",                   [(0, 10)]),
+            ("Isolateral row",              [(120, 7), (100, 8)]),
+            ("DC assisté",                  [(100, 6), (80, 8)]),
+            ("Tirage vertical muscle up",   [(35, 10), (35, 9), (35, 5)]),
+            ("Pulley serré",                [(45, 8), (45, 5)]),
+        ])
+
+        // May 28
+        session(date(5, 28), duration: 70, [
+            ("Tractions SN",                [(0, 10), (20, 5), (0, 7)]),
+            ("HSPU",                        [(0, 10), (0, 10), (0, 10)]),
+            ("Relevé de jambes chaise romaine", [(0, 10), (0, 10)]),
+            ("Chest Press",                 [(100, 10), (100, 5)]),
+            ("Curl debout",                 [(20, 7)]),
+            ("Pec deck",                    [(70, 10), (70, 5)]),
+            ("Tirage vertical muscle up",   [(30, 10), (35, 8)]),
+            ("Pulley serré",                [(50, 8)]),
+        ])
+
+        // May 25
+        session(date(5, 25), duration: 65, [
+            ("Tractions SN",                [(0, 10), (0, 10)]),
+            ("Ab roller",                   [(0, 10)]),
+            ("Relevé de jambes chaise romaine", [(0, 10)]),
+            ("HSPU",                        [(0, 10), (0, 10)]),
+            ("Chest Press",                 [(100, 10), (130, 6), (110, 6)]),
+            ("Isolateral row",              [(120, 8), (120, 7)]),
+            ("Curl debout",                 [(18, 6)]),
+            ("Pec deck",                    [(70, 8), (70, 5)]),
+        ])
+
+        // May 22
+        session(date(5, 22), duration: 75, [
+            ("Tractions SN",                [(0, 10), (20, 4), (0, 8)]),
+            ("HSPU",                        [(0, 10), (0, 10), (0, 10)]),
+            ("Ab roller",                   [(0, 10)]),
+            ("Chest Press",                 [(100, 10), (120, 4), (100, 5)]),
+            ("Curl debout",                 [(20, 6), (18, 8)]),
+            ("Lateral raises",              [(12, 7)]),
+            ("Isolateral row",              [(120, 8), (120, 6)]),
+            ("Extension triceps poulie",    [(30, 10)]),
+        ])
 
         // April 15
         session(date(4, 15), duration: 53, [

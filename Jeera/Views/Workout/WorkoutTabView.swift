@@ -402,7 +402,7 @@ private struct PostWorkoutSummarySheet: View {
         let text: String
         let tint: Color
 
-        if hours >= 8 {
+        if hours >= 8.5 {
             text = "haut"
             tint = .green
         } else if hours >= 6.5 {

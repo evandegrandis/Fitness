@@ -202,7 +202,7 @@ struct DataExporter {
                         LoggedExerciseData(
                             id: le.id.uuidString,
                             exerciseId: le.exercise?.id.uuidString ?? "",
-                            exerciseName: le.exercise?.name ?? "Unknown",
+                            exerciseName: le.exercise?.name ?? "Inconnu",
                             orderIndex: le.orderIndex,
                             notes: le.notes,
                             isLinkedToNext: le.isLinkedToNext,

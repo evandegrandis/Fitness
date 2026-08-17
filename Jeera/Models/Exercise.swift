@@ -31,6 +31,14 @@ final class Exercise {
     ///   L = isolation / forearms / abs (~1 rep drop)
     var fatigueClass: FatigueClass = FatigueClass.medium
 
+    /// Controls how the progression engine behaves on plateau and set 2 decisions.
+    /// Stored as optional so existing SwiftData rows migrate without crashing.
+    /// nil is treated as .generic everywhere.
+    var progressionPolicy: ProgressionPolicy?
+    /// When progressionPolicy == .voluntaryCap, suggestions never exceed this rep count.
+    /// 0 = disabled.
+    var voluntaryRepCap: Int = 0
+
     @Relationship(deleteRule: .cascade) var muscleMappings: [MuscleMapping]
 
     var lastUsed: Date?
@@ -52,6 +60,8 @@ final class Exercise {
         benchmarkLow: Double? = nil,
         benchmarkHigh: Double? = nil,
         fatigueClass: FatigueClass = .medium,
+        progressionPolicy: ProgressionPolicy? = nil,
+        voluntaryRepCap: Int = 0,
         muscleMappings: [MuscleMapping] = []
     ) {
         self.id = id
@@ -70,6 +80,8 @@ final class Exercise {
         self.benchmarkLow = benchmarkLow
         self.benchmarkHigh = benchmarkHigh
         self.fatigueClass = fatigueClass
+        self.progressionPolicy = progressionPolicy
+        self.voluntaryRepCap = voluntaryRepCap
         self.muscleMappings = muscleMappings
     }
 
