@@ -46,6 +46,10 @@ const BUILD_ID = ${JSON.stringify(BUILD_ID)};
 const CACHE_NAME = "jeera-cache-" + BUILD_ID;
 const CACHE_PREFIX = "jeera-cache-";
 const SHELL_URL = "/";
+// Au-delà, on considère le réseau inutilisable et on sert le shell caché (cf. networkFirst).
+// Assez long pour qu'une 4G normale gagne toujours, assez court pour ne pas rester devant un
+// écran vide en salle.
+const NETWORK_TIMEOUT_MS = 3000;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -111,23 +115,44 @@ function isPublicAsset(request) {
   return ["font", "image", "manifest"].includes(request.destination);
 }
 
-async function networkFirst(request) {
-  try {
-    const response = await fetch(request);
+async function networkFirst(request, event) {
+  const cache = await caches.open(CACHE_NAME);
+
+  // Lancée UNE seule fois et partagée : soit elle répond à temps et on la sert, soit elle est
+  // consommée en tâche de fond pour rafraîchir le cache. Le put() est dans la chaîne (pas
+  // fire-and-forget) : c'est la promesse tenue par respondWith()/waitUntil() qui maintient
+  // l'event fetch vivant, un put() détaché pourrait être coupé par le navigateur.
+  const network = fetch(request).then(async (response) => {
     if (response && response.ok) {
-      // Attendu (pas fire-and-forget) : la promesse renvoyée à respondWith() est la SEULE chose
-      // qui maintient l'event fetch vivant ; un put() non attendu pourrait être interrompu par le
-      // navigateur juste après le retour de la réponse (le SW n'a plus de raison de rester actif).
-      const cache = await caches.open(CACHE_NAME);
       await cache.put(request, response.clone()).catch(() => {});
     }
     return response;
-  } catch (err) {
-    const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw err;
-  }
+  });
+
+  const cached = await cache.match(request);
+  // Rien en cache : aucune alternative, on attend le réseau quel qu'en soit le délai.
+  if (!cached) return network;
+
+  // Réseau DÉGRADÉ (capté mais inutilisable — sous-sol de salle de sport) : fetch() ne rejette
+  // pas, il attend, parfois plus d'une minute. Sans borne, l'app reste sur un écran vide alors
+  // qu'un shell utilisable dort dans le cache — c'est le « une fois sur deux » constaté par Evan
+  // (hors-ligne franc = rejet immédiat = repli OK ; réseau faible = attente infinie = écran vide).
+  //
+  // Nuance sur C1 (fraîcheur) : le réseau reste prioritaire, on ne sert le cache que s'il dépasse
+  // NETWORK_TIMEOUT_MS. La requête n'est PAS annulée — elle continue et remplit le cache, donc le
+  // démarrage suivant repart sur du frais. Un réseau normal (< 3 s) sert toujours la version fraîche.
+  let timer;
+  const timedOut = Symbol("network-timeout");
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(timedOut), NETWORK_TIMEOUT_MS);
+  });
+
+  const winner = await Promise.race([network.catch(() => timedOut), timeout]);
+  clearTimeout(timer);
+  if (winner !== timedOut && winner) return winner;
+
+  event.waitUntil(network.catch(() => {}));
+  return cached;
 }
 
 async function cacheFirst(request) {
@@ -153,9 +178,49 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkFirst(request, event));
   }
   // Les autres GET dynamiques restent réseau pur : ne jamais transformer le SW en cache API/data.
+});
+
+// --- Notifications de fin de repos -----------------------------------------
+// iOS gèle le JavaScript de la page dès que l'écran s'éteint : un setTimeout local ne se
+// déclenchera jamais pendant un repos, téléphone posé. Seul un push serveur réveille le SW.
+// Sur iOS, cela suppose l'app ajoutée à l'écran d'accueil (Web Push refusé en onglet Safari).
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    // Push sans payload (ou payload illisible) : on notifie quand même, c'est le signal qui compte.
+    payload = {};
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Repos terminé", {
+      body: payload.body || "C'est reparti !",
+      // Même tag = la notif suivante remplace la précédente au lieu d'empiler les repos.
+      tag: payload.tag || "jeera-rest",
+      renotify: true,
+      icon: "/icon",
+      badge: "/icon",
+      data: { url: payload.url || "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    (async () => {
+      // Reprendre l'onglet déjà ouvert plutôt qu'en empiler un nouveau sur la séance en cours.
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })()
+  );
 });
 `;
 

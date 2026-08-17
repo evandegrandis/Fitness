@@ -397,8 +397,30 @@ export const recoveryCheckins = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// push_subscriptions
+// ---------------------------------------------------------------------------
+
+/**
+ * Abonnements Web Push (notification de fin de repos). iOS gèle le JS de la page
+ * écran éteint : seul un push serveur peut réveiller le SW pendant un repos.
+ *
+ * L'`endpoint` fourni par le navigateur est l'identité de l'abonnement — il sert
+ * donc de clé primaire, ce qui rend le réabonnement naturellement idempotent.
+ * Un abonnement expiré (410/404 au moment de l'envoi) est supprimé côté serveur.
+ */
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  endpoint: text("endpoint").primaryKey(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // Types inférés
 // ---------------------------------------------------------------------------
+
+export type PushSubscriptionRow = InferSelectModel<typeof pushSubscriptions>;
+export type NewPushSubscriptionRow = InferInsertModel<typeof pushSubscriptions>;
 
 export type ExerciseRow = InferSelectModel<typeof exercises>;
 export type NewExerciseRow = InferInsertModel<typeof exercises>;

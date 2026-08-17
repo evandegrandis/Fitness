@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Plus, SkipForward } from "lucide-react";
 import { restRemainingSeconds, useWorkoutStore } from "@/lib/store/workout";
+import { scheduleRestNotification } from "@/lib/push/client";
 
 const RADIUS = 22;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -25,12 +26,32 @@ export function RestTimer() {
     if (!rest) return;
     const remaining = restRemainingSeconds({ rest });
     if (remaining <= 0) return;
+
+    // Deux chemins complémentaires, aucun ne suffit seul :
+    //  - le push serveur est le SEUL à fonctionner écran éteint (iOS gèle le JS de la page) ;
+    //  - le timer local couvre l'app restée au premier plan, et le cas où le push est refusé.
+    // `showNotification` via le service worker, jamais `new Notification()` : ce constructeur
+    // n'existe pas sur iOS, l'ancienne notification ne s'y déclenchait donc jamais.
+    const scheduled = scheduleRestNotification(remaining);
     const id = setTimeout(() => {
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        new Notification("Repos terminé", { body: "C'est reparti !" });
-      }
+      void (async () => {
+        if (typeof window === "undefined" || !("Notification" in window)) return;
+        if (Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
+        const registration = await navigator.serviceWorker.ready;
+        // Même tag que le push : si les deux arrivent, la seconde remplace la première.
+        await registration.showNotification("Repos terminé", {
+          body: "C'est reparti !",
+          tag: "jeera-rest",
+          icon: "/icon",
+        });
+      })();
     }, remaining * 1000);
-    return () => clearTimeout(id);
+
+    return () => {
+      clearTimeout(id);
+      // Repos passé ou séance terminée : libère la fonction serveur en attente.
+      scheduled?.abort();
+    };
   }, [rest]);
 
   return (

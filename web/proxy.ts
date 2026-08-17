@@ -36,6 +36,12 @@ export function proxy(req: NextRequest) {
   const session = req.cookies.get("jeera_session")?.value;
   if (session === expected) return NextResponse.next();
 
+  // Une route API doit ÉCHOUER, pas rediriger : un fetch() suivrait le 302 et recevrait le HTML
+  // de la page de login avec un statut 200, que l'appelant lirait comme un succès.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const url = req.nextUrl.clone();
   url.pathname = "/login";
   url.searchParams.set("from", pathname);
