@@ -281,6 +281,8 @@ export interface UserSettings {
   trainingPhase: TrainingPhase | null;
   /** Origine du calcul de variation de poids. */
   trainingPhaseStartedAt: Date | null;
+  /** Objectif cardio hebdomadaire en minutes ; `null` retombe sur les 150 min du moteur. */
+  weeklyCardioMinutesGoal: number | null;
 }
 
 /** Pesée datée. Une par jour civil — le poids varie trop dans la journée pour aller plus fin. */

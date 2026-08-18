@@ -43,6 +43,7 @@ const settings: UserSettings = {
   ageYears: 30,
   trainingPhase: null,
   trainingPhaseStartedAt: null,
+  weeklyCardioMinutesGoal: null,
 };
 
 const exercise: Exercise = {

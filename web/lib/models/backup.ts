@@ -111,6 +111,7 @@ const settingsSchema = z.object({
   // Absents des exports antérieurs : nullish pour rester rétrocompatible (§9).
   trainingPhase: z.enum(TRAINING_PHASES).nullish(),
   trainingPhaseStartedAt: z.union([z.string(), z.date()]).nullish(),
+  weeklyCardioMinutesGoal: finiteNumber.int().min(0).max(2000).nullish(),
 });
 
 const loggedSetSchema = z.object({
@@ -674,6 +675,7 @@ export function parseBackup(json: unknown): BackupData {
         trainingPhaseStartedAt: raw.settings.trainingPhaseStartedAt
           ? new Date(raw.settings.trainingPhaseStartedAt)
           : null,
+        weeklyCardioMinutesGoal: raw.settings.weeklyCardioMinutesGoal ?? null,
       }
     : {
         usesKilograms: true,
@@ -688,6 +690,7 @@ export function parseBackup(json: unknown): BackupData {
         ageYears: null,
         trainingPhase: null,
         trainingPhaseStartedAt: null,
+        weeklyCardioMinutesGoal: null,
       };
 
   const bodyWeights: BodyWeightEntry[] = raw.bodyWeights.map((entry) => ({

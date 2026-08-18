@@ -148,6 +148,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   ageYears: null,
   trainingPhase: null,
   trainingPhaseStartedAt: null,
+  weeklyCardioMinutesGoal: null,
 };
 
 export interface WorkoutState extends ReferenceData {
@@ -317,6 +318,15 @@ export interface WorkoutState extends ReferenceData {
   ) => void;
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
+
+  /**
+   * Séance démarrée avec l'intention « cardio » : `ActiveSession` ouvre le bloc cardio d'emblée,
+   * puis consomme le drapeau. Éphémère (hors `partialize`) — une intention de démarrage n'a pas
+   * à survivre à un reload.
+   */
+  cardioIntent: boolean;
+  startCardio: () => void;
+  consumeCardioIntent: () => void;
 
   /** Ferme le toast d'annulation sans annuler quoi que ce soit. */
   dismissUndo: () => void;
@@ -1218,6 +1228,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       achievement: null,
       pendingFinisherPrompt: null,
       finisherPromptDeclined: [],
+      cardioIntent: false,
       armedSupersetExerciseId: null,
       justHitRecord: {},
       recordsCache: {},
@@ -1944,6 +1955,12 @@ export const useWorkoutStore = create<WorkoutState>()(
       },
 
       dismissUndo: () => set({ undo: null }),
+
+      startCardio: () => {
+        get().startEmpty("normal");
+        set({ cardioIntent: true });
+      },
+      consumeCardioIntent: () => set({ cardioIntent: false }),
 
       setBodyWeightEntry: (entry) => {
         const state = get();

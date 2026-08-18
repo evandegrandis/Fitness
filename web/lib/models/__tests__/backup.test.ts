@@ -46,6 +46,7 @@ function v3Backup() {
       ageYears: 26,
       trainingPhase: null,
       trainingPhaseStartedAt: null,
+      weeklyCardioMinutesGoal: null,
     },
     sessions: [
       {

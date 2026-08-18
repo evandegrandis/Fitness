@@ -9,6 +9,7 @@ import { writeThrough } from "@/lib/sync/write-through";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { mergeSettingsPatch } from "@/lib/store/settings-write";
 import type { UserSettings } from "@/lib/models/types";
+import { CARDIO_GOAL } from "@/lib/engines/cardio";
 
 function restoreDurablePreferenceFields(current: UserSettings, durable: UserSettings): UserSettings {
   return {
@@ -20,6 +21,7 @@ function restoreDurablePreferenceFields(current: UserSettings, durable: UserSett
     defaultRepTargetMax: durable.defaultRepTargetMax,
     userName: durable.userName,
     supersetRestSeconds: durable.supersetRestSeconds,
+    weeklyCardioMinutesGoal: durable.weeklyCardioMinutesGoal,
   };
 }
 
@@ -132,6 +134,18 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
             min={30}
             max={300}
             suffix="s"
+          />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-[--color-fg]">Objectif cardio / semaine</span>
+          <Stepper
+            value={draft.weeklyCardioMinutesGoal ?? CARDIO_GOAL.DEFAULT_WEEKLY_MINUTES}
+            onChange={(v) => persist({ weeklyCardioMinutesGoal: v })}
+            step={15}
+            min={0}
+            max={600}
+            suffix="min"
           />
         </div>
 

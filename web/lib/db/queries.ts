@@ -207,6 +207,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   ageYears: null,
   trainingPhase: null,
   trainingPhaseStartedAt: null,
+  weeklyCardioMinutesGoal: null,
 };
 
 export async function getSettings(): Promise<UserSettings> {

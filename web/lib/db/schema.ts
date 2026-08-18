@@ -372,6 +372,8 @@ export const userSettings = pgTable(
     trainingPhase: text("training_phase"),
     /** Début de la phase : sert d'origine au calcul de la variation de poids. */
     trainingPhaseStartedAt: timestamp("training_phase_started_at", { mode: "date", withTimezone: true }),
+    /** Objectif cardio hebdomadaire, en minutes. `null` = valeur par défaut du moteur (150). */
+    weeklyCardioMinutesGoal: integer("weekly_cardio_minutes_goal"),
   },
   (table) => [
     check(

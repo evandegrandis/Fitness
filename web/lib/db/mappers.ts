@@ -511,6 +511,7 @@ export function mapSettingsRow(row: UserSettingsRow): UserSettings {
     ageYears: row.ageYears ?? null,
     trainingPhase: asTrainingPhase(row.trainingPhase),
     trainingPhaseStartedAt: row.trainingPhaseStartedAt ?? null,
+    weeklyCardioMinutesGoal: row.weeklyCardioMinutesGoal ?? null,
   };
 }
 
@@ -529,6 +530,7 @@ export function settingsToRow(settings: UserSettings): NewUserSettingsRow {
     ageYears: settings.ageYears,
     trainingPhase: settings.trainingPhase,
     trainingPhaseStartedAt: settings.trainingPhaseStartedAt,
+    weeklyCardioMinutesGoal: settings.weeklyCardioMinutesGoal,
   };
 }
 

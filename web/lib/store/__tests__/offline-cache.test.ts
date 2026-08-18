@@ -49,6 +49,7 @@ const SETTINGS: UserSettingsType = {
   ageYears: 30,
   trainingPhase: null,
   trainingPhaseStartedAt: null,
+  weeklyCardioMinutesGoal: null,
 };
 
 const BENCH: ExerciseType = {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { cardioNudge, cardioProgress } from "@/lib/engines/cardio";
 import { Settings } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { rolling7DayProgress } from "@/lib/engines/effective-sets";
@@ -20,6 +21,7 @@ export function QuickStart() {
   const repeatLast = useWorkoutStore((s) => s.repeatLast);
   const startFromTemplate = useWorkoutStore((s) => s.startFromTemplate);
   const startEmpty = useWorkoutStore((s) => s.startEmpty);
+  const startCardio = useWorkoutStore((s) => s.startCardio);
 
   // Miroir du filtre de `rollingPriorities` (effective-sets.ts) — on garde ici
   // l'objet `ParentMuscleProgress` complet (coverage %, goalSets) pour l'affichage
@@ -32,6 +34,13 @@ export function QuickStart() {
     [history, catalog, goals]
   );
   const achievements = useMemo(() => recentAchievements(history, catalog), [history, catalog]);
+  // Le rappel cardio vit sur le bouton de démarrage : c'est là qu'Evan décide de sa séance, pas
+  // dans un écran de statistiques qu'il ouvrirait après coup.
+  const cardio = useMemo(
+    () => cardioProgress(history, settings.weeklyCardioMinutesGoal ?? undefined),
+    [history, settings.weeklyCardioMinutesGoal]
+  );
+  const cardioHint = useMemo(() => cardioNudge(cardio), [cardio]);
 
   const recommendedTemplateId = useMemo(() => {
     if (templates.length === 0) return null;
@@ -71,7 +80,7 @@ export function QuickStart() {
         </Link>
       </header>
 
-      <WeeklyPriority priorities={priorities} />
+      <WeeklyPriority priorities={priorities} cardio={cardio} />
 
       <QuickActions
         lastSession={history[0]}
@@ -80,6 +89,8 @@ export function QuickStart() {
         onRepeatLast={repeatLast}
         onStartTemplate={startFromTemplate}
         onStartEmpty={startEmpty}
+        onStartCardio={startCardio}
+        cardioHint={cardioHint}
       />
 
       <RecentAchievements achievements={achievements} />

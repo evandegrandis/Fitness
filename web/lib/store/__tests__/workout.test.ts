@@ -75,6 +75,7 @@ const SETTINGS: UserSettingsType = {
   ageYears: null,
   trainingPhase: null,
   trainingPhaseStartedAt: null,
+  weeklyCardioMinutesGoal: null,
 };
 
 const DIPS: ExerciseType = {

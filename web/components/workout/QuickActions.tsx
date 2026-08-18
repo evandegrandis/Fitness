@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Plus, Sparkles } from "lucide-react";
+import { HeartPulse, History, Plus, Sparkles } from "lucide-react";
 import type { WorkoutSession, WorkoutTemplate } from "@/lib/models/types";
 
 function formatSessionSummary(session: WorkoutSession): string {
@@ -25,6 +25,8 @@ export function QuickActions({
   onRepeatLast,
   onStartTemplate,
   onStartEmpty,
+  onStartCardio,
+  cardioHint,
 }: {
   lastSession: WorkoutSession | undefined;
   templates: WorkoutTemplate[];
@@ -32,6 +34,9 @@ export function QuickActions({
   onRepeatLast: (mode: "normal") => void;
   onStartTemplate: (templateId: string, mode: "normal") => void;
   onStartEmpty: (mode: "normal") => void;
+  onStartCardio: () => void;
+  /** Rappel de l'objectif hebdo — affiché sur le bouton, pas dans un écran séparé. */
+  cardioHint: string;
 }) {
   const recommended = templates.find((t) => t.id === recommendedTemplateId);
   const otherTemplates = templates.filter((t) => t.id !== recommendedTemplateId);
@@ -96,6 +101,21 @@ export function QuickActions({
             </div>
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={onStartCardio}
+          className="glass glass-card flex items-center gap-3 text-left transition active:scale-[0.98]"
+          style={{ borderColor: "rgba(110,231,183,0.28)" }}
+        >
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ background: "rgba(110,231,183,0.14)" }}>
+            <HeartPulse size={16} style={{ color: "rgb(110,231,183)" }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[--color-fg]">Séance cardio</p>
+            <p className="truncate text-xs text-[--color-fg-muted]">{cardioHint}</p>
+          </div>
+        </button>
 
         <button
           type="button"

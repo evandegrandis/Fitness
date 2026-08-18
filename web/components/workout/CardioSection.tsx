@@ -33,10 +33,20 @@ function parsedOptional(raw: string, min: number, max: number): { value: number 
 }
 
 /** Bloc cardio structuré, volontairement séparé du volume et des benchmarks de musculation. */
-export function CardioSection({ entries }: { entries: CardioEntry[] }) {
+export function CardioSection({
+  entries,
+  /** Séance démarrée en intention cardio : le formulaire s'ouvre d'emblée, sans tap de plus. */
+  openByDefault = false,
+  /** Rappel de l'objectif hebdo, affiché en tête de bloc. */
+  hint,
+}: {
+  entries: CardioEntry[];
+  openByDefault?: boolean;
+  hint?: string;
+}) {
   const addCardioEntry = useWorkoutStore((state) => state.addCardioEntry);
   const deleteCardioEntry = useWorkoutStore((state) => state.deleteCardioEntry);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(openByDefault);
   const [activityType, setActivityType] = useState<CardioActivityType>("other");
   const [activityName, setActivityName] = useState("Cardio machine");
   const [machineName, setMachineName] = useState("");
@@ -93,7 +103,9 @@ export function CardioSection({ entries }: { entries: CardioEntry[] }) {
           </span>
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-[--color-fg]">Cardio · fin de séance</h3>
-            <p className="text-[0.68rem] text-[--color-fg-faint]">Modalité et métriques machine, sans benchmark implicite</p>
+            <p className="text-[0.68rem] text-[--color-fg-faint]">
+              {hint ?? "Modalité et métriques machine, sans benchmark implicite"}
+            </p>
           </div>
         </div>
         <button

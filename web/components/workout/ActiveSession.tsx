@@ -19,6 +19,7 @@ import { EditSetSheet } from "./EditSetSheet";
 import { SupersetLinkBanner } from "./SupersetLinkBanner";
 import { FinisherPromptBanner } from "./FinisherPromptBanner";
 import { CardioSection } from "./CardioSection";
+import { cardioNudge, cardioProgress } from "@/lib/engines/cardio";
 
 /** Carte à garder ouverte lorsqu'une séance active est restaurée. */
 function latestActiveExerciseId(session: WorkoutSession): string | null {
@@ -52,6 +53,13 @@ export function ActiveSession({
   const addExercise = useWorkoutStore((s) => s.addExercise);
   const replaceExercise = useWorkoutStore((s) => s.replaceExercise);
   const settings = useWorkoutStore((s) => s.settings);
+  const cardioIntent = useWorkoutStore((s) => s.cardioIntent);
+  const consumeCardioIntent = useWorkoutStore((s) => s.consumeCardioIntent);
+  // Rappelle POURQUOI, au moment où Evan décide s'il en fait : c'est la fin de séance qui compte,
+  // pas un écran de statistiques consulté après coup.
+  const cardioHint = cardioNudge(
+    cardioProgress(history, settings.weeklyCardioMinutesGoal ?? undefined, new Date(), session)
+  );
   const upsertExerciseInCatalog = useWorkoutStore((s) => s.upsertExerciseInCatalog);
 
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -141,6 +149,12 @@ export function ActiveSession({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setFingerprint]);
+
+  // L'intention ne vaut que pour l'ouverture : consommée au montage, elle ne rouvre pas le
+  // formulaire à chaque rendu ni après un reload.
+  useEffect(() => {
+    if (cardioIntent) consumeCardioIntent();
+  }, [cardioIntent, consumeCardioIntent]);
 
   const handleFinish = async () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -282,7 +296,7 @@ export function ActiveSession({
         }}
       />
 
-      <CardioSection entries={session.cardioEntries ?? []} />
+      <CardioSection entries={session.cardioEntries ?? []} openByDefault={cardioIntent} hint={cardioHint} />
 
       <RestTimer />
       <UndoToast />

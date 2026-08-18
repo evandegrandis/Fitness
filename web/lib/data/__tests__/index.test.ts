@@ -34,6 +34,7 @@ vi.mock("@/lib/db/queries", async () => {
       ageYears: null,
       trainingPhase: null,
       trainingPhaseStartedAt: null,
+      weeklyCardioMinutesGoal: null,
     },
     templates: [],
     recoveryCheckins: [],
