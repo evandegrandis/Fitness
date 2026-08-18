@@ -1069,3 +1069,23 @@ describe("records — un seul par type et par exercice dans la séance", () => {
     expect(heaviest[0].weight).toBe(80);
   });
 });
+
+describe("séries complémentaires au log — le cas Pec deck du 18/08", () => {
+  it("rattache une complémentaire enchaînée même si la charge remonte", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const le = useWorkoutStore.getState().active!.exercises[0];
+
+    // 65×2 puis 72,5×7, enchaînés : l'ancienne règle exigeait une charge descendante et laissait
+    // ces 9 reps compter pour zéro série effective.
+    store.logSet(le.id, { weight: 65, reps: 2 });
+    store.logSet(le.id, { weight: 72.5, reps: 7 });
+
+    const sets = useWorkoutStore.getState().active!.exercises[0].sets;
+    expect(sets).toHaveLength(2);
+    expect(sets[1].logicalSetId).toBe(sets[0].logicalSetId);
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
+  });
+});

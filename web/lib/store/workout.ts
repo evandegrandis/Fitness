@@ -1632,6 +1632,15 @@ export const useWorkoutStore = create<WorkoutState>()(
         const normalCandidate = setType !== SetType.warmup && setType !== SetType.finisher;
         // Une tentative sous le seuil de 8 reste une série logique ouverte. La prochaine
         // tentative de difficulté égale ou moindre la complète, sans dépendre du délai de saisie.
+        // Rattachement d'une série COMPLÉMENTAIRE, aligné sur `compositeLinkKind` : enchaînée en
+        // moins de 30 s après une série encore incomplète. La charge est libre — l'ancienne règle
+        // exigeait qu'elle DESCENDE, si bien que 65×2 puis 72,5×7 restaient deux blocs à zéro.
+        // Cette décision est prise ICI, au log : c'est elle qui fixe `logicalSetId`, et un id
+        // distinct interdit ensuite toute fusion au recalcul.
+        const secondsSincePrevious =
+          previousWorkSet !== undefined
+            ? (timestamp.getTime() - previousWorkSet.timestamp.getTime()) / 1000
+            : null;
         const continuesLogicalSet = Boolean(
           exercise &&
             normalCandidate &&
@@ -1641,13 +1650,9 @@ export const useWorkoutStore = create<WorkoutState>()(
             incompleteTail.totalReps < SET_STRUCTURE.EFFECTIVE_REPS_PER_SET &&
             previousWorkSet &&
             !hasInterveningExercise &&
-            (immediateKind !== null ||
-              (input.suggestionReasonCodes?.includes("logical_set_completion") === true &&
-                (previousWorkSet.weight === 0 ||
-                  effectiveLoad(input.weight, exercise.setPatternMode) <
-                    effectiveLoad(incompleteTail.leadSet.weight, exercise.setPatternMode) - 1e-9))) &&
-            effectiveLoad(input.weight, exercise.setPatternMode) <=
-              effectiveLoad(incompleteTail.leadSet.weight, exercise.setPatternMode) + 1e-9
+            secondsSincePrevious !== null &&
+            secondsSincePrevious >= 0 &&
+            secondsSincePrevious <= SET_STRUCTURE.COMPOSITE_MAX_GAP_SECONDS
         );
         const continuesPreviousRound = continuesLogicalSet || immediateKind !== null;
         const priorRecords =
