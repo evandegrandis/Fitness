@@ -48,19 +48,23 @@ describe("séries composites — drop-set / rest-pause", () => {
     expect(blocks[0].effectiveSetUnits).toBe(1);
   });
 
-  it("compte une série isolée seulement à partir de 8 reps", () => {
+  it("compte une série isolée à partir de 6 reps (seuil de stimulus, pas de complétion)", () => {
     expect(effectiveSetUnits([set(0, 0, 100, 4)], { increment: 2.5 })).toBe(0);
-    expect(effectiveSetUnits([set(0, 0, 100, 6)], { increment: 2.5 })).toBe(0);
+    expect(effectiveSetUnits([set(0, 0, 100, 5)], { increment: 2.5 })).toBe(0);
+    expect(effectiveSetUnits([set(0, 0, 100, 6)], { increment: 2.5 })).toBe(1);
     expect(effectiveSetUnits([set(0, 0, 100, 8)], { increment: 2.5 })).toBe(1);
     expect(effectiveSetUnits([set(0, 0, 100, 16)], { increment: 2.5 })).toBe(1);
   });
 
-  it("un composite 4+4 atteint une série, plafonnée à une unité", () => {
+  it("un composite atteint une série dès 6 reps cumulées, plafonnée à une unité", () => {
     const exact = [set(0, 0, 100, 4), set(1, 12, 75, 4)];
     expect(effectiveSetUnits(exact, { increment: 2.5 })).toBe(1);
 
-    const sets = [set(0, 0, 100, 4), set(1, 12, 75, 3)];
-    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(0);
+    const juste = [set(0, 0, 100, 4), set(1, 12, 75, 2)];
+    expect(effectiveSetUnits(juste, { increment: 2.5 })).toBe(1);
+
+    const tropCourt = [set(0, 0, 100, 3), set(1, 12, 75, 2)];
+    expect(effectiveSetUnits(tropCourt, { increment: 2.5 })).toBe(0);
   });
 
   it("détecte aussi un mini-bloc rest-pause à charge identique", () => {
@@ -166,5 +170,63 @@ describe("finishers — exclusion des ancres normales", () => {
   it("documente la limite : un finisher PDC->PDC sans position explicite reste indétectable", () => {
     const sets = [set(0, 0, 0, 10), set(1, 180, 0, 15)];
     expect(detectFinisherSets(sets)).toHaveLength(0);
+  });
+});
+
+describe("pondération par le RIR — c'est la proximité de l'échec qui fait le stimulus", () => {
+  it("compte une série pleine jusqu'à RIR 2, puis la dévalue", () => {
+    const withRir = (rir: number) => [{ ...set(0, 0, 100, 8), reportedRir: rir }];
+    expect(effectiveSetUnits(withRir(0), { increment: 2.5 })).toBe(1);
+    expect(effectiveSetUnits(withRir(2), { increment: 2.5 })).toBe(1);
+    expect(effectiveSetUnits(withRir(3), { increment: 2.5 })).toBe(0.75);
+    expect(effectiveSetUnits(withRir(4), { increment: 2.5 })).toBe(0.5);
+  });
+
+  it("ne dévalue jamais une série sans RIR — l'historique antérieur ne doit pas s'effondrer", () => {
+    expect(effectiveSetUnits([set(0, 0, 100, 8)], { increment: 2.5 })).toBe(1);
+  });
+
+  it("retient le RIR le plus bas d'un bloc : c'est la fin qui porte l'effort", () => {
+    // Ouverture confortable (RIR 3) terminée à l'échec (RIR 0) : stimulus complet.
+    const sets = [
+      { ...set(0, 0, 100, 5), reportedRir: 3 },
+      { ...set(1, 12, 80, 3), reportedRir: 0 },
+    ];
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
+  });
+
+  it("un travail trop court reste à zéro, même mené à l'échec", () => {
+    expect(effectiveSetUnits([{ ...set(0, 0, 100, 4), reportedRir: 0 }], { increment: 2.5 })).toBe(0);
+  });
+});
+
+describe("séries complémentaires — le cas réel du 18/08", () => {
+  it("rattache une complémentaire même quand la charge REMONTE", () => {
+    // 65×2 puis 72,5×7 : 9 reps réelles. L'ancienne règle exigeait une charge descendante et
+    // laissait ces deux séries à 0 série effective chacune.
+    const sets = [set(0, 0, 65, 2), set(1, 15, 72.5, 7)];
+    const blocks = compositeSetBlocks(sets, { increment: 2.5 });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].totalReps).toBe(9);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
+  });
+
+  it("accepte plusieurs complémentaires d'affilée", () => {
+    const sets = [set(0, 0, 60, 2), set(1, 12, 50, 2), set(2, 24, 40, 2)];
+    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(1);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
+  });
+
+  it("ne fusionne PAS deux vraies séries : au-delà de 30 s, nouveau bloc", () => {
+    const sets = [set(0, 0, 60, 4), set(1, 90, 60, 4)];
+    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(2);
+  });
+
+  it("ne fusionne PAS une série déjà complète, même enchaînée vite", () => {
+    // 8 reps n'ont rien à compléter : la suivante ouvre son propre bloc.
+    const sets = [set(0, 0, 60, 8), set(1, 15, 60, 8)];
+    const blocks = compositeSetBlocks(sets, { increment: 2.5 });
+    expect(blocks).toHaveLength(2);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(2);
   });
 });

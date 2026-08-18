@@ -151,14 +151,20 @@ describe("leafSets / parentSets", () => {
     expect(leafSets(le, BENCH).get(MuscleGroup.pectClav)).toBeCloseTo(0.8);
   });
 
-  it("un composite sous 8 reps ne compte pas comme série effective", () => {
+  it("un composite sous le minimum de 6 reps ne compte pas comme série effective", () => {
     const started = new Date("2026-07-10T10:00:00.000Z");
-    const le = loggedExercise("ex-bench", [
+    const tropCourt = loggedExercise("ex-bench", [
+      set({ weight: 100, reps: 3, setSlotIndex: 0, timestamp: started }),
+      set({ weight: 75, reps: 2, setSlotIndex: 1, timestamp: new Date(started.getTime() + 10_000) }),
+    ]);
+    expect(parentSets(tropCourt, BENCH).size).toBe(0);
+
+    // 4+3 = 7 reps cumulées : au-dessus du minimum, le bloc compte (ancien seuil : 8).
+    const complete = loggedExercise("ex-bench", [
       set({ weight: 100, reps: 4, setSlotIndex: 0, timestamp: started }),
       set({ weight: 75, reps: 3, setSlotIndex: 1, timestamp: new Date(started.getTime() + 10_000) }),
     ]);
-
-    expect(parentSets(le, BENCH).size).toBe(0);
+    expect(parentSets(complete, BENCH).get(MuscleParent.pectoraux)).toBeCloseTo(1);
   });
 });
 

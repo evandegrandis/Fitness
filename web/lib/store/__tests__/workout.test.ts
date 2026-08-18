@@ -354,10 +354,10 @@ describe("useWorkoutStore", () => {
     logged = active.exercises.find((e) => e.id === loggedExerciseId)!;
     expect(logged.sets).toHaveLength(2);
 
-    // 7. finish() -> comptage binaire : 8 reps = 1 série, 6 reps = 0.
+    // 7. finish() -> le minimum est 6 reps : les deux séries comptent (ancien seuil 8 : une seule).
     const result = useWorkoutStore.getState().finish();
     expect(result).not.toBeNull();
-    expect(result!.snapshot.setCount).toBe(1);
+    expect(result!.snapshot.setCount).toBe(2);
     expect(result!.snapshot.exerciseCount).toBe(1);
 
     const stateAfterFinish = useWorkoutStore.getState();
@@ -1045,5 +1045,27 @@ describe("useWorkoutStore", () => {
     const withCooldown = useWorkoutStore.getState().suggestion(loggedExerciseId);
     expect(withCooldown.switchToVariantId).toBeNull();
     expect(withCooldown.reasonCodes).not.toContain("variation");
+  });
+});
+
+describe("records — un seul par type et par exercice dans la séance", () => {
+  it("une montée en charge ne laisse qu'une étoile de poids max, sur la meilleure série", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const le = useWorkoutStore.getState().active!.exercises[0];
+
+    // Montée progressive : chaque série bat la précédente en poids max.
+    store.logSet(le.id, { weight: 60, reps: 8 });
+    store.logSet(le.id, { weight: 70, reps: 8 });
+    store.logSet(le.id, { weight: 80, reps: 8 });
+
+    const sets = useWorkoutStore.getState().active!.exercises[0].sets;
+    const marks = useWorkoutStore.getState().justHitRecord;
+    const heaviest = sets.filter((s) => marks[s.id] === "heaviestWeight");
+
+    expect(heaviest).toHaveLength(1);
+    expect(heaviest[0].weight).toBe(80);
   });
 });

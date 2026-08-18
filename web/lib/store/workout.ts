@@ -1737,6 +1737,22 @@ export const useWorkoutStore = create<WorkoutState>()(
         } else if (exercise && setType !== SetType.warmup && !continuesPreviousRound) {
           const kind = classify(newSet, exercise, priorRecords);
           if (kind) {
+            // Un seul record de CHAQUE type par exercice et par séance. En montant en charge
+            // (45×12 puis 52,5×10), chaque série battait la précédente et gardait son étoile :
+            // trois étoiles pour une seule vraie progression, et le signal perdait son sens.
+            // La dernière série à décrocher un type est la meilleure — elle reprend l'étoile.
+            const supersededIds = new Set(
+              state.active.exercises
+                .filter((candidate) => candidate.exerciseId === exercise.id)
+                .flatMap((candidate) => candidate.sets)
+                .filter((candidate) => justHitRecord[candidate.id] === kind)
+                .map((candidate) => candidate.id)
+            );
+            if (supersededIds.size > 0) {
+              justHitRecord = Object.fromEntries(
+                Object.entries(justHitRecord).filter(([setId]) => !supersededIds.has(setId))
+              );
+            }
             justHitRecord = { ...justHitRecord, [newSet.id]: kind };
             achievement = {
               setId: newSet.id,

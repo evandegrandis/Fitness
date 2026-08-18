@@ -18,8 +18,18 @@ export const SET_STRUCTURE = {
   COMPOSITE_MAX_GAP_SECONDS: 30,
   /** Mini-bloc à charge identique : au plus 5 reps pour signaler un rest-pause. */
   REST_PAUSE_MAX_REPS: 5,
-  /** Un bloc, composite ou isolé, vaut une série effective à partir de 8 reps cumulées. */
+  /**
+   * Reps cumulées minimales pour qu'un bloc compte. En deçà, le stimulus est trop court pour
+   * valoir une série de travail, quelle que soit la proximité de l'échec.
+   */
+  MIN_REPS_PER_SET: 6,
+  /**
+   * Conservé : l'ancien seuil binaire (8) sert encore de repère de complétion — c'est à partir de
+   * là qu'une série n'a plus besoin d'être complétée. La cible d'hypertrophie visée reste 10.
+   */
   EFFECTIVE_REPS_PER_SET: 8,
+  /** Au-delà, compléter n'apporte plus rien : le bloc se ferme. */
+  TARGET_REPS_PER_SET: 10,
   /** Seuil absolu d'un burnout/finisher à hautes reps. */
   FINISHER_REP_FLOOR: 10,
   /** Un finisher tardif doit gagner au moins 3 reps après la baisse de charge. */
@@ -140,7 +150,18 @@ function compositeLinkKind(
   // Deux IDs logiques explicites différents expriment deux séries distinctes. L'heuristique
   // temporelle ne sert plus qu'aux anciens historiques qui ne stockaient pas cette intention.
   if (nextLogicalSetId !== null) return null;
-  return immediateCompositeKind(previous, next, options);
+  const immediate = immediateCompositeKind(previous, next, options);
+  if (immediate) return immediate;
+
+  // Série COMPLÉMENTAIRE : enchaînée en moins de 30 s pour finir une série trop courte. La charge
+  // est libre — Evan remonte parfois (65×2 puis 72,5×7), ce que l'ancienne règle « la charge doit
+  // descendre » refusait, laissant 9 reps réelles compter pour zéro. Volontairement ici et non
+  // dans `immediateCompositeKind` : celui-ci décrit une TECHNIQUE (drop-set/rest-pause) et sert
+  // aussi à numéroter les rounds de superset, qui ne doivent rien devoir à la complétion.
+  if (!isWorkSet(previous) || !isWorkSet(next) || !consecutiveSlots(previous, next)) return null;
+  const gap = elapsedSeconds(previous, next);
+  if (gap === null || gap > SET_STRUCTURE.COMPOSITE_MAX_GAP_SECONDS) return null;
+  return "completion";
 }
 
 /**
@@ -148,6 +169,22 @@ function compositeLinkKind(
  * une unité au maximum. Un bloc n'est effectif qu'à partir de 8 reps
  * cumulées (ex. 4 reps => 0 ; 4+4 immédiats => 1 ; 16 reps => 1).
  */
+/**
+ * Valeur d'un bloc : 0 sous le minimum de reps, sinon 1 pondéré par la proximité de l'échec.
+ *
+ * Le RIR retenu est le PLUS BAS du bloc — c'est-à-dire la série qui s'est le plus approchée de
+ * l'échec. Un rest-pause terminé à RIR 0 vaut un stimulus complet même si la série d'ouverture
+ * était confortable ; c'est bien la fin du bloc qui porte l'effort.
+ */
+function blockUnits(totalReps: number, sets: LoggedSet[]): number {
+  if (totalReps < SET_STRUCTURE.MIN_REPS_PER_SET) return 0;
+  const reported = sets
+    .map((set) => set.reportedRir)
+    .filter((rir): rir is number => typeof rir === "number");
+  if (reported.length === 0) return 1;
+  return rirEffectiveness(Math.min(...reported));
+}
+
 export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptions = {}): CompositeSetBlock[] {
   const ordered = chronologicalCompletedWorkSets(sets);
   const blocks: CompositeSetBlock[] = [];
@@ -158,8 +195,27 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
     const linkKind = previousSet ? compositeLinkKind(previousSet, set, options) : null;
 
     if (!previousBlock || !linkKind) {
-      const effectiveSetUnits = set.reps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET ? 1 : 0;
-      blocks.push({ kind: "standard", sets: [set], leadSet: set, totalReps: set.reps, effectiveSetUnits });
+      blocks.push({
+        kind: "standard",
+        sets: [set],
+        leadSet: set,
+        totalReps: set.reps,
+        effectiveSetUnits: blockUnits(set.reps, [set]),
+      });
+      continue;
+    }
+
+    // Une complémentaire ne complète que ce qui est INCOMPLET : sinon deux vraies séries
+    // séparées par un repos court fusionneraient en une seule. Drop-set et rest-pause gardent
+    // leur propre logique — eux sont des continuations par nature, quel que soit le cumul.
+    if (linkKind === "completion" && previousBlock.totalReps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET) {
+      blocks.push({
+        kind: "standard",
+        sets: [set],
+        leadSet: set,
+        totalReps: set.reps,
+        effectiveSetUnits: blockUnits(set.reps, [set]),
+      });
       continue;
     }
 
@@ -171,11 +227,27 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
           ? "rest_pause"
           : "completion";
     previousBlock.totalReps += set.reps;
-    previousBlock.effectiveSetUnits =
-      previousBlock.totalReps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET ? 1 : 0;
+    previousBlock.effectiveSetUnits = blockUnits(previousBlock.totalReps, previousBlock.sets);
   }
 
   return blocks;
+}
+
+/**
+ * Pondération d'une série par sa proximité de l'échec.
+ *
+ * C'est le RIR, pas le nombre de reps, qui détermine le stimulus hypertrophique : une série
+ * arrêtée à 4 reps de l'échec ne vaut pas une série menée à l'échec, même à reps égales. Le
+ * comptage binaire précédent ignorait complètement cette dimension.
+ *
+ * `null` (non rapporté) vaut 1 : tout l'historique antérieur au RIR — et toute série où Evan ne
+ * renseigne rien — ne doit pas être dévalué rétroactivement sur une donnée absente.
+ */
+export function rirEffectiveness(rir: number | null | undefined): number {
+  if (rir === null || rir === undefined) return 1;
+  if (rir <= 2) return 1;
+  if (rir === 3) return 0.75;
+  return 0.5;
 }
 
 /** Nombre de séries effectives pour la couverture musculaire. */
