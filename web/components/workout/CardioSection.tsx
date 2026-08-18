@@ -5,6 +5,7 @@ import { HeartPulse, Plus, Trash2, X } from "lucide-react";
 
 import type { CardioActivityType, CardioEntry } from "@/lib/models/types";
 import { useWorkoutStore } from "@/lib/store/workout";
+import { RunTracker } from "./RunTracker";
 
 const ACTIVITY_OPTIONS: { value: CardioActivityType; label: string }[] = [
   { value: "running", label: "Course" },
@@ -175,6 +176,17 @@ export function CardioSection({
             <TextField label="Machine" value={machineName} onChange={setMachineName} placeholder="Technogym" />
             <TextField label="Modèle" value={machineModel} onChange={setMachineModel} placeholder="Skillrun" />
           </div>
+
+          {activityType === "running" && (
+            <RunTracker
+              onFinish={({ distanceKm: km, durationSeconds }) => {
+                // Le suivi remplit le formulaire, il ne l'enregistre pas : Evan garde la main pour
+                // corriger ou compléter (FC, pente) avant de valider.
+                if (durationSeconds > 0) setMinutes((Math.round((durationSeconds / 60) * 10) / 10).toString());
+                if (km > 0) setDistanceKm(km.toFixed(2));
+              }}
+            />
+          )}
 
           <div className="mt-3 grid grid-cols-3 gap-2">
             <NumericField label="Minutes*" value={minutes} onChange={setMinutes} step="1" min="0.1" max="1440" />
