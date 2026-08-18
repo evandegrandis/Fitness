@@ -45,7 +45,11 @@ const SYNONYMS: { match: string; terms: string[] }[] = [
   { match: "rowing", terms: ["row", "tirage horizontal"] },
   { match: "pulley", terms: ["poulie", "seated row"] },
   { match: "traction", terms: ["pull up", "pullup", "traction barre"] },
-  { match: "curl", terms: ["biceps", "flexion bras"] },
+  { match: "curl debout", terms: ["biceps", "flexion bras"] },
+  { match: "curl incline", terms: ["biceps"] },
+  { match: "curl marteau", terms: ["biceps", "brachial"] },
+  { match: "curl pupitre", terms: ["biceps"] },
+  { match: "curl barre", terms: ["biceps"] },
   { match: "extension triceps", terms: ["triceps", "pushdown", "barre au front"] },
   { match: "dips", terms: ["repulsion", "triceps"] },
   { match: "presse a cuisses", terms: ["leg press", "presse jambes"] },
@@ -69,6 +73,9 @@ const SYNONYMS: { match: string; terms: string[] }[] = [
   { match: "wrist curl", terms: ["avant bras", "poignets"] },
 ];
 
+/** En deçà, le muscle est un synergiste : le chercher ne doit pas remonter l'exercice. */
+const PRIMARY_MUSCLE_COEFFICIENT = 0.6;
+
 /** Tous les termes sous lesquels un exercice doit pouvoir être trouvé. */
 export function searchTermsFor(exercise: Exercise): string[] {
   const name = normalizeSearch(exercise.name);
@@ -81,6 +88,9 @@ export function searchTermsFor(exercise: Exercise): string[] {
   // Muscles travaillés : « épaule » doit remonter tout ce qui sollicite les deltoïdes, même si
   // le mot n'apparaît nulle part dans le nom.
   for (const mapping of exercise.muscleMappings) {
+    // Muscles PRINCIPAUX seulement : sans ce seuil, « épaule » remontait tous les développés
+    // (deltoïde antérieur à 0,5 en secondaire) et « biceps » tous les tirages.
+    if (mapping.coefficient < PRIMARY_MUSCLE_COEFFICIENT) continue;
     const parent = LEAF_TO_PARENT[mapping.muscleGroup as MuscleGroup];
     if (!parent) continue;
     // La CLÉ du groupe (« deltoides ») autant que son libellé court (« Delts ») : les alias

@@ -43,6 +43,31 @@ describe("les cas signalés par Evan", () => {
   });
 });
 
+describe("muscles principaux seulement", () => {
+  it("ne remonte pas un exercice pour un muscle secondaire", () => {
+    // Un développé couché sollicite un peu le deltoïde antérieur (0,5), mais chercher « épaule »
+    // ne doit pas remonter tous les développés.
+    const developpe = exercise("Développé couché barre", "Push", []);
+    developpe.muscleMappings = [
+      { muscleGroup: MuscleGroup.pectStern, coefficient: 1 },
+      { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.5 },
+    ];
+    expect(matchesSearch(developpe, "épaule")).toBe(false);
+    expect(matchesSearch(developpe, "pecs")).toBe(true);
+  });
+
+  it("remonte bien l'exercice dont c'est le muscle principal", () => {
+    const lateral = exercise("Lateral raises", "Push", [MuscleGroup.deltLat]);
+    expect(matchesSearch(lateral, "épaule")).toBe(true);
+  });
+
+  it("ne confond pas « biceps fémoral » avec les biceps du bras", () => {
+    const legCurl = exercise("Leg curl", "Legs", [MuscleGroup.bicepsFemoral]);
+    expect(matchesSearch(legCurl, "biceps")).toBe(false);
+    expect(matchesSearch(legCurl, "ischios")).toBe(true);
+  });
+});
+
 describe("tolérance", () => {
   it("trouve sans les accents", () => {
     expect(matchesSearch(DEVELOPPE, "developpe")).toBe(true);
