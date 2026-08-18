@@ -5,6 +5,7 @@ import { Check, Cloud, CloudOff, Loader2, WifiOff } from "lucide-react";
 import type { WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useSyncStatus } from "@/lib/sync/status";
+import { SessionFocusButton } from "./SessionFocusSheet";
 
 /** Badge de synchronisation HONNÊTE : reflète l'état réel, jamais un faux « enregistré ». */
 function SyncBadge() {
@@ -76,22 +77,25 @@ export function SessionHeader({
           <SyncBadge />
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          if (confirmFinish) {
-            onFinish();
-            setConfirmFinish(false);
-          } else {
-            setConfirmFinish(true);
-            setTimeout(() => setConfirmFinish(false), 3000);
-          }
-        }}
-        className="btn-accent flex items-center gap-1.5 px-4 py-2.5 text-sm active:scale-95 transition"
-      >
-        <Check size={16} />
-        {confirmFinish ? "Confirmer ?" : "Terminer"}
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        <SessionFocusButton session={session} />
+        <button
+          type="button"
+          onClick={() => {
+            if (confirmFinish) {
+              onFinish();
+              setConfirmFinish(false);
+            } else {
+              setConfirmFinish(true);
+              setTimeout(() => setConfirmFinish(false), 3000);
+            }
+          }}
+          className="btn-accent flex items-center gap-1.5 px-4 py-2.5 text-sm active:scale-95 transition"
+        >
+          <Check size={16} />
+          {confirmFinish ? "Confirmer ?" : "Terminer"}
+        </button>
+      </div>
     </div>
   );
 }
