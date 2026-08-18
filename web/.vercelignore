@@ -17,3 +17,4 @@ scripts/fix-intra-workout-*.ts
 scripts/import-*.ts
 scripts/migrate-prod-*.ts
 scripts/seed.ts
+scripts/seed-catalog-*.ts
