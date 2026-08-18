@@ -4,8 +4,11 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { Copy, Flame, GripVertical, Link2, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
+import { Copy, Film, Flame, GripVertical, Link2, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { Sheet } from "@/components/ui/Sheet";
+import { ExerciseGif } from "@/components/exercise/ExerciseGif";
+import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { SwipeRow } from "@/components/ui/SwipeRow";
 import { allTimeRecordSet } from "@/lib/engines/records";
 import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
@@ -66,6 +69,7 @@ export function ExerciseCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: loggedExercise.id });
   const [handleArmed, setHandleArmed] = useState(false);
+  const [gifOpen, setGifOpen] = useState(false);
   const logSet = useWorkoutStore((s) => s.logSet);
   const suggestion = useWorkoutStore((s) => s.suggestion);
   const warmupSuggestion = useWorkoutStore((s) => s.warmupSuggestion);
@@ -228,6 +232,19 @@ export function ExerciseCard({
             >
               <GripVertical size={16} />
             </button>
+            {hasExerciseGif(exercise.name) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGifOpen(true);
+                }}
+                aria-label={`Voir la démonstration de ${exercise.name}`}
+                className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-[--color-fg-muted] transition active:scale-90"
+              >
+                <Film size={15} />
+              </button>
+            )}
             <button
               type="button"
               onClick={(e) => {
@@ -371,6 +388,15 @@ export function ExerciseCard({
           )}
         </GlassCard>
       </SwipeRow>
+
+      {/* La démo n'était atteignable que par Réglages > Exercices > édition, donc jamais au moment
+          utile. Chargée uniquement à l'ouverture : rien ne pèse tant qu'on ne la demande pas. */}
+      <Sheet open={gifOpen} onClose={() => setGifOpen(false)} ariaLabel={`Démonstration : ${exercise.name}`}>
+        <h2 className="font-display text-lg font-bold text-[--color-fg]">{exercise.name}</h2>
+        <div className="mt-3">
+          <ExerciseGif exerciseName={exercise.name} />
+        </div>
+      </Sheet>
     </div>
   );
 }

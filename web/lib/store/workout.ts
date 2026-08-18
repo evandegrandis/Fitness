@@ -39,6 +39,7 @@ import {
   SET_STRUCTURE,
 } from "@/lib/engines/set-structure";
 import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/finisher";
+import { detectLevelUp, type LevelUp } from "@/lib/engines/level-up";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
@@ -165,6 +166,9 @@ export interface WorkoutState extends ReferenceData {
    * Non bloquant : ignorer la bande revient à garder une série normale.
    */
   pendingFinisherPrompt: FinisherPromptState | null;
+  /** Palier StrengthLevel franchi par la dernière série, `null` sinon. Éphémère, non persisté. */
+  levelUp: LevelUp | null;
+  dismissLevelUp: () => void;
   /**
    * `loggedExerciseId` pour lesquels Evan a déjà répondu « non » dans cette séance —
    * on ne repose plus la question, pour que la proposition reste rare.
@@ -1228,6 +1232,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       achievement: null,
       pendingFinisherPrompt: null,
       finisherPromptDeclined: [],
+      levelUp: null,
       cardioIntent: false,
       armedSupersetExerciseId: null,
       justHitRecord: {},
@@ -1839,11 +1844,25 @@ export const useWorkoutStore = create<WorkoutState>()(
           session = applyMonkFatigueAwareOrdering(session, state.catalog, loggedExerciseId);
         }
 
+        // Franchir un palier est plus rare qu'un record : calculé sur l'historique complet de
+        // l'exercice, séance en cours comprise, pour comparer le niveau avant et après CETTE série.
+        let levelUp = state.levelUp;
+        if (exercise && setType !== SetType.warmup) {
+          const priorSets = [
+            ...collectExerciseHistory(state.history, exercise.id).sets.flat(),
+            ...state.active.exercises
+              .filter((candidate) => candidate.exerciseId === exercise.id)
+              .flatMap((candidate) => orderedSets(candidate)),
+          ];
+          levelUp = detectLevelUp(exercise, priorSets, newSet, state.settings) ?? levelUp;
+        }
+
         set({
           active: session,
           justHitRecord,
           recordsCache,
           achievement,
+          levelUp,
           rest,
           // Proposer MÊME si la série vient de décrocher un record : un finisher à
           // hautes reps bat justement souvent un record de la piste NORMALE, et c'est
@@ -1955,6 +1974,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       },
 
       dismissUndo: () => set({ undo: null }),
+      dismissLevelUp: () => set({ levelUp: null }),
 
       startCardio: () => {
         get().startEmpty("normal");

@@ -27,6 +27,8 @@ export const MuscleParent = {
   quads: "quads",
   hamstrings: "ischios",
   glutes: "fessiers",
+  adductors: "adducteurs",
+  calves: "mollets",
 } as const;
 
 export type MuscleParent = (typeof MuscleParent)[keyof typeof MuscleParent];
@@ -93,6 +95,14 @@ export const MuscleGroup = {
   // Fessiers (glutes)
   glutMax: "glut_max",
   glutMed: "glut_med",
+
+  // Adducteurs
+  adducteurLong: "adducteur_long",
+  grandAdducteur: "grand_adducteur",
+
+  // Mollets
+  gastrocnemien: "gastrocnemien",
+  soleaire: "soleaire",
 } as const;
 
 export type MuscleGroup = (typeof MuscleGroup)[keyof typeof MuscleGroup];
@@ -148,6 +158,12 @@ export const LEAF_TO_PARENT: Record<MuscleGroup, MuscleParent> = {
 
   glut_max: MuscleParent.glutes,
   glut_med: MuscleParent.glutes,
+
+  adducteur_long: MuscleParent.adductors,
+  grand_adducteur: MuscleParent.adductors,
+
+  gastrocnemien: MuscleParent.calves,
+  soleaire: MuscleParent.calves,
 };
 
 /** Inverse de `LEAF_TO_PARENT` : toutes les feuilles appartenant à un parent. */
@@ -176,9 +192,13 @@ export const parentDisplayName: Record<MuscleParent, string> = {
   quads: "Quadriceps",
   ischios: "Ischios",
   fessiers: "Fessiers",
+  adducteurs: "Adducteurs",
+  mollets: "Mollets",
 };
 
 export const parentShortName: Record<MuscleParent, string> = {
+  adducteurs: "Adducteurs",
+  mollets: "Mollets",
   pectoraux: "Pecs",
   dos_haut: "Dos haut",
   grand_dorsal: "Dorsaux",
@@ -194,6 +214,10 @@ export const parentShortName: Record<MuscleParent, string> = {
 };
 
 export const leafDisplayName: Record<MuscleGroup, string> = {
+  adducteur_long: "Adducteur long",
+  grand_adducteur: "Grand adducteur",
+  gastrocnemien: "Gastrocnémiens",
+  soleaire: "Soléaire",
   pect_clav: "Pectoraux claviculaires",
   pect_stern: "Pectoraux sternaux",
   trap_sup: "Trapèze supérieur",
@@ -230,6 +254,10 @@ export const leafDisplayName: Record<MuscleGroup, string> = {
 
 /** Très court, utilisé dans les chips. */
 export const leafShortName: Record<MuscleGroup, string> = {
+  adducteur_long: "Add long",
+  grand_adducteur: "Gd add",
+  gastrocnemien: "Gastroc",
+  soleaire: "Soléaire",
   pect_clav: "Pec clav",
   pect_stern: "Pec stern",
   trap_sup: "Trap sup",

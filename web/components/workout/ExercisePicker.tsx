@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Film, Plus, Search, Sparkles, Star } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { hasExerciseGif } from "@/lib/data/exercise-gifs";
+import { matchesSearch } from "@/lib/data/exercise-search";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
 import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,9 @@ export function ExercisePicker({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const base = catalog.filter((e) => !excluded.has(e.id));
-    const matched = !q ? base : base.filter((e) => e.name.toLowerCase().includes(q) || e.category.toLowerCase().includes(q));
+    // Recherche tolérante (accents, synonymes FR/EN, muscle travaillé) : chercher « élévation »
+    // ou « épaule » doit remonter les Lateral raises sans en connaître le nom exact.
+    const matched = !q ? base : base.filter((e) => matchesSearch(e, q));
     if (deficitSort && deficitScoreByExerciseId) {
       return [...matched].sort((a, b) => (deficitScoreByExerciseId.get(b.id) ?? 0) - (deficitScoreByExerciseId.get(a.id) ?? 0));
     }

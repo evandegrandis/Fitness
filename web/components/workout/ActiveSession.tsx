@@ -18,6 +18,7 @@ import { ExercisePicker } from "./ExercisePicker";
 import { EditSetSheet } from "./EditSetSheet";
 import { SupersetLinkBanner } from "./SupersetLinkBanner";
 import { FinisherPromptBanner } from "./FinisherPromptBanner";
+import { LevelUpOverlay } from "./LevelUpOverlay";
 import { CardioSection } from "./CardioSection";
 import { cardioNudge, cardioProgress } from "@/lib/engines/cardio";
 
@@ -303,6 +304,7 @@ export function ActiveSession({
       <AchievementOverlay />
       <SupersetLinkBanner />
       <FinisherPromptBanner />
+      <LevelUpOverlay />
 
       <ExercisePicker
         open={pickerOpen || replaceTarget !== null}
