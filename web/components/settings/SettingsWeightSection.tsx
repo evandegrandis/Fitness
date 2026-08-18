@@ -114,14 +114,14 @@ function rateLabel(verdict: ReturnType<typeof buildWeightTrend>["verdict"], week
   const pace = `${weeklyPct > 0 ? "+" : "−"}${Math.abs(weeklyPct).toFixed(2)} %/semaine`;
   switch (verdict) {
     case "on_track":
-      return `${pace} — dans la zone visée`;
+      return `${pace} · dans la zone visée`;
     case "too_fast":
       // Au-delà de 0,7 %/sem, la perte se paie en masse maigre (Garthe et al.).
-      return `${pace} — trop rapide, tu risques d'y laisser du muscle`;
+      return `${pace} · trop rapide, tu risques d'y laisser du muscle`;
     case "too_slow":
-      return `${pace} — trop lent pour se distinguer du bruit`;
+      return `${pace} · trop lent pour se distinguer du bruit`;
     case "gaining":
-      return `${pace} — tu prends du poids`;
+      return `${pace} · tu prends du poids`;
     default:
       return pace;
   }

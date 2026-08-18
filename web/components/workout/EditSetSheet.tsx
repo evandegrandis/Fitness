@@ -121,7 +121,7 @@ function EditSetForm({
             </div>
             {(stopReason === "pain" || stopReason === "equipment") && (
               <span className="text-[0.7rem] text-rose-200/80">
-                Série non représentative — exclue des baselines de performance et des records.
+                Série non représentative : exclue des baselines de performance et des records.
               </span>
             )}
           </div>

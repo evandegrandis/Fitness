@@ -73,7 +73,7 @@ export function SettingsPhaseSection() {
             ? "Les charges sont attendues en hausse ; le suivi de plateau reste actif."
             : current === "maintain"
               ? "Maintien : progression lente attendue, plateau signalé normalement."
-              : "Aucune phase déclarée — le suivi se comporte comme aujourd'hui."}
+              : "Aucune phase déclarée : le suivi se comporte comme aujourd'hui."}
       </p>
 
       {error && <p className="mt-2 text-xs text-amber-200/80">{error}</p>}

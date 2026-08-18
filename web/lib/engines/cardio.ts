@@ -97,7 +97,7 @@ export function cardioProgress(
  */
 export function cardioNudge(progress: CardioProgress): string {
   if (progress.sessionCount === 0) {
-    return "Aucun cardio cette semaine — c'est le levier n°1 sur ta fréquence cardiaque au repos.";
+    return "Aucun cardio cette semaine : c'est le levier n°1 sur ta fréquence cardiaque au repos.";
   }
   if (progress.daysSinceLast !== null && progress.daysSinceLast >= CARDIO_GOAL.MAX_GAP_DAYS_BEFORE_STALE) {
     return `${progress.daysSinceLast} jours sans cardio : le bénéfice de la dernière séance s'est dissipé.`;
