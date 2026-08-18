@@ -57,7 +57,10 @@ export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
           <img
             src={url}
             alt={`Démonstration : ${exerciseName}`}
-            loading="lazy"
+            // PAS de loading="lazy" : l'image naît à l'intérieur d'une feuille modale qui entre en
+            // translation, donc hors viewport au montage. Le navigateur différait le chargement
+            // et ne le déclenchait jamais — le GIF restait invisible. Le report est de toute façon
+            // déjà assuré par le clic sur « Voir la démonstration ».
             onLoad={() => setState("ok")}
             onError={() => setState("error")}
             className="h-full w-full object-contain"
