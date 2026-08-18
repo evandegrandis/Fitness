@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Film, Search, Sparkles, Star } from "lucide-react";
+import { Film, Plus, Search, Sparkles, Star } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { rollingPriorities } from "@/lib/engines/effective-sets";
@@ -19,6 +19,7 @@ export function ExercisePicker({
   onClose,
   catalog,
   onPick,
+  onCreate,
   excludeIds,
   history,
   goals,
@@ -27,6 +28,8 @@ export function ExercisePicker({
   onClose: () => void;
   catalog: Exercise[];
   onPick: (exerciseId: string) => void;
+  /** Crée un exercice minimal depuis le nom tapé, puis le sélectionne. */
+  onCreate?: (name: string) => Promise<string | null>;
   excludeIds?: string[];
   /** Historique des séances — requis pour activer le tri "Suggéré (déficit)". */
   history?: WorkoutSession[];
@@ -91,6 +94,29 @@ export function ExercisePicker({
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered, deficitSort]);
 
+  const [creating, setCreating] = useState(false);
+  const trimmedQuery = query.trim();
+  // Proposé dès que la recherche ne tombe sur rien d'exact : c'est précisément le moment où Evan
+  // s'est retrouvé bloqué en salle (pullover, tirage vertical à la sellette) et a perdu sa série.
+  const canCreate =
+    onCreate !== undefined &&
+    trimmedQuery.length >= 2 &&
+    !catalog.some((e) => e.name.trim().toLowerCase() === trimmedQuery.toLowerCase());
+
+  async function createAndPick() {
+    if (!onCreate || creating) return;
+    setCreating(true);
+    try {
+      const id = await onCreate(trimmedQuery);
+      if (id) {
+        setQuery("");
+        onClose();
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
   const pick = (id: string) => {
     onPick(id);
     setQuery("");
@@ -142,7 +168,25 @@ export function ExercisePicker({
           {byCategory.map(([category, exercises]) => (
             <ExerciseSection key={category} title={category} exercises={exercises} onPick={pick} />
           ))}
-          {filtered.length === 0 && (
+          {canCreate && (
+            <button
+              type="button"
+              onClick={createAndPick}
+              disabled={creating}
+              className="glass mb-4 flex w-full items-center gap-3 rounded-xl border border-dashed border-white/15 px-3.5 py-3 text-left active:scale-[0.98] transition disabled:opacity-50"
+            >
+              <Plus size={16} style={{ color: "var(--accent)" }} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-[--color-fg]">
+                  Créer « {trimmedQuery} »
+                </span>
+                <span className="block text-xs text-[--color-fg-muted]">
+                  {creating ? "Création…" : "Utilisable tout de suite, réglable ensuite"}
+                </span>
+              </span>
+            </button>
+          )}
+          {filtered.length === 0 && !canCreate && (
             <p className="mt-8 text-center text-sm text-[--color-fg-muted]">Aucun exercice trouvé</p>
           )}
         </div>

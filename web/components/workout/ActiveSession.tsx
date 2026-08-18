@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { saveSession, deleteSession } from "@/lib/db/actions";
+import { saveSession, deleteSession, upsertExercise } from "@/lib/db/actions";
 import { enqueue, flush, pendingCount } from "@/lib/sync/outbox";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
 import { writeThrough } from "@/lib/sync/write-through";
 import { useSyncStatus } from "@/lib/sync/status";
-import type { LoggedSet, WorkoutSession } from "@/lib/models/types";
+import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 import { SessionHeader } from "./SessionHeader";
 import { ExerciseList } from "./ExerciseList";
@@ -51,6 +51,8 @@ export function ActiveSession({
   const discard = useWorkoutStore((s) => s.discard);
   const addExercise = useWorkoutStore((s) => s.addExercise);
   const replaceExercise = useWorkoutStore((s) => s.replaceExercise);
+  const settings = useWorkoutStore((s) => s.settings);
+  const upsertExerciseInCatalog = useWorkoutStore((s) => s.upsertExerciseInCatalog);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
@@ -200,6 +202,55 @@ export function ActiveSession({
     }
   };
 
+  /**
+   * Crée un exercice depuis le seul nom tapé, puis l'ajoute à la séance.
+   *
+   * Volontairement minimal : en salle, Evan doit pouvoir logger sa série tout de suite. Les
+   * réglages fins (muscles, incrément, plage de reps) se font après coup dans l'éditeur — sans
+   * cette porte de sortie, un exercice absent du catalogue lui faisait perdre le travail fait.
+   */
+  const handleCreateExercise = async (name: string): Promise<string | null> => {
+    const exercise: Exercise = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      category: "",
+      setPatternMode: "straight",
+      repTargetMin: settings.defaultRepTargetMin,
+      repTargetMax: settings.defaultRepTargetMax,
+      smallestIncrement: settings.defaultSmallestIncrement,
+      isFavorite: false,
+      createdByUser: true,
+      sortOrder: 0,
+      suggestedRestSeconds: settings.defaultRestTimerSeconds,
+      machineSetting: "",
+      setupNotes: "",
+      benchmarkLow: null,
+      benchmarkHigh: null,
+      fatigueClass: "medium",
+      progressionPolicy: null,
+      voluntaryRepCap: 0,
+      // Aucun muscle mappé : mieux vaut ne rien compter que fausser la couverture avec une
+      // supposition tirée du nom. À compléter dans l'éditeur.
+      muscleMappings: [],
+      lastUsed: null,
+      movementPattern: null,
+      resistanceProfile: null,
+      // Pas de repère de niveau : les barèmes externes ne valent pas pour une machine guidée,
+      // dont la charge affichée dépend du bras de levier.
+      strengthStandardKey: null,
+      benchmarkUnit: null,
+    };
+
+    upsertExerciseInCatalog(exercise);
+    handlePickExercise(exercise.id);
+    try {
+      await writeThrough({ kind: "exercise_upsert", exercise }, () => upsertExercise(exercise));
+    } catch {
+      // Hors-ligne : l'exercice vit déjà dans le store, l'outbox le rejouera.
+    }
+    return exercise.id;
+  };
+
   const handlePickExercise = (exerciseId: string) => {
     if (replaceTarget) {
       replaceExercise(replaceTarget, exerciseId);
@@ -247,6 +298,7 @@ export function ActiveSession({
         }}
         catalog={catalog}
         onPick={handlePickExercise}
+        onCreate={handleCreateExercise}
         // À l'AJOUT, un exercice déjà présent reste proposé : un finisher se greffe
         // souvent sur un mouvement déjà travaillé (HSPU en fin de séance), et le
         // modèle gère nativement deux blocs de même `exerciseId` (cf. `duplicateExercise`).
