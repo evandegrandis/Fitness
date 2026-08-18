@@ -492,7 +492,7 @@ describe("records", () => {
     expect(review.exercises).toHaveLength(1);
   });
 
-  it("affiche un PR finisher séparé sans inventer une comparaison de performance normale", () => {
+  it("ne remonte aucun PR pour un finisher, mais compte toujours son volume musculaire", () => {
     const oldDate = new Date(Date.now() - 7 * 86_400_000);
     const history = [
       session(oldDate, [
@@ -505,9 +505,9 @@ describe("records", () => {
 
     const review = buildSessionReview(today, history, [BENCH]);
     expect(review.exercises).toHaveLength(0);
-    expect(review.records).toContainEqual(
-      expect.objectContaining({ kind: "finisherReps", exerciseName: BENCH.name, weight: 0, reps: 18 })
-    );
+    // Aucune étoile : battre un finisher se fait en baissant la charge (cf. `classifyFinisher`).
+    expect(review.records).toEqual([]);
+    // Le travail reste néanmoins comptabilisé dans la couverture musculaire.
     expect(review.coverage.workedParents.length).toBeGreaterThan(0);
   });
 

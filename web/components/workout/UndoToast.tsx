@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useWorkoutStore } from "@/lib/store/workout";
 
@@ -12,6 +13,16 @@ export function UndoToast() {
   const undo = useWorkoutStore((s) => s.undo);
   const restActive = useWorkoutStore((s) => s.rest !== null);
   const undoLastAction = useWorkoutStore((s) => s.undoLastAction);
+  const dismissUndo = useWorkoutStore((s) => s.dismissUndo);
+
+  // Sans ça, le toast restait affiché jusqu'à la fin de la séance : il occupait le bas de l'écran
+  // (et décalait le RestTimer) longtemps après que la suppression n'était plus annulable de tête.
+  // 6 s : le temps de lire et de réagir, pas plus.
+  useEffect(() => {
+    if (!undo) return;
+    const id = setTimeout(dismissUndo, 6000);
+    return () => clearTimeout(id);
+  }, [undo, dismissUndo]);
 
   return (
     <AnimatePresence>

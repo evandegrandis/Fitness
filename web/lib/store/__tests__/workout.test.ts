@@ -602,16 +602,16 @@ describe("useWorkoutStore", () => {
     const finisher = useWorkoutStore.getState().active!.exercises[1].sets[0];
     expect(finisher.setType).toBe("finisher");
     expect(useWorkoutStore.getState().pendingFinisherPrompt).toBeNull();
-    // La requalification décroche bien le record de la piste finisher.
-    expect(useWorkoutStore.getState().justHitRecord[finisher.id]).toBe("finisherReps");
-    expect(useWorkoutStore.getState().achievement?.kind).toBe("finisherReps");
-    // La piste normale des dips reste vierge malgré le PR finisher.
+    // Requalifier retire l'étoile de la piste NORMALE et n'en décerne aucune sur la piste
+    // finisher : battre un finisher se ferait en baissant la charge (décision du 18/08/2026).
+    expect(useWorkoutStore.getState().justHitRecord[finisher.id]).toBeUndefined();
     expect(useWorkoutStore.getState().records(DIPS.id).isEmpty).toBe(true);
 
     const result = useWorkoutStore.getState().finish()!;
     expect(result.snapshot.setCount).toBe(11);
     expect(result.snapshot.exerciseCount).toBe(2);
-    expect(result.snapshot.prHighlights).toContainEqual({ title: DIPS.name, detail: "BW×16 · finisher" });
+    // Le bench garde ses PR ; seul le finisher Dips n'en décroche aucun.
+    expect(result.snapshot.prHighlights.some((pr) => pr.title === DIPS.name)).toBe(false);
   });
 
   it("propose un finisher au retour sur un exercice déjà travaillé (cas HSPU d'Evan)", () => {

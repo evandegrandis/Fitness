@@ -318,6 +318,9 @@ export interface WorkoutState extends ReferenceData {
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
 
+  /** Ferme le toast d'annulation sans annuler quoi que ce soit. */
+  dismissUndo: () => void;
+
   /** Enregistre une pesée du jour dans le store (l'écriture DB reste à l'appelant). */
   setBodyWeightEntry: (entry: BodyWeightEntry) => void;
   removeBodyWeightEntry: (id: string) => void;
@@ -1916,6 +1919,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         set({ active: state.undo.snapshot, undo: null });
       },
 
+      dismissUndo: () => set({ undo: null }),
+
       setBodyWeightEntry: (entry) => {
         const state = get();
         // Une pesée par jour civil : la nouvelle saisie remplace celle du jour.
@@ -1969,46 +1974,15 @@ export const useWorkoutStore = create<WorkoutState>()(
           ),
         };
 
-        // La piste finisher a ses propres records : la requalification doit pouvoir en
-        // décrocher un, exactement comme si la série avait été loggée en finisher.
-        const exercise = findExercise(state.catalog, target.exerciseId);
-        // La série quitte la piste normale : tout record qu'elle y avait décroché doit
-        // disparaître, et le cache doit se reconstruire depuis l'historique (l'invariant
-        // du moteur interdit de garder un état dérivé devenu faux).
-        let justHitRecord = omitKey(state.justHitRecord, prompt.setId);
+        // Une série requalifiée en finisher ne porte plus AUCUN record : elle quitte la piste
+        // normale (son étoile disparaît, le cache se reconstruit depuis l'historique) et la piste
+        // finisher n'en décerne pas — un record de finisher se battrait en baissant la charge.
+        const justHitRecord = omitKey(state.justHitRecord, prompt.setId);
         const recordsCache = { ...state.recordsCache };
         delete recordsCache[target.exerciseId];
-        let achievement = state.achievement?.setId === prompt.setId ? null : state.achievement;
-        let createdAchievement = false;
-        if (exercise) {
-          const historical = collectExerciseHistory(state.history, exercise.id).sets.flat();
-          const current = state.active.exercises
-            .filter((candidate) => candidate.exerciseId === exercise.id)
-            .flatMap((candidate) => orderedSets(candidate))
-            // La série promue est déjà dans la séance : elle ne peut pas être sa propre référence.
-            .filter((candidate) => candidate.id !== prompt.setId);
-          const kind = classifyFinisher(promoted, buildFinisherRecords([...historical, ...current]));
-          if (kind) {
-            justHitRecord = { ...justHitRecord, [promoted.id]: kind };
-            achievement = {
-              setId: promoted.id,
-              kind,
-              exerciseName: exercise.name,
-              weight: promoted.weight,
-              reps: promoted.reps,
-            };
-            createdAchievement = true;
-          }
-        }
+        const achievement = state.achievement?.setId === prompt.setId ? null : state.achievement;
 
         set({ active: session, pendingFinisherPrompt: null, justHitRecord, recordsCache, achievement });
-
-        if (createdAchievement && achievement) {
-          setTimeout(() => {
-            const current = get().achievement;
-            if (current?.setId === achievement.setId) set({ achievement: null });
-          }, 2000);
-        }
       },
 
       dismissFinisherPrompt: () => {

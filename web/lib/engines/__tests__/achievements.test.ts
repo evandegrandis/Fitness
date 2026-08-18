@@ -171,7 +171,9 @@ describe("recentAchievements — parcours chronologique et fenêtre maxSessions"
     expect(achievements).toHaveLength(0);
   });
 
-  it("suit les records finishers séparément des records normaux", () => {
+  it("ne remonte aucun accomplissement pour des finishers, même en progression", () => {
+    // Décision produit : un record de finisher se bat en baissant la charge, il récompenserait
+    // donc l'inverse de la progression. Aucune célébration sur cette piste.
     const day1 = session(new Date("2026-07-01T10:00:00"), [
       loggedExercise(BENCH.id, [set({ weight: 0, reps: 16, setType: SetType.finisher })]),
     ]);
@@ -179,11 +181,6 @@ describe("recentAchievements — parcours chronologique et fenêtre maxSessions"
       loggedExercise(BENCH.id, [set({ weight: 0, reps: 18, setType: SetType.finisher })]),
     ]);
 
-    const achievements = recentAchievements([day2, day1], [BENCH], 10);
-    expect(achievements.map((achievement) => achievement.kind)).toEqual([
-      "finisherReps",
-      "finisherReps",
-    ]);
-    expect(achievements[0].reps).toBe(18);
+    expect(recentAchievements([day2, day1], [BENCH], 10)).toEqual([]);
   });
 });

@@ -1,7 +1,8 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import { useEffect, useRef } from "react";
+import { X } from "lucide-react";
 
 /**
  * Feuille modale ascendante (bottom sheet) avec fond flouté.
@@ -23,6 +24,9 @@ export function Sheet({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+  // Le drag part UNIQUEMENT de la poignée : le corps de la feuille défile (liste d'exercices),
+  // un drag global s'y disputerait le geste avec le scroll.
+  const dragControls = useDragControls();
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -73,8 +77,33 @@ export function Sheet({
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 34 }}
+            drag="y"
+            dragListener={false}
+            dragControls={dragControls}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.5 }}
+            onDragEnd={(_, info) => {
+              // Descendre franchement OU d'un geste rapide ferme — comme n'importe quelle
+              // bottom sheet native. Sans ça, une feuille `full` n'offrait presque aucune sortie :
+              // le fond cliquable ne couvre que 8 % de l'écran et Escape n'existe pas sur mobile.
+              if (info.offset.y > 110 || info.velocity.y > 550) onCloseRef.current();
+            }}
           >
-            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-white/20" />
+            <div
+              onPointerDown={(event) => dragControls.start(event)}
+              className="-mx-5 -mt-3 flex touch-none cursor-grab items-center justify-between px-5 pb-2 pt-3 active:cursor-grabbing"
+            >
+              <span aria-hidden="true" className="w-11" />
+              <span aria-hidden="true" className="h-1.5 w-10 rounded-full bg-white/25" />
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Fermer"
+                className="grid h-11 w-11 place-items-center rounded-full text-[--color-fg-muted] active:scale-90 transition"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
             {children}
           </motion.div>
         </motion.div>

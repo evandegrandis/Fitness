@@ -244,21 +244,20 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
   });
 });
 
-describe("records finishers séparés", () => {
-  it("compare uniquement les reps à la même charge sans contaminer les PR normaux", () => {
+describe("finishers — aucun record, par décision produit", () => {
+  it("ne classe JAMAIS un finisher en record, même à hautes reps", () => {
+    // Un record de finisher se bat en BAISSANT la charge : la récompense pousserait donc à
+    // l'inverse de la progression. `isFinisherRepRecord` reste vrai (donnée descriptive), mais
+    // la classification — donc l'étoile et la célébration — ne suit plus.
     const history = [set({ weight: 0, reps: 16, setType: SetType.finisher })];
-    const priorNormal = RecordsEngine.buildRecords(PULLUPS, history);
     const priorFinisher = buildFinisherRecords(history);
     const improved = set({ weight: 0, reps: 18, setType: SetType.finisher });
 
-    expect(priorNormal.isEmpty).toBe(true);
-    expect(RecordsEngine.classify(improved, PULLUPS, priorNormal)).toBeNull();
     expect(isFinisherRepRecord(improved, priorFinisher)).toBe(true);
-    expect(classifyFinisher(improved, priorFinisher)).toBe("finisherReps");
-    expect(isFinisherRepRecord(set({ weight: 0, reps: 15, setType: SetType.finisher }), priorFinisher)).toBe(false);
+    expect(classifyFinisher(improved, priorFinisher)).toBeNull();
   });
 
-  it("affiche l'étoile finisher uniquement sur le meilleur nombre de reps à cette charge", () => {
+  it("n'étoile aucun finisher dans l'historique", () => {
     const previous = set({ id: "finisher-old", weight: 0, reps: 16, setType: SetType.finisher });
     const improved = set({ id: "finisher-new", weight: 0, reps: 18, setType: SetType.finisher });
     const logged = {
@@ -272,8 +271,14 @@ describe("records finishers séparés", () => {
       sets: [improved],
     };
 
-    const displayed = RecordsEngine.displayedRecordSetIDs(logged, [previous, improved], PULLUPS);
-    expect(displayed).toEqual(new Set([improved.id]));
+    expect(RecordsEngine.displayedRecordSetIDs(logged, [previous, improved], PULLUPS)).toEqual(new Set());
+  });
+
+  it("laisse la piste normale totalement intacte", () => {
+    const history = [set({ weight: 0, reps: 16, setType: SetType.finisher })];
+    const priorNormal = RecordsEngine.buildRecords(PULLUPS, history);
+    expect(priorNormal.isEmpty).toBe(true);
+    expect(RecordsEngine.classify(set({ weight: 0, reps: 18, setType: SetType.finisher }), PULLUPS, priorNormal)).toBeNull();
   });
 });
 

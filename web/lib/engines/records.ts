@@ -87,9 +87,22 @@ export function isFinisherRepRecord(set: LoggedSet, prior: FinisherRecords): boo
 }
 
 /** Classification dédiée, volontairement impossible à confondre avec un PR normal. */
-export function classifyFinisher(set: LoggedSet, prior: FinisherRecords): RecordKind | null {
-  return isFinisherRepRecord(set, prior) ? "finisherReps" : null;
+/**
+ * Toujours `null` depuis le 18/08/2026 : décision d'Evan, et c'est la bonne.
+ *
+ * Un record sur un finisher crée une incitation inversée — pour battre un record à hautes reps,
+ * il faut BAISSER la charge, donc la récompense pousse exactement dans le sens contraire de la
+ * progression. Le finisher est un travail de volume en fin de séance, pas une mesure de capacité.
+ *
+ * `isFinisherRepRecord` / `buildFinisherRecords` restent exportés : ils servent aux tests et
+ * pourraient nourrir une statistique descriptive, mais plus jamais une étoile ni une célébration.
+ */
+/* eslint-disable @typescript-eslint/no-unused-vars -- signature conservée : les appelants
+   (bilan, achievements) restent inchangés, la porte se ferme ici en un seul endroit. */
+export function classifyFinisher(_set: LoggedSet, _prior: FinisherRecords): RecordKind | null {
+  return null;
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /**
  * Marge minimale d'amélioration relative sur l'e1RM précédent pour compter
@@ -312,11 +325,9 @@ export const RecordsEngine = {
     const candidates = normalRecordSets(orderedSets(loggedExercise), exercise).filter((s) =>
       RecordsEngine.isRecordSet(s, amongSets, exercise)
     );
-    const finisherCandidates = orderedSets(loggedExercise).filter((set) => {
-      if (!set.completed || set.setType !== SetType.finisher) return false;
-      const prior = buildFinisherRecords(amongSets.filter((candidate) => candidate.id !== set.id));
-      return isFinisherRepRecord(set, prior);
-    });
+    // Les finishers ne portent plus d'étoile (cf. `classifyFinisher`) : la piste existe encore
+    // dans les données, mais elle ne doit plus récompenser une baisse de charge.
+    const finisherCandidates: LoggedSet[] = [];
     if (candidates.length === 0 && finisherCandidates.length === 0) return new Set();
 
     const kept: LoggedSet[] = [];
