@@ -31,7 +31,7 @@ import type {
   WorkoutSessionRow,
   WorkoutTemplateRow,
 } from "./schema";
-import { BenchmarkUnit, FatigueClass, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType, STOP_REASONS } from "@/lib/models/enums";
+import { BenchmarkUnit, FatigueClass, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType, STOP_REASONS, TRAINING_PHASES } from "@/lib/models/enums";
 import type {
   BenchmarkUnit as BenchmarkUnitT,
   FatigueClass as FatigueClassT,
@@ -42,6 +42,7 @@ import type {
   SetPatternMode as SetPatternModeT,
   SetType as SetTypeT,
   StopReason,
+  TrainingPhase,
 } from "@/lib/models/enums";
 import type { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
 import type {
@@ -85,6 +86,11 @@ function asNullableSetType(raw: string | null): SetTypeT | null {
 function asSetTechnique(raw: string | null): SetTechnique | null {
   if (!raw) return null;
   return (SET_TECHNIQUES as readonly string[]).includes(raw) ? (raw as SetTechnique) : null;
+}
+
+function asTrainingPhase(raw: string | null): TrainingPhase | null {
+  if (!raw) return null;
+  return (TRAINING_PHASES as readonly string[]).includes(raw) ? (raw as TrainingPhase) : null;
 }
 
 function asStopReason(raw: string | null): StopReason | null {
@@ -503,6 +509,8 @@ export function mapSettingsRow(row: UserSettingsRow): UserSettings {
     bodyWeightKg: row.bodyWeightKg ?? null,
     gender: row.gender === "male" || row.gender === "female" ? row.gender : null,
     ageYears: row.ageYears ?? null,
+    trainingPhase: asTrainingPhase(row.trainingPhase),
+    trainingPhaseStartedAt: row.trainingPhaseStartedAt ?? null,
   };
 }
 
@@ -519,6 +527,8 @@ export function settingsToRow(settings: UserSettings): NewUserSettingsRow {
     bodyWeightKg: settings.bodyWeightKg,
     gender: settings.gender,
     ageYears: settings.ageYears,
+    trainingPhase: settings.trainingPhase,
+    trainingPhaseStartedAt: settings.trainingPhaseStartedAt,
   };
 }
 

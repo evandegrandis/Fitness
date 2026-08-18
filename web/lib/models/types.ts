@@ -15,6 +15,7 @@ import type {
   ResistanceProfile,
   SetPatternMode,
   SetType,
+  TrainingPhase,
   StopReason,
 } from "./enums";
 import { SetType as SetTypeValues } from "./enums";
@@ -273,6 +274,20 @@ export interface UserSettings {
   /** Profil utilisé pour contextualiser les repères; null signifie non renseigné. */
   gender: "male" | "female" | null;
   ageYears: number | null;
+  /**
+   * Phase déclarée. Ne modifie AUCUNE suggestion de charge : elle change la lecture du résultat
+   * (en `cut`, tenir sa charge est une réussite et non un plateau à casser).
+   */
+  trainingPhase: TrainingPhase | null;
+  /** Origine du calcul de variation de poids. */
+  trainingPhaseStartedAt: Date | null;
+}
+
+/** Pesée datée. Une par jour civil — le poids varie trop dans la journée pour aller plus fin. */
+export interface BodyWeightEntry {
+  id: string;
+  measuredOn: Date;
+  weightKg: number;
 }
 
 export interface RecoveryCheckin {

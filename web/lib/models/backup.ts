@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 
-import { BenchmarkUnit, fatigueClassFromRaw, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType, STOP_REASONS } from "./enums";
+import { BenchmarkUnit, fatigueClassFromRaw, MovementPattern, PLATEAU_WEAK_POINTS, ResistanceProfile, SetPatternMode, SetType, STOP_REASONS, TRAINING_PHASES } from "./enums";
 import type {
   BenchmarkUnit as BenchmarkUnitT,
   FatigueClass,
@@ -25,9 +25,11 @@ import type {
   ProgressionPolicy,
   ResistanceProfile as ResistanceProfileT,
   StopReason,
+  TrainingPhase,
 } from "./enums";
 import { LEAF_TO_PARENT, legacyMuscleMapping, MuscleGroup, MuscleParent } from "./muscles";
 import type {
+  BodyWeightEntry,
   CardioActivityType,
   CardioEntry,
   Exercise,
@@ -106,6 +108,9 @@ const settingsSchema = z.object({
   bodyWeightKg: finiteNumber.positive().nullish(),
   gender: z.enum(["male", "female"]).nullish(),
   ageYears: finiteNumber.int().min(10).max(120).nullish(),
+  // Absents des exports antérieurs : nullish pour rester rétrocompatible (§9).
+  trainingPhase: z.enum(TRAINING_PHASES).nullish(),
+  trainingPhaseStartedAt: z.union([z.string(), z.date()]).nullish(),
 });
 
 const loggedSetSchema = z.object({
@@ -219,6 +224,16 @@ export const backupSchema = z.object({
   sessions: z.array(sessionSchema),
   templates: z.array(templateSchema),
   recoveryCheckins: z.array(recoveryCheckinSchema).default([]),
+  // Absent des exports antérieurs : `.default([])` garde les anciens fichiers importables (§9).
+  bodyWeights: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        measuredOn: z.union([z.string(), z.date()]),
+        weightKg: finiteNumber.positive(),
+      })
+    )
+    .default([]),
 });
 
 export type BackupJson = z.infer<typeof backupSchema>;
@@ -243,6 +258,7 @@ export interface BackupData {
   sessions: WorkoutSession[];
   templates: WorkoutTemplate[];
   recoveryCheckins: RecoveryCheckin[];
+  bodyWeights: BodyWeightEntry[];
 }
 
 /** Sous-ensemble sérialisable du store nécessaire à un export web v4 complet. */
@@ -254,6 +270,7 @@ export interface BackupExportSource {
   settings: UserSettings;
   templates: WorkoutTemplate[];
   recoveryCheckins: RecoveryCheckin[];
+  bodyWeights: BodyWeightEntry[];
   activeMode: WorkoutMode;
   selectedStartMode: WorkoutMode;
   pendingVariantSwitches: Record<string, string>;
@@ -293,6 +310,11 @@ export function createBackupJson(
       weeklyGoalSets: goal.weeklyGoalSets,
     })),
     settings: source.settings,
+    bodyWeights: source.bodyWeights.map((entry) => ({
+      id: entry.id,
+      measuredOn: entry.measuredOn.toISOString(),
+      weightKg: entry.weightKg,
+    })),
     sessions: sessions.map((session) => ({
       id: session.id,
       date: session.date.toISOString(),
@@ -648,6 +670,10 @@ export function parseBackup(json: unknown): BackupData {
         bodyWeightKg: raw.settings.bodyWeightKg ?? null,
         gender: raw.settings.gender ?? null,
         ageYears: raw.settings.ageYears ?? null,
+        trainingPhase: (raw.settings.trainingPhase ?? null) as TrainingPhase | null,
+        trainingPhaseStartedAt: raw.settings.trainingPhaseStartedAt
+          ? new Date(raw.settings.trainingPhaseStartedAt)
+          : null,
       }
     : {
         usesKilograms: true,
@@ -660,7 +686,15 @@ export function parseBackup(json: unknown): BackupData {
         bodyWeightKg: null,
         gender: null,
         ageYears: null,
+        trainingPhase: null,
+        trainingPhaseStartedAt: null,
       };
+
+  const bodyWeights: BodyWeightEntry[] = raw.bodyWeights.map((entry) => ({
+    id: entry.id,
+    measuredOn: new Date(entry.measuredOn),
+    weightKg: entry.weightKg,
+  }));
 
   // -- Templates ------------------------------------------------------------
   const templates: WorkoutTemplate[] = raw.templates.map((tData, index): WorkoutTemplate => ({
@@ -803,5 +837,6 @@ export function parseBackup(json: unknown): BackupData {
     sessions,
     templates,
     recoveryCheckins,
+    bodyWeights,
   };
 }

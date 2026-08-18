@@ -44,6 +44,8 @@ function v3Backup() {
       bodyWeightKg: 75.5,
       gender: "male",
       ageYears: 26,
+      trainingPhase: null,
+      trainingPhaseStartedAt: null,
     },
     sessions: [
       {
@@ -218,6 +220,7 @@ describe("backup v3 lossless fields", () => {
       settings: parsed.settings,
       templates: parsed.templates,
       recoveryCheckins: parsed.recoveryCheckins,
+      bodyWeights: [],
       activeMode: parsed.activeMode,
       selectedStartMode: parsed.selectedStartMode,
       pendingVariantSwitches: parsed.pendingVariantSwitches,
@@ -272,6 +275,7 @@ describe("backup v3 lossless fields", () => {
       settings: parsed.settings,
       templates: parsed.templates,
       recoveryCheckins: parsed.recoveryCheckins,
+      bodyWeights: [],
       activeMode: "beast",
       selectedStartMode: "monk",
       pendingVariantSwitches: { "exercise-1": "exercise-2" },

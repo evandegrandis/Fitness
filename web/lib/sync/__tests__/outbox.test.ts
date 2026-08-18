@@ -41,6 +41,8 @@ const settings: UserSettings = {
   bodyWeightKg: 80,
   gender: "male",
   ageYears: 30,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 const exercise: Exercise = {
@@ -81,6 +83,7 @@ function noopHandlers(overrides: Partial<OutboxHandlers> = {}): OutboxHandlers {
     settings: vi.fn(async () => undefined),
     goals: vi.fn(async () => undefined),
     recoveryCheckin: vi.fn(async () => undefined),
+    bodyWeight: vi.fn(async () => undefined),
     exerciseUpsert: vi.fn(async () => undefined),
     exerciseDelete: vi.fn(async () => undefined),
     templateUpsert: vi.fn(async () => undefined),

@@ -73,6 +73,8 @@ const SETTINGS: UserSettingsType = {
   bodyWeightKg: null,
   gender: null,
   ageYears: null,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 const DIPS: ExerciseType = {
@@ -94,6 +96,7 @@ function resetStore() {
     settings: SETTINGS,
     templates: [],
     recoveryCheckins: [],
+    bodyWeights: [],
     active: null,
     activeMode: "normal",
     selectedStartMode: "normal",
@@ -140,6 +143,7 @@ describe("useWorkoutStore", () => {
       settings: SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
 
     expect(useWorkoutStore.getState().history.map((session) => session.id)).toEqual([
@@ -306,6 +310,7 @@ describe("useWorkoutStore", () => {
       settings: SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
 
     // 2. startEmpty
@@ -406,6 +411,7 @@ describe("useWorkoutStore", () => {
       settings: SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
 
     store.startEmpty("normal");
@@ -424,7 +430,7 @@ describe("useWorkoutStore", () => {
 
   it("discard() efface la séance active sans la déplacer vers history", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     expect(useWorkoutStore.getState().active).not.toBeNull();
@@ -436,7 +442,7 @@ describe("useWorkoutStore", () => {
 
   it("propose de compléter immédiatement un mini-set sans le compter comme deux séries", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
@@ -487,7 +493,7 @@ describe("useWorkoutStore", () => {
 
   it("ne fusionne pas deux mini-séries séparées par un autre exercice", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
@@ -508,7 +514,7 @@ describe("useWorkoutStore", () => {
 
   it("répare les groupes logiques et invalide la projection quand un set est édité", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
@@ -535,7 +541,7 @@ describe("useWorkoutStore", () => {
 
   it("garde la continuation immédiate d'un drop-set dans le même round de superset", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
@@ -572,7 +578,7 @@ describe("useWorkoutStore", () => {
 
   it("propose — sans l'imposer — un finisher pour un set tardif de dips", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
@@ -610,7 +616,7 @@ describe("useWorkoutStore", () => {
 
   it("propose un finisher au retour sur un exercice déjà travaillé (cas HSPU d'Evan)", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(DIPS.id);
     store.addExercise(BENCH.id);
@@ -634,7 +640,7 @@ describe("useWorkoutStore", () => {
 
   it("ne repose plus la question sur un exercice où le finisher a été refusé", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
@@ -657,7 +663,7 @@ describe("useWorkoutStore", () => {
 
   it("ajoute et supprime le cardio sans créer de set de musculation", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
 
     store.addCardioEntry({
@@ -721,7 +727,7 @@ describe("useWorkoutStore", () => {
       ],
       supersetGroups: [],
     };
-    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [lastSession], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [lastSession], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
 
     // Pas de séance active (bilan traité après coup, typiquement) -> reste en attente.
     store.acceptVariantSwitch("sess-last", BENCH.id, DUMBBELL.id);
@@ -741,7 +747,7 @@ describe("useWorkoutStore", () => {
   it("acceptVariantSwitch() avec une séance active contenant déjà l'exercice (0 set) -> bascule immédiate, pas de pending", () => {
     const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
@@ -797,7 +803,7 @@ describe("useWorkoutStore", () => {
     const history = [pastSession("h1", 3, 60, 8), pastSession("h2", 10, 60, 8), pastSession("h3", 17, 60, 8), pastSession("h4", 24, 60, 8)];
     const todaySession = pastSession("today", 0, 60, 8);
 
-    store.hydrate({ catalog: [BENCH, DUMBBELL], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
 
     const before = useWorkoutStore.getState().sessionReview(todaySession);
     expect(before.exercises[0].plateau.wasInPlateau).toBe(true);
@@ -869,6 +875,7 @@ describe("useWorkoutStore", () => {
       settings: SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
 
     const before = useWorkoutStore.getState().sessionReview(todaySession);
@@ -937,7 +944,7 @@ describe("useWorkoutStore", () => {
   it("acceptVariantSwitch() horodate rotationAcceptedAt[newExerciseId] (P2.3)", () => {
     const DUMBBELL: ExerciseType = { ...BENCH, id: "ex-dumbbell", name: "Développé haltères" };
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
 
     expect(useWorkoutStore.getState().rotationAcceptedAt[DUMBBELL.id]).toBeUndefined();
     store.acceptVariantSwitch("sess-x", BENCH.id, DUMBBELL.id);
@@ -966,6 +973,7 @@ describe("useWorkoutStore", () => {
       settings: SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
 
     // Sans cooldown : la carte apparaît normalement (comportement P1.6/P2.1 déjà couvert ailleurs).
@@ -1001,6 +1009,7 @@ describe("useWorkoutStore", () => {
       settings: SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
     useWorkoutStore.setState({
       rotationAcceptedAt: { [BENCH.id]: new Date(Date.now() - 20 * 86_400_000).toISOString() },
@@ -1019,7 +1028,7 @@ describe("useWorkoutStore", () => {
       pastSessionFor(BENCH.id, BENCH.name, "h3", 17, 60, 8),
       pastSessionFor(BENCH.id, BENCH.name, "h4", 24, 60, 8),
     ];
-    store.hydrate({ catalog: [BENCH, DUMBBELL], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [] });
+    store.hydrate({ catalog: [BENCH, DUMBBELL], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;

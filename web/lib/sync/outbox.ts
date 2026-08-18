@@ -1,4 +1,5 @@
 import type {
+  BodyWeightEntry,
   Exercise,
   MuscleGoal,
   RecoveryCheckinInput,
@@ -39,7 +40,8 @@ export type OutboxOp =
   | { kind: "exercise_upsert"; exercise: Exercise }
   | { kind: "exercise_delete"; exerciseId: string }
   | { kind: "template_upsert"; template: WorkoutTemplate }
-  | { kind: "template_delete"; templateId: string };
+  | { kind: "template_delete"; templateId: string }
+  | { kind: "body_weight"; entry: BodyWeightEntry };
 
 interface OutboxEntry {
   /**
@@ -117,6 +119,8 @@ function reviveOp(op: OutboxOp): OutboxOp {
       return { kind: "recovery_checkin", checkin: { ...op.checkin, date: toDate(op.checkin.date) } };
     case "template_upsert":
       return { kind: "template_upsert", template: reviveTemplate(op.template) };
+    case "body_weight":
+      return { kind: "body_weight", entry: { ...op.entry, measuredOn: toDate(op.entry.measuredOn) } };
     case "settings":
     case "goals":
     case "exercise_delete":
@@ -146,6 +150,9 @@ function dedupeKeyOf(op: OutboxOp): string {
       return `template:${op.template.id}`;
     case "template_delete":
       return `template:${op.templateId}`;
+    case "body_weight":
+      // Clé par JOUR : repeser deux fois le même jour hors-ligne ne doit pousser qu'une écriture.
+      return `body_weight:${new Date(op.entry.measuredOn).toISOString().slice(0, 10)}`;
   }
 }
 
@@ -230,6 +237,7 @@ export interface OutboxHandlers {
   exerciseDelete: (exerciseId: string) => Promise<void>;
   templateUpsert: (template: WorkoutTemplate) => Promise<void>;
   templateDelete: (templateId: string) => Promise<void>;
+  bodyWeight: (entry: BodyWeightEntry) => Promise<void>;
 }
 
 async function applyOp(op: OutboxOp, handlers: OutboxHandlers): Promise<void> {
@@ -252,6 +260,8 @@ async function applyOp(op: OutboxOp, handlers: OutboxHandlers): Promise<void> {
       return handlers.templateUpsert(op.template);
     case "template_delete":
       return handlers.templateDelete(op.templateId);
+    case "body_weight":
+      return handlers.bodyWeight(op.entry);
   }
 }
 

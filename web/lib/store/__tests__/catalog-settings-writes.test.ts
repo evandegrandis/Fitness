@@ -41,6 +41,8 @@ const SETTINGS: UserSettingsType = {
   bodyWeightKg: null,
   gender: null,
   ageYears: null,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 const BENCH: ExerciseType = {

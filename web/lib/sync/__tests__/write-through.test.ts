@@ -46,6 +46,8 @@ const SETTINGS: UserSettingsType = {
   bodyWeightKg: 80,
   gender: "male",
   ageYears: 30,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 const ACTIVE_SESSION: WorkoutSessionType = {

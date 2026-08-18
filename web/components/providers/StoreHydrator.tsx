@@ -69,6 +69,7 @@ export function StoreHydrator({
         settings: data.settings,
         templates: data.templates,
         recoveryCheckins: data.recoveryCheckins,
+        bodyWeights: data.bodyWeights,
       });
       // La copie locale de la séance active contient potentiellement des taps plus récents que
       // l'autosave Neon. Elle gagne toujours ; Neon ne sert qu'à restaurer un navigateur vierge.

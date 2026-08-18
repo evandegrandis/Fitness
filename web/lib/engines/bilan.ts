@@ -42,7 +42,7 @@ import { estimated1RM } from "@/lib/engines/e1rm";
 import { selectAlternative } from "@/lib/engines/variation-select";
 import type { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { SetType } from "@/lib/models/enums";
-import type { PlateauWeakPoint } from "@/lib/models/enums";
+import type { PlateauWeakPoint, TrainingPhase } from "@/lib/models/enums";
 import { parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import {
   completedWorkSets,
@@ -300,6 +300,11 @@ export interface ExerciseReview {
 
 export interface SessionReviewOptions {
   bodyweightKg?: number;
+  /**
+   * Phase déclarée. En déficit, une charge tenue est le résultat visé : signaler un « plateau »
+   * reviendrait à qualifier d'échec exactement ce qu'on cherche à obtenir, séance après séance.
+   */
+  trainingPhase?: TrainingPhase | null;
   /** Contexte de fatigue réellement présent avant chaque exercice, indexé par LoggedExercise.id. */
   sessionFatigueByLoggedExerciseId?: Record<string, SessionFatigueContext>;
   /** Suggestion effectivement montrée en live ; prioritaire sur tout recalcul. */
@@ -327,6 +332,8 @@ export interface SessionReview {
 
   coverage: SessionCoverage;
   records: SessionRecordHighlight[];
+  /** Vrai quand la phase met le suivi de plateau en veille (l'UI doit l'expliquer, pas le taire). */
+  plateauMuted: boolean;
 }
 
 export interface SessionCoverage {
@@ -780,9 +787,14 @@ export function buildSessionReview(
   const outperformed = exercises.filter((e) => e.performed).map((e) => e.exerciseName);
   const underperformed = exercises.filter((e) => !e.performed).map((e) => e.exerciseName);
   const plateausBroken = exercises.filter((e) => e.plateau.brokenToday).map((e) => e.exerciseName);
-  const enteringPlateau = exercises
-    .filter((e) => e.plateau.enteringOrOngoing || (e.plateau.wasInPlateau && !e.plateau.brokenToday))
-    .map((e) => e.exerciseName);
+  // En sèche, stagner en charge est attendu et souhaitable : on suspend l'alerte plateau plutôt
+  // que de répéter un faux négatif pendant toute la phase. Les plateaux CASSÉS restent célébrés.
+  const plateauMuted = options.trainingPhase === "cut";
+  const enteringPlateau = plateauMuted
+    ? []
+    : exercises
+        .filter((e) => e.plateau.enteringOrOngoing || (e.plateau.wasInPlateau && !e.plateau.brokenToday))
+        .map((e) => e.exerciseName);
   const tooAmbitious = exercises.filter((e) => e.ambition.tooAmbitious).map((e) => e.exerciseName);
   const notAmbitiousEnough = exercises.filter((e) => e.ambition.notAmbitiousEnough).map((e) => e.exerciseName);
   const antiPlateauFailed = exercises.filter((e) => e.antiPlateauFailed).map((e) => e.exerciseName);
@@ -811,6 +823,7 @@ export function buildSessionReview(
     underperformed,
     plateausBroken,
     enteringPlateau,
+    plateauMuted,
     tooAmbitious,
     notAmbitiousEnough,
     antiPlateauFailed,

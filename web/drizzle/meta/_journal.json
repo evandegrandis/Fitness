@@ -71,6 +71,13 @@
       "when": 1786997875506,
       "tag": "0009_swift_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787064698423,
+      "tag": "0010_nappy_legion",
+      "breakpoints": true
     }
   ]
 }

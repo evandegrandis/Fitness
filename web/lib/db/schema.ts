@@ -363,12 +363,25 @@ export const userSettings = pgTable(
     bodyWeightKg: doublePrecision("body_weight_kg"),
     gender: text("gender"),
     ageYears: integer("age_years"),
+    /**
+     * Phase d'entraînement DÉCLARÉE (jamais devinée). Elle ne change aucune suggestion de charge :
+     * elle change la LECTURE du résultat — en `cut`, tenir sa charge est une réussite, pas un
+     * plateau à casser. Input utilisateur, donc compatible avec l'invariant « aucun état dérivé
+     * persisté » (ALGO_SPEC_HARDENED §0.2).
+     */
+    trainingPhase: text("training_phase"),
+    /** Début de la phase : sert d'origine au calcul de la variation de poids. */
+    trainingPhaseStartedAt: timestamp("training_phase_started_at", { mode: "date", withTimezone: true }),
   },
   (table) => [
     check(
       "user_settings_profile_check",
       sql`(${table.gender} IS NULL OR ${table.gender} IN ('male', 'female'))
         AND (${table.ageYears} IS NULL OR ${table.ageYears} BETWEEN 10 AND 120)`
+    ),
+    check(
+      "user_settings_training_phase_check",
+      sql`${table.trainingPhase} IS NULL OR ${table.trainingPhase} IN ('cut', 'maintain', 'bulk')`
     ),
   ]
 );
@@ -397,6 +410,33 @@ export const recoveryCheckins = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// body_weights
+// ---------------------------------------------------------------------------
+
+/**
+ * Pesées datées. `user_settings.bodyWeightKg` ne gardait qu'une seule valeur, figée : le moteur
+ * de repères (`lib/engines/benchmark.ts`) et les exercices au poids du corps s'appuyaient donc
+ * sur un chiffre qui vieillit mal. Un historique permet en plus de suivre le seul levier qui
+ * compte vraiment ici — la variation de poids sur plusieurs semaines.
+ *
+ * Une pesée par jour civil (clé unique) : le poids fluctue trop dans la journée pour que
+ * plusieurs mesures quotidiennes aient un sens, et la dernière saisie corrige simplement la
+ * précédente.
+ */
+export const bodyWeights = pgTable(
+  "body_weights",
+  {
+    id: text("id").primaryKey(),
+    measuredOn: timestamp("measured_on", { mode: "date", withTimezone: true }).notNull(),
+    weightKg: doublePrecision("weight_kg").notNull(),
+  },
+  (table) => [
+    uniqueIndex("body_weights_measured_on_unique").on(table.measuredOn),
+    check("body_weights_weight_check", sql`${table.weightKg} > 20 AND ${table.weightKg} < 400`),
+  ]
+);
+
+// ---------------------------------------------------------------------------
 // push_subscriptions
 // ---------------------------------------------------------------------------
 
@@ -418,6 +458,9 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 // ---------------------------------------------------------------------------
 // Types inférés
 // ---------------------------------------------------------------------------
+
+export type BodyWeightRow = InferSelectModel<typeof bodyWeights>;
+export type NewBodyWeightRow = InferInsertModel<typeof bodyWeights>;
 
 export type PushSubscriptionRow = InferSelectModel<typeof pushSubscriptions>;
 export type NewPushSubscriptionRow = InferInsertModel<typeof pushSubscriptions>;

@@ -7,6 +7,8 @@ import { SettingsBodySection } from "@/components/settings/SettingsBodySection";
 import { SettingsPreferencesSection } from "@/components/settings/SettingsPreferencesSection";
 import { SettingsExercisesSection } from "@/components/settings/SettingsExercisesSection";
 import { SettingsNotificationsSection } from "@/components/settings/SettingsNotificationsSection";
+import { SettingsWeightSection } from "@/components/settings/SettingsWeightSection";
+import { SettingsPhaseSection } from "@/components/settings/SettingsPhaseSection";
 
 export default function ReglagesPage() {
   const hasHydratedStorage = useWorkoutStore((s) => s.hasHydratedStorage);
@@ -37,6 +39,8 @@ export default function ReglagesPage() {
         <SettingsExercisesSection catalog={catalog} />
         <SettingsGoalsSection goals={goals} />
         <SettingsBodySection settings={settings} />
+        <SettingsWeightSection />
+        <SettingsPhaseSection />
         <SettingsPreferencesSection settings={settings} />
         <SettingsNotificationsSection />
         <SettingsBackupSection />

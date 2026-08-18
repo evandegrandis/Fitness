@@ -14,6 +14,8 @@ const SETTINGS: UserSettings = {
   bodyWeightKg: 80,
   gender: "male",
   ageYears: 26,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 describe("mergeSettingsPatch", () => {

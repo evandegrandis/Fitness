@@ -543,3 +543,42 @@ describe("robustesse", () => {
     expect(review.exercises).toHaveLength(0);
   });
 });
+
+describe("phase déclarée — la sèche change la lecture, pas les suggestions", () => {
+  /** Trois séances identiques : la définition même d'un plateau pour le moteur. */
+  const stagnant = [
+    pastSession(3, BENCH, 60, 8),
+    pastSession(10, BENCH, 60, 8),
+    pastSession(17, BENCH, 60, 8),
+  ];
+  const today = () => session(new Date(), [loggedExercise(BENCH, [set({ weight: 60, reps: 8 })])]);
+
+  it("signale le plateau sans phase déclarée (comportement historique)", () => {
+    const review = buildSessionReview(today(), stagnant, [BENCH]);
+    expect(review.plateauMuted).toBe(false);
+    expect(review.enteringPlateau).toContain("Développé couché");
+  });
+
+  it("met l'alerte plateau en veille en sèche : tenir sa charge en déficit est le résultat visé", () => {
+    const review = buildSessionReview(today(), stagnant, [BENCH], [], { trainingPhase: "cut" });
+    expect(review.plateauMuted).toBe(true);
+    expect(review.enteringPlateau).toEqual([]);
+  });
+
+  it("garde l'alerte en prise et en maintien — là, stagner est bien une information", () => {
+    for (const phase of ["bulk", "maintain"] as const) {
+      const review = buildSessionReview(today(), stagnant, [BENCH], [], { trainingPhase: phase });
+      expect(review.plateauMuted).toBe(false);
+      expect(review.enteringPlateau).toContain("Développé couché");
+    }
+  });
+
+  it("ne touche NI les suggestions NI le signal de performance — seule la lecture change", () => {
+    const sans = buildSessionReview(today(), stagnant, [BENCH]);
+    const cut = buildSessionReview(today(), stagnant, [BENCH], [], { trainingPhase: "cut" });
+    expect(cut.performanceSignal).toBe(sans.performanceSignal);
+    expect(cut.exercises[0].referenceWeight).toBe(sans.exercises[0].referenceWeight);
+    expect(cut.exercises[0].referenceReps).toBe(sans.exercises[0].referenceReps);
+    expect(cut.exercises[0].performed).toBe(sans.exercises[0].performed);
+  });
+});

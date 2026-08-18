@@ -2,6 +2,7 @@ import {
   deleteExercise,
   deleteSession,
   deleteTemplate,
+  saveBodyWeight,
   saveRecoveryCheckin,
   saveSession,
   saveTemplate,
@@ -32,4 +33,5 @@ export const defaultOutboxHandlers: OutboxHandlers = {
   },
   templateUpsert: saveTemplate,
   templateDelete: deleteTemplate,
+  bodyWeight: saveBodyWeight,
 };

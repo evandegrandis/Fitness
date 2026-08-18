@@ -9,7 +9,7 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { and, eq, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, notExists, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 
 import { db } from "./client";
@@ -29,6 +29,7 @@ import {
   templateToRow,
 } from "./mappers";
 import {
+  bodyWeights,
   cardioEntries,
   exercises,
   loggedExercises,
@@ -288,6 +289,46 @@ export async function saveRecoveryCheckins(checkins: RecoveryCheckinInput[]): Pr
 }
 
 // ---------------------------------------------------------------------------
+// saveBodyWeight / deleteBodyWeight
+// ---------------------------------------------------------------------------
+
+/**
+ * Enregistre une pesée. Une seule par jour civil : la date est normalisée à minuit UTC et sert
+ * de clé de conflit, donc repeser deux fois le même jour corrige au lieu d'empiler.
+ *
+ * Met aussi à jour `user_settings.bodyWeightKg`, que le moteur de repères et les exercices au
+ * poids du corps lisent encore comme valeur unique — sans ça, l'app garderait un poids figé
+ * pendant qu'une courbe évolue à côté.
+ */
+export async function saveBodyWeight(entry: { id: string; measuredOn: Date; weightKg: number }): Promise<void> {
+  await requireAuthenticatedSession();
+  const day = new Date(
+    Date.UTC(entry.measuredOn.getFullYear(), entry.measuredOn.getMonth(), entry.measuredOn.getDate())
+  );
+
+  await db
+    .insert(bodyWeights)
+    .values({ id: entry.id, measuredOn: day, weightKg: entry.weightKg })
+    .onConflictDoUpdate({ target: bodyWeights.measuredOn, set: { weightKg: entry.weightKg } });
+
+  const [latest] = await db.select().from(bodyWeights).orderBy(desc(bodyWeights.measuredOn)).limit(1);
+  if (latest) {
+    await db
+      .update(userSettings)
+      .set({ bodyWeightKg: latest.weightKg })
+      .where(eq(userSettings.id, "singleton"));
+  }
+
+  revalidateWorkoutData();
+}
+
+export async function deleteBodyWeight(id: string): Promise<void> {
+  await requireAuthenticatedSession();
+  await db.delete(bodyWeights).where(eq(bodyWeights.id, id));
+  revalidateWorkoutData();
+}
+
+// ---------------------------------------------------------------------------
 // saveTemplate / deleteTemplate
 // ---------------------------------------------------------------------------
 
@@ -340,7 +381,8 @@ export async function importBackup(json: unknown): Promise<void> {
     db.delete(muscleMappings),
     db.delete(exercises),
     db.delete(muscleGoals),
-    db.delete(recoveryCheckins)
+    db.delete(recoveryCheckins),
+    db.delete(bodyWeights)
   );
 
   // -- Insert (parents avant enfants) --------------------------------------
@@ -398,6 +440,18 @@ export async function importBackup(json: unknown): Promise<void> {
 
   if (backup.recoveryCheckins.length > 0) {
     operations.push(db.insert(recoveryCheckins).values(backup.recoveryCheckins.map(recoveryCheckinToRow)));
+  }
+
+  if (backup.bodyWeights.length > 0) {
+    operations.push(
+      db.insert(bodyWeights).values(
+        backup.bodyWeights.map((entry) => ({
+          id: entry.id,
+          measuredOn: entry.measuredOn,
+          weightKg: entry.weightKg,
+        }))
+      )
+    );
   }
 
   // L'import est un remplacement intégral et atomique. `last_used` est dérivé

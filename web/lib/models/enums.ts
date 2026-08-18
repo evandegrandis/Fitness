@@ -214,6 +214,32 @@ export function reportedRirLabel(rir: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// TrainingPhase
+// ---------------------------------------------------------------------------
+
+/**
+ * Intention d'entraînement du moment. Elle n'agit PAS sur les suggestions de charge — le moteur
+ * reste dérivé de l'historique — mais sur leur interprétation : en déficit, maintenir sa charge
+ * est le résultat visé, alors que le détecteur de plateau y verrait une stagnation à corriger.
+ */
+export const TrainingPhase = {
+  /** Déficit calorique : la priorité est de préserver la charge, pas de la battre. */
+  cut: "cut",
+  maintain: "maintain",
+  bulk: "bulk",
+} as const;
+
+export type TrainingPhase = (typeof TrainingPhase)[keyof typeof TrainingPhase];
+
+export const TRAINING_PHASES: TrainingPhase[] = Object.values(TrainingPhase);
+
+export const trainingPhaseDisplayName: Record<TrainingPhase, string> = {
+  cut: "Sèche",
+  maintain: "Maintien",
+  bulk: "Prise",
+};
+
+// ---------------------------------------------------------------------------
 // ProgressionPolicy
 // ---------------------------------------------------------------------------
 

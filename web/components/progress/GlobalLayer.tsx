@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { GlassCard } from "@/components/ui/GlassCard";
+import { WeightTrendCard } from "@/components/progress/WeightTrendCard";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { parentTotals } from "@/lib/engines/effective-sets";
@@ -110,6 +111,7 @@ export function GlobalLayer() {
 
   return (
     <div className="space-y-4">
+      <WeightTrendCard />
       {/* Volume / semaine */}
       <GlassCard>
         <div className="mb-1 flex items-baseline justify-between">

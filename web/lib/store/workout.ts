@@ -50,6 +50,7 @@ import {
   primaryParent,
   sessionsNewestFirst,
   warmupSets,
+  type BodyWeightEntry,
   type CardioEntry,
   type Exercise,
   type LoggedExercise,
@@ -130,6 +131,8 @@ interface ReferenceData {
   settings: UserSettings;
   templates: WorkoutTemplate[];
   recoveryCheckins: RecoveryCheckin[];
+  /** Pesées datées, plus récente en premier (cf. `lib/engines/body-weight.ts`). */
+  bodyWeights: BodyWeightEntry[];
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -143,6 +146,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   bodyWeightKg: null,
   gender: null,
   ageYears: null,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 export interface WorkoutState extends ReferenceData {
@@ -313,6 +318,10 @@ export interface WorkoutState extends ReferenceData {
   deleteSet: (loggedExerciseId: string, setId: string) => void;
   undoLastAction: () => void;
 
+  /** Enregistre une pesée du jour dans le store (l'écriture DB reste à l'appelant). */
+  setBodyWeightEntry: (entry: BodyWeightEntry) => void;
+  removeBodyWeightEntry: (id: string) => void;
+
   /** Requalifie en finisher la série visée par la proposition en cours. */
   confirmFinisherPrompt: () => void;
   /** Referme la proposition ; l'exercice ne la redemandera plus de la séance. */
@@ -431,6 +440,10 @@ function reviveCatalogDates(catalog: Exercise[]): Exercise[] {
  */
 function reviveRecoveryCheckinDates(checkins: RecoveryCheckin[]): RecoveryCheckin[] {
   return checkins.map((checkin) => ({ ...checkin, date: toDate(checkin.date) }));
+}
+
+function reviveBodyWeightDates(entries: BodyWeightEntry[]): BodyWeightEntry[] {
+  return entries.map((entry) => ({ ...entry, measuredOn: toDate(entry.measuredOn) }));
 }
 
 function reviveTemplateDates(templates: WorkoutTemplate[]): WorkoutTemplate[] {
@@ -1191,6 +1204,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       settings: DEFAULT_SETTINGS,
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
 
       active: null,
       activeMode: "normal",
@@ -1352,7 +1366,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         // filtre défensif au cas où l'appelant passe la séance juste finie (déjà en tête de `history`
         // après `finish()`).
         const history = state.history.filter((s) => s.id !== liveSession.id);
-        const review = buildSessionReview(liveSession, history, state.catalog, state.goals);
+        const review = buildSessionReview(liveSession, history, state.catalog, state.goals, {
+          // La phase déclarée conditionne la LECTURE du bilan, pas les suggestions.
+          trainingPhase: state.settings.trainingPhase,
+        });
         const now = new Date();
         // VARIATION_CYCLING_SPEC §8 — masque la carte de suggestion pour tout exercice déjà
         // accepté/refusé POUR CETTE séance (§8 "disparaît une fois traitée"). `buildSessionReview`
@@ -1899,6 +1916,30 @@ export const useWorkoutStore = create<WorkoutState>()(
         set({ active: state.undo.snapshot, undo: null });
       },
 
+      setBodyWeightEntry: (entry) => {
+        const state = get();
+        // Une pesée par jour civil : la nouvelle saisie remplace celle du jour.
+        const sameDay = (a: Date, b: Date) =>
+          a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+        const others = state.bodyWeights.filter((w) => !sameDay(w.measuredOn, entry.measuredOn));
+        const bodyWeights = [entry, ...others].sort((a, b) => b.measuredOn.getTime() - a.measuredOn.getTime());
+        set({
+          bodyWeights,
+          // Le moteur de repères et les exercices au poids du corps lisent encore une valeur
+          // unique : la garder alignée sur la pesée la plus récente.
+          settings: { ...state.settings, bodyWeightKg: bodyWeights[0]?.weightKg ?? state.settings.bodyWeightKg },
+        });
+      },
+
+      removeBodyWeightEntry: (id) => {
+        const state = get();
+        const bodyWeights = state.bodyWeights.filter((w) => w.id !== id);
+        set({
+          bodyWeights,
+          settings: { ...state.settings, bodyWeightKg: bodyWeights[0]?.weightKg ?? null },
+        });
+      },
+
       confirmFinisherPrompt: () => {
         const state = get();
         const prompt = state.pendingFinisherPrompt;
@@ -2273,6 +2314,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         settings: state.settings,
         templates: state.templates,
         recoveryCheckins: state.recoveryCheckins,
+        // Même statut que les autres données de référence : cache offline, jamais la vérité.
+        bodyWeights: state.bodyWeights,
       }),
       // localStorage sérialise les Date en chaînes ISO : on les revit à la
       // réhydratation, sinon `session.startTime.getTime()` casse (string).
@@ -2289,9 +2332,12 @@ export const useWorkoutStore = create<WorkoutState>()(
           catalog: p.catalog ? reviveCatalogDates(p.catalog) : current.catalog,
           history: p.history ? reviveHistoryDates(p.history) : current.history,
           goals: p.goals ?? current.goals,
-          settings: p.settings ?? current.settings,
           templates: p.templates ? reviveTemplateDates(p.templates) : current.templates,
           recoveryCheckins: p.recoveryCheckins ? reviveRecoveryCheckinDates(p.recoveryCheckins) : current.recoveryCheckins,
+          bodyWeights: p.bodyWeights ? reviveBodyWeightDates(p.bodyWeights) : current.bodyWeights,
+          settings: p.settings
+            ? { ...p.settings, trainingPhaseStartedAt: p.settings.trainingPhaseStartedAt ? toDate(p.settings.trainingPhaseStartedAt) : null }
+            : current.settings,
         };
       },
       onRehydrateStorage: () => (state) => {

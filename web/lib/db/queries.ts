@@ -25,6 +25,7 @@ import {
   muscleGoals,
   muscleMappings,
   recoveryCheckins,
+  bodyWeights,
   supersetGroups,
   templateExercises,
   userSettings,
@@ -38,7 +39,7 @@ import type {
   UserSettings,
   WorkoutSession,
   WorkoutTemplate,
-} from "@/lib/models/types";
+  BodyWeightEntry,} from "@/lib/models/types";
 
 function hasDatabaseUrl(): boolean {
   return Boolean(process.env.DATABASE_URL);
@@ -204,6 +205,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   bodyWeightKg: null,
   gender: null,
   ageYears: null,
+  trainingPhase: null,
+  trainingPhaseStartedAt: null,
 };
 
 export async function getSettings(): Promise<UserSettings> {
@@ -250,6 +253,16 @@ export async function getRecoveryCheckins(): Promise<RecoveryCheckin[]> {
 }
 
 // ---------------------------------------------------------------------------
+// getBodyWeights
+// ---------------------------------------------------------------------------
+
+export async function getBodyWeights(): Promise<BodyWeightEntry[]> {
+  if (!hasDatabaseUrl()) return [];
+  const rows = await db.select().from(bodyWeights).orderBy(desc(bodyWeights.measuredOn));
+  return rows.map((row) => ({ id: row.id, measuredOn: row.measuredOn, weightKg: row.weightKg }));
+}
+
+// ---------------------------------------------------------------------------
 // getAllData — agrège tout, pratique pour hydrater le store client en un
 // seul aller-retour (ex: dans le layout ou la page racine).
 // ---------------------------------------------------------------------------
@@ -263,6 +276,7 @@ export interface AllData {
   settings: UserSettings;
   templates: WorkoutTemplate[];
   recoveryCheckins: RecoveryCheckin[];
+  bodyWeights: BodyWeightEntry[];
 }
 
 /**
@@ -280,6 +294,7 @@ export function emptyAllData(): AllData {
     settings: DEFAULT_SETTINGS,
     templates: [],
     recoveryCheckins: [],
+    bodyWeights: [],
   };
 }
 
@@ -305,7 +320,16 @@ export async function getAllData(): Promise<AllData> {
     return emptyAllData();
   }
 
-  const [exercisesData, sessionsData, activeSessionData, goalsData, settingsData, templatesData, checkinsData] =
+  const [
+    exercisesData,
+    sessionsData,
+    activeSessionData,
+    goalsData,
+    settingsData,
+    templatesData,
+    checkinsData,
+    bodyWeightsData,
+  ] =
     await Promise.all([
       getExercises(),
       getSessions(),
@@ -314,6 +338,7 @@ export async function getAllData(): Promise<AllData> {
       getSettings(),
       getTemplates(),
       getRecoveryCheckins(),
+      getBodyWeights(),
     ]);
 
   return {
@@ -324,5 +349,6 @@ export async function getAllData(): Promise<AllData> {
     settings: settingsData,
     templates: templatesData,
     recoveryCheckins: checkinsData,
+    bodyWeights: bodyWeightsData,
   };
 }

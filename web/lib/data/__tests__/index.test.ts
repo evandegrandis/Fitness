@@ -32,9 +32,12 @@ vi.mock("@/lib/db/queries", async () => {
       bodyWeightKg: null,
       gender: null,
       ageYears: null,
+      trainingPhase: null,
+      trainingPhaseStartedAt: null,
     },
     templates: [],
     recoveryCheckins: [],
+    bodyWeights: [],
   });
   return {
     emptyAllData: empty,
@@ -59,6 +62,7 @@ describe("getInitialData ne lève jamais (OFFLINE_PWA_SPEC §3, P4.2)", () => {
       goals: [],
       templates: [],
       recoveryCheckins: [],
+      bodyWeights: [],
     });
 
     const { getInitialDataResult } = await import("@/lib/data");

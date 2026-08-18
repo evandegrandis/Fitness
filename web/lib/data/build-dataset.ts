@@ -196,6 +196,7 @@ export function buildFullDataset(backupJson: unknown, recentJson: unknown): AllD
     settings: backup.settings,
     templates: backup.templates,
     recoveryCheckins: [],
+    bodyWeights: [],
   };
 }
 
