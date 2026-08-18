@@ -1647,12 +1647,15 @@ export const useWorkoutStore = create<WorkoutState>()(
             incompleteTail &&
             tailEndsAtPrevious &&
             incompleteTail.totalReps > 0 &&
-            incompleteTail.totalReps < SET_STRUCTURE.EFFECTIVE_REPS_PER_SET &&
+            // C'est la BRIÈVETÉ de la série ajoutée qui en fait un complément : sous le minimum,
+            // elle n'est pas une série de travail. Au-dessus, elle ouvre son propre bloc — même
+            // enchaînée, même à charge plus basse.
+            input.reps < SET_STRUCTURE.MIN_REPS_PER_SET &&
             previousWorkSet &&
             !hasInterveningExercise &&
             secondsSincePrevious !== null &&
             secondsSincePrevious >= 0 &&
-            secondsSincePrevious <= SET_STRUCTURE.COMPOSITE_MAX_GAP_SECONDS
+            secondsSincePrevious <= SET_STRUCTURE.COMPLEMENT_MAX_GAP_SECONDS
         );
         const continuesPreviousRound = continuesLogicalSet || immediateKind !== null;
         const priorRecords =

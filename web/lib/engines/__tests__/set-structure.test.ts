@@ -201,32 +201,40 @@ describe("pondération par le RIR — c'est la proximité de l'échec qui fait l
 });
 
 describe("séries complémentaires — le cas réel du 18/08", () => {
-  it("rattache une complémentaire même quand la charge REMONTE", () => {
-    // 65×2 puis 72,5×7 : 9 reps réelles. L'ancienne règle exigeait une charge descendante et
-    // laissait ces deux séries à 0 série effective chacune.
-    const sets = [set(0, 0, 65, 2), set(1, 15, 72.5, 7)];
+  it("une série courte complète la précédente, une vraie série ouvre son bloc", () => {
+    // Séquence réelle : 92,5×7 · 85×7 · 65×2 · 72,5×7, toutes enchaînées.
+    // 85×7 est une SÉRIE (elle ne complète pas 92,5×7) ; 65×2 complète 85×7 ; 72,5×7 repart.
+    // Écarts réels relevés en base : 195 s, 238 s, 34 s, 365 s.
+    const sets = [
+      set(0, 0, 92.5, 7),
+      set(1, 238, 85, 7),
+      set(2, 272, 65, 2),
+      set(3, 637, 72.5, 7),
+    ];
+    const blocks = compositeSetBlocks(sets, { increment: 2.5 });
+    expect(blocks).toHaveLength(3);
+    expect(blocks.map((b) => b.totalReps)).toEqual([7, 9, 7]);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(3);
+  });
+
+  it("accepte plusieurs compléments courts d'affilée", () => {
+    // Rear delt fly : 60×5 puis 45×2 puis 30×2 = 9 reps, une seule série.
+    const sets = [set(0, 0, 60, 5), set(1, 12, 45, 2), set(2, 28, 30, 2)];
     const blocks = compositeSetBlocks(sets, { increment: 2.5 });
     expect(blocks).toHaveLength(1);
     expect(blocks[0].totalReps).toBe(9);
     expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
   });
 
-  it("accepte plusieurs complémentaires d'affilée", () => {
-    const sets = [set(0, 0, 60, 2), set(1, 12, 50, 2), set(2, 24, 40, 2)];
-    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(1);
-    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
-  });
-
-  it("ne fusionne PAS deux vraies séries : au-delà de 30 s, nouveau bloc", () => {
-    const sets = [set(0, 0, 60, 4), set(1, 90, 60, 4)];
-    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(2);
-  });
-
-  it("ne fusionne PAS une série déjà complète, même enchaînée vite", () => {
-    // 8 reps n'ont rien à compléter : la suivante ouvre son propre bloc.
+  it("ne fusionne jamais deux vraies séries, même enchaînées vite", () => {
     const sets = [set(0, 0, 60, 8), set(1, 15, 60, 8)];
-    const blocks = compositeSetBlocks(sets, { increment: 2.5 });
-    expect(blocks).toHaveLength(2);
+    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(2);
     expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(2);
+  });
+
+  it("au-delà de 90 s, une série courte n'est plus un complément mais un vrai repos", () => {
+    const sets = [set(0, 0, 60, 6), set(1, 200, 50, 2)];
+    expect(compositeSetBlocks(sets, { increment: 2.5 })).toHaveLength(2);
+    expect(effectiveSetUnits(sets, { increment: 2.5 })).toBe(1);
   });
 });

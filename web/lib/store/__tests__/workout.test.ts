@@ -532,11 +532,15 @@ describe("useWorkoutStore", () => {
 
     store.editSet(before[0].id, { weight: 85, reps: 10 });
     const after = useWorkoutStore.getState().active!.exercises[0].sets;
-    expect(after[0].logicalSetId).not.toBe(after[1].logicalSetId);
-    expect(after[1].setTechnique).toBeNull();
+    // Les deux séries restent liées : 85→75 enchaîné est un DROP-SET, une technique qui ne dépend
+    // pas du nombre de reps de la série d'ouverture (avant, le lien tenait au fait qu'elle était
+    // « incomplète » à 5 reps, et l'édition à 10 le rompait).
+    expect(after[0].logicalSetId).toBe(after[1].logicalSetId);
+    expect(after[1].setTechnique).toBe("drop_set");
     store.editSet(after[1].id, { weight: 75, reps: 8 });
     expect(useWorkoutStore.getState().active!.exercises[0].sets[1].predictedRepsAtActualWeight).toBeNull();
-    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(2);
+    // Un drop-set reste une seule série physiologique : 10 + 8 reps = 1 unité.
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
   });
 
   it("garde la continuation immédiate d'un drop-set dans le même round de superset", () => {
@@ -1071,21 +1075,23 @@ describe("records — un seul par type et par exercice dans la séance", () => {
 });
 
 describe("séries complémentaires au log — le cas Pec deck du 18/08", () => {
-  it("rattache une complémentaire enchaînée même si la charge remonte", () => {
+  it("rattache une série courte, mais pas une vraie série qui suit", () => {
     const store = useWorkoutStore.getState();
     store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     const le = useWorkoutStore.getState().active!.exercises[0];
 
-    // 65×2 puis 72,5×7, enchaînés : l'ancienne règle exigeait une charge descendante et laissait
-    // ces 9 reps compter pour zéro série effective.
+    // 85×7 puis 65×2 : deux reps ne sont pas une série de travail, elles complètent (→ 9 reps).
+    store.logSet(le.id, { weight: 85, reps: 7 });
     store.logSet(le.id, { weight: 65, reps: 2 });
+    // 72,5×7 est une vraie série : elle ouvre son propre bloc même enchaînée.
     store.logSet(le.id, { weight: 72.5, reps: 7 });
 
     const sets = useWorkoutStore.getState().active!.exercises[0].sets;
-    expect(sets).toHaveLength(2);
+    expect(sets).toHaveLength(3);
     expect(sets[1].logicalSetId).toBe(sets[0].logicalSetId);
-    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
+    expect(sets[2].logicalSetId).not.toBe(sets[0].logicalSetId);
+    expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(2);
   });
 });

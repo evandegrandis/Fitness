@@ -16,6 +16,13 @@ import type { LoggedSet } from "@/lib/models/types";
 export const SET_STRUCTURE = {
   /** Un enchaînement sans repos normal au-delà de 30 s n'est plus automatique. */
   COMPOSITE_MAX_GAP_SECONDS: 30,
+  /**
+   * Fenêtre d'une série COMPLÉMENTAIRE — plus large que celle d'un drop-set, qui suppose un
+   * enchaînement immédiat. Compléter demande de constater qu'il manque des reps, de changer la
+   * charge et de se replacer : le 65×2 d'Evan est arrivé 34 s après, et 30 s le refusaient de
+   * justesse. Au-delà de 90 s, c'est un vrai repos, donc une nouvelle série.
+   */
+  COMPLEMENT_MAX_GAP_SECONDS: 90,
   /** Mini-bloc à charge identique : au plus 5 reps pour signaler un rest-pause. */
   REST_PAUSE_MAX_REPS: 5,
   /**
@@ -153,14 +160,21 @@ function compositeLinkKind(
   const immediate = immediateCompositeKind(previous, next, options);
   if (immediate) return immediate;
 
-  // Série COMPLÉMENTAIRE : enchaînée en moins de 30 s pour finir une série trop courte. La charge
-  // est libre — Evan remonte parfois (65×2 puis 72,5×7), ce que l'ancienne règle « la charge doit
-  // descendre » refusait, laissant 9 reps réelles compter pour zéro. Volontairement ici et non
-  // dans `immediateCompositeKind` : celui-ci décrit une TECHNIQUE (drop-set/rest-pause) et sert
-  // aussi à numéroter les rounds de superset, qui ne doivent rien devoir à la complétion.
+  // Série COMPLÉMENTAIRE : c'est la série AJOUTÉE qui doit être courte, pas la précédente qui
+  // doit être incomplète. Deux reps ne sont pas une série de travail — c'est un appoint pour
+  // finir la précédente ; sept reps en sont une, et ouvrent leur propre bloc même enchaînées.
+  //
+  // Le cas réel du 18/08 : 92,5×7, 85×7, 65×2, 72,5×7. L'ancienne règle fusionnait 92,5+85 (la
+  // première étant « incomplète » à 7 reps) et laissait 65×2 orphelin à zéro. Ici, 85×7 et
+  // 92,5×7 restent deux séries, 65×2 complète 85×7 (→ 9 reps), et 72,5×7 repart à neuf.
+  //
+  // Volontairement dans `compositeLinkKind` et non `immediateCompositeKind` : ce dernier décrit
+  // une TECHNIQUE (drop-set/rest-pause) et numérote les rounds de superset, qui ne doivent rien
+  // devoir à la complétion.
   if (!isWorkSet(previous) || !isWorkSet(next) || !consecutiveSlots(previous, next)) return null;
+  if (next.reps >= SET_STRUCTURE.MIN_REPS_PER_SET) return null;
   const gap = elapsedSeconds(previous, next);
-  if (gap === null || gap > SET_STRUCTURE.COMPOSITE_MAX_GAP_SECONDS) return null;
+  if (gap === null || gap > SET_STRUCTURE.COMPLEMENT_MAX_GAP_SECONDS) return null;
   return "completion";
 }
 
@@ -195,20 +209,6 @@ export function compositeSetBlocks(sets: LoggedSet[], options: SetStructureOptio
     const linkKind = previousSet ? compositeLinkKind(previousSet, set, options) : null;
 
     if (!previousBlock || !linkKind) {
-      blocks.push({
-        kind: "standard",
-        sets: [set],
-        leadSet: set,
-        totalReps: set.reps,
-        effectiveSetUnits: blockUnits(set.reps, [set]),
-      });
-      continue;
-    }
-
-    // Une complémentaire ne complète que ce qui est INCOMPLET : sinon deux vraies séries
-    // séparées par un repos court fusionneraient en une seule. Drop-set et rest-pause gardent
-    // leur propre logique — eux sont des continuations par nature, quel que soit le cumul.
-    if (linkKind === "completion" && previousBlock.totalReps >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET) {
       blocks.push({
         kind: "standard",
         sets: [set],
