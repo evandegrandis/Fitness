@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { flush, pendingCount } from "@/lib/sync/outbox";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
 import { useSyncStatus } from "@/lib/sync/status";
@@ -11,6 +12,7 @@ import { useSyncStatus } from "@/lib/sync/status";
  * Ne perd jamais de données — une séance non confirmée reste dans la file.
  */
 export function SyncProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const setStatus = useSyncStatus((s) => s.setStatus);
   const setPending = useSyncStatus((s) => s.setPending);
 
@@ -31,6 +33,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setPending(remaining);
         setStatus(remaining === 0 ? "saved" : navigator.onLine === false ? "offline" : "error");
+        // StoreHydrator refuse volontairement le snapshot serveur tant qu'une
+        // écriture locale attend. Une fois l'outbox vidée, le snapshot SSR qui
+        // avait été refusé est déjà périmé : relire la route force une requête
+        // Neon fraîche et rend immédiatement les séances synchronisées visibles
+        // sur tous les appareils, sans exiger un second hard refresh manuel.
+        if (remaining === 0) router.refresh();
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -46,7 +54,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("online", onOnline);
       clearInterval(interval);
     };
-  }, [setStatus, setPending]);
+  }, [router, setStatus, setPending]);
 
   return <>{children}</>;
 }
