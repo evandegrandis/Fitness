@@ -4,6 +4,7 @@ import {
   localExercisesRequiredBySessions,
   localSessionsMissingFromServer,
   mergeServerHistoryWithoutDroppingLocal,
+  isPulloverMachineOnlySession,
 } from "@/lib/sync/local-session-recovery";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 
@@ -70,5 +71,13 @@ describe("récupération additive des séances locales", () => {
     expect(localExercisesRequiredBySessions([session("missing")], [localExercise, unrelated], [])).toEqual([
       localExercise,
     ]);
+  });
+
+  it("ne ressuscite pas une séance Pullover machine uniquement explicitement supprimée", () => {
+    const deletedDraft = session("deleted-pullover");
+    deletedDraft.exercises[0]!.exerciseName = "Pullover machine";
+
+    expect(isPulloverMachineOnlySession(deletedDraft)).toBe(true);
+    expect(localSessionsMissingFromServer([deletedDraft], [])).toEqual([]);
   });
 });

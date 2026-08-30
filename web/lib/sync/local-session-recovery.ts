@@ -1,5 +1,25 @@
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 
+function normalizedName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("fr");
+}
+
+/** Règle de suppression explicitement demandée : ne jamais ressusciter ce brouillon connu. */
+export function isPulloverMachineOnlySession(session: WorkoutSession): boolean {
+  if ((session.cardioEntries?.length ?? 0) > 0) return false;
+  const completedExercises = session.exercises.filter((logged) =>
+    logged.sets.some((set) => set.completed)
+  );
+  return (
+    completedExercises.length === 1 &&
+    normalizedName(completedExercises[0]!.exerciseName) === "pullover machine"
+  );
+}
+
 /**
  * Une séance locale terminée et absente de Neon est une donnée à récupérer, jamais un cache à
  * écraser. Cette règle est volontairement indépendante des watermarks : un autosave final peut
@@ -14,6 +34,7 @@ export function localSessionsMissingFromServer(
     (session) =>
       !session.isActive &&
       !serverIds.has(session.id) &&
+      !isPulloverMachineOnlySession(session) &&
       (session.exercises.some((logged) => logged.sets.some((set) => set.completed)) ||
         (session.cardioEntries?.length ?? 0) > 0)
   );
