@@ -6,6 +6,8 @@ import { flush, pendingCount } from "@/lib/sync/outbox";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
 import { useSyncStatus } from "@/lib/sync/status";
 
+const SYNC_NEEDED_EVENT = "jeera:sync-needed";
+
 /**
  * Moteur de synchronisation OFFLINE-FIRST. Vide la file locale (outbox) dès que
  * possible : au montage, au retour du réseau (`online`), et périodiquement.
@@ -46,12 +48,15 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
     void tryFlush();
     const onOnline = () => void tryFlush();
+    const onSyncNeeded = () => void tryFlush();
     window.addEventListener("online", onOnline);
+    window.addEventListener(SYNC_NEEDED_EVENT, onSyncNeeded);
     const interval = setInterval(() => void tryFlush(), 30_000);
 
     return () => {
       cancelled = true;
       window.removeEventListener("online", onOnline);
+      window.removeEventListener(SYNC_NEEDED_EVENT, onSyncNeeded);
       clearInterval(interval);
     };
   }, [router, setStatus, setPending]);

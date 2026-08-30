@@ -2429,9 +2429,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : le cooldown (ROTATION_COOLDOWN_DAYS)
         // doit survivre à un reload, sinon il suffirait de rafraîchir la page pour le contourner.
         rotationAcceptedAt: state.rotationAcceptedAt,
-        // OFFLINE_PWA_SPEC §2 (P4.1) — cache OFFLINE UNIQUEMENT des données de référence : Neon
-        // reste la source de vérité (StoreHydrator écrase ce cache dès que le serveur répond, cf.
-        // P4.2/§3). Sans ce cache, un cold-start hors-ligne n'a ni catalogue ni historique ni
+        // OFFLINE_PWA_SPEC §2 (P4.1) — cache OFFLINE des données de référence. Neon reste la
+        // source centrale, mais StoreHydrator préserve et réexpédie toute séance locale absente du
+        // serveur avant d'appliquer son snapshot. Sans ce cache, un cold-start hors-ligne n'a ni catalogue ni historique ni
         // réglages -> `suggestion()` tomberait en fallback générique (20x10, poids de corps par
         // défaut) au lieu d'utiliser le poids de corps/historique réels de l'utilisateur.
         catalog: state.catalog,
