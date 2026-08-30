@@ -64,22 +64,22 @@ function session(weight: number, reps: number, opts: Partial<LoggedSet> = {}): L
 // ---------------------------------------------------------------------------
 
 describe("deloadTierForGap / applyDeload — barème conservateur", () => {
-  it("<=10 jours : aucun ajustement", () => {
+  it("<=14 jours : aucun ajustement", () => {
     expect(deloadTierForGap(0)).toBe("none");
-    expect(deloadTierForGap(10)).toBe("none");
+    expect(deloadTierForGap(14)).toBe("none");
     expect(deloadTierForGap(undefined)).toBe("none");
   });
 
-  it("11-21 jours : -1 incrément", () => {
-    expect(deloadTierForGap(11)).toBe("increment");
-    expect(deloadTierForGap(21)).toBe("increment");
+  it("15-27 jours : -1 incrément", () => {
+    expect(deloadTierForGap(15)).toBe("increment");
+    expect(deloadTierForGap(27)).toBe("increment");
     const result = applyDeload(100, 15, 2.5);
     expect(result.applied).toBe(true);
     expect(result.load).toBeCloseTo(97.5);
   });
 
-  it("22-42 jours : -10%", () => {
-    expect(deloadTierForGap(22)).toBe("percent10");
+  it("28-42 jours : -10%", () => {
+    expect(deloadTierForGap(28)).toBe("percent10");
     expect(deloadTierForGap(42)).toBe("percent10");
     const result = applyDeload(100, 30, 2.5);
     expect(result.tier).toBe("percent10");

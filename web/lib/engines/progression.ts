@@ -100,7 +100,7 @@ export const SuggestionMode = {
 export type SuggestionMode = (typeof SuggestionMode)[keyof typeof SuggestionMode];
 
 /** Persisted with suggestion/actual snapshots so later model tuning can segment engine eras. */
-export const SUGGESTION_ENGINE_VERSION = "web-v2.1-2026-08-13";
+export const SUGGESTION_ENGINE_VERSION = "web-v2.2-2026-08-30";
 
 // ---------------------------------------------------------------------------
 // SetSuggestion
@@ -1766,7 +1766,11 @@ function suggestTopSetBackoffV2(
     }
 
     const expected0 = predictRepsPure(amorceAdj, "amorce", { ...baseCtx, formDelta: 0, fatiguePenalty: 0, gapTier: undefined });
-    const formDelta = clampFormDelta(set1.reps - expected0);
+    // Le RIR est une observation de capacité du JOUR. 80x10 à RIR3 ne doit pas être traité comme
+    // un 10RM et mener à une proposition arbitraire de 3 reps. On ramène prudemment vers RIR1
+    // (maximum +3 reps puisque l'UI borne RIR à 4+) avant de calculer le delta de forme.
+    const rirAdjustedSet1Reps = repsAtTargetRir(set1, 1);
+    const formDelta = clampFormDelta(rirAdjustedSet1Reps - expected0);
 
     let topAdj = topAdj0;
     let candidateMode: SuggestionMode = topAdj > (lastTop?.weight ?? 0) ? SuggestionMode.recordAttempt : SuggestionMode.transitionMode;
@@ -1775,15 +1779,22 @@ function suggestTopSetBackoffV2(
       candidateMode = SuggestionMode.fallbackHypertrophy;
     }
 
-    const reps = predictRepsPure(topAdj, "top", { ...baseCtx, formDelta });
+    const reps = clampInt(
+      predictRepsPure(topAdj, "top", { ...baseCtx, formDelta }),
+      exercise.repTargetMin,
+      Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP)
+    );
     return render({ load: Math.max(0, topAdj), reps, mode: candidateMode, reasonCodes: ["top_set_v2"] }, 0.88, ST.topSet, "top");
   }
 
   // set 3+ : BACKOFF
   const topDone = doneToday.reduce((best, cur) => (cur.weight > best.weight ? cur : best));
-  let backLoad = amorceAdj;
-  if (topDone.reps >= 8 && set1.reps >= exercise.repTargetMin) backLoad = amorceAdj + increment;
-  else if (topDone.reps < exercise.repTargetMin - ALGO_V2.DEMOTION_MARGIN) backLoad = Math.max(0, amorceAdj - increment);
+  // Un backoff se calibre depuis le TOP réellement fait aujourd'hui, pas depuis l'amorce. Avec
+  // 80x10 puis 100x8, revenir à 82.5 effaçait l'information la plus récente et la plus forte.
+  // Deux incréments donnent un retrait modéré (100 -> 95 ici), tout en gardant l'amorce comme
+  // plancher si le top était un overreach beaucoup plus haut.
+  const backoffSteps = topDone.reps < exercise.repTargetMin ? 3 : 2;
+  const backLoad = Math.max(amorceAdj, topDone.weight - backoffSteps * increment);
 
   if (doneToday.length >= ALGO_V2.MAX_WORK_SETS_SUGGESTED) {
     const reps = clampInt(roundUp((exercise.repTargetMin + exercise.repTargetMax) / 2), exercise.repTargetMin, exercise.repTargetMax);
@@ -1795,13 +1806,36 @@ function suggestTopSetBackoffV2(
     );
   }
 
-  const reps = predictRepsPure(backLoad, "backoff", baseCtx);
+  const loadDropInReps = Math.max(
+    0,
+    (topDone.weight - backLoad) /
+      Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, topDone.weight))
+  );
+  const sameSessionDrop = Math.min(
+    FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop,
+    2
+  );
+  const repsFromActualTop = roundHalfAwayFromZeroV2(
+    repsAtTargetRir(topDone, 1) + loadDropInReps - sameSessionDrop
+  );
+  const reps = clampInt(
+    repsFromActualTop,
+    exercise.repTargetMin,
+    Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP)
+  );
   return render(
     { load: backLoad, reps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["backoff_v2"] },
     0.86,
     ST.backoff,
     "backoff"
   );
+}
+
+/** Reps observées ramenées vers un effort cible, sans inventer de décimales de RIR. */
+function repsAtTargetRir(set: LoggedSet, targetRir: number): number {
+  const reported = set.reportedRir;
+  if (reported === null || reported === undefined || !Number.isFinite(reported)) return set.reps;
+  return set.reps + Math.max(0, Math.min(4, Math.round(reported)) - targetRir);
 }
 
 function clampFormDelta(raw: number): number {
@@ -2237,9 +2271,9 @@ export function suggest(params: SuggestParams): SetSuggestion {
     // Tier de deload pour predictReps (§5.3.3) — même barème que `deload.ts::deloadTierForGap`,
     // redérivé ici pour éviter un import circulaire (progression.ts exporte déjà deload.ts).
     const derivedTier =
-      effectiveGapDays === undefined || effectiveGapDays <= 10
+      effectiveGapDays === undefined || effectiveGapDays <= 14
         ? "none"
-        : effectiveGapDays <= 21
+        : effectiveGapDays <= 27
           ? "increment"
           : effectiveGapDays <= 42
             ? "percent10"

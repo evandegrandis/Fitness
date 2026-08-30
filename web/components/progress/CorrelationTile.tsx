@@ -3,31 +3,59 @@
 import { GlassCard } from "@/components/ui/GlassCard";
 import { cn } from "@/lib/utils";
 
-/** Interprétation FR d'un coefficient de corrélation de Pearson. */
-export function interpretCorrelation(r: number): string {
-  const abs = Math.abs(r);
-  const strength = abs >= 0.6 ? "forte" : abs >= 0.3 ? "modérée" : "faible";
-  const direction = r >= 0 ? "positive" : "négative";
-  return `Corrélation ${strength} ${direction}`;
+export interface CorrelationReadout {
+  title: string;
+  detail: string;
+  reliable: boolean;
 }
 
-export function CorrelationTile({ label, r, className }: { label: string; r: number | null; className?: string }) {
+/** Lecture prudente : un petit échantillon ne devient jamais une recommandation causale. */
+export function correlationReadout(r: number | null, sampleCount: number): CorrelationReadout {
+  if (r === null || sampleCount < 3) {
+    return { title: "Pas assez de données", detail: "Continue à remplir le bilan après les séances.", reliable: false };
+  }
+  if (sampleCount < 20) {
+    return {
+      title: "Pas assez de recul",
+      detail: `${sampleCount} séances utilisables · résultat encore trop instable`,
+      reliable: false,
+    };
+  }
+  const abs = Math.abs(r);
+  if (abs < 0.3) {
+    return { title: "Aucune tendance claire", detail: "Les performances varient sans lien net avec ce facteur.", reliable: false };
+  }
+  return {
+    title: r > 0 ? "Tendance positive possible" : "Tendance négative possible",
+    detail: "Signal à surveiller sur davantage de séances — ce n'est pas une preuve de cause.",
+    reliable: true,
+  };
+}
+
+export function CorrelationTile({
+  label,
+  r,
+  sampleCount,
+  className,
+}: {
+  label: string;
+  r: number | null;
+  sampleCount: number;
+  className?: string;
+}) {
+  const readout = correlationReadout(r, sampleCount);
   return (
-    <GlassCard className={cn("text-center py-3.5", className)}>
+    <GlassCard className={cn("py-3.5", className)}>
       <p className="text-xs text-[--color-fg-muted]">{label}</p>
-      {r === null ? (
-        <p className="mt-1.5 text-xs text-[--color-fg-faint]">Pas assez de données</p>
-      ) : (
-        <>
-          <p
-            className="tnum mt-1 text-xl font-bold"
-            style={{ color: Math.abs(r) >= 0.3 ? "var(--accent)" : "var(--color-fg-muted)" }}
-          >
-            {r >= 0 ? "+" : ""}
-            {r.toFixed(2)}
+      <p className="mt-1 text-sm font-semibold text-[--color-fg]">{readout.title}</p>
+      <p className="mt-1 text-[0.68rem] leading-relaxed text-[--color-fg-faint]">{readout.detail}</p>
+      {r !== null && (
+        <details className="mt-2 text-[0.65rem] text-[--color-fg-faint]">
+          <summary className="cursor-pointer">Voir le chiffre technique</summary>
+          <p className="mt-1 tnum">
+            r = {r >= 0 ? "+" : ""}{r.toFixed(2)} · {sampleCount} séances
           </p>
-          <p className="mt-0.5 text-[0.65rem] text-[--color-fg-faint]">{interpretCorrelation(r)}</p>
-        </>
+        </details>
       )}
     </GlassCard>
   );

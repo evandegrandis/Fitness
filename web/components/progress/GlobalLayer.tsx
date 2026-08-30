@@ -7,7 +7,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { WeightTrendCard } from "@/components/progress/WeightTrendCard";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { parentTotals } from "@/lib/engines/effective-sets";
+import { rolling7DayProgress } from "@/lib/engines/effective-sets";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import {
   aggregateCoefficient,
@@ -16,7 +16,7 @@ import {
   type WorkoutSession,
 } from "@/lib/models/types";
 import { comparableSessionPerformances } from "@/components/progress/global-analytics";
-import { MUSCLE_PARENTS, parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
+import { parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
 import { buildWeekBuckets, pearsonCorrelation, startOfDay, type WeekBucket } from "@/components/progress/utils";
 import { WeeklyBarChart, type WeekDatum } from "@/components/progress/WeeklyBarChart";
 import { MuscleRadar, type RadarDatum } from "@/components/progress/MuscleRadar";
@@ -31,7 +31,10 @@ const WEEK_COUNT = 10;
 export function GlobalLayer() {
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
+  const goals = useWorkoutStore((s) => s.goals);
+  const active = useWorkoutStore((s) => s.active);
   const recoveryCheckins = useWorkoutStore((s) => s.recoveryCheckins);
+  const referenceDate = useMemo(() => new Date(), []);
 
   const buckets = useMemo(() => buildWeekBuckets(new Date(), WEEK_COUNT), []);
   const [selectedKey, setSelectedKey] = useState<string>(buckets[buckets.length - 1]?.label ?? "");
@@ -94,15 +97,26 @@ export function GlobalLayer() {
   }, [selectedBucket, finished, exerciseById, recoveryCheckins]);
 
   const radarData: RadarDatum[] = useMemo(() => {
-    if (!selectedBucket) return [];
-    const totals = parentTotals(finished, catalog, selectedBucket.start, selectedBucket.end);
-    return MUSCLE_PARENTS.map((parent) => ({ parent, value: Math.round((totals.get(parent) ?? 0) * 10) / 10 }));
-  }, [finished, catalog, selectedBucket]);
+    return rolling7DayProgress(finished, catalog, goals, referenceDate, active)
+      .filter((progress) => progress.goalSets > 0)
+      .map((progress) => ({ parent: progress.parent, value: progress.percentDisplay }));
+  }, [finished, catalog, goals, referenceDate, active]);
+
+  const radarWindow = useMemo(() => {
+    const end = startOfDay(referenceDate);
+    end.setDate(end.getDate() + 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 7);
+    return { start, end };
+  }, [referenceDate]);
 
   const radarContribution = useMemo(() => {
-    if (!radarParent || !selectedBucket) return [];
-    return topContributingExercises(finished, catalog, radarParent, selectedBucket);
-  }, [radarParent, selectedBucket, finished, catalog]);
+    if (!radarParent) return [];
+    const sessions = active && !finished.some((session) => session.id === active.id)
+      ? [active, ...finished]
+      : finished;
+    return topContributingExercises(sessions, catalog, radarParent, radarWindow);
+  }, [radarParent, radarWindow, finished, catalog, active]);
 
   const correlations = useMemo(
     () => buildCorrelations(finished, exerciseById, recoveryCheckins),
@@ -158,7 +172,10 @@ export function GlobalLayer() {
       {/* Radar musculaire */}
       <GlassCard>
         <p className="mb-2 text-sm font-semibold text-[--color-fg]">
-          Répartition musculaire — {selectedBucket?.label}
+          Objectifs musculaires · 7 derniers jours
+        </p>
+        <p className="mb-2 text-xs text-[--color-fg-faint]">
+          Chaque axe montre la part de ton objectif hebdomadaire atteinte, plafonnée à 100%.
         </p>
         <MuscleRadar data={radarData} onSelect={setRadarParent} selected={radarParent} />
 
@@ -175,7 +192,7 @@ export function GlobalLayer() {
                   {parentDisplayName[radarParent]} — top exercices
                 </p>
                 {radarContribution.length === 0 ? (
-                  <p className="text-xs text-[--color-fg-faint]">Aucune contribution cette semaine.</p>
+                  <p className="text-xs text-[--color-fg-faint]">Aucune contribution sur les 7 derniers jours.</p>
                 ) : (
                   radarContribution.map((c, i) => (
                     <div key={c.name} className="flex items-center justify-between text-sm">
@@ -196,16 +213,21 @@ export function GlobalLayer() {
       {/* Corrélations */}
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[--color-fg-faint]">
-          Corrélations J-1/J-2 / performance vs prévision · 30 j
+          Ce qui semble lié à tes performances · 30 jours
+        </p>
+        <p className="mb-3 text-xs leading-relaxed text-[--color-fg-muted]">
+          On compare l&apos;écart entre ta performance réelle et la prévision de l&apos;app avec tes réponses
+          des deux jours précédents. Une association n&apos;est pas une cause ; avant 20 séances comparables,
+          le résultat est affiché comme insuffisant.
         </p>
         {correlations ? (
           <div className="grid grid-cols-2 gap-2">
-            <CorrelationTile label="Créatine" r={correlations.creatine} />
-            <CorrelationTile label="Protéines" r={correlations.protein} />
-            <CorrelationTile label="Sommeil sans alcool" r={correlations.sleep} />
-            <CorrelationTile label="Alcool" r={correlations.alcohol} />
+            <CorrelationTile label="Créatine" r={correlations.creatine.r} sampleCount={correlations.creatine.sampleCount} />
+            <CorrelationTile label="Protéines" r={correlations.protein.r} sampleCount={correlations.protein.sampleCount} />
+            <CorrelationTile label="Sommeil sans alcool" r={correlations.sleep.r} sampleCount={correlations.sleep.sampleCount} />
+            <CorrelationTile label="Alcool" r={correlations.alcohol.r} sampleCount={correlations.alcohol.sampleCount} />
             <p className="col-span-2 text-center text-[0.68rem] text-[--color-fg-faint]">
-              {correlations.sampleCount} séances comparées à la meilleure performance de la séance précédente.
+              Le détail technique reste disponible dans chaque carte, sans le transformer en conseil.
             </p>
           </div>
         ) : (
@@ -224,7 +246,7 @@ function topContributingExercises(
   finished: WorkoutSession[],
   catalog: Exercise[],
   parent: MuscleParent,
-  bucket: WeekBucket
+  bucket: Pick<WeekBucket, "start" | "end">
 ): { name: string; sets: number }[] {
   const exerciseIndex = new Map(catalog.map((e) => [e.id, e]));
   const totals = new Map<string, number>();
@@ -251,10 +273,14 @@ function topContributingExercises(
 }
 
 interface Correlations {
-  creatine: number | null;
-  protein: number | null;
-  sleep: number | null;
-  alcohol: number | null;
+  creatine: CorrelationMetric;
+  protein: CorrelationMetric;
+  sleep: CorrelationMetric;
+  alcohol: CorrelationMetric;
+}
+
+interface CorrelationMetric {
+  r: number | null;
   sampleCount: number;
 }
 
@@ -300,7 +326,7 @@ function buildCorrelations(
   }
 
   if (observations.length < 3) return null;
-  const correlate = (select: (checkin: RecoveryCheckin) => number | null): number | null => {
+  const correlate = (select: (checkin: RecoveryCheckin) => number | null): CorrelationMetric => {
     const xs: number[] = [];
     const ys: number[] = [];
     for (const observation of observations) {
@@ -309,7 +335,7 @@ function buildCorrelations(
       xs.push(known.reduce((sum, value) => sum + value, 0) / known.length);
       ys.push(observation.residual);
     }
-    return pearsonCorrelation(xs, ys);
+    return { r: pearsonCorrelation(xs, ys), sampleCount: xs.length };
   };
 
   return {
@@ -317,7 +343,6 @@ function buildCorrelations(
     protein: correlate((checkin) => checkin.proteinTargetMet === null ? null : Number(checkin.proteinTargetMet)),
     sleep: correlate(sleepHoursWithoutAlcohol),
     alcohol: correlate((checkin) => checkin.hadAlcohol === null ? null : Number(checkin.hadAlcohol)),
-    sampleCount: observations.length,
   };
 }
 

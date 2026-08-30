@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MUSCLE_PARENTS, parentShortName, type MuscleParent } from "@/lib/models/muscles";
+import { parentShortName, type MuscleParent } from "@/lib/models/muscles";
 
 export interface RadarDatum {
   parent: MuscleParent;
@@ -14,8 +14,8 @@ const MAX_RADIUS = 100;
 const RINGS = [0.25, 0.5, 0.75, 1];
 
 /**
- * Radar musculaire custom SVG — répartition des sets effectifs par
- * MuscleParent sur une fenêtre donnée. Recharts ne produit pas ce rendu
+ * Radar musculaire custom SVG — pourcentage de l'objectif roulant 7 jours atteint par
+ * MuscleParent. Recharts ne produit pas ce rendu
  * (labels radiaux + polygone dégradé + tap-to-select), donc SVG à la main.
  */
 export function MuscleRadar({
@@ -28,14 +28,11 @@ export function MuscleRadar({
   selected: MuscleParent | null;
 }) {
   const [hovered, setHovered] = useState<MuscleParent | null>(null);
-  const maxValue = Math.max(1, ...data.map((d) => d.value));
-
   const points = useMemo(() => {
-    const n = MUSCLE_PARENTS.length;
-    return MUSCLE_PARENTS.map((parent, i) => {
+    const n = Math.max(1, data.length);
+    return data.map(({ parent, value }, i) => {
       const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
-      const value = data.find((d) => d.parent === parent)?.value ?? 0;
-      const ratio = Math.min(1, value / maxValue);
+      const ratio = Math.min(1, Math.max(0, value / 100));
       const r = ratio * MAX_RADIUS;
       return {
         parent,
@@ -49,10 +46,9 @@ export function MuscleRadar({
         axisY: CENTER + MAX_RADIUS * Math.sin(angle),
       };
     });
-  }, [data, maxValue]);
+  }, [data]);
 
   const polygonPath = points.map((p) => `${p.x},${p.y}`).join(" ");
-  const totalValue = data.reduce((acc, d) => acc + d.value, 0);
   const active = hovered ?? selected;
 
   return (
@@ -63,7 +59,7 @@ export function MuscleRadar({
         height="auto"
         style={{ maxWidth: 340 }}
         role="img"
-        aria-label="Répartition des sets effectifs par groupe musculaire"
+        aria-label="Pourcentage des objectifs musculaires atteint sur les 7 derniers jours"
       >
         <defs>
           <linearGradient id="radarFill" x1="0" y1="0" x2="1" y2="1">
@@ -140,7 +136,7 @@ export function MuscleRadar({
               className="tnum select-none text-[10px] font-bold"
               style={{ fill: "var(--color-fg)" }}
             >
-              {totalValue > 0 ? `${Math.round((p.value / totalValue) * 100)}%` : "0%"}
+              {`${Math.round(p.value)}%`}
             </text>
           </g>
         ))}

@@ -469,7 +469,7 @@ describe("reprojectSuggestionAtWeight", () => {
   });
 
   it("expose la version stable destinée aux snapshots suggestion/réel", () => {
-    expect(SUGGESTION_ENGINE_VERSION).toBe("web-v2.1-2026-08-13");
+    expect(SUGGESTION_ENGINE_VERSION).toBe("web-v2.2-2026-08-30");
   });
 });
 
@@ -1009,6 +1009,71 @@ describe("ALGO_V2 §7.4/§9 — bascule de variante (Ab roller debout -> genoux)
     const currentSessionSets = [makeSet({ weight: 0, reps: 2, setSlotIndex: 0 })];
     const suggestion = suggest({ exercise, currentSetIndex: 1, recentHistory: history, currentSessionSets });
     expect(suggestion.switchToVariantId).toBeNull();
+  });
+});
+
+describe("TOP_SET_BACKOFF — le set réel et le RIR pilotent la suite", () => {
+  it("ne propose jamais 3 reps après une amorce solide à RIR3, même après 11 jours", () => {
+    const exercise = makeExercise({
+      name: "DC assisté",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      fatigueClass: FatigueClass.heavy,
+    });
+    const history = [
+      sTSB([80, 10], [100, 7]),
+      sTSB([80, 10], [100, 6]),
+      sTSB([80, 9], [100, 6]),
+    ];
+    const currentSessionSets = [
+      makeSet({ weight: 80, reps: 10, reportedRir: 3, setSlotIndex: 0 }),
+    ];
+
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 1,
+      recentHistory: history,
+      currentSessionSets,
+      gapDays: 11,
+    });
+
+    expect(suggestion.weight).toBeGreaterThanOrEqual(95);
+    expect(suggestion.reps).toBeGreaterThanOrEqual(exercise.repTargetMin);
+    expect(suggestion.reasonCodes).not.toContain("deload_after_gap");
+  });
+
+  it("après 100x8 RIR1, propose un backoff proche du top et dans la plage hypertrophie", () => {
+    const exercise = makeExercise({
+      name: "DC assisté",
+      setPatternMode: SetPatternMode.straight,
+      repTargetMin: 6,
+      repTargetMax: 10,
+      smallestIncrement: 2.5,
+      fatigueClass: FatigueClass.heavy,
+    });
+    const history = [
+      sTSB([80, 10], [100, 7]),
+      sTSB([80, 10], [100, 6]),
+      sTSB([80, 9], [100, 6]),
+    ];
+    const currentSessionSets = [
+      makeSet({ weight: 80, reps: 10, reportedRir: 3, setSlotIndex: 0 }),
+      makeSet({ weight: 100, reps: 8, reportedRir: 1, setSlotIndex: 1 }),
+    ];
+
+    const suggestion = suggest({
+      exercise,
+      currentSetIndex: 2,
+      recentHistory: history,
+      currentSessionSets,
+      gapDays: 11,
+    });
+
+    expect(suggestion.weight).toBe(95);
+    expect(suggestion.reps).toBe(7);
+    expect(suggestion.reasonCodes).toContain("backoff_v2");
   });
 });
 

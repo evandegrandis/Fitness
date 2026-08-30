@@ -9,9 +9,10 @@
  * Barème conservateur, appliqué à `targetLoad` selon le nombre de jours
  * depuis la DERNIÈRE séance ayant au moins un work set complété sur CET
  * exercice exact (pas de fusion de variantes) :
- *   - <= 10 jours  : aucun ajustement (fréquence d'entraînement normale)
- *   - 11-21 jours  : -1 incrément (`smallestIncrement`)
- *   - 22-42 jours  : -10%
+ *   - <= 14 jours  : aucun ajustement (une à deux semaines ne justifient pas de faire chuter
+ *                     automatiquement une charge que la séance du jour peut recalibrer)
+ *   - 15-27 jours  : -1 incrément (`smallestIncrement`)
+ *   - 28-42 jours  : -10%
  *   - > 42 jours   : -15%
  * Le résultat est toujours arrondi au `smallestIncrement` le plus proche
  * (jamais en dessous de 0).
@@ -23,8 +24,8 @@
 export type DeloadTier = "none" | "increment" | "percent10" | "percent15";
 
 export function deloadTierForGap(gapDays: number | undefined): DeloadTier {
-  if (gapDays === undefined || gapDays <= 10) return "none";
-  if (gapDays <= 21) return "increment";
+  if (gapDays === undefined || gapDays <= 14) return "none";
+  if (gapDays <= 27) return "increment";
   if (gapDays <= 42) return "percent10";
   return "percent15";
 }
