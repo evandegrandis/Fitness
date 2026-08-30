@@ -52,9 +52,11 @@ function formatElapsed(startTime: Date, nowMs: number): string {
 export function SessionHeader({
   session,
   onFinish,
+  onFocusExercise,
 }: {
   session: WorkoutSession;
   onFinish: () => void;
+  onFocusExercise?: (loggedExerciseId: string) => void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -78,7 +80,7 @@ export function SessionHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <SessionFocusButton session={session} />
+        <SessionFocusButton session={session} onExerciseSelected={onFocusExercise} />
         <button
           type="button"
           onClick={() => {

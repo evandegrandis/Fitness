@@ -62,6 +62,7 @@ import type {
   SetTechnique,
 } from "@/lib/models/types";
 import { CARDIO_ACTIVITY_TYPES, SET_TECHNIQUES } from "@/lib/models/types";
+import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 
 // ---------------------------------------------------------------------------
 // Helpers de coercition (les colonnes text ne sont pas validées par Postgres)
@@ -156,7 +157,7 @@ function asFatigueClass(raw: string): FatigueClassT {
 // ---------------------------------------------------------------------------
 
 export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]): Exercise {
-  return {
+  return withKnownMuscleProfile({
     id: row.id,
     name: row.name,
     category: row.category,
@@ -186,7 +187,7 @@ export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]
     resistanceProfile: asResistanceProfile(row.resistanceProfile),
     strengthStandardKey: row.strengthStandardKey ?? null,
     benchmarkUnit: asBenchmarkUnit(row.benchmarkUnit),
-  };
+  });
 }
 
 /**

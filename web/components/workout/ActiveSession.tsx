@@ -283,7 +283,11 @@ export function ActiveSession({
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-5 pb-28 pt-6">
-      <SessionHeader session={session} onFinish={handleFinish} />
+      <SessionHeader
+        session={session}
+        onFinish={handleFinish}
+        onFocusExercise={setExpandedExerciseId}
+      />
 
       <ExerciseList
         session={session}

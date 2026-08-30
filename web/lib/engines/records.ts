@@ -117,6 +117,39 @@ export const K_E1RM_PR_THRESHOLD = 1.02;
 const WORK_KINDS = new Set<string>([SetType.work, SetType.topSet, SetType.backoff]);
 
 /**
+ * Une performance pondérée est dominée s'il existe déjà un set au moins aussi
+ * lourd ET avec au moins autant de reps (avec au moins une dimension
+ * strictement meilleure). Dans ce cas, elle n'apporte aucune information de
+ * performance nouvelle et ne doit jamais recevoir d'étoile.
+ */
+function isDominatedByRecordMap(
+  weight: number,
+  reps: number,
+  bestRepsByWeight: Record<number, number>
+): boolean {
+  return Object.entries(bestRepsByWeight).some(([recordWeightRaw, recordReps]) => {
+    const recordWeight = Number(recordWeightRaw);
+    return (
+      recordWeight >= weight &&
+      recordReps >= reps &&
+      (recordWeight > weight || recordReps > reps)
+    );
+  });
+}
+
+function isDominatedBySets(set: LoggedSet, candidates: LoggedSet[], exercise: Exercise): boolean {
+  return candidates.some(
+    (candidate) =>
+      candidate.id !== set.id &&
+      candidate.weight > 0 &&
+      candidate.reps >= exercise.repTargetMin &&
+      candidate.weight >= set.weight &&
+      candidate.reps >= set.reps &&
+      (candidate.weight > set.weight || candidate.reps > set.reps)
+  );
+}
+
+/**
  * Séries autorisées à porter un record normal. Une continuation immédiate de
  * drop-set/rest-pause appartient au bloc logique précédent : elle contribue au
  * volume, mais ne peut jamais devenir un second PR ni modifier les records
@@ -259,6 +292,13 @@ export const RecordsEngine = {
     // être un set de qualité).
     if (set.reps < exercise.repTargetMin) return null;
 
+    // Exemple réel : 16 x 8 n'est pas un record si 18 x 9 existe déjà. Le
+    // meilleur nombre de reps à une charge exacte n'est intéressant que sur la
+    // frontière de Pareto poids/reps.
+    if (isDominatedByRecordMap(set.weight, set.reps, priorRecords.bestRepsByWeight)) {
+      return null;
+    }
+
     // Nouveau PR e1RM avec une marge significative.
     const newE1RM = estimated1RM(set.weight, set.reps);
     if (priorRecords.bestE1RM > 0 && newE1RM > priorRecords.bestE1RM * K_E1RM_PR_THRESHOLD) {
@@ -306,6 +346,8 @@ export const RecordsEngine = {
     // PR de reps à un poids donné (sets validés uniquement).
     if (set.reps < exercise.repTargetMin) return false;
 
+    if (isDominatedBySets(set, eligible, exercise)) return false;
+
     const priorAtWeight = others
       .filter((s) => s.completed && s.weight === set.weight && s.reps >= exercise.repTargetMin)
       .reduce((max, s) => Math.max(max, s.reps), 0);
@@ -316,10 +358,9 @@ export const RecordsEngine = {
   /**
    * Pour l'UI d'historique, on ne veut pas étoiler chaque PR intermédiaire
    * immédiatement dépassé plus tard dans la même séance. On ne garde que les
-   * sets record qui comptent encore après la fin de toute la séance :
-   *   - le set pondéré validé le plus fort
-   *   - le PR de reps bodyweight le plus fort
-   *   - le PR pondéré absolu le plus fort sous validation, si distinct
+   * sets record qui comptent encore après la fin de toute la séance. Pour les
+   * charges externes, chaque compromis non dominé poids/reps est légitime
+   * (20 x 7 et 18 x 9), mais jamais un point strictement dominé (16 x 8).
    */
   displayedRecordSetIDs(loggedExercise: LoggedExercise, amongSets: LoggedSet[], exercise: Exercise): Set<string> {
     const candidates = normalRecordSets(orderedSets(loggedExercise), exercise).filter((s) =>
@@ -330,32 +371,7 @@ export const RecordsEngine = {
     const finisherCandidates: LoggedSet[] = [];
     if (candidates.length === 0 && finisherCandidates.length === 0) return new Set();
 
-    const kept: LoggedSet[] = [];
-
-    const bestValidatedWeighted = candidates
-      .filter((s) => s.weight > 0 && s.reps >= exercise.repTargetMin)
-      .reduce<LoggedSet | undefined>((best, s) => {
-        if (!best) return s;
-        if (s.weight !== best.weight) return s.weight > best.weight ? s : best;
-        return s.reps > best.reps ? s : best;
-      }, undefined);
-    if (bestValidatedWeighted) kept.push(bestValidatedWeighted);
-
-    const bestBodyweight = candidates
-      .filter((s) => s.weight === 0)
-      .reduce<LoggedSet | undefined>((best, s) => (!best || s.reps > best.reps ? s : best), undefined);
-    if (bestBodyweight) kept.push(bestBodyweight);
-
-    const bestAbsoluteWeighted = candidates
-      .filter((s) => s.weight > 0)
-      .reduce<LoggedSet | undefined>((best, s) => {
-        if (!best) return s;
-        if (s.weight !== best.weight) return s.weight > best.weight ? s : best;
-        return s.reps > best.reps ? s : best;
-      }, undefined);
-    if (bestAbsoluteWeighted && !kept.some((s) => s.id === bestAbsoluteWeighted.id)) {
-      kept.push(bestAbsoluteWeighted);
-    }
+    const kept: LoggedSet[] = [...candidates];
 
     // La piste finisher reste séparée : un meilleur nombre de reps est gardé
     // par charge, sans jamais entrer dans les catégories poids/e1RM normales.

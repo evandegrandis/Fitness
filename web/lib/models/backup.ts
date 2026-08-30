@@ -27,7 +27,13 @@ import type {
   StopReason,
   TrainingPhase,
 } from "./enums";
-import { LEAF_TO_PARENT, legacyMuscleMapping, MuscleGroup, MuscleParent } from "./muscles";
+import {
+  LEAF_TO_PARENT,
+  isGoalMuscleParent,
+  legacyMuscleMapping,
+  MuscleGroup,
+  MuscleParent,
+} from "./muscles";
 import type {
   BodyWeightEntry,
   CardioActivityType,
@@ -46,6 +52,7 @@ import type {
 } from "./types";
 import { CARDIO_ACTIVITY_TYPES, SET_TECHNIQUES, sessionsNewestFirst } from "./types";
 import type { WorkoutMode } from "@/lib/theme/modes";
+import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 
 // ---------------------------------------------------------------------------
 // Schémas Zod — miroir des structs Codable Swift (DataExporter.swift)
@@ -306,10 +313,12 @@ export function createBackupJson(
       ...exercise,
       lastUsed: exercise.lastUsed?.toISOString() ?? null,
     })),
-    goals: source.goals.map((goal) => ({
-      muscleGroup: goal.parent,
-      weeklyGoalSets: goal.weeklyGoalSets,
-    })),
+    goals: source.goals
+      .filter((goal) => isGoalMuscleParent(goal.parent))
+      .map((goal) => ({
+        muscleGroup: goal.parent,
+        weeklyGoalSets: goal.weeklyGoalSets,
+      })),
     settings: source.settings,
     bodyWeights: source.bodyWeights.map((entry) => ({
       id: entry.id,
@@ -618,7 +627,7 @@ export function parseBackup(json: unknown): BackupData {
 
     const fatigueClass: FatigueClass = fatigueClassFromRaw(exData.fatigueClass ?? undefined);
 
-    return {
+    return withKnownMuscleProfile({
       id: exData.id,
       name: exData.name,
       category: exData.category,
@@ -643,7 +652,7 @@ export function parseBackup(json: unknown): BackupData {
       resistanceProfile: resolveResistanceProfile(exData.resistanceProfile),
       strengthStandardKey: exData.strengthStandardKey ?? null,
       benchmarkUnit: resolveBenchmarkUnit(exData.benchmarkUnit),
-    };
+    });
   });
 
   const exerciseById = new Map(exercises.map((e) => [e.id, e]));
@@ -653,7 +662,7 @@ export function parseBackup(json: unknown): BackupData {
   const goals: MuscleGoal[] = raw.goals
     .map((g): MuscleGoal | null => {
       const parent = resolveMuscleParent(g.muscleGroup);
-      if (!parent) return null;
+      if (!parent || !isGoalMuscleParent(parent)) return null;
       return { parent, weeklyGoalSets: g.weeklyGoalSets };
     })
     .filter((g): g is MuscleGoal => g !== null);

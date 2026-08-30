@@ -31,6 +31,7 @@ import { useWorkoutStore } from "@/lib/store/workout";
 import { MuscleMappingEditor, mappingsToParentLevel } from "@/components/exercise/MuscleMappingEditor";
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
 import { listKnownStandards } from "@/lib/engines/benchmark";
+import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 
 const FATIGUE_LABEL: Record<FatigueClass, string> = { heavy: "Lourd", medium: "Moyen", light: "Léger" };
 
@@ -134,12 +135,12 @@ function ExerciseEditorForm({
     if (!draft.name.trim()) return;
     setSaving(true);
     setError(null);
-    const toSave: Exercise = {
+    const toSave: Exercise = withKnownMuscleProfile({
       ...draft,
       name: draft.name.trim(),
       category: draft.category.trim() || "Autre",
       sortOrder: isEditing ? draft.sortOrder : catalogLength,
-    };
+    });
     // OFFLINE_PWA_SPEC §4 (P4.4) — reflète immédiatement dans le catalogue local (avant même de
     // savoir si Neon est joignable) : sans ça, créer/éditer un exercice hors-ligne ne serait visible
     // que dans ce formulaire, jamais dans le reste de l'app (sélecteurs, suggestion(), etc.).

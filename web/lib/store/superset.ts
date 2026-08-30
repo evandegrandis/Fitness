@@ -663,36 +663,33 @@ function arraysEqualAsSets(a: string[], b: string[]): boolean {
 /**
  * Miroir de `WorkoutViewModel.applyReorderAfterValidate`. Déplace l'exercice
  * juste après le dernier exercice (autre que lui-même) ayant au moins un set
- * complété — sauf s'il est dans un bloc superset (ne bouge pas le bloc).
+ * complété — sauf s'il est dans un bloc superset (ne bouge pas le bloc). S'il
+ * n'y a encore aucune série, un exercice ajouté arrive en tête des exercices
+ * planifiés au lieu de rester enterré à la fin.
  */
 export function applyReorderAfterValidate(session: WorkoutSession, loggedExerciseId: string): WorkoutSession {
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-
-  if (isLinkedToNext(session, ordered.find((e) => e.id === loggedExerciseId)!)) return session;
   const myIdx = ordered.findIndex((e) => e.id === loggedExerciseId);
   if (myIdx === -1) return session;
-  if (myIdx > 0 && isLinkedToNext(session, ordered[myIdx - 1])) return session;
+  const moving = ordered[myIdx];
+  if (moving.supersetGroupId !== null) return session;
 
-  let anchorIdx = -1;
-  for (let i = ordered.length - 1; i >= 0; i--) {
-    if (ordered[i].id !== loggedExerciseId && completedWorkSets(ordered[i]).length > 0) {
-      anchorIdx = i;
-      break;
-    }
+  const mutable = ordered.filter((exercise) => exercise.id !== loggedExerciseId);
+  let insertionIndex = 0;
+  for (let index = 0; index < mutable.length; index += 1) {
+    if (completedWorkSets(mutable[index]).length > 0) insertionIndex = index + 1;
   }
-  if (anchorIdx === -1) return session;
-  if (myIdx <= anchorIdx + 1) return session;
 
-  let insertAfter = anchorIdx;
-  while (insertAfter < ordered.length - 1 && isLinkedToNext(session, ordered[insertAfter])) {
-    insertAfter += 1;
+  // Ne jamais insérer au milieu d'un superset : si le dernier exercice fait
+  // appartient à un groupe, le nouvel exercice vient après tout le bloc.
+  while (insertionIndex < mutable.length && mutable[insertionIndex - 1]?.supersetGroupId !== null) {
+    const previousGroupId = mutable[insertionIndex - 1]?.supersetGroupId;
+    if (mutable[insertionIndex]?.supersetGroupId !== previousGroupId) break;
+    insertionIndex += 1;
   }
-  if (myIdx === insertAfter + 1) return session;
 
-  const mutable = [...ordered];
-  const [moving] = mutable.splice(myIdx, 1);
-  const newInsert = insertAfter < myIdx ? insertAfter + 1 : insertAfter;
-  mutable.splice(newInsert, 0, moving);
+  mutable.splice(insertionIndex, 0, moving);
+  if (mutable.every((exercise, index) => exercise.id === ordered[index]?.id)) return session;
 
   return { ...session, exercises: mutable.map((e, i) => ({ ...e, orderIndex: i })) };
 }

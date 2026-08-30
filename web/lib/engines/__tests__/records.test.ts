@@ -195,10 +195,30 @@ describe("classify — ordre de priorité exact des 4 types de records", () => {
   });
 
   it("4. repsAtWeight: plus de reps au même poids déjà atteint, sans battre e1RM", () => {
-    // Historique large pour que bestE1RM soit déjà élevé et ne soit pas battu.
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 100, reps: 10 }), set({ weight: 80, reps: 8 })]);
+    // 100 x 6 garde un e1RM élevé mais ne domine pas 80 x 9 sur les reps : ce
+    // dernier reste un compromis poids/reps légitime.
+    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 100, reps: 6 }), set({ weight: 80, reps: 8 })]);
     const kind = RecordsEngine.classify(set({ weight: 80, reps: 9 }), BENCH, prior);
     expect(kind).toBe("repsAtWeight");
+  });
+
+  it("n'étoile jamais un PR de reps à une charge dominée par une performance plus lourde", () => {
+    const prior = RecordsEngine.buildRecords(BENCH, [
+      set({ weight: 20, reps: 7 }),
+      set({ weight: 18, reps: 9 }),
+      set({ weight: 16, reps: 7 }),
+    ]);
+
+    expect(RecordsEngine.classify(set({ weight: 16, reps: 8 }), BENCH, prior)).toBeNull();
+  });
+
+  it("préserve un vrai compromis de Pareto : plus de reps à 18 kg face à 20 kg × 7", () => {
+    const prior = RecordsEngine.buildRecords(BENCH, [
+      set({ weight: 20, reps: 7 }),
+      set({ weight: 18, reps: 8 }),
+    ]);
+
+    expect(RecordsEngine.classify(set({ weight: 18, reps: 9 }), BENCH, prior)).toBe("repsAtWeight");
   });
 
   it("retourne null si le set n'est pas complété", () => {
@@ -241,6 +261,45 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
     expect(ids.size).toBe(2);
     expect(ids.has(le.sets[0].id)).toBe(true);
     expect(ids.has(le.sets[1].id)).toBe(true);
+  });
+
+  it("n'affiche pas d'étoile sur 16×8, strictement dominé par 18×9", () => {
+    const dominated = set({ id: "curl-16x8", weight: 16, reps: 8 });
+    const stronger = set({ id: "curl-18x9", weight: 18, reps: 9 });
+    const heaviest = set({ id: "curl-20x7", weight: 20, reps: 7 });
+    const all = [stronger, heaviest, dominated];
+    const logged = {
+      id: "le-curl-dominated",
+      orderIndex: 0,
+      notes: "",
+      exerciseId: BENCH.id,
+      exerciseName: "Curl debout",
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+      sets: [dominated],
+    };
+
+    expect(RecordsEngine.isRecordSet(dominated, all, BENCH)).toBe(false);
+    expect(RecordsEngine.displayedRecordSetIDs(logged, all, BENCH)).toEqual(new Set());
+  });
+
+  it("conserve les deux points non dominés d'un même historique : 20×7 et 18×9", () => {
+    const heaviest = set({ id: "curl-20x7", weight: 20, reps: 7 });
+    const higherReps = set({ id: "curl-18x9", weight: 18, reps: 9 });
+    const logged = {
+      id: "le-curl-pareto",
+      orderIndex: 0,
+      notes: "",
+      exerciseId: BENCH.id,
+      exerciseName: "Curl debout",
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+      sets: [heaviest, higherReps],
+    };
+
+    expect(RecordsEngine.displayedRecordSetIDs(logged, logged.sets, BENCH)).toEqual(
+      new Set([heaviest.id, higherReps.id])
+    );
   });
 });
 

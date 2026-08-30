@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SetType } from "@/lib/models/enums";
 import type { LoggedExercise, LoggedSet, SupersetGroup, WorkoutSession } from "@/lib/models/types";
 import {
+  applyReorderAfterValidate,
   autoDetectSupersetIfNeeded,
   cloneSupersetTopology,
   completedSupersetRounds,
@@ -235,6 +236,59 @@ describe("superset 2–4 membres", () => {
       ).toBe(true);
       session = appendWorkSet(session, memberId, memberIds.length + prefix).session;
     }
+  });
+});
+
+describe("ordre actif après ajout ou validation", () => {
+  it("place un nouvel exercice après ceux déjà faits et avant les exercices encore planifiés", () => {
+    const done = loggedExercise("done", 0, [loggedSet("done-set", 1_000, 0)]);
+    const plannedA = loggedExercise("planned-a", 1);
+    const plannedB = loggedExercise("planned-b", 2);
+    const added = loggedExercise("added", 3);
+
+    const reordered = applyReorderAfterValidate(
+      workoutSession([done, plannedA, plannedB, added]),
+      added.id
+    );
+
+    expect(
+      [...reordered.exercises].sort((a, b) => a.orderIndex - b.orderIndex).map((exercise) => exercise.id)
+    ).toEqual(["done", "added", "planned-a", "planned-b"]);
+  });
+
+  it("place le premier exercice ajouté en tête quand aucune série n'est encore faite", () => {
+    const reordered = applyReorderAfterValidate(
+      workoutSession([
+        loggedExercise("planned-a", 0),
+        loggedExercise("planned-b", 1),
+        loggedExercise("added", 2),
+      ]),
+      "added"
+    );
+
+    expect(
+      [...reordered.exercises].sort((a, b) => a.orderIndex - b.orderIndex).map((exercise) => exercise.id)
+    ).toEqual(["added", "planned-a", "planned-b"]);
+  });
+
+  it("ne coupe jamais un bloc superset en deux", () => {
+    const group: SupersetGroup = { id: "group", orderIndex: 0, memberOrder: ["A", "B"] };
+    const reordered = applyReorderAfterValidate(
+      workoutSession(
+        [
+          loggedExercise("A", 0, [loggedSet("a-set", 1_000, 0)], group.id),
+          loggedExercise("B", 1, [], group.id),
+          loggedExercise("planned", 2),
+          loggedExercise("added", 3),
+        ],
+        [group]
+      ),
+      "added"
+    );
+
+    expect(
+      [...reordered.exercises].sort((a, b) => a.orderIndex - b.orderIndex).map((exercise) => exercise.id)
+    ).toEqual(["A", "B", "added", "planned"]);
   });
 });
 

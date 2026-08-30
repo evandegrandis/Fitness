@@ -131,18 +131,12 @@ const CATALOG: Spec[] = [
   { name: "Abducteurs machine", category: "Legs", mode: "straight", repMin: 12, repMax: 20, increment: 5,
     fatigue: "light", pattern: "isolation", rest: 75,
     muscles: [["glut_med", 1], ["glut_max", 0.3]] },
-  // Adducteurs et mollets n'ont AUCUN groupe correspondant dans le modèle musculaire (les
-  // feuilles s'arrêtent aux quadriceps, ischios et fessiers). Les rattacher au groupe le plus
-  // proche gonflerait une couverture qu'ils ne travaillent pas : mieux vaut aucun mapping. Ils
-  // restent logguables, simplement ils ne comptent dans aucun objectif hebdomadaire.
   { name: "Adducteurs machine", category: "Legs", mode: "straight", repMin: 12, repMax: 20, increment: 5,
     fatigue: "light", pattern: "isolation", rest: 75,
-    notes: "Aucun objectif hebdo : pas de groupe adducteurs dans le modèle.",
-    muscles: [] },
+    muscles: [["adducteur_long", 1], ["grand_adducteur", 1]] },
   { name: "Mollets debout", category: "Legs", mode: "straight", repMin: 10, repMax: 20, increment: 5,
     fatigue: "light", pattern: "isolation", rest: 75,
-    notes: "Aucun objectif hebdo : pas de groupe mollets dans le modèle.",
-    muscles: [] },
+    muscles: [["gastrocnemien", 1], ["soleaire", 0.6]] },
 
   // -- Abdos ----------------------------------------------------------------
   { name: "Crunch machine", category: "Core", mode: "straight", repMin: 10, repMax: 20, increment: 2.5,

@@ -44,7 +44,9 @@ import {
   workoutTemplates,
 } from "./schema";
 import { parseBackup } from "@/lib/models/backup";
+import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 import { hasAnyRecoveryValue } from "@/lib/models/recovery";
+import { isGoalMuscleParent } from "@/lib/models/muscles";
 import { requireAuthenticatedSession } from "@/lib/auth";
 import type {
   Exercise,
@@ -165,8 +167,12 @@ export async function deleteSession(id: string): Promise<void> {
 
 export async function upsertExercise(exercise: Exercise): Promise<void> {
   await requireAuthenticatedSession();
-  const row = exerciseToRow(exercise);
-  const updateRow = exerciseToUpsertUpdateRow(exercise);
+  // Les exercices connus créés hors-ligne avant l'ajout du profil peuvent
+  // arriver ici avec `muscleMappings=[]`. Les compléter côté serveur rend le
+  // rejeu de l'outbox sûr, sans écraser un mapping saisi manuellement.
+  const catalogExercise = withKnownMuscleProfile(exercise);
+  const row = exerciseToRow(catalogExercise);
+  const updateRow = exerciseToUpsertUpdateRow(catalogExercise);
   const operations: BatchItem<"pg">[] = [
     db
       .insert(exercises)
@@ -174,7 +180,7 @@ export async function upsertExercise(exercise: Exercise): Promise<void> {
       .onConflictDoUpdate({ target: exercises.id, set: updateRow }),
     db.delete(muscleMappings).where(eq(muscleMappings.exerciseId, exercise.id)),
   ];
-  const mappingRows = exerciseToMappingRows(exercise);
+  const mappingRows = exerciseToMappingRows(catalogExercise);
   if (mappingRows.length > 0) {
     operations.push(db.insert(muscleMappings).values(mappingRows));
   }
@@ -227,9 +233,10 @@ export async function deleteExercise(id: string): Promise<DeleteExerciseResult> 
 
 export async function setGoals(goals: MuscleGoal[]): Promise<void> {
   await requireAuthenticatedSession();
+  const supportedGoals = goals.filter((goal) => isGoalMuscleParent(goal.parent));
   const operations: BatchItem<"pg">[] = [db.delete(muscleGoals)];
-  if (goals.length > 0) {
-    operations.push(db.insert(muscleGoals).values(goals.map(goalToRow)));
+  if (supportedGoals.length > 0) {
+    operations.push(db.insert(muscleGoals).values(supportedGoals.map(goalToRow)));
   }
 
   await db.batch(operations as unknown as [BatchItem<"pg">, ...BatchItem<"pg">[]]);

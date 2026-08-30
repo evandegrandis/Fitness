@@ -10,7 +10,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
 import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { SwipeRow } from "@/components/ui/SwipeRow";
-import { allTimeRecordSet } from "@/lib/engines/records";
+import { allTimeRecordSet, displayedRecordSetIDs } from "@/lib/engines/records";
 import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
@@ -136,8 +136,8 @@ export function ExerciseCard({
   );
   // Record réellement all-time, séance active comprise, pour donner le bon repère au moment
   // où l'utilisateur ouvre la carte et choisit sa prochaine charge.
-  const allTimeRecord = useMemo(() => {
-    if (!exercise) return undefined;
+  const allRecordSets = useMemo(() => {
+    if (!exercise) return [];
     const historicalSets = history
       .filter((s) => !s.isActive)
       .flatMap((s) => s.exercises)
@@ -146,8 +146,18 @@ export function ExerciseCard({
     const activeSets = session.exercises
       .filter((candidate) => candidate.exerciseId === exercise.id)
       .flatMap((candidate) => candidate.sets);
-    return allTimeRecordSet(exercise, [...historicalSets, ...activeSets]);
+    return [...historicalSets, ...activeSets];
   }, [exercise, history, session.exercises]);
+  const allTimeRecord = useMemo(
+    () => (exercise ? allTimeRecordSet(exercise, allRecordSets) : undefined),
+    [exercise, allRecordSets]
+  );
+  const displayedRecordIds = useMemo(
+    () => (exercise ? displayedRecordSetIDs(loggedExercise, allRecordSets, exercise) : new Set<string>()),
+    [exercise, loggedExercise, allRecordSets]
+  );
+  const displayedRecordKind = (setId: string) =>
+    displayedRecordIds.has(setId) ? justHitRecord[setId] : undefined;
 
   if (!exercise) return null;
 
@@ -302,7 +312,7 @@ export function ExerciseCard({
                       if (compositeContinuationIds.has(set.id)) return null;
                       const block = compositeByLeadId.get(set.id);
                       if (!block) {
-                        return <SetRow key={set.id} set={set} seriesNumber={seriesNumberBySetId.get(set.id)} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />;
+                        return <SetRow key={set.id} set={set} seriesNumber={seriesNumberBySetId.get(set.id)} isRecord={displayedRecordKind(set.id)} onTap={() => onEditSet(set)} />;
                       }
                       return (
                         <div key={set.id} className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.035] p-2">
@@ -315,7 +325,7 @@ export function ExerciseCard({
                                 key={blockSet.id}
                                 set={blockSet}
                                 seriesNumber={seriesNumberBySetId.get(blockSet.id)}
-                                isRecord={justHitRecord[blockSet.id]}
+                                isRecord={displayedRecordKind(blockSet.id)}
                                 onTap={() => onEditSet(blockSet)}
                               />
                             ))}
@@ -333,7 +343,7 @@ export function ExerciseCard({
                     </div>
                     <div className="flex flex-col gap-1.5">
                       {finisherSets.map((set) => (
-                        <SetRow key={set.id} set={set} isRecord={justHitRecord[set.id]} onTap={() => onEditSet(set)} />
+                        <SetRow key={set.id} set={set} isRecord={displayedRecordKind(set.id)} onTap={() => onEditSet(set)} />
                       ))}
                     </div>
                   </div>

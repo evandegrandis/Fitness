@@ -7,6 +7,7 @@ import { Settings } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { rolling7DayProgress } from "@/lib/engines/effective-sets";
 import { recentAchievements } from "@/lib/engines/achievements";
+import { recommendTemplateId } from "@/lib/engines/template-recommendation";
 import { WeeklyPriority } from "./WeeklyPriority";
 import { QuickActions } from "./QuickActions";
 import { RecentAchievements } from "./RecentAchievements";
@@ -43,24 +44,8 @@ export function QuickStart() {
   const cardioHint = useMemo(() => cardioNudge(cardio), [cardio]);
 
   const recommendedTemplateId = useMemo(() => {
-    if (templates.length === 0) return null;
-    const priorityParents = new Set(priorities.slice(0, 3).map((p) => p.parent));
-    if (priorityParents.size === 0) return templates[0]?.id ?? null;
-    const exerciseByName = new Map(catalog.map((e) => [e.name, e]));
-    let best: { id: string; score: number } | null = null;
-    for (const t of templates) {
-      let score = 0;
-      for (const te of t.exercises) {
-        const exercise = exerciseByName.get(te.exerciseName);
-        if (!exercise) continue;
-        for (const mapping of exercise.muscleMappings) {
-          score += mapping.coefficient;
-        }
-      }
-      if (!best || score > best.score) best = { id: t.id, score };
-    }
-    return best?.id ?? null;
-  }, [templates, priorities, catalog]);
+    return recommendTemplateId(templates, catalog, priorities, history);
+  }, [templates, priorities, catalog, history]);
 
   const greetingName = settings.userName ? `, ${settings.userName}` : "";
 

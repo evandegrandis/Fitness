@@ -20,7 +20,8 @@ function exercise(id: string, muscle: MuscleGroup): Exercise {
 const DELT = exercise("ex-delt", MuscleGroup.deltAnt);
 const TRI = exercise("ex-tri", MuscleGroup.tricepsLong);
 const QUAD = exercise("ex-quad", MuscleGroup.vasteLat);
-const CATALOG = [DELT, TRI, QUAD];
+const OLD_QUAD = exercise("ex-old-quad", MuscleGroup.vasteMed);
+const CATALOG = [DELT, TRI, QUAD, OLD_QUAD];
 
 function session(date: Date, entries: [Exercise, number][], isActive = false): WorkoutSession {
   return {
@@ -44,32 +45,57 @@ const GOALS: MuscleGoal[] = [
   { parent: MuscleParent.quads, weeklyGoalSets: 12 },
 ];
 
-describe("filtre de pertinence, le point qui rend le panneau utilisable", () => {
-  it("écarte un muscle sans aucune série depuis 28 jours au lieu de le proposer en boucle", () => {
-    // Evan ne fait plus de jambes : les quadriceps sont en déficit maximal, donc ils
-    // domineraient le classement, séance après séance, sans jamais lui être utiles.
+describe("récence réelle et groupes hors routine", () => {
+  it("garde un muscle dormant visible mais le place après toute la routine récente", () => {
     const history = [session(daysAgo(2), [[DELT, 2]]), session(daysAgo(40), [[QUAD, 6]])];
     const focus = sessionFocus(history, CATALOG, GOALS, null, NOW);
 
-    expect(focus.priorities.map((p) => p.parent)).not.toContain(MuscleParent.quads);
-    expect(focus.dormantCount).toBeGreaterThan(0);
+    expect(focus.priorities.map((p) => p.parent)).toContain(MuscleParent.quads);
+    expect(focus.priorities.slice(-2).map((row) => row.parent)).toEqual(
+      expect.arrayContaining([MuscleParent.quads, MuscleParent.triceps])
+    );
+    expect(focus.priorities.slice(-2).every((row) => row.isDormant)).toBe(true);
+    expect(focus.dormantCount).toBe(2); // quadriceps + triceps jamais vus
   });
 
-  it("le fait revenir dès qu'il reprend cet entraînement", () => {
+  it("replace le groupe dans la routine active dès qu'il reprend cet entraînement", () => {
     const history = [session(daysAgo(2), [[DELT, 2]]), session(daysAgo(10), [[QUAD, 2]])];
     const focus = sessionFocus(history, CATALOG, GOALS, null, NOW);
-    expect(focus.priorities.map((p) => p.parent)).toContain(MuscleParent.quads);
+    expect(focus.priorities.find((p) => p.parent === MuscleParent.quads)?.isDormant).toBe(false);
   });
 
-  it("ne compte comme récent que ce qui est dans la fenêtre, bornes comprises", () => {
+  it("classe la récence en ordre croissant et relègue les valeurs hors fenêtre", () => {
     const juste = [session(daysAgo(SESSION_FOCUS.RELEVANCE_WINDOW_DAYS - 1), [[QUAD, 1]])];
-    expect(sessionFocus(juste, CATALOG, GOALS, null, NOW).priorities.map((p) => p.parent)).toContain(
-      MuscleParent.quads
-    );
+    expect(sessionFocus(juste, CATALOG, GOALS, null, NOW).priorities.find((p) => p.parent === MuscleParent.quads)?.isDormant).toBe(false);
     const trop = [session(daysAgo(SESSION_FOCUS.RELEVANCE_WINDOW_DAYS + 2), [[QUAD, 1]])];
-    expect(sessionFocus(trop, CATALOG, GOALS, null, NOW).priorities.map((p) => p.parent)).not.toContain(
-      MuscleParent.quads
-    );
+    expect(sessionFocus(trop, CATALOG, GOALS, null, NOW).priorities.find((p) => p.parent === MuscleParent.quads)?.isDormant).toBe(true);
+  });
+
+  it("propose les exercices réellement utilisés récemment, jamais celui d'il y a deux mois", () => {
+    const history = [
+      session(daysAgo(4), [[QUAD, 2]]),
+      session(daysAgo(65), [[OLD_QUAD, 4]]),
+    ];
+    const quadRow = sessionFocus(history, CATALOG, GOALS, null, NOW).priorities.find(
+      (row) => row.parent === MuscleParent.quads
+    )!;
+
+    expect(quadRow.suggestedExercises.map((suggestion) => suggestion.exerciseId)).toContain(QUAD.id);
+    expect(quadRow.suggestedExercises.map((suggestion) => suggestion.exerciseId)).not.toContain(OLD_QUAD.id);
+    expect(quadRow.suggestedExercises[0].daysSinceLastUsed).toBe(3);
+  });
+
+  it("remonte un exercice déjà prévu aujourd'hui même sans historique récent", () => {
+    const live = session(NOW, [[OLD_QUAD, 0]], true);
+    const quadRow = sessionFocus([], CATALOG, GOALS, live, NOW).priorities.find(
+      (row) => row.parent === MuscleParent.quads
+    )!;
+
+    expect(quadRow.isDormant).toBe(false);
+    expect(quadRow.suggestedExercises[0]).toMatchObject({
+      exerciseId: OLD_QUAD.id,
+      inCurrentSession: true,
+    });
   });
 });
 
@@ -112,6 +138,6 @@ describe("garde-fous", () => {
   });
 
   it("borne la liste pour rester lisible entre deux séries", () => {
-    expect(SESSION_FOCUS.MAX_ROWS).toBeLessThanOrEqual(6);
+    expect(SESSION_FOCUS.MAX_ROWS).toBeLessThanOrEqual(14);
   });
 });

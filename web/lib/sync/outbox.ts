@@ -7,6 +7,7 @@ import type {
   WorkoutSession,
   WorkoutTemplate,
 } from "@/lib/models/types";
+import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 
 /**
  * File de synchronisation OFFLINE-FIRST (persistée en localStorage).
@@ -102,7 +103,10 @@ function reviveSession(session: WorkoutSession): WorkoutSession {
 
 /** `Exercise.lastUsed` est le seul champ Date d'un `Exercise` — revivifié après un JSON round-trip. */
 function reviveExercise(exercise: Exercise): Exercise {
-  return { ...exercise, lastUsed: exercise.lastUsed == null ? null : toDate(exercise.lastUsed) };
+  return withKnownMuscleProfile({
+    ...exercise,
+    lastUsed: exercise.lastUsed == null ? null : toDate(exercise.lastUsed),
+  });
 }
 
 function reviveTemplate(template: WorkoutTemplate): WorkoutTemplate {

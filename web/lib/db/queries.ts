@@ -40,6 +40,7 @@ import type {
   WorkoutSession,
   WorkoutTemplate,
   BodyWeightEntry,} from "@/lib/models/types";
+import { isGoalMuscleParent } from "@/lib/models/muscles";
 
 function hasDatabaseUrl(): boolean {
   return Boolean(process.env.DATABASE_URL);
@@ -187,7 +188,7 @@ export async function getSessionById(id: string): Promise<WorkoutSession | null>
 export async function getGoals(): Promise<MuscleGoal[]> {
   if (!hasDatabaseUrl()) return [];
   const rows = await db.select().from(muscleGoals);
-  return rows.map(mapGoalRow);
+  return rows.map(mapGoalRow).filter((goal) => isGoalMuscleParent(goal.parent));
 }
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// MuscleParent (12 groupes)
+// MuscleParent (14 groupes anatomiques)
 // ---------------------------------------------------------------------------
 
 export const MuscleParent = {
@@ -34,6 +34,22 @@ export const MuscleParent = {
 export type MuscleParent = (typeof MuscleParent)[keyof typeof MuscleParent];
 
 export const MUSCLE_PARENTS: MuscleParent[] = Object.values(MuscleParent);
+
+/**
+ * Groupes qui peuvent porter un objectif hebdomadaire. Les obliques restent
+ * dans la taxonomie et l'historique musculaire, mais ne sont plus une cible
+ * de volume : ils ne doivent donc réapparaître ni dans les réglages, ni dans
+ * la couverture, même via un ancien cache ou backup.
+ */
+export const GOAL_MUSCLE_PARENTS: MuscleParent[] = MUSCLE_PARENTS.filter(
+  (parent) => parent !== MuscleParent.obliques
+);
+
+const GOAL_MUSCLE_PARENT_SET = new Set<MuscleParent>(GOAL_MUSCLE_PARENTS);
+
+export function isGoalMuscleParent(value: unknown): value is MuscleParent {
+  return typeof value === "string" && GOAL_MUSCLE_PARENT_SET.has(value as MuscleParent);
+}
 
 // ---------------------------------------------------------------------------
 // MuscleGroup (feuilles MECE)
@@ -313,7 +329,11 @@ export const legacyMuscleMapping: Record<string, MuscleGroup> = {
   side_delts: MuscleGroup.deltLat,
   front_delts: MuscleGroup.deltAnt,
   rear_delts: MuscleGroup.deltPost,
-  calves: MuscleGroup.vasteLat, // calves retiré de la taxonomie
+  calves: MuscleGroup.gastrocnemien,
+  calf: MuscleGroup.gastrocnemien,
+  mollets: MuscleGroup.gastrocnemien,
+  adductors: MuscleGroup.adducteurLong,
+  adducteurs: MuscleGroup.adducteurLong,
   back: MuscleGroup.trapMid,
   legs: MuscleGroup.vasteLat,
   core: MuscleGroup.absHaut,

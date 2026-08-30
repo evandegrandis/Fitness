@@ -17,6 +17,7 @@ import {
   buildRecords,
   classify,
   classifyFinisher,
+  displayedRecordSetIDs,
   EMPTY_RECORDS,
   normalRecordSets,
   type ExerciseRecords,
@@ -75,6 +76,7 @@ import {
   toggleSuperset as toggleSupersetPure,
 } from "@/lib/store/superset";
 import { buildFinishedWorkoutSnapshot, type FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
+import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 
 export type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 
@@ -439,10 +441,12 @@ function reviveHistoryDates(history: WorkoutSession[]): WorkoutSession[] {
 
 /** OFFLINE_PWA_SPEC §2 (P4.1) — revit `Exercise.lastUsed` (seul champ Date du catalogue). */
 function reviveCatalogDates(catalog: Exercise[]): Exercise[] {
-  return catalog.map((exercise) => ({
-    ...exercise,
-    lastUsed: exercise.lastUsed == null ? null : toDate(exercise.lastUsed),
-  }));
+  return catalog.map((exercise) =>
+    withKnownMuscleProfile({
+      ...exercise,
+      lastUsed: exercise.lastUsed == null ? null : toDate(exercise.lastUsed),
+    })
+  );
 }
 
 /**
@@ -512,7 +516,16 @@ function compositeCompletionSuggestion(
   const tail = blocks.at(-1);
   const tailEndsAtLast = tail?.sets.at(-1)?.id === last.id;
   const repsAlreadyDone = tailEndsAtLast ? tail.totalReps : last.reps;
-  if (repsAlreadyDone <= 0 || repsAlreadyDone >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET) return null;
+  // Une série qui compte déjà physiologiquement (notamment 18 kg x 7 à RIR 0
+  // ou 1) est terminée. Lui demander artificiellement 1 rep à 16 kg supprimait
+  // la vraie suggestion de série suivante après le repos.
+  if (
+    repsAlreadyDone <= 0 ||
+    repsAlreadyDone >= SET_STRUCTURE.EFFECTIVE_REPS_PER_SET ||
+    (tailEndsAtLast && (tail?.effectiveSetUnits ?? 0) > 0)
+  ) {
+    return null;
+  }
 
   const increment = Math.max(0.5, exercise.smallestIncrement);
   const easierWeight = last.weight === 0
@@ -784,6 +797,53 @@ function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
     if (k !== key) result[k] = v;
   }
   return result;
+}
+
+/**
+ * Retire les étoiles transitoires qui ne font plus partie des vrais records
+ * all-time (par exemple un ancien 16 x 8 désormais dominé par 18 x 9). Ce
+ * nettoyage protège aussi la détection de fatigue, qui utilise la date du
+ * dernier PR de la séance.
+ */
+function sanitizeActiveRecordMarks(
+  history: WorkoutSession[],
+  session: WorkoutSession,
+  catalog: Exercise[],
+  marks: Record<string, RecordKind>
+): Record<string, RecordKind> {
+  const next = { ...marks };
+  const exerciseById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
+  const historicalByExerciseId = new Map<string, LoggedSet[]>();
+  for (const historicalSession of history) {
+    if (historicalSession.isActive) continue;
+    for (const logged of historicalSession.exercises) {
+      const list = historicalByExerciseId.get(logged.exerciseId) ?? [];
+      list.push(...logged.sets);
+      historicalByExerciseId.set(logged.exerciseId, list);
+    }
+  }
+
+  for (const logged of session.exercises) {
+    const exercise = exerciseById.get(logged.exerciseId);
+    if (!exercise) continue;
+    const activeOccurrences = session.exercises.filter(
+      (candidate) => candidate.exerciseId === logged.exerciseId
+    );
+    const allSets = [
+      ...(historicalByExerciseId.get(logged.exerciseId) ?? []),
+      ...activeOccurrences.flatMap((candidate) => candidate.sets),
+    ];
+    const validIds = new Set<string>();
+    for (const occurrence of activeOccurrences) {
+      for (const setId of displayedRecordSetIDs(occurrence, allSets, exercise)) validIds.add(setId);
+    }
+    for (const occurrence of activeOccurrences) {
+      for (const set of occurrence.sets) {
+        if (next[set.id] !== undefined && !validIds.has(set.id)) delete next[set.id];
+      }
+    }
+  }
+  return next;
 }
 
 /** Reconstitue les PR de la séance active depuis les faits, y compris après un reload. */
@@ -1246,16 +1306,28 @@ export const useWorkoutStore = create<WorkoutState>()(
       setHasHydratedStorage: (value) => set({ hasHydratedStorage: value }),
       lastServerSnapshotAt: null,
 
-      hydrate: (data) => set({ ...data, history: sessionsNewestFirst(data.history) }),
+      hydrate: (data) => set((state) => {
+        const catalog = data.catalog.map(withKnownMuscleProfile);
+        const history = sessionsNewestFirst(data.history);
+        return {
+          ...data,
+          catalog,
+          history,
+          justHitRecord: state.active
+            ? sanitizeActiveRecordMarks(history, state.active, catalog, state.justHitRecord)
+            : state.justHitRecord,
+        };
+      }),
 
       setSettings: (settings) => set({ settings }),
       upsertExerciseInCatalog: (exercise) =>
         set((state) => {
-          const exists = state.catalog.some((e) => e.id === exercise.id);
+          const catalogExercise = withKnownMuscleProfile(exercise);
+          const exists = state.catalog.some((e) => e.id === catalogExercise.id);
           return {
             catalog: exists
-              ? state.catalog.map((e) => (e.id === exercise.id ? exercise : e))
-              : [...state.catalog, exercise],
+              ? state.catalog.map((e) => (e.id === catalogExercise.id ? catalogExercise : e))
+              : [...state.catalog, catalogExercise],
           };
         }),
       removeExerciseFromCatalog: (exerciseId) =>
@@ -1338,10 +1410,16 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!state.active) return null;
         const normalized = pruneEmptyExercisesForFinish(state.active);
         const finishedSession: WorkoutSession = { ...normalized, isActive: false, endTime: new Date() };
+        const validatedRecordMarks = sanitizeActiveRecordMarks(
+          state.history,
+          normalized,
+          state.catalog,
+          state.justHitRecord
+        );
         const snapshot = buildFinishedWorkoutSnapshot({
           session: finishedSession,
           exercises: state.catalog,
-          justHitRecord: state.justHitRecord,
+          justHitRecord: validatedRecordMarks,
           finishedSessions: state.history,
           goals: state.goals,
         });
@@ -1488,7 +1566,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!exercise) return;
         const orderIndex = state.active.exercises.reduce((max, e) => Math.max(max, e.orderIndex), -1) + 1;
         const logged = makeLoggedExercise(exercise, orderIndex);
-        set({ active: { ...state.active, exercises: [...state.active.exercises, logged] } });
+        const appended = { ...state.active, exercises: [...state.active.exercises, logged] };
+        set({ active: applyReorderAfterValidate(appended, logged.id) });
       },
 
       replaceExercise: (loggedExerciseId, newExerciseId) => {
@@ -1676,7 +1755,12 @@ export const useWorkoutStore = create<WorkoutState>()(
         const continuesPreviousRound = continuesLogicalSet || immediateKind !== null;
         const priorRecords =
           exercise && setType !== SetType.warmup && setType !== SetType.finisher && !continuesPreviousRound
-            ? get().records(exercise.id)
+            ? buildRecords(exercise, [
+                ...collectExerciseHistory(state.history, exercise.id).sets.flat(),
+                ...state.active.exercises
+                  .filter((candidate) => candidate.exerciseId === exercise.id)
+                  .flatMap((candidate) => orderedSets(candidate)),
+              ])
             : EMPTY_RECORDS;
         const nextRoundIndex =
           orderedSets(loggedExercise).reduce(
@@ -1819,6 +1903,13 @@ export const useWorkoutStore = create<WorkoutState>()(
             };
           }
         }
+
+        justHitRecord = sanitizeActiveRecordMarks(
+          state.history,
+          session,
+          state.catalog,
+          justHitRecord
+        );
 
         // Rest timer rules.
         const updatedLogged = findLoggedExercise(session, loggedExerciseId)!;

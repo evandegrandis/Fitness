@@ -7,7 +7,15 @@
  *   - Semaine calendaire → uniquement pour l'historique, jamais pour décider.
  */
 
-import { LEAVES_OF_PARENT, MUSCLE_PARENTS, parentDisplayName, type MuscleGroup, type MuscleParent } from "@/lib/models/muscles";
+import {
+  GOAL_MUSCLE_PARENTS,
+  LEAVES_OF_PARENT,
+  MUSCLE_PARENTS,
+  isGoalMuscleParent,
+  parentDisplayName,
+  type MuscleGroup,
+  type MuscleParent,
+} from "@/lib/models/muscles";
 import {
   aggregateCoefficient,
   type Exercise,
@@ -239,7 +247,7 @@ export function rolling7DayLeafBreakdown(
 function goalMapOf(goals: MuscleGoal[]): Map<MuscleParent, number> {
   const map = new Map<MuscleParent, number>();
   for (const g of goals) {
-    map.set(g.parent, g.weeklyGoalSets);
+    if (isGoalMuscleParent(g.parent)) map.set(g.parent, g.weeklyGoalSets);
   }
   return map;
 }
@@ -261,7 +269,7 @@ export function rolling7DayProgress(
   const goalMap = goalMapOf(goals);
 
   const result: ParentMuscleProgress[] = [];
-  for (const parent of MUSCLE_PARENTS) {
+  for (const parent of GOAL_MUSCLE_PARENTS) {
     const goal = goalMap.get(parent) ?? 0;
     const current = totals.get(parent) ?? 0;
     if (goal <= 0 && current <= 0) continue;

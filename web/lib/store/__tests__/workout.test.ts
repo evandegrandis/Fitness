@@ -89,6 +89,17 @@ const DIPS: ExerciseType = {
   fatigueClass: "light",
 };
 
+const CURL: ExerciseType = {
+  ...BENCH,
+  id: "ex-curl",
+  name: "Curl debout",
+  category: "pull",
+  repTargetMin: 6,
+  repTargetMax: 10,
+  smallestIncrement: 2,
+  fatigueClass: "medium",
+};
+
 function resetStore() {
   useWorkoutStore.setState({
     catalog: [],
@@ -112,6 +123,46 @@ function resetStore() {
     treatedVariantSuggestions: {},
     rotationAcceptedAt: {},
   });
+}
+
+function singleExerciseHistory(
+  exercise: ExerciseType,
+  id: string,
+  daysAgo: number,
+  weight: number,
+  reps: number
+) {
+  const date = new Date(Date.now() - daysAgo * 86_400_000);
+  return {
+    id,
+    date,
+    startTime: date,
+    endTime: date,
+    notes: "",
+    isActive: false,
+    templateName: null,
+    exercises: [{
+      id: `logged-${id}`,
+      orderIndex: 0,
+      notes: "",
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      supersetGroupId: null,
+      plateauWeakPoint: null,
+      sets: [{
+        id: `set-${id}`,
+        weight,
+        reps,
+        setType: "work" as const,
+        timestamp: date,
+        setSlotIndex: 0,
+        completed: true,
+        supersetRoundIndex: null,
+      }],
+    }],
+    supersetGroups: [],
+    cardioEntries: [],
+  };
 }
 
 describe("useWorkoutStore", () => {
@@ -492,13 +543,31 @@ describe("useWorkoutStore", () => {
     expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
   });
 
+  it.each([0, 1])(
+    "ne propose jamais une complétion absurde après 18×7 à RIR %i",
+    (reportedRir) => {
+      const store = useWorkoutStore.getState();
+      store.hydrate({ catalog: [CURL], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+      store.startEmpty("normal");
+      store.addExercise(CURL.id);
+      const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
+
+      store.logSet(loggedExerciseId, { weight: 18, reps: 7, reportedRir });
+      const next = useWorkoutStore.getState().suggestion(loggedExerciseId);
+
+      expect(next.reasonCodes).not.toContain("logical_set_completion");
+      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin);
+    }
+  );
+
   it("ne fusionne pas deux mini-séries séparées par un autre exercice", () => {
     const store = useWorkoutStore.getState();
     store.hydrate({ catalog: [BENCH, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
-    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+    const benchLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === BENCH.id)!;
+    const dipsLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === DIPS.id)!;
 
     store.logSet(benchLogged.id, { weight: 100, reps: 5 });
     store.logSet(dipsLogged.id, { weight: 0, reps: 8 });
@@ -509,7 +578,7 @@ describe("useWorkoutStore", () => {
       suggestionReasonCodes: completion.reasonCodes,
     });
 
-    const benchSets = useWorkoutStore.getState().active!.exercises[0].sets;
+    const benchSets = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === BENCH.id)!.sets;
     expect(benchSets[0].logicalSetId).not.toBe(benchSets[1].logicalSetId);
   });
 
@@ -550,7 +619,8 @@ describe("useWorkoutStore", () => {
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
-    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+    const benchLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === BENCH.id)!;
+    const dipsLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === DIPS.id)!;
     store.handleSupersetLink(benchLogged.id);
     store.handleSupersetLink(dipsLogged.id);
 
@@ -587,7 +657,8 @@ describe("useWorkoutStore", () => {
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
-    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+    const benchLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === BENCH.id)!;
+    const dipsLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === DIPS.id)!;
 
     // 10 séries effectives ouvrent la porte de position sans attendre 40 minutes.
     for (let index = 0; index < 10; index += 1) {
@@ -596,7 +667,7 @@ describe("useWorkoutStore", () => {
     store.logSet(dipsLogged.id, { weight: 0, reps: 16 });
 
     // Le reclassement silencieux a disparu : la série reste une série de travail…
-    const logged = useWorkoutStore.getState().active!.exercises[1].sets[0];
+    const logged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.id === dipsLogged.id)!.sets[0];
     expect(logged.setType).toBe("work");
     // …et c'est une proposition explicite qui est mise en attente.
     const prompt = useWorkoutStore.getState().pendingFinisherPrompt;
@@ -604,7 +675,7 @@ describe("useWorkoutStore", () => {
 
     useWorkoutStore.getState().confirmFinisherPrompt();
 
-    const finisher = useWorkoutStore.getState().active!.exercises[1].sets[0];
+    const finisher = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.id === dipsLogged.id)!.sets[0];
     expect(finisher.setType).toBe("finisher");
     expect(useWorkoutStore.getState().pendingFinisherPrompt).toBeNull();
     // Requalifier retire l'étoile de la piste NORMALE et n'en décerne aucune sur la piste
@@ -649,7 +720,8 @@ describe("useWorkoutStore", () => {
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(DIPS.id);
-    const [benchLogged, dipsLogged] = useWorkoutStore.getState().active!.exercises;
+    const benchLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === BENCH.id)!;
+    const dipsLogged = useWorkoutStore.getState().active!.exercises.find((exercise) => exercise.exerciseId === DIPS.id)!;
 
     for (let index = 0; index < 10; index += 1) {
       store.logSet(benchLogged.id, { weight: 80, reps: 8 });
@@ -663,7 +735,11 @@ describe("useWorkoutStore", () => {
     // Deuxième série tardive sur le même exercice : plus aucune sollicitation.
     store.logSet(dipsLogged.id, { weight: 0, reps: 18 });
     expect(useWorkoutStore.getState().pendingFinisherPrompt).toBeNull();
-    expect(useWorkoutStore.getState().active!.exercises[1].sets.every((s) => s.setType === "work")).toBe(true);
+    expect(
+      useWorkoutStore.getState().active!.exercises
+        .find((exercise) => exercise.id === dipsLogged.id)!
+        .sets.every((set) => set.setType === "work")
+    ).toBe(true);
   });
 
   it("ajoute et supprime le cardio sans créer de set de musculation", () => {
@@ -1072,6 +1148,56 @@ describe("records — un seul par type et par exercice dans la séance", () => {
 
     expect(heaviest).toHaveLength(1);
     expect(heaviest[0].weight).toBe(80);
+  });
+
+  it("ne crée pas de faux record sur une charge dominée par l'historique", () => {
+    const store = useWorkoutStore.getState();
+    const history = [
+      singleExerciseHistory(BENCH, "curl-20", 3, 20, 7),
+      singleExerciseHistory(BENCH, "curl-18", 6, 18, 9),
+    ];
+    store.hydrate({ catalog: [BENCH], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const logged = useWorkoutStore.getState().active!.exercises[0];
+
+    store.logSet(logged.id, { weight: 16, reps: 8 });
+
+    const newSet = useWorkoutStore.getState().active!.exercises[0].sets[0];
+    expect(useWorkoutStore.getState().justHitRecord[newSet.id]).toBeUndefined();
+  });
+
+  it("compare aussi avec une autre occurrence du même exercice dans la séance active", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    store.addExercise(BENCH.id);
+    const occurrences = useWorkoutStore.getState().active!.exercises;
+
+    store.logSet(occurrences[0].id, { weight: 18, reps: 9 });
+    store.logSet(occurrences[1].id, { weight: 16, reps: 8 });
+
+    const secondSet = useWorkoutStore
+      .getState()
+      .active!.exercises.find((exercise) => exercise.id === occurrences[1].id)!.sets[0];
+    expect(useWorkoutStore.getState().justHitRecord[secondSet.id]).toBeUndefined();
+  });
+
+  it("nettoie au rechargement une ancienne étoile devenue incohérente", () => {
+    const store = useWorkoutStore.getState();
+    const history = [singleExerciseHistory(BENCH, "stronger", 3, 18, 9)];
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const logged = useWorkoutStore.getState().active!.exercises[0];
+    store.logSet(logged.id, { weight: 16, reps: 8 });
+    const setId = useWorkoutStore.getState().active!.exercises[0].sets[0].id;
+    useWorkoutStore.setState({ justHitRecord: { [setId]: "repsAtWeight" } });
+
+    store.hydrate({ catalog: [BENCH], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+
+    expect(useWorkoutStore.getState().justHitRecord[setId]).toBeUndefined();
   });
 });
 
