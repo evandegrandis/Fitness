@@ -5,7 +5,7 @@ import { TrendingUp, AlertTriangle } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { rollingPriorities } from "@/lib/engines/effective-sets";
+import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import {
   bestBenchmarkSets,
   exerciseBenchmarkForSets,
@@ -56,7 +56,7 @@ function latestBenchmarkSets(history: WorkoutSession[], exercise: Exercise) {
  * couche Muscles, onglet par défaut) : 1-2 muscles les plus en déficit sur
  * la fenêtre roulante 7j + le repère de force (bandeau avancé/élite) le plus
  * proche et le plus loin d'être franchi. Rien de nouveau côté données —
- * relit `rolling7DayProgress`/`rollingPriorities` et `benchmark.ts`.
+ * relit `weeklyProgress`/`weeklyPriorities` et `benchmark.ts`.
  */
 export function ProgressInsights() {
   const history = useWorkoutStore((s) => s.history);
@@ -66,10 +66,10 @@ export function ProgressInsights() {
   const settings = useWorkoutStore((s) => s.settings);
 
   const muscleInsights = useMemo<Insight[]>(() => {
-    const priorities = rollingPriorities(history, catalog, goals, new Date(), active);
+    const priorities = weeklyPriorities(history, catalog, goals, new Date(), active);
     return priorities.slice(0, 2).map(([parent, remaining]) => ({
       key: `muscle-${parent}`,
-      text: `${parentDisplayName[parent]} : ${Math.ceil(remaining)} série${Math.ceil(remaining) > 1 ? "s" : ""} sous l'objectif 7j`,
+      text: `${parentDisplayName[parent]} : ${Math.ceil(remaining)} série${Math.ceil(remaining) > 1 ? "s" : ""} sous l'objectif de la semaine`,
       color: MUSCLE_DEFICIT_COLOR,
     }));
   }, [history, catalog, goals, active]);

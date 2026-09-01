@@ -23,7 +23,7 @@ import {
   type ExerciseRecords,
   type RecordKind,
 } from "@/lib/engines/records";
-import { rollingPriorities } from "@/lib/engines/effective-sets";
+import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import {
   effectiveLoad,
@@ -1105,7 +1105,7 @@ function preferredMonkBase(
   catalog: Exercise[],
   goals: MuscleGoal[]
 ): Exercise[] {
-  const priorities = rollingPriorities(history, catalog, goals);
+  const priorities = weeklyPriorities(history, catalog, goals);
   if (templates.length > 0) {
     const scored = templates.map((t) => ({ t, score: templateModeScoreMonk(t, catalog, priorities) }));
     scored.sort((a, b) => a.score - b.score);
@@ -1165,7 +1165,7 @@ function appendMonkDeficitExercises(
   maxExtra: number
 ): WorkoutSession {
   if (maxExtra <= 0) return session;
-  const priorities = rollingPriorities(history, catalog, goals);
+  const priorities = weeklyPriorities(history, catalog, goals);
   const targetParents = new Set(priorities.slice(0, 3).map(([parent]) => parent));
   if (targetParents.size === 0) return session;
 

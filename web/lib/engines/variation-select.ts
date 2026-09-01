@@ -22,7 +22,7 @@ import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSessi
 import { movementPatternDisplayName, plateauWeakPointDisplayName } from "@/lib/models/enums";
 import type { PlateauWeakPoint } from "@/lib/models/enums";
 import { collectExerciseHistory } from "@/lib/engines/patterns";
-import { rollingPriorities } from "@/lib/engines/effective-sets";
+import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import { bestE1RM } from "@/lib/engines/e1rm";
 import { buildRoster, type LifeCycle, workingSetsOf } from "@/lib/engines/lifecycle";
 
@@ -139,7 +139,7 @@ function novelty(current: Exercise, candidate: Exercise): number {
 
 /**
  * §6 "goalFit" (0.10) — recouvrement du candidat avec les muscles les plus en
- * retard (`rollingPriorities`), normalisé par le retard le plus important de
+ * retard (`weeklyPriorities`), normalisé par le retard le plus important de
  * la fenêtre.
  */
 function goalFit(candidate: Exercise, priorities: [MuscleParent, number][]): number {
@@ -257,7 +257,7 @@ function buildExplanation(
  * isolation/core sans pair — §9, jamais de crash).
  *
  * `now` : horloge injectable (défaut `new Date()`), utilisée uniquement pour
- * `rollingPriorities` (fenêtre roulante 7 jours de `goalFit`) — ajout Phase 1
+ * `weeklyPriorities` (fenêtre roulante 7 jours de `goalFit`) — ajout Phase 1
  * au-delà de la signature littérale du spec, pour garder ce moteur pur/déterministe
  * en test (comme `suggest({ now })` ailleurs dans `progression.ts`).
  */
@@ -272,7 +272,7 @@ export function selectAlternative(
   const passing = catalog.filter((candidate) => passesHardFilter(current, candidate));
   if (passing.length === 0) return null;
 
-  const priorities = rollingPriorities(history, catalog, goals, now);
+  const priorities = weeklyPriorities(history, catalog, goals, now);
 
   // VARIATION_CYCLING_SPEC §7 (P2.2) — le roster émerge ICI, sur cet appel précis : l'exercice
   // courant + tous les candidats qui passent le filtre dur (même movementPattern, cf. §7 "cible

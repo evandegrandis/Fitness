@@ -5,12 +5,11 @@ import {
   liveParentImpact,
   liveParentImpactForSets,
   parentSets,
-  parentTotals,
   parentsWorkedInWeek,
-  rolling7DayGlobalCoverage,
-  rolling7DayLeafBreakdown,
-  rolling7DayProgress,
-  rollingPriorities,
+  weeklyGlobalCoverage,
+  weeklyLeafBreakdown,
+  weeklyProgress,
+  weeklyPriorities,
   rollingStatusLine,
 } from "@/lib/engines/effective-sets";
 import { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
@@ -168,53 +167,38 @@ describe("leafSets / parentSets", () => {
   });
 });
 
-describe("fenêtre roulante 7 jours — demi-ouverte", () => {
-  it("inclut un set exactement à J-7 (borne de début incluse)", () => {
-    // referenceDate = 2026-07-14T12:00 → fenêtre = [2026-07-08T00:00, 2026-07-15T00:00)
-    const exactlyJMinus7 = new Date("2026-07-08T09:00:00");
-    const s = session(exactlyJMinus7, [loggedExercise("ex-bench", [set({ reps: 8 })])]);
-    const goals: MuscleGoal[] = [{ parent: MuscleParent.pectoraux, weeklyGoalSets: 10 }];
+describe("semaine civile en cours, demi-ouverte", () => {
+  // REF = mardi 14 juillet 2026 → fenêtre = [lundi 13/07 00:00, mercredi 15/07 00:00)
+  const GOALS: MuscleGoal[] = [{ parent: MuscleParent.pectoraux, weeklyGoalSets: 10 }];
+  const pectOf = (sessions: ReturnType<typeof session>[]) =>
+    weeklyProgress(sessions, [BENCH], GOALS, REF).find((p) => p.parent === MuscleParent.pectoraux);
 
-    const progress = rolling7DayProgress([s], [BENCH], goals, REF);
-    const pect = progress.find((p) => p.parent === MuscleParent.pectoraux);
-    expect(pect?.effectiveSets).toBeCloseTo(1.0);
+  it("inclut le lundi de la semaine en cours (borne de début incluse)", () => {
+    const lundi = session(new Date("2026-07-13T09:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
+    expect(pectOf([lundi])?.effectiveSets).toBeCloseTo(1.0);
   });
 
-  it("exclut un set juste avant J-7 (hors fenêtre)", () => {
-    const beforeWindow = new Date("2026-07-07T23:00:00");
-    const s = session(beforeWindow, [loggedExercise("ex-bench", [set({ reps: 8 })])]);
-    const goals: MuscleGoal[] = [{ parent: MuscleParent.pectoraux, weeklyGoalSets: 10 }];
-
-    const progress = rolling7DayProgress([s], [BENCH], goals, REF);
-    const pect = progress.find((p) => p.parent === MuscleParent.pectoraux);
-    expect(pect?.effectiveSets ?? 0).toBe(0);
+  it("exclut le dimanche précédent : la semaine repart à zéro", () => {
+    // C'est tout l'intérêt du changement — un déficit de la semaine passée ne suit plus.
+    const dimanche = session(new Date("2026-07-12T18:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
+    expect(pectOf([dimanche])?.effectiveSets ?? 0).toBe(0);
   });
 
-  it("exclut un set à la borne de fin (referenceDate + 1 jour, exclusif)", () => {
-    const afterWindow = new Date("2026-07-15T00:00:00");
-    const s = session(afterWindow, [loggedExercise("ex-bench", [set({ reps: 8 })])]);
-    const goals: MuscleGoal[] = [{ parent: MuscleParent.pectoraux, weeklyGoalSets: 10 }];
-
-    const progress = rolling7DayProgress([s], [BENCH], goals, REF);
-    const pect = progress.find((p) => p.parent === MuscleParent.pectoraux);
-    expect(pect?.effectiveSets ?? 0).toBe(0);
+  it("exclut aussi un set d'il y a six jours s'il est dans la semaine précédente", () => {
+    // Une fenêtre roulante l'aurait compté ; la semaine civile non.
+    const mercrediPasse = session(new Date("2026-07-08T18:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
+    expect(pectOf([mercrediPasse])?.effectiveSets ?? 0).toBe(0);
   });
 
-  it("exclut les sessions actives des totaux, sauf via liveSession explicite", () => {
-    const active = session(new Date("2026-07-13T10:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])], {
-      isActive: true,
-    });
-    const totalsWithoutLive = parentTotals([active], [BENCH], new Date("2026-07-08"), new Date("2026-07-15"));
-    expect(totalsWithoutLive.get(MuscleParent.pectoraux) ?? 0).toBe(0);
+  it("exclut la borne de fin (lendemain de referenceDate, exclusif)", () => {
+    const demain = session(new Date("2026-07-15T00:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
+    expect(pectOf([demain])?.effectiveSets ?? 0).toBe(0);
+  });
 
-    const totalsWithLive = parentTotals(
-      [active],
-      [BENCH],
-      new Date("2026-07-08"),
-      new Date("2026-07-15"),
-      active
-    );
-    expect(totalsWithLive.get(MuscleParent.pectoraux)).toBeCloseTo(1.0);
+  it("cumule tous les jours écoulés de la semaine", () => {
+    const lundi = session(new Date("2026-07-13T09:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
+    const mardi = session(new Date("2026-07-14T09:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
+    expect(pectOf([lundi, mardi])?.effectiveSets).toBeCloseTo(2.0);
   });
 });
 
@@ -224,7 +208,7 @@ describe("statuts de couverture aux 4 seuils", () => {
   function progressFor(completedSets: number) {
     const sets = Array.from({ length: completedSets }, () => set({ reps: 8 }));
     const s = session(new Date("2026-07-13T10:00:00"), [loggedExercise("ex-bench", sets)]);
-    return rolling7DayProgress([s], [BENCH], goals, REF).find((p) => p.parent === MuscleParent.pectoraux)!;
+    return weeklyProgress([s], [BENCH], goals, REF).find((p) => p.parent === MuscleParent.pectoraux)!;
   }
 
   it(">= 100% → covered", () => {
@@ -251,7 +235,7 @@ describe("statuts de couverture aux 4 seuils", () => {
   });
 });
 
-describe("rolling7DayGlobalCoverage / rollingStatusLine / rollingPriorities", () => {
+describe("weeklyGlobalCoverage / rollingStatusLine / weeklyPriorities", () => {
   it("calcule la couverture globale pondérée et exclut les priorités couvertes", () => {
     const goals: MuscleGoal[] = [
       { parent: MuscleParent.pectoraux, weeklyGoalSets: 10 },
@@ -262,11 +246,11 @@ describe("rolling7DayGlobalCoverage / rollingStatusLine / rollingPriorities", ()
 
     // Pectoraux: 10 effective / 10 goal = 100% couvert (coeff max 1.0)
     // Triceps: 3 effective / 5 goal = 60% (coeff 0.3 x 10 sets = 3.0)
-    const globalCoverage = rolling7DayGlobalCoverage([s], [BENCH], goals, REF);
+    const globalCoverage = weeklyGlobalCoverage([s], [BENCH], goals, REF);
     expect(globalCoverage).toBeCloseTo((10 + 3) / 15);
 
-    const progress = rolling7DayProgress([s], [BENCH], goals, REF);
-    const priorities = rollingPriorities([s], [BENCH], goals, REF);
+    const progress = weeklyProgress([s], [BENCH], goals, REF);
+    const priorities = weeklyPriorities([s], [BENCH], goals, REF);
     // Triceps reste prioritaire (remaining = 2 >= 0.5), pectoraux non (remaining = 0)
     expect(priorities).toEqual([[MuscleParent.triceps, 2]]);
 
@@ -290,10 +274,10 @@ describe("coverageForWeek / parentsWorkedInWeek — semaine calendaire (historiq
   });
 });
 
-describe("rolling7DayLeafBreakdown et liveParentImpact", () => {
+describe("weeklyLeafBreakdown et liveParentImpact", () => {
   it("trie les feuilles par sets décroissants", () => {
     const s = session(new Date("2026-07-13T10:00:00"), [loggedExercise("ex-bench", [set({ reps: 8 })])]);
-    const breakdown = rolling7DayLeafBreakdown([s], [BENCH], MuscleParent.pectoraux, REF);
+    const breakdown = weeklyLeafBreakdown([s], [BENCH], MuscleParent.pectoraux, REF);
     expect(breakdown[0].leaf).toBe(MuscleGroup.pectStern); // 1.0 > 0.8
     expect(breakdown[0].sets).toBeCloseTo(1.0);
     expect(breakdown[1].leaf).toBe(MuscleGroup.pectClav);

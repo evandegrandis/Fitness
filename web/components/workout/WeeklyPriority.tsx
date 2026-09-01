@@ -30,7 +30,7 @@ export function WeeklyPriority({
   const rows = priorities.slice(0, MAX_ROWS);
   return (
     <div className="glass glass-card">
-      <p className="eyebrow">Objectifs 7 jours</p>
+      <p className="eyebrow">Objectifs de la semaine</p>
       {rows.length === 0 ? (
         <p className="mt-2.5 text-sm text-[--color-fg]">Tous couverts ✓</p>
       ) : (

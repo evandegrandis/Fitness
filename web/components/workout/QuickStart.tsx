@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { cardioNudge, cardioProgress } from "@/lib/engines/cardio";
 import { Settings } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { rolling7DayProgress } from "@/lib/engines/effective-sets";
+import { weeklyProgress } from "@/lib/engines/effective-sets";
 import { recentAchievements } from "@/lib/engines/achievements";
 import { recommendTemplateId } from "@/lib/engines/template-recommendation";
 import { WeeklyPriority } from "./WeeklyPriority";
@@ -24,12 +24,12 @@ export function QuickStart() {
   const startEmpty = useWorkoutStore((s) => s.startEmpty);
   const startCardio = useWorkoutStore((s) => s.startCardio);
 
-  // Miroir du filtre de `rollingPriorities` (effective-sets.ts) — on garde ici
+  // Miroir du filtre de `weeklyPriorities` (effective-sets.ts) — on garde ici
   // l'objet `ParentMuscleProgress` complet (coverage %, goalSets) pour l'affichage
   // en relevé, plutôt que le tuple [parent, remaining] appauvri.
   const priorities = useMemo(
     () =>
-      rolling7DayProgress(history, catalog, goals)
+      weeklyProgress(history, catalog, goals)
         .filter((p) => p.goalSets > 0 && p.remaining >= 0.5)
         .sort((a, b) => b.remaining - a.remaining),
     [history, catalog, goals]

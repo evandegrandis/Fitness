@@ -141,3 +141,29 @@ describe("garde-fous", () => {
     expect(SESSION_FOCUS.MAX_ROWS).toBeLessThanOrEqual(14);
   });
 });
+
+describe("groupes suivis sans objectif", () => {
+  const CURL = exercise("ex-curl", MuscleGroup.flechisseurs);
+  const CATALOG_PLUS = [DELT, TRI, QUAD, CURL];
+
+  it("remonte le volume d'avant-bras sans jamais en faire une priorité", () => {
+    // Evan veut voir combien il en a fait, pas se voir réclamer un quota.
+    const live = session(NOW, [[CURL, 4]], true);
+    const focus = sessionFocus([session(daysAgo(2), [[DELT, 2]])], CATALOG_PLUS, GOALS, live, NOW);
+
+    const forearms = focus.tracked.find((t) => t.parent === MuscleParent.forearms);
+    expect(forearms?.effectiveSets).toBeGreaterThan(0);
+    expect(focus.priorities.map((p) => p.parent)).not.toContain(MuscleParent.forearms);
+  });
+
+  it("reste vide tant qu'aucune série ne les a sollicités", () => {
+    const focus = sessionFocus([session(daysAgo(2), [[DELT, 2]])], CATALOG_PLUS, GOALS, null, NOW);
+    expect(focus.tracked).toEqual([]);
+  });
+
+  it("ne compte que la semaine en cours", () => {
+    // Une séance de la semaine passée ne doit plus apparaître : la semaine se construit.
+    const vieux = session(daysAgo(10), [[CURL, 5]]);
+    expect(sessionFocus([vieux], CATALOG_PLUS, GOALS, null, NOW).tracked).toEqual([]);
+  });
+});

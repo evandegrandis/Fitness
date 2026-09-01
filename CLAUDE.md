@@ -55,7 +55,7 @@ Exercise:
   benchmarkLow/High?: Double  — optional benchmark bands
 
 MuscleParent (12 groups) aggregates via max(leaf coefficients) — no double-counting
-Rolling 7-day window for guidance; ISO calendar-week for history display only
+Calendar week (Monday to today) for guidance AND history display
 ```
 
 ---
@@ -107,7 +107,7 @@ Rolling 7-day window for guidance; ISO calendar-week for history display only
 - Superset system (manual + auto-detect, round tracking, rest-aware)
 - Live Activity: 7 intents (Validate, Skip, Next, +Kg, -Kg, +Rep, -Rep) — `WorkoutLiveActivityIntents.swift`
 - Records (4 types, caching, set-level star badges, achievement overlay)
-- Effective sets + rolling 7-day muscle coverage (priority chips during workout)
+- Effective sets + calendar-week muscle coverage (priority chips during workout)
 - Beast Mode: weight bias +1 increment on set 2+, conditional session extension — `WorkoutViewModel.swift:1165-1321`
 - Monk Mode: deficit-aware seeding, fatigue-aware reordering after each set — `WorkoutViewModel.swift:1228-1264`
 - Exercise progress charts (weight + reps, drag-to-scrub interaction)
@@ -135,6 +135,8 @@ Rolling 7-day window for guidance; ISO calendar-week for history display only
 | Records cache with explicit invalidation | Lazy rebuild was causing stale PRs to flash during same-session multi-set | 2026-04 |
 | Effective sets use max(leaf coeff) for parent | Sum would double-count synergists (e.g. triceps counted for both chest and triceps) | 2026-04 |
 | Rolling 7-day (not calendar week) for decisions | Calendar week resets Monday — creates artificial urgency; rolling is smoother | 2026-04 |
+| REVERSED: calendar week for decisions | Rolling window always dragged the previous days' deficit, so a goal was never "reached", only less missed. Evan found it discouraging: he wants the week to be BUILT, resetting Monday | 2026-08 |
+| Forearms and obliques tracked without a goal | Volume shown, no target: they work as secondaries, and a quota would push toward dedicated work he does not want | 2026-08 |
 | Suggest from today's sets, not last session replay | Old behavior caused inflated set 2 suggestions after a good previous session | 2026-04 |
 | Beast Mode = weight bias NOT extra reps | User explicitly: "harder on weight, not reps" | 2026-04 |
 | Monk Mode starts from usual-workout base | User: "familiar feel, not random session" | 2026-04 |

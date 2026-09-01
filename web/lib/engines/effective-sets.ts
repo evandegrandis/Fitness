@@ -4,13 +4,14 @@
  *
  * Source de vérité unique pour la couverture musculaire. Deux fenêtres :
  *   - Roulante 7 jours → boucle de guidance principale (accueil, chips, statut).
- *   - Semaine calendaire → uniquement pour l'historique, jamais pour décider.
+ *   - Semaine CIVILE (lundi → aujourd'hui) → fenêtre de décision ET d'affichage.
  */
 
 import {
   GOAL_MUSCLE_PARENTS,
   LEAVES_OF_PARENT,
   MUSCLE_PARENTS,
+  TRACKED_ONLY_PARENTS,
   isGoalMuscleParent,
   parentDisplayName,
   type MuscleGroup,
@@ -215,25 +216,36 @@ export function leafTotals(
   return totals;
 }
 
-/** Fenêtre roulante 7 jours demi-ouverte se terminant à `referenceDate` (inclus). */
-function rolling7DayWindow(referenceDate: Date): { start: Date; end: Date } {
+/**
+ * Semaine CIVILE en cours, du lundi 00:00 à la fin de `referenceDate` (demi-ouverte).
+ *
+ * Remplace la fenêtre roulante de 7 jours : celle-ci traînait en permanence le déficit des jours
+ * précédents, si bien qu'un objectif n'était jamais « atteint », seulement moins raté. On voyait
+ * toujours ce qui manquait. La semaine civile se CONSTRUIT : elle repart à zéro le lundi, et ce
+ * qui est fait reste acquis jusqu'à dimanche.
+ *
+ * Lundi comme premier jour (convention FR/ISO), pas dimanche.
+ */
+export function currentWeekWindow(referenceDate: Date): { start: Date; end: Date } {
   const end = addDays(startOfDay(referenceDate), 1);
-  const start = addDays(end, -7);
-  return { start, end };
+  const day = startOfDay(referenceDate).getDay();
+  // getDay() : 0 = dimanche. On ramène au lundi précédent (dimanche compte pour 6 jours après).
+  const daysSinceMonday = (day + 6) % 7;
+  return { start: addDays(startOfDay(referenceDate), -daysSinceMonday), end };
 }
 
 /**
- * Miroir de `EffectiveSetsEngine.rolling7DayLeafBreakdown`. Répartition
- * niveau feuille pour la fenêtre roulante 7 jours, filtrée à un parent donné.
+ * Miroir de `EffectiveSetsEngine.weeklyLeafBreakdown`. Répartition
+ * niveau feuille pour la semaine civile en cours, filtrée à un parent donné.
  */
-export function rolling7DayLeafBreakdown(
+export function weeklyLeafBreakdown(
   sessions: WorkoutSession[],
   exercises: Exercise[],
   parent: MuscleParent,
   referenceDate: Date = new Date(),
   liveSession?: WorkoutSession | null
 ): { leaf: MuscleGroup; sets: number }[] {
-  const { start, end } = rolling7DayWindow(referenceDate);
+  const { start, end } = currentWeekWindow(referenceDate);
   const totals = leafTotals(sessions, exercises, start, end, liveSession);
   return LEAVES_OF_PARENT[parent]
     .map((leaf) => ({ leaf, sets: totals.get(leaf) ?? 0 }))
@@ -253,18 +265,18 @@ function goalMapOf(goals: MuscleGoal[]): Map<MuscleParent, number> {
 }
 
 /**
- * Miroir de `EffectiveSetsEngine.rolling7DayProgress`. Couverture niveau
+ * Miroir de `EffectiveSetsEngine.weeklyProgress`. Couverture niveau
  * parent sur les 7 derniers jours se terminant à `referenceDate`. Le modèle
  * canonique "que faire aujourd'hui ?".
  */
-export function rolling7DayProgress(
+export function weeklyProgress(
   sessions: WorkoutSession[],
   exercises: Exercise[],
   goals: MuscleGoal[],
   referenceDate: Date = new Date(),
   liveSession?: WorkoutSession | null
 ): ParentMuscleProgress[] {
-  const { start, end } = rolling7DayWindow(referenceDate);
+  const { start, end } = currentWeekWindow(referenceDate);
   const totals = parentTotals(sessions, exercises, start, end, liveSession);
   const goalMap = goalMapOf(goals);
 
@@ -279,18 +291,39 @@ export function rolling7DayProgress(
 }
 
 /**
- * Miroir de `EffectiveSetsEngine.rolling7DayGlobalCoverage`. Moyenne
+ * Volume de la semaine pour les groupes SUIVIS SANS objectif (`TRACKED_ONLY_PARENTS`).
+ *
+ * Renvoyé à part de `weeklyProgress` : ces groupes n'ont pas de cible, donc pas de déficit, pas
+ * de statut de couverture et aucune place dans les priorités. Ils répondent seulement à
+ * « j'en ai fait combien ? ».
+ */
+export function weeklyTrackedVolume(
+  sessions: WorkoutSession[],
+  exercises: Exercise[],
+  referenceDate: Date = new Date(),
+  liveSession?: WorkoutSession | null
+): { parent: MuscleParent; effectiveSets: number }[] {
+  const { start, end } = currentWeekWindow(referenceDate);
+  const totals = parentTotals(sessions, exercises, start, end, liveSession);
+  return TRACKED_ONLY_PARENTS.map((parent) => ({
+    parent,
+    effectiveSets: Math.round((totals.get(parent) ?? 0) * 10) / 10,
+  })).filter((row) => row.effectiveSets > 0);
+}
+
+/**
+ * Miroir de `EffectiveSetsEngine.weeklyGlobalCoverage`. Moyenne
  * pondérée de la couverture par parent (plafonnée à 1.0) sur tous les
  * parents à objectif non nul. 0..1.
  */
-export function rolling7DayGlobalCoverage(
+export function weeklyGlobalCoverage(
   sessions: WorkoutSession[],
   exercises: Exercise[],
   goals: MuscleGoal[],
   referenceDate: Date = new Date(),
   liveSession?: WorkoutSession | null
 ): number {
-  const progress = rolling7DayProgress(sessions, exercises, goals, referenceDate, liveSession);
+  const progress = weeklyProgress(sessions, exercises, goals, referenceDate, liveSession);
   const withGoals = progress.filter((p) => p.goalSets > 0);
   if (withGoals.length === 0) return 0;
   const totalGoal = withGoals.reduce((acc, p) => acc + p.goalSets, 0);
@@ -358,7 +391,7 @@ export function rollingStatusLine(
     .sort((a, b) => b.remaining - a.remaining);
 
   if (priorities.length === 0) {
-    return `Couverture ${pct}% sur 7 jours — tu es dans ta zone`;
+    return `Couverture ${pct}% cette semaine : tu es dans ta zone`;
   }
   const names = priorities
     .slice(0, 2)
@@ -367,7 +400,7 @@ export function rollingStatusLine(
   if (pct >= 70) {
     return `Couverture ${pct}% — focus ${names}`;
   }
-  return `Couverture ${pct}% sur 7 jours — ${names} à renforcer`;
+  return `Couverture ${pct}% cette semaine : ${names} à renforcer`;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,18 +408,18 @@ export function rollingStatusLine(
 // ---------------------------------------------------------------------------
 
 /**
- * Miroir de `EffectiveSetsEngine.rollingPriorities`. Priorité des parents sur
- * la fenêtre roulante 7 jours, ordonnée par nombre de sets manquants. Les
+ * Miroir de `EffectiveSetsEngine.weeklyPriorities`. Priorité des parents sur
+ * la semaine civile en cours, ordonnée par nombre de sets manquants. Les
  * muscles à objectif entièrement couvert sont exclus.
  */
-export function rollingPriorities(
+export function weeklyPriorities(
   sessions: WorkoutSession[],
   exercises: Exercise[],
   goals: MuscleGoal[],
   referenceDate: Date = new Date(),
   liveSession?: WorkoutSession | null
 ): [MuscleParent, number][] {
-  const progress = rolling7DayProgress(sessions, exercises, goals, referenceDate, liveSession);
+  const progress = weeklyProgress(sessions, exercises, goals, referenceDate, liveSession);
   return progress
     .filter((p) => p.goalSets > 0 && p.remaining >= 0.5)
     .sort((a, b) => b.remaining - a.remaining)

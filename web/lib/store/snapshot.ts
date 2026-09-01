@@ -4,7 +4,7 @@
  */
 
 import { normalRecordSets, type RecordKind } from "@/lib/engines/records";
-import { parentSets, rolling7DayProgress } from "@/lib/engines/effective-sets";
+import { parentSets, weeklyProgress } from "@/lib/engines/effective-sets";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { SetType } from "@/lib/models/enums";
 import { parentDisplayName, type MuscleParent } from "@/lib/models/muscles";
@@ -130,7 +130,7 @@ export function buildFinishedWorkoutSnapshot(params: BuildSnapshotParams): Finis
     }));
   });
 
-  const progress = rolling7DayProgress(finishedSessions, exercises, goals, session.date, session);
+  const progress = weeklyProgress(finishedSessions, exercises, goals, session.date, session);
   const remainingMuscles: MuscleImpact[] = progress
     .filter((p) => p.remaining > 0)
     .sort((a, b) => {

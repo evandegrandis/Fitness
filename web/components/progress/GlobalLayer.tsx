@@ -7,7 +7,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { WeightTrendCard } from "@/components/progress/WeightTrendCard";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { rolling7DayProgress } from "@/lib/engines/effective-sets";
+import { weeklyProgress } from "@/lib/engines/effective-sets";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import {
   aggregateCoefficient,
@@ -97,7 +97,7 @@ export function GlobalLayer() {
   }, [selectedBucket, finished, exerciseById, recoveryCheckins]);
 
   const radarData: RadarDatum[] = useMemo(() => {
-    return rolling7DayProgress(finished, catalog, goals, referenceDate, active)
+    return weeklyProgress(finished, catalog, goals, referenceDate, active)
       .filter((progress) => progress.goalSets > 0)
       .map((progress) => ({ parent: progress.parent, value: progress.percentDisplay }));
   }, [finished, catalog, goals, referenceDate, active]);

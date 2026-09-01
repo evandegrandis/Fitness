@@ -34,7 +34,7 @@ import {
   type SuggestParams,
   type SuggestionMode as SuggestionModeT,
 } from "@/lib/engines/progression";
-import { coverageStatusLabel, rolling7DayProgress, type ParentMuscleProgress } from "@/lib/engines/effective-sets";
+import { coverageStatusLabel, weeklyProgress, type ParentMuscleProgress } from "@/lib/engines/effective-sets";
 import { HISTORY_WINDOW } from "@/lib/engines/constants";
 import { physiologicalSetUnits, setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { collectExerciseHistory, type HistoryPosition } from "@/lib/engines/patterns";
@@ -670,7 +670,7 @@ function buildCoverage(
     if (parent) workedParents.add(parent);
   }
 
-  const parentProgress = rolling7DayProgress(history, catalog, goals, session.date, session);
+  const parentProgress = weeklyProgress(history, catalog, goals, session.date, session);
 
   const stillNeedsWork = parentProgress
     .filter((p) => p.status === "priority" || p.status === "toStrengthen")
@@ -682,7 +682,7 @@ function buildCoverage(
     workedNames.length === 0
       ? "Aucun groupe musculaire travaillé"
       : stillNeedsWork.length === 0
-        ? `Groupes travaillés : ${workedNames.join(", ")} — couverture 7 jours au vert`
+        ? `Groupes travaillés : ${workedNames.join(", ")} — couverture de la semaine au vert`
         : `Groupes travaillés : ${workedNames.join(", ")} — encore à renforcer : ${stillNeedsWork
             .slice(0, 2)
             .map((s) => parentDisplayName[s.parent].toLowerCase())

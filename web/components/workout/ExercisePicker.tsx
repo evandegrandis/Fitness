@@ -5,7 +5,7 @@ import { Film, Plus, Search, Sparkles, Star } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { matchesSearch } from "@/lib/data/exercise-search";
-import { rollingPriorities } from "@/lib/engines/effective-sets";
+import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +43,7 @@ export function ExercisePicker({
 
   const deficitScoreByExerciseId = useMemo(() => {
     if (!history || !goals) return null;
-    const priorities = rollingPriorities(history, catalog, goals);
+    const priorities = weeklyPriorities(history, catalog, goals);
     if (priorities.length === 0) return null;
     const weightByParent = new Map(priorities.map(([parent, remaining], i) => [parent, remaining * (priorities.length - i)]));
     const scores = new Map<string, number>();
@@ -160,7 +160,7 @@ export function ExercisePicker({
 
         <div className="mt-4 flex-1 overflow-y-auto pb-4">
           {query.trim() === "" && deficitSort && suggested.length > 0 && (
-            <ExerciseSection title="Suggéré (déficit 7j)" exercises={suggested} onPick={pick} />
+            <ExerciseSection title="Suggéré (déficit semaine)" exercises={suggested} onPick={pick} />
           )}
           {query.trim() === "" && !deficitSort && favorites.length > 0 && (
             <ExerciseSection title="Favoris" exercises={favorites} onPick={pick} />

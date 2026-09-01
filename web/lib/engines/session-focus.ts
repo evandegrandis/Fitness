@@ -15,7 +15,8 @@
 
 import {
   parentSets,
-  rolling7DayProgress,
+  weeklyProgress,
+  weeklyTrackedVolume,
   type ParentMuscleProgress,
 } from "@/lib/engines/effective-sets";
 import {
@@ -66,6 +67,11 @@ export interface SessionFocus {
   workedToday: SessionFocusRow[];
   /** Nombre de déficits relégués en fin de liste faute d'activité récente. */
   dormantCount: number;
+  /**
+   * Groupes suivis SANS objectif (avant-bras, obliques) : information pure, jamais une consigne.
+   * Vides tant qu'aucune série ne les a sollicités cette semaine.
+   */
+  tracked: { parent: MuscleParent; effectiveSets: number }[];
 }
 
 const DAY_MS = 86_400_000;
@@ -198,7 +204,7 @@ export function sessionFocus(
   liveSession: WorkoutSession | null,
   referenceDate: Date = new Date()
 ): SessionFocus {
-  const progress = rolling7DayProgress(history, exercises, goals, referenceDate, liveSession);
+  const progress = weeklyProgress(history, exercises, goals, referenceDate, liveSession);
   const recency = activityRecency(history, exercises);
   const doneNow = doneIn(liveSession, exercises);
   const planned = plannedParents(liveSession, exercises);
@@ -246,5 +252,7 @@ export function sessionFocus(
 
   const dormantCount = priorities.filter((p) => p.isDormant).length;
 
-  return { priorities, workedToday, dormantCount };
+  const tracked = weeklyTrackedVolume(history, exercises, referenceDate, liveSession);
+
+  return { priorities, workedToday, dormantCount, tracked };
 }

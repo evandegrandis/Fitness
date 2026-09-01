@@ -2085,7 +2085,7 @@ export interface SuggestParams {
   /**
    * VARIATION_CYCLING_SPEC §6 — historique brut MULTI-exercices (`WorkoutSession[]`, plus récent en
    * premier), distinct de `recentHistory` (mono-exercice, `LoggedSet[][]`) : nécessaire à
-   * `selectAlternative` (`collectExerciseHistory`/`rollingPriorities` regardent d'autres exercices
+   * `selectAlternative` (`collectExerciseHistory`/`weeklyPriorities` regardent d'autres exercices
    * que celui-ci). `undefined` => pas de proposition de rotation (§9, dégradation gracieuse).
    */
   sessionHistory?: WorkoutSession[];

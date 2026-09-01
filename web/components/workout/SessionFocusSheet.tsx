@@ -74,7 +74,7 @@ export function SessionFocusButton({
         {focus.priorities.length > 0 ? (
           <>
             <p className="mt-1 text-xs text-[--color-fg-muted]">
-              Déficits sur 7 jours, du plus important au plus petit. Les muscles hors routine sont relégués à la fin.
+              Ce qu&apos;il reste à construire cette semaine, du plus important au plus petit. Les muscles hors routine sont relégués à la fin.
             </p>
             <div className="mt-3 flex flex-col">
               {focus.priorities.map((row, i) => (
@@ -88,7 +88,7 @@ export function SessionFocusButton({
             </div>
           </>
         ) : (
-          <p className="mt-3 text-sm text-[--color-fg]">Tous tes objectifs 7 jours sont couverts.</p>
+          <p className="mt-3 text-sm text-[--color-fg]">Tous tes objectifs de la semaine sont couverts.</p>
         )}
 
         {focus.workedToday.length > 0 && (
@@ -101,6 +101,22 @@ export function SessionFocusButton({
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {focus.tracked.length > 0 && (
+          <div className="mt-5 border-t border-white/[0.06] pt-3">
+            <p className="eyebrow">Suivi, sans objectif</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {focus.tracked.map((row) => (
+                <span key={row.parent} className="pill text-xs text-[--color-fg-muted]">
+                  {parentShortName[row.parent]} · {row.effectiveSets}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 text-[0.7rem] text-[--color-fg-faint]">
+              Volume de la semaine, à titre indicatif : aucun quota, rien à rattraper.
+            </p>
           </div>
         )}
 

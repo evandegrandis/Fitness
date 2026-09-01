@@ -12,8 +12,8 @@ import {
   coverageStatusAccent,
   coverageStatusLabel,
   parentTotals,
-  rolling7DayLeafBreakdown,
-  rolling7DayProgress,
+  weeklyLeafBreakdown,
+  weeklyProgress,
   type ParentMuscleProgress,
 } from "@/lib/engines/effective-sets";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
@@ -55,7 +55,7 @@ export function MusclesLayer() {
   const [expanded, setExpanded] = useState<MuscleParent | null>(null);
 
   const progress = useMemo(
-    () => rolling7DayProgress(history, catalog, goals, new Date(), active),
+    () => weeklyProgress(history, catalog, goals, new Date(), active),
     [history, catalog, goals, active]
   );
 
@@ -186,7 +186,7 @@ function MuscleDetail({
   active: WorkoutSession | null;
 }) {
   const leafBreakdown = useMemo(
-    () => rolling7DayLeafBreakdown(history, catalog, parent, new Date(), active),
+    () => weeklyLeafBreakdown(history, catalog, parent, new Date(), active),
     [history, catalog, parent, active]
   );
   const maxLeaf = Math.max(1, ...leafBreakdown.map((l) => l.sets));
@@ -214,7 +214,7 @@ function MuscleDetail({
     <div className="space-y-4 border-t border-white/8 px-4 pb-4 pt-3">
       {/* Sous-groupes */}
       <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-faint]">Sous-groupes (7j)</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-faint]">Sous-groupes (semaine)</p>
         {leafBreakdown
           .filter((l) => l.sets > 0)
           .map((l) => (

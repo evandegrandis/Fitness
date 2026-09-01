@@ -41,8 +41,20 @@ export const MUSCLE_PARENTS: MuscleParent[] = Object.values(MuscleParent);
  * de volume : ils ne doivent donc réapparaître ni dans les réglages, ni dans
  * la couverture, même via un ancien cache ou backup.
  */
+/**
+ * Groupes SUIVIS mais sans objectif hebdomadaire : leur volume est compté et affiché, il ne crée
+ * jamais de déficit et n'oriente donc pas la séance.
+ *
+ * Evan veut voir combien d'avant-bras il a fait sans que l'app lui réclame un quota : ces muscles
+ * travaillent surtout en secondaire (tirages, curls, portés), et leur fixer une cible pousserait
+ * à ajouter des exercices dédiés qu'il ne veut pas. Même raisonnement pour les obliques.
+ */
+export const TRACKED_ONLY_PARENTS: MuscleParent[] = [MuscleParent.obliques, MuscleParent.forearms];
+
+const TRACKED_ONLY_SET = new Set<MuscleParent>(TRACKED_ONLY_PARENTS);
+
 export const GOAL_MUSCLE_PARENTS: MuscleParent[] = MUSCLE_PARENTS.filter(
-  (parent) => parent !== MuscleParent.obliques
+  (parent) => !TRACKED_ONLY_SET.has(parent)
 );
 
 const GOAL_MUSCLE_PARENT_SET = new Set<MuscleParent>(GOAL_MUSCLE_PARENTS);
