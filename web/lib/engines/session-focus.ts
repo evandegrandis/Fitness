@@ -2,7 +2,7 @@
  * « Quoi faire maintenant ? » : priorités musculaires vivantes pendant la séance.
  *
  * Le moteur distingue volontairement :
- *   - le déficit sur les 7 derniers jours ;
+ *   - le déficit de la semaine en cours ;
  *   - la récence réelle dans l'historique (pas `Exercise.lastUsed`, qui peut être périmé) ;
  *   - ce qui est déjà prévu ou réalisé dans la séance en cours.
  *

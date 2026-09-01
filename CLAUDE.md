@@ -136,6 +136,7 @@ Calendar week (Monday to today) for guidance AND history display
 | Effective sets use max(leaf coeff) for parent | Sum would double-count synergists (e.g. triceps counted for both chest and triceps) | 2026-04 |
 | Rolling 7-day (not calendar week) for decisions | Calendar week resets Monday — creates artificial urgency; rolling is smoother | 2026-04 |
 | REVERSED: calendar week for decisions | Rolling window always dragged the previous days' deficit, so a goal was never "reached", only less missed. Evan found it discouraging: he wants the week to be BUILT, resetting Monday | 2026-08 |
+| Cardio volume on the calendar week, gap on the full history | The 150 min counter resets Monday like the muscle goals, but the days-since-last-cardio gap is measured across the whole history: the insulin-sensitivity benefit fades in days, it does not know about Mondays. Otherwise a Monday morning would erase Sunday's ride | 2026-09 |
 | Forearms and obliques tracked without a goal | Volume shown, no target: they work as secondaries, and a quota would push toward dedicated work he does not want | 2026-08 |
 | Suggest from today's sets, not last session replay | Old behavior caused inflated set 2 suggestions after a good previous session | 2026-04 |
 | Beast Mode = weight bias NOT extra reps | User explicitly: "harder on weight, not reps" | 2026-04 |

@@ -172,7 +172,7 @@ export function GlobalLayer() {
       {/* Radar musculaire */}
       <GlassCard>
         <p className="mb-2 text-sm font-semibold text-[--color-fg]">
-          Objectifs musculaires · 7 derniers jours
+          Objectifs musculaires · cette semaine
         </p>
         <p className="mb-2 text-xs text-[--color-fg-faint]">
           Chaque axe montre la part de ton objectif hebdomadaire atteinte, plafonnée à 100%.
@@ -192,7 +192,7 @@ export function GlobalLayer() {
                   {parentDisplayName[radarParent]} — top exercices
                 </p>
                 {radarContribution.length === 0 ? (
-                  <p className="text-xs text-[--color-fg-faint]">Aucune contribution sur les 7 derniers jours.</p>
+                  <p className="text-xs text-[--color-fg-faint]">Aucune contribution cette semaine.</p>
                 ) : (
                   radarContribution.map((c, i) => (
                     <div key={c.name} className="flex items-center justify-between text-sm">

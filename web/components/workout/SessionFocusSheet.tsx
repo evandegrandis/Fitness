@@ -14,7 +14,7 @@ import type { WorkoutSession } from "@/lib/models/types";
 
 /**
  * « Quoi faire maintenant ? ». Un bouton discret dans l'en-tête, un panneau qui se lit entre deux
- * séries : ce qui reste à couvrir sur 7 jours, ce qui est déjà fait aujourd'hui.
+ * séries : ce qui reste à construire cette semaine, ce qui est déjà fait aujourd'hui.
  *
  * Recalculé à l'ouverture depuis la séance en cours, donc il suit ce qui vient d'être loggué.
  */
@@ -159,7 +159,7 @@ function FocusRow({
         </span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] text-[--color-fg-faint]">
-        <span className="tnum">{Math.round(row.effectiveSets * 10) / 10} / {row.goalSets} séries sur 7 j</span>
+        <span className="tnum">{Math.round(row.effectiveSets * 10) / 10} / {row.goalSets} séries cette semaine</span>
         <span>{row.isDormant ? "hors routine · " : ""}{lastTrained}</span>
       </div>
       <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/[0.07]">

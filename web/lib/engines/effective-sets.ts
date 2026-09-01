@@ -2,9 +2,8 @@
  * Agrégation "effective sets" par muscle, miroir exact de
  * `Jeera/Engines/EffectiveSetsEngine.swift`.
  *
- * Source de vérité unique pour la couverture musculaire. Deux fenêtres :
- *   - Roulante 7 jours → boucle de guidance principale (accueil, chips, statut).
- *   - Semaine CIVILE (lundi → aujourd'hui) → fenêtre de décision ET d'affichage.
+ * Source de vérité unique pour la couverture musculaire. Une seule fenêtre :
+ * la semaine CIVILE (lundi → aujourd'hui), pour la guidance comme pour l'affichage.
  */
 
 import {
@@ -253,7 +252,7 @@ export function weeklyLeafBreakdown(
 }
 
 // ---------------------------------------------------------------------------
-// Progrès roulant 7 jours (boucle de guidance PRINCIPALE)
+// Progrès de la semaine en cours (boucle de guidance PRINCIPALE)
 // ---------------------------------------------------------------------------
 
 function goalMapOf(goals: MuscleGoal[]): Map<MuscleParent, number> {
@@ -266,7 +265,7 @@ function goalMapOf(goals: MuscleGoal[]): Map<MuscleParent, number> {
 
 /**
  * Miroir de `EffectiveSetsEngine.weeklyProgress`. Couverture niveau
- * parent sur les 7 derniers jours se terminant à `referenceDate`. Le modèle
+ * parent sur la semaine civile en cours (lundi -> `referenceDate`). Le modèle
  * canonique "que faire aujourd'hui ?".
  */
 export function weeklyProgress(
@@ -369,7 +368,7 @@ export function parentsWorkedInWeek(sessions: WorkoutSession[], exercises: Exerc
 }
 
 // ---------------------------------------------------------------------------
-// Ligne de statut (framing roulant 7 jours)
+// Ligne de statut (framing hebdomadaire)
 // ---------------------------------------------------------------------------
 
 /** Miroir de `EffectiveSetsEngine.rollingStatusLine`. */

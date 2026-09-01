@@ -257,7 +257,7 @@ function buildExplanation(
  * isolation/core sans pair — §9, jamais de crash).
  *
  * `now` : horloge injectable (défaut `new Date()`), utilisée uniquement pour
- * `weeklyPriorities` (fenêtre roulante 7 jours de `goalFit`) — ajout Phase 1
+ * `weeklyPriorities` (déficit de la semaine en cours, via `goalFit`) — ajout Phase 1
  * au-delà de la signature littérale du spec, pour garder ce moteur pur/déterministe
  * en test (comme `suggest({ now })` ailleurs dans `progression.ts`).
  */

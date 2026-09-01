@@ -59,7 +59,7 @@ export function MuscleRadar({
         height="auto"
         style={{ maxWidth: 340 }}
         role="img"
-        aria-label="Pourcentage des objectifs musculaires atteint sur les 7 derniers jours"
+        aria-label="Pourcentage des objectifs musculaires atteint cette semaine"
       >
         <defs>
           <linearGradient id="radarFill" x1="0" y1="0" x2="1" y2="1">

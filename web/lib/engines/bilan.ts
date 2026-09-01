@@ -339,7 +339,7 @@ export interface SessionReview {
 export interface SessionCoverage {
   /** Parents musculaires effectivement travaillés pendant CETTE séance (sets > 0). */
   workedParents: MuscleParent[];
-  /** Couverture roulante 7 jours (historique + séance du jour), pour situer l'effort dans la semaine. */
+  /** Couverture de la semaine en cours (historique + séance du jour), pour situer l'effort. */
   parentProgress: ParentMuscleProgress[];
   /** Parents avec statut "priority"/"toStrengthen" malgré la séance du jour. */
   stillNeedsWork: { parent: MuscleParent; label: string; remaining: number }[];

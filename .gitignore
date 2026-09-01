@@ -16,3 +16,4 @@ build/
 # Copies de sauvegarde locales du dossier web (~665 Mo pièce, node_modules inclus).
 web-old/
 web-old2/
+.claude/settings.local.json

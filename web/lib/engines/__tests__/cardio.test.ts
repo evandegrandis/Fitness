@@ -4,6 +4,10 @@ import type { WorkoutSession } from "@/lib/models/types";
 
 const NOW = new Date("2026-08-20T18:00:00");
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
+// NOW est un jeudi : la semaine civile démarre le lundi 17/08, donc J-4 et au-delà en sortent.
+// Pour tester des trous longs À L'INTÉRIEUR de la semaine, il faut se placer en fin de semaine.
+const SUNDAY = new Date("2026-08-23T18:00:00");
+const sundayDaysAgo = (n: number) => new Date(SUNDAY.getTime() - n * 86_400_000);
 
 function session(date: Date, minutes: number[], isActive = false): WorkoutSession {
   return {
@@ -34,7 +38,7 @@ function session(date: Date, minutes: number[], isActive = false): WorkoutSessio
   };
 }
 
-describe("volume cardio sur 7 jours glissants", () => {
+describe("volume cardio sur la semaine civile", () => {
   it("cumule les minutes de la fenêtre et calcule le reste à faire", () => {
     const p = cardioProgress([session(daysAgo(1), [50]), session(daysAgo(3), [45])], 150, NOW);
     expect(p.minutes).toBe(95);
@@ -69,15 +73,22 @@ describe("volume cardio sur 7 jours glissants", () => {
 
 describe("répartition — le volume ne dit pas tout", () => {
   it("mesure le plus long trou, en incluant celui qui court depuis la dernière séance", () => {
-    // Trois séances groupées en début de fenêtre : volume atteint, mais 5 jours sans rien depuis.
+    // Trois séances groupées en début de semaine : volume atteint, mais 4 jours sans rien depuis.
     const p = cardioProgress(
-      [session(daysAgo(5), [50]), session(daysAgo(6), [50]), session(daysAgo(7), [50])],
+      [session(sundayDaysAgo(4), [50]), session(sundayDaysAgo(5), [50]), session(sundayDaysAgo(6), [50])],
       150,
-      NOW
+      SUNDAY
     );
     expect(p.minutes).toBe(150);
+    expect(p.daysSinceLast).toBe(4);
+    expect(p.longestGapDays).toBe(4);
+  });
+
+  it("mesure le trou depuis la dernière séance même si elle précède la semaine en cours", () => {
+    // Le volume repart à zéro le lundi, pas la physiologie : le trou doit traverser la semaine.
+    const p = cardioProgress([session(daysAgo(5), [50])], 150, NOW);
+    expect(p.minutes).toBe(0);
     expect(p.daysSinceLast).toBe(5);
-    expect(p.longestGapDays).toBe(5);
   });
 
   it("des séances étalées donnent un trou court", () => {
@@ -98,9 +109,19 @@ describe("message de rappel — le pourquoi, pas seulement le combien", () => {
   });
 
   it("signale un trou qui dissipe le bénéfice, même objectif atteint", () => {
-    const p = cardioProgress([session(daysAgo(5), [160])], 150, NOW);
+    const p = cardioProgress([session(sundayDaysAgo(5), [160])], 150, SUNDAY);
     expect(p.remainingMinutes).toBe(0);
     expect(cardioNudge(p)).toContain("dissipé");
+  });
+
+  it("ne repart pas de zéro dans le discours quand la semaine vient de basculer", () => {
+    // Lundi matin : rien cette semaine, mais une sortie hier. Le compteur repart, pas le ton.
+    const monday = new Date("2026-08-24T09:00:00");
+    const p = cardioProgress([session(new Date("2026-08-23T10:00:00"), [60])], 150, monday);
+    expect(p.minutes).toBe(0);
+    const message = cardioNudge(p);
+    expect(message).toContain("Nouvelle semaine");
+    expect(message).not.toContain("Aucun cardio");
   });
 
   it("chiffre ce qu'il reste quand le rythme est bon", () => {

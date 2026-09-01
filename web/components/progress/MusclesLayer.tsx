@@ -235,7 +235,7 @@ function MuscleDetail({
             </div>
           ))}
         {leafBreakdown.every((l) => l.sets === 0) && (
-          <p className="text-xs text-[--color-fg-faint]">Aucun set sur les 7 derniers jours.</p>
+          <p className="text-xs text-[--color-fg-faint]">Aucun set cette semaine.</p>
         )}
       </div>
 
