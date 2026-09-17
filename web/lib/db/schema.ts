@@ -16,6 +16,7 @@ import { relations, sql, type InferInsertModel, type InferSelectModel } from "dr
 import {
   boolean,
   check,
+  date,
   doublePrecision,
   index,
   integer,
@@ -437,6 +438,54 @@ export const bodyWeights = pgTable(
     check("body_weights_weight_check", sql`${table.weightKg} > 20 AND ${table.weightKg} < 400`),
   ]
 );
+
+// ---------------------------------------------------------------------------
+// daily_activity
+// ---------------------------------------------------------------------------
+
+/**
+ * Activité quotidienne hors salle, poussée depuis Apple Santé par un Raccourci
+ * (pas, énergie active). Une ligne par jour civil ; chaque envoi remplace la
+ * valeur du jour (les totaux Santé ne font que croître dans la journée). Sert
+ * au coach nutrition de Barbis (jour de marche, dépense réelle), pas à l'app.
+ */
+export const dailyActivity = pgTable(
+  "daily_activity",
+  {
+    day: date("day", { mode: "string" }).primaryKey(),
+    steps: integer("steps"),
+    activeEnergyKcal: doublePrecision("active_energy_kcal"),
+    source: text("source"),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("daily_activity_steps_check", sql`${table.steps} IS NULL OR (${table.steps} >= 0 AND ${table.steps} < 200000)`),
+    check("daily_activity_energy_check", sql`${table.activeEnergyKcal} IS NULL OR (${table.activeEnergyKcal} >= 0 AND ${table.activeEnergyKcal} < 10000)`),
+  ]
+);
+
+export type DailyActivityRow = InferSelectModel<typeof dailyActivity>;
+
+/**
+ * Détail horaire de l'activité (échantillons Santé groupés par heure). Les
+ * totaux journaliers de `daily_activity` en sont recalculés à chaque
+ * ingestion : c'est ce détail qui permet à Barbis de savoir, à 20 h, qu'une
+ * journée a été exceptionnellement marchée avant de proposer le dîner.
+ */
+export const activityHourly = pgTable(
+  "activity_hourly",
+  {
+    hour: timestamp("hour", { mode: "date", withTimezone: true }).primaryKey(),
+    steps: integer("steps"),
+    activeEnergyKcal: doublePrecision("active_energy_kcal"),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("activity_hourly_steps_check", sql`${table.steps} IS NULL OR (${table.steps} >= 0 AND ${table.steps} < 100000)`),
+  ]
+);
+
+export type ActivityHourlyRow = InferSelectModel<typeof activityHourly>;
 
 // ---------------------------------------------------------------------------
 // push_subscriptions

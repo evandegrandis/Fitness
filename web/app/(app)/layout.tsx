@@ -3,6 +3,7 @@ import { requireAuthenticatedSession } from "@/lib/auth";
 import { StoreHydrator } from "@/components/providers/StoreHydrator";
 import { ModeProvider } from "@/components/providers/ModeProvider";
 import { SyncProvider } from "@/components/providers/SyncProvider";
+import { SyncAlertBanner } from "@/components/sync/SyncAlertBanner";
 import { TabBar } from "@/components/ui/TabBar";
 
 // Les séances changent hors du cycle de build (autosave, imports, backfills) :
@@ -30,6 +31,7 @@ export default async function AppLayout({
       <SyncProvider>
         <div className="flex-1 flex flex-col min-h-full">
           {/* padding-bottom = hauteur de la TabBar sticky, pour que le contenu ne passe jamais dessous */}
+          <SyncAlertBanner />
           <div className="flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">{children}</div>
           <TabBar />
         </div>

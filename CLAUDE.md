@@ -154,6 +154,15 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 
 ## HANDOFF
 
+### 2026-09-17 · Claude — Synchro web réparée structurellement (voir `web/SYNC.md`)
+
+- Incident : outbox bloquée depuis le 20/08 (séance → exercice absent de Neon, FK), un mois de données sur le téléphone seulement. Récupéré via export JSON (`web/scripts/recover-from-backup-2026-09-17.ts`) : +16 séances, +9 exercices, +29 check-ins, +1 pesée.
+- Garanties : séance auto-suffisante (`syncSession` emporte ses exercices), résultat typé transitoire/permanent (`lib/sync/outcome.ts`, `lib/db/sync-actions.ts`), dead letters visibles + bannière globale + Réglages → Synchronisation (`lib/sync/outbox.ts`, `components/sync/SyncAlertBanner.tsx`, `components/settings/SettingsSyncSection.tsx`).
+- Nouveaux profils musculaires (machines LifeFitness, Upper back, Calf Extension, Isolateral incline press) + `scripts/apply-known-muscle-profiles.ts` (pérenne).
+- `POST /api/body-weight` (jeton `BODY_WEIGHT_INGEST_TOKEN`) : pesée depuis Barbis ou un Raccourci iOS (VitaFit → Santé).
+- Déployé sur Vercel le 17/09 (`npx vercel --prod --yes` depuis `web/`).
+
+
 ### 2026-04-26 · Claude — Warmup auto-génération + éditeur mappings muscles
 
 **Done (session 2):**

@@ -8,6 +8,7 @@ import type {
   WorkoutTemplate,
 } from "@/lib/models/types";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
+import { isSyncFailure, type SyncFailure, type SyncOutcome } from "@/lib/sync/outcome";
 
 /**
  * File de synchronisation OFFLINE-FIRST (persistée en localStorage).
@@ -30,6 +31,7 @@ import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
  */
 
 const KEY = "jeera_sync_outbox_v1";
+const DEAD_LETTER_KEY = "jeera_sync_deadletter_v1";
 
 /** Une opération d'écriture différée en attente de resync vers Neon. */
 export type OutboxOp =
@@ -58,6 +60,34 @@ interface OutboxEntry {
   entryId?: string;
   op: OutboxOp;
   enqueuedAt: number;
+  /** Tentatives de rejeu déjà effectuées (transitoires comprises). */
+  attempts?: number;
+  /** Dernier rejet, pour l'affichage : jamais une raison d'abandonner seul. */
+  lastError?: { kind: SyncFailure["kind"]; code: string | null; message: string; at: number };
+}
+
+/**
+ * Opération que le serveur a refusée de façon PERMANENTE (contrainte, donnée
+ * invalide). Elle quitte la file pour ne plus bloquer ce qui suit, mais elle
+ * n'est jamais effacée en silence : elle reste lisible, rejouable ou
+ * abandonnable explicitement depuis les réglages.
+ */
+export interface DeadLetter {
+  entryId: string;
+  dedupeKey: string;
+  op: OutboxOp;
+  enqueuedAt: number;
+  failedAt: number;
+  attempts: number;
+  error: { code: string | null; message: string };
+}
+
+/** Résumé exposé au reste de l'app après chaque flush. */
+export interface OutboxSnapshot {
+  pending: number;
+  deadLetters: number;
+  oldestPendingAt: number | null;
+  lastError: OutboxEntry["lastError"] | null;
 }
 
 export class OutboxPersistenceError extends Error {
@@ -230,21 +260,29 @@ export function pendingCount(): number {
   return read().length;
 }
 
-/** Une fonction de sauvegarde par kind d'opération — fournies par l'appelant (server actions). */
+/**
+ * Une fonction de sauvegarde par kind d'opération, fournie par l'appelant.
+ * Un handler renvoie soit rien (succès), soit un `SyncOutcome`. Une exception
+ * levée est traitée comme un échec TRANSITOIRE (réseau, serveur muet) : seul
+ * un résultat `{ ok: false, kind: "permanent" }` explicite peut sortir une
+ * opération de la file.
+ */
+type HandlerResult = Promise<SyncOutcome | void>;
+
 export interface OutboxHandlers {
-  session: (session: WorkoutSession) => Promise<void>;
-  sessionDelete: (sessionId: string) => Promise<void>;
-  settings: (settings: UserSettings) => Promise<void>;
-  goals: (goals: MuscleGoal[]) => Promise<void>;
-  recoveryCheckin: (checkin: RecoveryCheckinInput) => Promise<void>;
-  exerciseUpsert: (exercise: Exercise) => Promise<void>;
-  exerciseDelete: (exerciseId: string) => Promise<void>;
-  templateUpsert: (template: WorkoutTemplate) => Promise<void>;
-  templateDelete: (templateId: string) => Promise<void>;
-  bodyWeight: (entry: BodyWeightEntry) => Promise<void>;
+  session: (session: WorkoutSession) => HandlerResult;
+  sessionDelete: (sessionId: string) => HandlerResult;
+  settings: (settings: UserSettings) => HandlerResult;
+  goals: (goals: MuscleGoal[]) => HandlerResult;
+  recoveryCheckin: (checkin: RecoveryCheckinInput) => HandlerResult;
+  exerciseUpsert: (exercise: Exercise) => HandlerResult;
+  exerciseDelete: (exerciseId: string) => HandlerResult;
+  templateUpsert: (template: WorkoutTemplate) => HandlerResult;
+  templateDelete: (templateId: string) => HandlerResult;
+  bodyWeight: (entry: BodyWeightEntry) => HandlerResult;
 }
 
-async function applyOp(op: OutboxOp, handlers: OutboxHandlers): Promise<void> {
+async function applyOp(op: OutboxOp, handlers: OutboxHandlers): HandlerResult {
   switch (op.kind) {
     case "session":
       return handlers.session(op.session);
@@ -269,40 +307,165 @@ async function applyOp(op: OutboxOp, handlers: OutboxHandlers): Promise<void> {
   }
 }
 
+function readDeadLetters(): DeadLetter[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DEAD_LETTER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as DeadLetter[];
+    return parsed.map((letter) => ({ ...letter, op: reviveOp(letter.op) }));
+  } catch {
+    return [];
+  }
+}
+
+const DEAD_LETTERS_CHANGED_EVENT = "jeera:dead-letters-changed";
+
+function writeDeadLetters(letters: DeadLetter[]): void {
+  window.localStorage.setItem(DEAD_LETTER_KEY, JSON.stringify(letters));
+  window.dispatchEvent(new Event(DEAD_LETTERS_CHANGED_EVENT));
+}
+
+/** Opérations refusées définitivement, les plus récentes d'abord. */
+export function deadLetters(): DeadLetter[] {
+  return [...readDeadLetters()].sort((a, b) => b.failedAt - a.failedAt);
+}
+
+let deadLettersCache: { raw: string | null; value: DeadLetter[] } = { raw: null, value: [] };
+const EMPTY_DEAD_LETTERS: DeadLetter[] = [];
+
+/** Lecture stable pour `useSyncExternalStore` : même référence tant que le stockage n'a pas changé. */
+export function deadLettersSnapshot(): DeadLetter[] {
+  if (typeof window === "undefined") return EMPTY_DEAD_LETTERS;
+  const raw = window.localStorage.getItem(DEAD_LETTER_KEY);
+  if (raw === deadLettersCache.raw) return deadLettersCache.value;
+  deadLettersCache = { raw, value: deadLetters() };
+  return deadLettersCache.value;
+}
+
+export function subscribeDeadLetters(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  window.addEventListener(DEAD_LETTERS_CHANGED_EVENT, listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    window.removeEventListener(DEAD_LETTERS_CHANGED_EVENT, listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+
+/** Remet une opération refusée en fin de file (après correction côté serveur, par exemple). */
+export function retryDeadLetter(entryId: string): boolean {
+  const letters = readDeadLetters();
+  const letter = letters.find((item) => item.entryId === entryId);
+  if (!letter) return false;
+  enqueue(letter.op);
+  writeDeadLetters(letters.filter((item) => item.entryId !== entryId));
+  return true;
+}
+
+/** Abandon EXPLICITE d'une opération refusée : seul l'utilisateur peut le décider. */
+export function discardDeadLetter(entryId: string): boolean {
+  const letters = readDeadLetters();
+  if (!letters.some((item) => item.entryId === entryId)) return false;
+  writeDeadLetters(letters.filter((item) => item.entryId !== entryId));
+  return true;
+}
+
+function tokenOf(entry: OutboxEntry): string {
+  return entry.entryId ?? `${entry.dedupeKey}:${entry.enqueuedAt}`; // compat file v1 existant
+}
+
+/** État courant de la file, sans tentative réseau. */
+export function snapshot(): OutboxSnapshot {
+  const entries = read();
+  const withError = entries.filter((entry) => entry.lastError).sort((a, b) => (b.lastError!.at - a.lastError!.at));
+  return {
+    pending: entries.length,
+    deadLetters: readDeadLetters().length,
+    oldestPendingAt: entries.length ? Math.min(...entries.map((entry) => entry.enqueuedAt)) : null,
+    lastError: withError[0]?.lastError ?? null,
+  };
+}
+
 /**
  * Tente de synchroniser toute la file, DANS L'ORDRE d'insertion (une suppression mise en file
  * après une modification doit se rejouer après, jamais avant — voir la doc de `dedupeKey`
- * ci-dessus). Chaque opération confirmée quitte la file ; celles qui échouent (pas de réseau,
- * serveur KO) y restent pour un prochain essai. Retourne le nombre encore en attente après la
- * tentative.
+ * ci-dessus).
+ *
+ * Trois issues par opération :
+ * - confirmée → elle quitte la file ;
+ * - refus PERMANENT (résultat explicite du serveur) → elle devient une dead letter visible et la
+ *   file CONTINUE : une écriture impossible ne peut plus geler toutes les suivantes en silence.
+ *   Si une suivante dépendait d'elle, elle sera refusée à son tour, donc visible elle aussi ;
+ * - échec TRANSITOIRE (exception réseau, serveur indisponible) → on s'arrête là et on garde
+ *   l'ordre causal pour le prochain essai, en notant la tentative et l'erreur.
+ *
+ * Retourne le nombre encore en attente après la tentative.
  */
 async function flushOnce(handlers: OutboxHandlers): Promise<number> {
   const entries = read();
   if (entries.length === 0) return 0;
 
-  const tokenOf = (entry: OutboxEntry) =>
-    entry.entryId ?? `${entry.dedupeKey}:${entry.enqueuedAt}`; // compat file v1 existant
   const confirmed = new Set<string>();
+  const failedPermanently = new Map<string, SyncFailure>();
+  let transientFailure: { token: string; failure: SyncFailure } | null = null;
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
+    let outcome: SyncOutcome;
     try {
-      await applyOp(entry.op, handlers);
-      confirmed.add(tokenOf(entry));
-    } catch {
-      // L'ordre est causal : si A échoue, B ne doit pas passer devant (upsert A puis delete B de
-      // la même entité, ou session active puis session finie). On conserve donc A ET toute la
-      // suffixe sans tenter les opérations suivantes.
-      break;
+      const result = await applyOp(entry.op, handlers);
+      outcome = isSyncFailure(result) ? result : { ok: true };
+    } catch (error) {
+      outcome = { ok: false, kind: "transient", code: null, message: error instanceof Error ? error.message : String(error) };
     }
+    if (outcome.ok) {
+      confirmed.add(tokenOf(entry));
+      continue;
+    }
+    if (outcome.kind === "permanent") {
+      failedPermanently.set(tokenOf(entry), outcome);
+      continue;
+    }
+    transientFailure = { token: tokenOf(entry), failure: outcome };
+    break;
   }
   // Relit au dernier moment : une action utilisateur peut avoir été enqueue pendant les awaits
   // réseau ci-dessus. On ne retire que l'INSTANCE exacte confirmée (clé + timestamp), jamais une
   // nouvelle valeur qui aurait remplacé la même cible entre-temps.
   const current = read();
-  const remaining = current.filter((entry) => !confirmed.has(tokenOf(entry)));
+  const now = Date.now();
+  const letters = readDeadLetters();
+  const remaining: OutboxEntry[] = [];
+  for (const entry of current) {
+    const token = tokenOf(entry);
+    if (confirmed.has(token)) continue;
+    const permanent = failedPermanently.get(token);
+    if (permanent) {
+      letters.push({
+        entryId: token,
+        dedupeKey: entry.dedupeKey,
+        op: entry.op,
+        enqueuedAt: entry.enqueuedAt,
+        failedAt: now,
+        attempts: (entry.attempts ?? 0) + 1,
+        error: { code: permanent.code, message: permanent.message },
+      });
+      continue;
+    }
+    if (transientFailure && transientFailure.token === token) {
+      remaining.push({
+        ...entry,
+        attempts: (entry.attempts ?? 0) + 1,
+        lastError: { kind: "transient", code: transientFailure.failure.code, message: transientFailure.failure.message, at: now },
+      });
+      continue;
+    }
+    remaining.push(entry);
+  }
   // Si cette écriture échoue, on remonte l'erreur : l'appelant ne doit surtout pas afficher
   // « enregistré ». Les sauvegardes serveur restent idempotentes.
   write(remaining);
+  if (failedPermanently.size > 0) writeDeadLetters(letters);
   return remaining.length;
 }
 

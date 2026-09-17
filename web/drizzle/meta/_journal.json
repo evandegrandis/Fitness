@@ -85,6 +85,20 @@
       "when": 1787086261441,
       "tag": "0011_medical_pretty_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789652416943,
+      "tag": "0012_daily_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789652764883,
+      "tag": "0013_activity_hourly",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,8 @@ scripts/fix-catalog-profile-*.ts
 scripts/fix-intra-workout-*.ts
 scripts/fix-muscle-mappings-*.ts
 scripts/import-*.ts
+scripts/recover-*.ts
+scripts/apply-known-muscle-profiles.ts
 scripts/migrate-prod-*.ts
 scripts/seed.ts
 scripts/seed-catalog-*.ts

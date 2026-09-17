@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { flush, pendingCount } from "@/lib/sync/outbox";
+import { flush, pendingCount, snapshot } from "@/lib/sync/outbox";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
 import { useSyncStatus } from "@/lib/sync/status";
 
@@ -17,6 +17,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const setStatus = useSyncStatus((s) => s.setStatus);
   const setPending = useSyncStatus((s) => s.setPending);
+  const setSnapshot = useSyncStatus((s) => s.setSnapshot);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,6 +26,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       try {
         const before = pendingCount();
         setPending(before);
+        // Les dead letters se lisent sans réseau : la bannière doit les montrer
+        // même quand il n'y a plus rien à rejouer.
+        try { setSnapshot(snapshot()); } catch { /* file illisible : le statut « error » suit */ }
         if (before === 0) return;
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
           setStatus("offline");
@@ -34,6 +38,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         const remaining = await flush(defaultOutboxHandlers);
         if (cancelled) return;
         setPending(remaining);
+        try { setSnapshot(snapshot()); } catch { /* idem */ }
         setStatus(remaining === 0 ? "saved" : navigator.onLine === false ? "offline" : "error");
         // StoreHydrator refuse volontairement le snapshot serveur tant qu'une
         // écriture locale attend. Une fois l'outbox vidée, le snapshot SSR qui
@@ -59,7 +64,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener(SYNC_NEEDED_EVENT, onSyncNeeded);
       clearInterval(interval);
     };
-  }, [router, setStatus, setPending]);
+  }, [router, setStatus, setPending, setSnapshot]);
 
   return <>{children}</>;
 }

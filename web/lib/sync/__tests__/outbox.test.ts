@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { enqueue, flush, OutboxPersistenceError, pendingCount, type OutboxHandlers } from "../outbox";
+import {
+  deadLetters, discardDeadLetter, enqueue, flush, OutboxPersistenceError, pendingCount, retryDeadLetter, snapshot,
+  type OutboxHandlers,
+} from "../outbox";
 import type { Exercise, RecoveryCheckinInput, UserSettings, WorkoutSession } from "@/lib/models/types";
 
 class MemoryStorage {
@@ -74,7 +77,12 @@ const exercise: Exercise = {
 };
 
 function install(storage: MemoryStorage): void {
-  vi.stubGlobal("window", { localStorage: storage });
+  vi.stubGlobal("window", {
+    localStorage: storage,
+    dispatchEvent: () => true,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  });
 }
 
 function noopHandlers(overrides: Partial<OutboxHandlers> = {}): OutboxHandlers {
@@ -419,5 +427,91 @@ describe("offline outbox persistence", () => {
 
     await expect(Promise.all([first, second])).resolves.toEqual([0, 0]);
     expect(save).toHaveBeenCalledOnce();
+  });
+});
+
+describe("refus permanents : isolés, visibles, jamais bloquants (17/09/2026)", () => {
+  const permanent = { ok: false as const, kind: "permanent" as const, code: "23503", message: "violates foreign key constraint" };
+  const checkin: RecoveryCheckinInput = {
+    id: "recovery-perm", date: new Date("2026-09-16T22:00:00.000Z"), tookCreatine: true, proteinTargetMet: true, sleepHours: 7, hadAlcohol: false,
+  };
+
+  it("une écriture refusée définitivement devient une dead letter et la suite de la file passe", async () => {
+    const storage = new MemoryStorage();
+    install(storage);
+    enqueue({ kind: "session", session });
+    enqueue({ kind: "settings", settings });
+    enqueue({ kind: "recovery_checkin", checkin });
+
+    const handlers = noopHandlers({ session: vi.fn(async () => permanent) });
+    const remaining = await flush(handlers);
+
+    expect(remaining).toBe(0);
+    expect(handlers.settings).toHaveBeenCalledTimes(1);
+    expect(handlers.recoveryCheckin).toHaveBeenCalledTimes(1);
+    const letters = deadLetters();
+    expect(letters).toHaveLength(1);
+    expect(letters[0]!.op.kind).toBe("session");
+    expect(letters[0]!.error).toEqual({ code: "23503", message: "violates foreign key constraint" });
+    expect(snapshot()).toMatchObject({ pending: 0, deadLetters: 1 });
+  });
+
+  it("un échec transitoire (exception) conserve l'ordre causal et note la tentative", async () => {
+    const storage = new MemoryStorage();
+    install(storage);
+    enqueue({ kind: "settings", settings });
+    enqueue({ kind: "exercise_delete", exerciseId: exercise.id });
+
+    const handlers = noopHandlers({ settings: async () => { throw new Error("fetch failed"); } });
+    await flush(handlers);
+
+    expect(pendingCount()).toBe(2);
+    expect(handlers.exerciseDelete).not.toHaveBeenCalled();
+    expect(deadLetters()).toHaveLength(0);
+    const state = snapshot();
+    expect(state.lastError).toMatchObject({ kind: "transient", message: "fetch failed" });
+    expect(state.oldestPendingAt).not.toBeNull();
+  });
+
+  it("un résultat transitoire explicite se comporte comme une exception", async () => {
+    const storage = new MemoryStorage();
+    install(storage);
+    enqueue({ kind: "settings", settings });
+    const handlers = noopHandlers({ settings: async () => ({ ok: false, kind: "transient", code: null, message: "Neon 503" }) });
+    await flush(handlers);
+    expect(pendingCount()).toBe(1);
+    expect(deadLetters()).toHaveLength(0);
+  });
+
+  it("une dead letter se rejoue explicitement (retour en file) ou s'abandonne explicitement", async () => {
+    const storage = new MemoryStorage();
+    install(storage);
+    enqueue({ kind: "session", session });
+    await flush(noopHandlers({ session: async () => permanent }));
+    const [letter] = deadLetters();
+
+    expect(retryDeadLetter(letter!.entryId)).toBe(true);
+    expect(deadLetters()).toHaveLength(0);
+    expect(pendingCount()).toBe(1);
+
+    await flush(noopHandlers({ session: async () => permanent }));
+    const [again] = deadLetters();
+    expect(again!.attempts).toBe(1);
+    expect(discardDeadLetter(again!.entryId)).toBe(true);
+    expect(deadLetters()).toHaveLength(0);
+    expect(discardDeadLetter("inconnu")).toBe(false);
+  });
+
+  it("une dépendante refusée après sa dépendance refusée devient visible à son tour, rien ne gèle", async () => {
+    const storage = new MemoryStorage();
+    install(storage);
+    enqueue({ kind: "exercise_upsert", exercise });
+    enqueue({ kind: "session", session });
+    enqueue({ kind: "settings", settings });
+    const handlers = noopHandlers({ exerciseUpsert: async () => permanent, session: async () => permanent });
+    const remaining = await flush(handlers);
+    expect(remaining).toBe(0);
+    expect(deadLetters().map((letter) => letter.op.kind).sort()).toEqual(["exercise_upsert", "session"]);
+    expect(handlers.settings).toHaveBeenCalledTimes(1);
   });
 });

@@ -21,7 +21,7 @@ export interface KnownMuscleProfile {
 
 export const KNOWN_MUSCLE_PROFILES: readonly KnownMuscleProfile[] = [
   {
-    aliases: ["Upper back machine", "Machine upper back"],
+    aliases: ["Upper back", "Upper back machine", "Machine upper back"],
     copiedFrom: "Tirage horizontal large",
     category: "Pull",
     movementPattern: MovementPattern.horizontalPull,
@@ -69,6 +69,89 @@ export const KNOWN_MUSCLE_PROFILES: readonly KnownMuscleProfile[] = [
       { muscleGroup: MuscleGroup.latSup, coefficient: 1 },
       { muscleGroup: MuscleGroup.latInf, coefficient: 0.8 },
       { muscleGroup: MuscleGroup.trapInf, coefficient: 0.3 },
+    ],
+  },
+  // Machines identifiées le 17/09/2026 (récupération de l'outbox téléphone) :
+  // chaque profil recopie l'exercice historique équivalent du catalogue Neon.
+  {
+    aliases: ["Chest Press LifeFitness", "Chest press Life Fitness"],
+    copiedFrom: "Chest Press",
+    category: "Push",
+    movementPattern: MovementPattern.horizontalPress,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.pectStern, coefficient: 1 },
+      { muscleGroup: MuscleGroup.pectClav, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLat, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsMed, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLong, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.deltLat, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.transverse, coefficient: 0.1 },
+    ],
+  },
+  {
+    aliases: ["Isolateral incline press", "Iso-lateral incline press", "Incline press isolateral"],
+    copiedFrom: "Chest press incliné Technogym",
+    category: "Push",
+    movementPattern: MovementPattern.horizontalPress,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.pectClav, coefficient: 1 },
+      { muscleGroup: MuscleGroup.pectStern, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLat, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsMed, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLong, coefficient: 0.3 },
+    ],
+  },
+  {
+    aliases: ["Pectoral fly LifeFitness", "Pectoral fly", "Pec fly LifeFitness", "Pec fly machine"],
+    copiedFrom: "Pec deck",
+    category: "Push",
+    movementPattern: MovementPattern.isolation,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.pectClav, coefficient: 1 },
+      { muscleGroup: MuscleGroup.pectStern, coefficient: 1 },
+      { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLat, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.tricepsMed, coefficient: 0.1 },
+    ],
+  },
+  {
+    aliases: ["Pulldown LifeFitness", "Pulldown", "Lat pulldown", "Lat pulldown LifeFitness"],
+    copiedFrom: "Tirage vertical prise large",
+    category: "Pull",
+    movementPattern: MovementPattern.verticalPull,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.latSup, coefficient: 1 },
+      { muscleGroup: MuscleGroup.latInf, coefficient: 0.7 },
+      { muscleGroup: MuscleGroup.rhomboides, coefficient: 0.4 },
+      { muscleGroup: MuscleGroup.trapMid, coefficient: 0.4 },
+      { muscleGroup: MuscleGroup.bicepsLong, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.bracchial, coefficient: 0.3 },
+    ],
+  },
+  {
+    aliases: ["Abdominal LifeFitness", "Abdominal machine", "Machine abdominaux", "Ab crunch machine"],
+    copiedFrom: "Crunch déclinés",
+    category: "Core",
+    movementPattern: MovementPattern.isolation,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.absBas, coefficient: 1 },
+      { muscleGroup: MuscleGroup.absHaut, coefficient: 1 },
+      { muscleGroup: MuscleGroup.obliqueExt, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.obliqueInt, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.transverse, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.droitFemoral, coefficient: 0.1 },
+    ],
+  },
+  {
+    aliases: ["Calf Extension", "Calf Extension LifeFitness", "Extension mollets", "Mollets machine"],
+    copiedFrom: "Mollets debout",
+    category: "Legs",
+    movementPattern: MovementPattern.isolation,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.gastrocnemien, coefficient: 1 },
+      { muscleGroup: MuscleGroup.soleaire, coefficient: 0.6 },
     ],
   },
 ] as const;

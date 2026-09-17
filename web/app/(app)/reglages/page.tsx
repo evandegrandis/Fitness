@@ -2,6 +2,7 @@
 
 import { useWorkoutStore } from "@/lib/store/workout";
 import { SettingsBackupSection } from "@/components/settings/SettingsBackupSection";
+import { SettingsSyncSection } from "@/components/settings/SettingsSyncSection";
 import { SettingsGoalsSection } from "@/components/settings/SettingsGoalsSection";
 import { SettingsBodySection } from "@/components/settings/SettingsBodySection";
 import { SettingsPreferencesSection } from "@/components/settings/SettingsPreferencesSection";
@@ -43,6 +44,7 @@ export default function ReglagesPage() {
         <SettingsPhaseSection />
         <SettingsPreferencesSection settings={settings} />
         <SettingsNotificationsSection />
+        <SettingsSyncSection />
         <SettingsBackupSection />
       </div>
     </main>

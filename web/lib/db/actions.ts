@@ -28,6 +28,7 @@ import {
   templateToExerciseRows,
   templateToRow,
 } from "./mappers";
+import { sessionWriteOperations } from "./session-writes";
 import {
   bodyWeights,
   cardioEntries,
@@ -74,63 +75,9 @@ function revalidateWorkoutData(): void {
 
 export async function saveSession(session: WorkoutSession, revalidate = true): Promise<void> {
   await requireAuthenticatedSession();
-  const sessionRow = sessionToRow(session);
-  const operations: BatchItem<"pg">[] = [
-    db
-      .insert(workoutSessions)
-      .values(sessionRow)
-      .onConflictDoUpdate({ target: workoutSessions.id, set: sessionRow }),
-  ];
-
-  // `undefined` identifie une ancienne séance restaurée depuis localStorage :
-  // dans ce cas on préserve le cardio déjà en base. `[]` reste une demande
-  // explicite de supprimer toutes les entrées cardio de la séance.
-  if (session.cardioEntries !== undefined) {
-    operations.push(db.delete(cardioEntries).where(eq(cardioEntries.sessionId, session.id)));
-    const cardioRows = sessionToCardioEntryRows(session);
-    if (cardioRows.length > 0) {
-      operations.push(db.insert(cardioEntries).values(cardioRows));
-    }
-  }
-
-  operations.push(
-    db
-      .update(loggedExercises)
-      .set({ supersetGroupId: null })
-      .where(eq(loggedExercises.sessionId, session.id)),
-    db.delete(supersetGroups).where(eq(supersetGroups.sessionId, session.id))
-  );
-  // cascade: supprime aussi les logged_sets liés.
-  operations.push(db.delete(loggedExercises).where(eq(loggedExercises.sessionId, session.id)));
-
-  const supersetRows = sessionToSupersetRows(session);
-  if (supersetRows.length > 0) {
-    operations.push(db.insert(supersetGroups).values(supersetRows));
-  }
-
-  const exerciseRows = sessionToLoggedExerciseRows(session);
-  if (exerciseRows.length > 0) {
-    operations.push(db.insert(loggedExercises).values(exerciseRows));
-  }
-
-  const setRows = sessionToLoggedSetRows(session);
-  if (setRows.length > 0) {
-    operations.push(db.insert(loggedSets).values(setRows));
-  }
-
-  // Recalcule depuis la source de vérité complète, y compris lorsqu'une série
-  // ou un exercice vient d'être retiré de la séance la plus récente.
-  operations.push(
-    db.update(exercises).set({
-      lastUsed: sql<Date | null>`(
-        select max(ls.timestamp)
-        from ${loggedExercises} le
-        join ${loggedSets} ls on ls.logged_exercise_id = le.id
-        where le.exercise_id = ${exercises.id} and ls.completed = true
-      )`,
-    })
-  );
-
+  // Le lot est construit dans `session-writes.ts`, partagé avec la synchro
+  // outbox (`syncSession`) qui y ajoute les exercices manquants.
+  const operations = sessionWriteOperations(session);
   await db.batch(operations as unknown as [BatchItem<"pg">, ...BatchItem<"pg">[]]);
 
   // L'autosave passe revalidate=false : écrire en base ne doit PAS déclencher un
