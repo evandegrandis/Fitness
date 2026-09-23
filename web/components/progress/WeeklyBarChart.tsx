@@ -1,6 +1,7 @@
 "use client";
 
 import { Bar, BarChart, Cell, LabelList, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatChartNumber } from "@/components/progress/chart-axis";
 
 export interface WeekDatum {
   key: string;
@@ -82,7 +83,7 @@ export function WeeklyBarChart({
                   <div className="glass glass-strong rounded-xl px-3 py-2 text-xs">
                     <p className="font-semibold text-[--color-fg]">{datum.label}</p>
                     <p className="tnum text-[--color-fg-muted]">
-                      {datum.value} {unit}
+                      {formatChartNumber(datum.value, 1)} {unit}
                     </p>
                   </div>
                 );
@@ -101,6 +102,7 @@ export function WeeklyBarChart({
                 dataKey="value"
                 position="top"
                 offset={6}
+                formatter={(value: unknown) => (typeof value === "number" ? formatChartNumber(value, 1) : String(value ?? ""))}
                 style={{ fill: "var(--color-fg-faint)", fontSize: 10, fontVariantNumeric: "tabular-nums" }}
               />
               {data.map((entry) => (

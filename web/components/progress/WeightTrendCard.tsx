@@ -6,7 +6,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { buildWeightTrend, WEIGHT_MILESTONES_PCT } from "@/lib/engines/body-weight";
 import { trainingPhaseDisplayName } from "@/lib/models/enums";
-import { formatAxisNumber, yAxisWidth } from "@/components/progress/chart-axis";
+import { formatChartNumber, yAxisWidth } from "@/components/progress/chart-axis";
 
 /**
  * Courbe de poids — tendance 7 jours, jamais la pesée brute.
@@ -86,7 +86,7 @@ export function WeightTrendCard() {
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.45)" }} tickLine={false} axisLine={false} minTickGap={24} />
             <YAxis
               domain={[min, max]}
-              tickFormatter={(value: number) => formatAxisNumber(value, 1)}
+              tickFormatter={(value: number) => formatChartNumber(value, 1)}
               tick={{ fontSize: 10, fill: "rgba(255,255,255,0.45)" }}
               tickLine={false}
               axisLine={false}

@@ -12,7 +12,12 @@ const DIGIT_WIDTH_EM = 0.62;
 /** Place prise par la graduation (masquée mais réservée par Recharts) et la marge du texte. */
 const TICK_GUTTER_PX = 10;
 
-export function formatAxisNumber(value: number, decimals: number): string {
+/**
+ * Nombre affiché sur un graphique (axe, étiquette de barre, infobulle) : format français, au plus
+ * `decimals` décimales. Les totaux de séries effectives s'additionnent par dixièmes et laissaient
+ * passer des résidus de calcul (« 59.99999999999994 »).
+ */
+export function formatChartNumber(value: number, decimals: number): string {
   return value.toLocaleString("fr-FR", { maximumFractionDigits: decimals, minimumFractionDigits: 0 });
 }
 

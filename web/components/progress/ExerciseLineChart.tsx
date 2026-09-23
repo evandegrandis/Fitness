@@ -18,7 +18,7 @@ import {
 
 import { formatShortDate, roundToIncrement } from "@/components/progress/utils";
 import { trendBadge, type ExerciseProgressAxis } from "@/components/progress/trend";
-import { formatAxisNumber, yAxisWidth } from "@/components/progress/chart-axis";
+import { formatChartNumber, yAxisWidth } from "@/components/progress/chart-axis";
 
 export interface ExercisePoint {
   date: Date;
@@ -142,7 +142,7 @@ export function ExerciseLineChart({
               yAxisId="primary"
               domain={yDomain}
               allowDecimals={false}
-              tickFormatter={(value: number) => formatAxisNumber(value, 0)}
+              tickFormatter={(value: number) => formatChartNumber(value, 0)}
               tick={{ fill: "var(--color-fg-faint)", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
