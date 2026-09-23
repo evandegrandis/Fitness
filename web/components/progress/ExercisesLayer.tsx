@@ -9,6 +9,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { buildRecords } from "@/lib/engines/records";
+import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
 import {
   benchmarkAxesFor,
   benchmarkPrimaryAxisFor,
@@ -34,6 +35,8 @@ interface ExerciseHistory {
   exercise: Exercise;
   points: ExercisePoint[];
   lastDate: Date;
+  /** Machines équivalentes dont les séances, converties, prolongent la courbe. */
+  conversions: { exercise: Exercise; ratio: number }[];
 }
 
 /**
@@ -62,23 +65,59 @@ export function ExercisesLayer() {
     const finished = history.filter((s) => !s.isActive).slice().sort((a, b) => a.date.getTime() - b.date.getTime());
     const byExercise = new Map<string, ExerciseHistory>();
 
+    // Machines équivalentes : une seule courbe par mouvement, tracée dans les unités de la machine
+    // utilisée en dernier. Les séances des autres machines y entrent converties, tant que leur
+    // facteur a pu être mesuré ; sinon elles gardent leur propre carte.
+    const absorbed = new Set<string>();
+    const families = new Map<string, ReturnType<typeof familyHistory>>();
+    const seenKeys = new Set<string>();
+    for (const exercise of catalog) {
+      const key = equivalenceKey(exercise);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      const target = defaultEquivalent(exercise, catalog, finished);
+      const family = familyHistory(target, catalog, finished);
+      if (family.conversions.length === 0) continue;
+      families.set(target.id, family);
+      for (const conversion of family.conversions) absorbed.add(conversion.exercise.id);
+    }
+
+    const addPoint = (session: WorkoutSession, exercise: Exercise, conversions: ExerciseHistory["conversions"]) => {
+      const best = bestSetOfSession(session, exercise);
+      if (!best) return;
+      const occurrences = session.exercises.filter((e) => e.exerciseId === exercise.id);
+      const convertedFrom = occurrences.every((e) => e.id.endsWith(`~${exercise.id}`))
+        ? occurrences[0]?.exerciseName
+        : undefined;
+      const entry = byExercise.get(exercise.id) ?? { exercise, points: [], lastDate: session.date, conversions };
+      entry.points.push({
+        date: session.date,
+        weight: best.weight,
+        reps: best.reps,
+        e1rm: estimated1RM(best.weight, best.reps),
+        convertedFrom,
+      });
+      entry.lastDate = session.date;
+      byExercise.set(exercise.id, entry);
+    };
+
     for (const session of finished) {
       const exerciseIdsInSession = new Set(session.exercises.map((e) => e.exerciseId));
       for (const exerciseId of exerciseIdsInSession) {
+        if (absorbed.has(exerciseId) || families.has(exerciseId)) continue;
         const exercise = catalog.find((e) => e.id === exerciseId);
         if (!exercise) continue;
-        const best = bestSetOfSession(session, exercise);
-        if (!best) continue;
-
-        const entry = byExercise.get(exerciseId) ?? { exercise, points: [], lastDate: session.date };
-        entry.points.push({
-          date: session.date,
-          weight: best.weight,
-          reps: best.reps,
-          e1rm: estimated1RM(best.weight, best.reps),
-        });
-        entry.lastDate = session.date;
-        byExercise.set(exerciseId, entry);
+        addPoint(session, exercise, []);
+      }
+    }
+    for (const [targetId, family] of families) {
+      const target = catalog.find((e) => e.id === targetId);
+      if (!target) continue;
+      const ordered = family.history
+        .filter((s) => !s.isActive)
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
+      for (const session of ordered) {
+        if (session.exercises.some((e) => e.exerciseId === targetId)) addPoint(session, target, family.conversions);
       }
     }
 
@@ -257,6 +296,13 @@ function ExerciseCardRow({
                 showReps={primaryAxis === "load" && points.length > 1}
                 smallestIncrement={increment}
               />
+              {entry.conversions.length > 0 && (
+                <p className="text-xs text-[--color-fg-faint]">
+                  Points creux : {entry.conversions
+                    .map((c) => `${c.exercise.name} × ${c.ratio.toFixed(2).replace(".", ",")}`)
+                    .join(", ")}, convertis dans les charges de cette machine (fatigue corrigée). Records propres à chaque machine.
+                </p>
+              )}
               {/* OFFLINE_PWA_SPEC §5 (P4.5) — avant ce lot : gate `benchmark.hasBenchmark` seul, donc
                   un exercice sans standard fiable n'affichait RIEN (même avec de l'historique
                   exploitable pour la progression perso). `BenchmarkGauge` gère maintenant lui-même

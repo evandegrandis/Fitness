@@ -24,6 +24,8 @@ export interface ExercisePoint {
   weight: number;
   reps: number;
   e1rm: number;
+  /** Machine équivalente d'origine quand la charge a été convertie (lib/engines/equivalence.ts). */
+  convertedFrom?: string;
 }
 
 /** Nombre de points à partir duquel on affiche le Brush (zoom/pan) — en dessous, 10 points tiennent déjà à l'écran. */
@@ -68,6 +70,7 @@ export function ExerciseLineChart({
         weight: p.weight,
         reps: p.reps,
         e1rm: roundToIncrement(p.e1rm, smallestIncrement),
+        convertedFrom: p.convertedFrom,
       })),
     [points, smallestIncrement]
   );
@@ -106,7 +109,10 @@ export function ExerciseLineChart({
             <span className="tnum text-sm text-[--color-fg-muted]">
               {primaryAxis === "reps" ? (active.weight > 0 ? `+${active.weight} kg` : "PDC") : `${active.reps} reps`}
             </span>
-            <span className="tnum text-xs text-[--color-fg-faint]">{active.dateLabel}</span>
+            <span className="tnum text-xs text-[--color-fg-faint]">
+              {active.dateLabel}
+              {active.convertedFrom && ` · ${active.convertedFrom}, converti`}
+            </span>
           </div>
         )}
         {trend && (
@@ -170,7 +176,18 @@ export function ExerciseLineChart({
               dataKey={primaryAxis === "reps" ? "reps" : "weight"}
               stroke="var(--accent)"
               strokeWidth={2.5}
-              dot={{ r: 3, fill: "var(--accent)", strokeWidth: 0 }}
+              dot={(props: { cx?: number; cy?: number; index?: number; payload?: { convertedFrom?: string } }) => (
+                // Point creux = séance faite sur une machine équivalente, charge convertie.
+                <circle
+                  key={`dot-${props.index}`}
+                  cx={props.cx}
+                  cy={props.cy}
+                  r={3}
+                  fill={props.payload?.convertedFrom ? "transparent" : "var(--accent)"}
+                  stroke="var(--accent)"
+                  strokeWidth={props.payload?.convertedFrom ? 1.5 : 0}
+                />
+              )}
               activeDot={{ r: 5, fill: "var(--accent)", stroke: "#06070d", strokeWidth: 2 }}
             />
             {showReps && primaryAxis === "load" && (

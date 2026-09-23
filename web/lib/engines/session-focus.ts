@@ -13,6 +13,7 @@
  * Moteur pur : aucune écriture, aucun état dérivé persisté (ALGO_SPEC_HARDENED §0.2).
  */
 
+import { equivalenceKey } from "@/lib/engines/equivalence";
 import {
   parentSets,
   weeklyProgress,
@@ -187,6 +188,13 @@ function suggestionsForParent(
       if (recencyDelta !== 0) return recencyDelta;
       if (a.coefficient !== b.coefficient) return b.coefficient - a.coefficient;
       return a.exercise.name.localeCompare(b.exercise.name, "fr");
+    })
+    // Une seule machine par famille équivalente : la première du tri, donc celle de la séance ou
+    // la plus récente. Proposer Pec deck ET Pectoral fly LifeFitness, c'est proposer deux fois
+    // le même mouvement, dont une machine d'une salle quittée.
+    .filter((candidate, index, sorted) => {
+      const family = equivalenceKey(candidate.exercise);
+      return sorted.findIndex((other) => equivalenceKey(other.exercise) === family) === index;
     })
     .slice(0, SESSION_FOCUS.MAX_EXERCISE_SUGGESTIONS)
     .map(({ exercise, daysSinceLastUsed, inCurrentSession }) => ({

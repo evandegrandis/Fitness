@@ -17,6 +17,7 @@
  *     PAS branchée sur `lifecycle.ts` en P2.2 — cf. doc de tête de `lifecycle.ts`).
  */
 
+import { areEquivalent } from "@/lib/engines/equivalence";
 import { MUSCLE_PARENTS, type MuscleParent } from "@/lib/models/muscles";
 import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSession } from "@/lib/models/types";
 import { movementPatternDisplayName, plateauWeakPointDisplayName } from "@/lib/models/enums";
@@ -206,6 +207,9 @@ function fatiguePenalty(current: Exercise, candidate: Exercise): number {
 
 function passesHardFilter(current: Exercise, candidate: Exercise): boolean {
   if (candidate.id === current.id) return false;
+  // Même mouvement sur une autre marque (lib/engines/equivalence.ts) : ce n'est pas une variation,
+  // c'est la même machine ailleurs. La proposer sur un plateau ne changerait pas le stimulus.
+  if (areEquivalent(current, candidate)) return false;
   if (current.movementPattern !== null && candidate.movementPattern !== null) {
     return (
       current.movementPattern === candidate.movementPattern &&

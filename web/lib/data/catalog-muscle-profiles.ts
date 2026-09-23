@@ -278,8 +278,8 @@ const MACHINE_BRANDS = [
   "technogym",
   "life fitness",
   "lifefitness",
+  // « hammer » seul n'y figure pas : « Hammer curl » deviendrait « curl ».
   "hammer strength",
-  "hammer",
   "cybex",
   "matrix",
   "precor",
@@ -292,7 +292,7 @@ const MACHINE_BRANDS = [
 ];
 
 /** Retire la marque de machine du nom normalisé, où qu'elle se trouve. */
-function stripMachineBrand(normalized: string): string {
+export function stripMachineBrand(normalized: string): string {
   let result = ` ${normalized} `;
   for (const brand of MACHINE_BRANDS) {
     result = result.split(` ${brand} `).join(" ");

@@ -1264,3 +1264,64 @@ describe("séries complémentaires au log — le cas Pec deck du 18/08", () => {
     expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(2);
   });
 });
+
+describe("machines équivalentes — la dernière utilisée devient la machine par défaut", () => {
+  const OLD_PRESS: ExerciseType = { ...BENCH, id: "ex-cp-old", name: "Chest Press" };
+  const NEW_PRESS: ExerciseType = { ...BENCH, id: "ex-cp-lf", name: "Chest Press LifeFitness" };
+
+  beforeEach(() => {
+    resetStore();
+    localStorage.clear();
+  });
+
+  it("un modèle écrit avec l'ancienne machine ouvre la dernière utilisée", () => {
+    const store = useWorkoutStore.getState();
+    const history = [
+      baselineHistory(OLD_PRESS, "old-1", 21, 100, 10),
+      baselineHistory(NEW_PRESS, "new-1", 7, 72.5, 10),
+    ];
+    const template = {
+      id: "tpl-push",
+      name: "Push",
+      createdAt: new Date(),
+      sortOrder: 0,
+      exercises: [{ exerciseName: "Chest Press", orderIndex: 0, targetSets: 3 }],
+    };
+    store.hydrate({ catalog: [OLD_PRESS, NEW_PRESS], history, goals: [], settings: SETTINGS, templates: [template], recoveryCheckins: [], bodyWeights: [] });
+    store.startFromTemplate("tpl-push", "normal");
+
+    const exercises = useWorkoutStore.getState().active!.exercises;
+    expect(exercises.map((e) => e.exerciseName)).toEqual(["Chest Press LifeFitness"]);
+  });
+
+  it("la suggestion reprend la dernière séance faite sur l'autre machine, convertie", () => {
+    const store = useWorkoutStore.getState();
+    const history = [
+      baselineHistory(OLD_PRESS, "old-1", 21, 100, 10),
+      baselineHistory(NEW_PRESS, "new-1", 14, 72.5, 10),
+      baselineHistory(OLD_PRESS, "old-2", 3, 105, 10),
+    ];
+    store.hydrate({ catalog: [OLD_PRESS, NEW_PRESS], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(NEW_PRESS.id);
+    const logged = useWorkoutStore.getState().active!.exercises[0];
+
+    const suggestion = useWorkoutStore.getState().suggestion(logged.id);
+    expect(suggestion.explanation).toContain("D'après Chest Press");
+    expect(suggestion.reasonCodes).toContain("equivalent_conversion");
+    // Dans les charges de la LifeFitness (≈ 0,72 × l'ancienne), pas dans celles de l'ancienne.
+    expect(suggestion.weight).toBeGreaterThanOrEqual(65);
+    expect(suggestion.weight).toBeLessThanOrEqual(85);
+  });
+
+  it("les records restent propres à chaque machine", () => {
+    const store = useWorkoutStore.getState();
+    const history = [
+      baselineHistory(OLD_PRESS, "old-1", 21, 100, 10),
+      baselineHistory(NEW_PRESS, "new-1", 14, 72.5, 10),
+    ];
+    store.hydrate({ catalog: [OLD_PRESS, NEW_PRESS], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    expect(useWorkoutStore.getState().records(NEW_PRESS.id).heaviestEver).toBe(72.5);
+    expect(useWorkoutStore.getState().records(OLD_PRESS.id).heaviestEver).toBe(100);
+  });
+});

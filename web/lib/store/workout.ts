@@ -41,6 +41,7 @@ import {
 } from "@/lib/engines/set-structure";
 import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/finisher";
 import { detectLevelUp, type LevelUp } from "@/lib/engines/level-up";
+import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
@@ -967,6 +968,40 @@ function applyPendingVariantSwitches(
   return { session: { ...session, exercises }, consumedIds };
 }
 
+/**
+ * Machines équivalentes (lib/engines/equivalence.ts) : dans une séance qui démarre, chaque
+ * exercice devient la machine de sa famille utilisée en DERNIER. Un modèle « Chest Press » écrit
+ * dans l'ancienne salle ouvre donc la Chest Press LifeFitness. Deux machines de la même famille ne
+ * cohabitent pas : la seconde est retirée, sauf si elle appartient à un superset (sa place dans le
+ * tour compte).
+ */
+function resolveSessionEquivalents(
+  session: WorkoutSession,
+  catalog: Exercise[],
+  history: WorkoutSession[]
+): WorkoutSession {
+  const inSuperset = new Set(session.supersetGroups.flatMap((group) => group.memberOrder));
+  const seenFamilies = new Set<string>();
+  const exercises: LoggedExercise[] = [];
+  for (const logged of [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex)) {
+    const exercise = findExercise(catalog, logged.exerciseId);
+    if (!exercise || logged.sets.length > 0) {
+      exercises.push(logged);
+      continue;
+    }
+    const resolved = defaultEquivalent(exercise, catalog, history);
+    const family = equivalenceKey(resolved);
+    if (seenFamilies.has(family) && !inSuperset.has(logged.id)) continue;
+    seenFamilies.add(family);
+    exercises.push(
+      resolved.id === exercise.id
+        ? logged
+        : { ...logged, exerciseId: resolved.id, exerciseName: resolved.name }
+    );
+  }
+  return { ...session, exercises: exercises.map((logged, orderIndex) => ({ ...logged, orderIndex })) };
+}
+
 /** Copie `record` en retirant `keys` (no-op si `keys` est vide — évite une recréation d'objet inutile). */
 function withoutKeys<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
   if (keys.length === 0) return record;
@@ -1341,6 +1376,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         const state = get();
         const resolvedMode = mode ?? state.selectedStartMode;
         let session = seedSessionForMode(makeEmptySession(), resolvedMode, state);
+        session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
         set({
@@ -1367,6 +1403,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           .filter((e): e is Exercise => e !== undefined);
         let session = seedExercisesInto(makeEmptySession(template.name), exercises);
         session = applyModeOverlay(session, resolvedMode, state);
+        session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
         set({
@@ -1391,6 +1428,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         let session = seedExercisesInto(makeEmptySession(lastSession.templateName), exercises);
         session = cloneSupersetTopology(lastSession, session, newId);
         session = applyModeOverlay(session, resolvedMode, state);
+        session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
         set({
@@ -2231,10 +2269,14 @@ export const useWorkoutStore = create<WorkoutState>()(
           } as SetSuggestion;
         }
 
-        const recentContext = collectExerciseHistory(state.history, exercise.id, HISTORY_WINDOW);
+        // Machines équivalentes : les séances faites sur une autre machine de la famille, converties
+        // dans les unités de celle-ci, prolongent son historique. Seule la SUGGESTION les lit : les
+        // records, le signal feu et les variations restent sur l'historique exact de la machine.
+        const family = familyHistory(exercise, state.catalog, state.history);
+        const recentContext = collectExerciseHistory(family.history, exercise.id, HISTORY_WINDOW);
         const recentHistory = recentContext.sets;
         const currentSessionSets = orderedSets(loggedExercise).filter((s) => s.completed);
-        const fatigueBaselines = buildFatigueBaselines(state.history, state.catalog, exercise.id);
+        const fatigueBaselines = buildFatigueBaselines(family.history, state.catalog, exercise.id);
         const transientLatestPrAt = completedWorkSets(loggedExercise)
           .filter((set) => state.justHitRecord[set.id] !== undefined)
           .reduce<Date | null>(
@@ -2256,10 +2298,11 @@ export const useWorkoutStore = create<WorkoutState>()(
           ? buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, undefined, latestPrAt)
           : buildSessionFatigueContext(state.active, state.catalog, loggedExerciseId, fatigueBaselines);
         const prIsLatestEvidence = anyPrAchievedToday && sessionFatigue.priorLoads.length === 0;
-        // WS4 — gap daté sur CET exercice exact (pas de fusion de variantes), et override
-        // "Je suis frais" éventuellement armé par l'utilisateur pour cet exercice loggé.
-        const gapDays = daysSinceLastExercise(state.history, exercise.id) ?? undefined;
-        const gapLestDays = daysSinceLastWeightedExercise(state.history, exercise.id) ?? undefined;
+        // WS4 — gap daté sur CE mouvement (pas de fusion de variantes ; une machine équivalente
+        // convertie compte, le muscle a bien travaillé), et override "Je suis frais" éventuellement
+        // armé par l'utilisateur pour cet exercice loggé.
+        const gapDays = daysSinceLastExercise(family.history, exercise.id) ?? undefined;
+        const gapLestDays = daysSinceLastWeightedExercise(family.history, exercise.id) ?? undefined;
         const freshOverride = state.freshOverrides.has(loggedExerciseId);
 
         const params: SuggestParams = {
@@ -2293,6 +2336,18 @@ export const useWorkoutStore = create<WorkoutState>()(
           profile: { bodyWeightKg: state.settings.bodyWeightKg, gender: state.settings.gender, ageYears: state.settings.ageYears },
         };
         let result = compositeCompletionSuggestion(loggedExercise, exercise) ?? suggest(params);
+
+        // La référence vient d'une autre machine : le dire, avec le facteur, pour qu'un écart de
+        // calibrage se repère tout de suite. Dès la première série du jour, le moteur se recale sur
+        // ce qui vient d'être fait ici.
+        if (family.latestFrom && currentSessionSets.length === 0) {
+          const ratio = family.latestFrom.ratio.toFixed(2).replace(".", ",");
+          result = {
+            ...result,
+            explanation: `D'après ${family.latestFrom.exercise.name} (× ${ratio}) · ${result.explanation}`,
+            reasonCodes: [...result.reasonCodes, "equivalent_conversion"],
+          };
+        }
 
         // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : `exercise` EST la variante adoptée par
         // une rotation récemment acceptée -> masque l'indice live (`switchToVariantId`/reasonCodes)

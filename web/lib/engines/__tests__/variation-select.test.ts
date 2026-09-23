@@ -161,6 +161,20 @@ describe("selectAlternative — filtre dur movementPattern (SPEC §6)", () => {
     expect(result!.exerciseId).toBe(closeEnough.id);
   });
 
+  it("ne propose jamais la même machine d'une autre marque comme variation", () => {
+    const current = makeExercise({
+      name: "Chest Press LifeFitness",
+      movementPattern: MovementPattern.horizontalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
+    });
+    const twin = makeExercise({
+      name: "Chest Press",
+      movementPattern: MovementPattern.horizontalPress,
+      muscleMappings: [{ muscleGroup: MuscleGroup.pectStern, coefficient: 1.0 }],
+    });
+    expect(selectAlternative(current, [current, twin], [], NO_GOALS)).toBeNull();
+  });
+
   it("movementPattern taggé d'un seul côté -> aucun repli, candidat exclu (dégradation gracieuse conservative)", () => {
     const current = makeExercise({
       name: "Développé couché",
