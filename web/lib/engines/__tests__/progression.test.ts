@@ -570,6 +570,9 @@ describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
     expect(s.readyForPR).toBeFalsy();
     expect(s.readyForLevelUp).toBeFalsy();
     expect(s.nextLevelName).toBeUndefined();
+    // Le libellé ne promet pas non plus de record.
+    expect(s.explanation).toContain("Étalonnage");
+    expect(s.explanation).not.toContain("Tentative de record");
   });
 
   it("déjà au palier Élite (plafond) -> readyForLevelUp reste faux même en progressant encore (pas de palier au-dessus), mais readyForPR peut rester vrai", () => {

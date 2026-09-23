@@ -962,6 +962,9 @@ function deriveStateV2(
 // render
 // ---------------------------------------------------------------------------
 
+/** Libellé d'une série qui pose la référence d'un exercice (règle d'étalonnage, records.ts). */
+const CALIBRATION_LABEL_FR = "Étalonnage";
+
 const MODE_LABEL_FR: Record<string, string> = {
   [SuggestionMode.recordAttempt]: "Tentative de record",
   [SuggestionMode.fallbackHypertrophy]: "Hypertrophie",
@@ -2472,8 +2475,16 @@ export function suggest(params: SuggestParams): SetSuggestion {
     const knownSetsForExercise = [...historicalSetsForExercise, ...currentSessionSets];
 
     // Étalonnage (records.ts) : tant que l'exercice pose sa référence, aucun feu ne doit promettre
-    // un record ou un palier que la série ne pourra pas décrocher.
-    if (isCalibrating(recordCalibration(knownSetsForExercise, exercise), now)) return result;
+    // un record ou un palier que la série ne pourra pas décrocher, et le libellé non plus :
+    // « Tentative de record » sur une machine découverte contredirait la règle.
+    if (isCalibrating(recordCalibration(knownSetsForExercise, exercise), now)) {
+      return result.mode === SuggestionMode.recordAttempt
+        ? {
+            ...result,
+            explanation: result.explanation.replace(MODE_LABEL_FR[SuggestionMode.recordAttempt], CALIBRATION_LABEL_FR),
+          }
+        : result;
+    }
 
     // readyForPR — indépendant du profil StrengthLevel. Même garde `reps >= repTargetMin` et même
     // marge anti-flapping (`K_E1RM_PR_THRESHOLD`, records.ts) que `RecordsEngine.classify` (branche

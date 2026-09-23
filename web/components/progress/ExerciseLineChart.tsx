@@ -18,6 +18,7 @@ import {
 
 import { formatShortDate, roundToIncrement } from "@/components/progress/utils";
 import { trendBadge, type ExerciseProgressAxis } from "@/components/progress/trend";
+import { formatAxisNumber, yAxisWidth } from "@/components/progress/chart-axis";
 
 export interface ExercisePoint {
   date: Date;
@@ -128,7 +129,7 @@ export function ExerciseLineChart({
       </div>
       <div style={{ width: "100%", height }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} onMouseMove={handleMove} onMouseLeave={handleLeave} margin={{ top: 4, right: 8, left: -18, bottom: 0 }}>
+          <LineChart data={data} onMouseMove={handleMove} onMouseLeave={handleLeave} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.06)" />
             <XAxis
               dataKey="dateLabel"
@@ -140,10 +141,12 @@ export function ExerciseLineChart({
             <YAxis
               yAxisId="primary"
               domain={yDomain}
+              allowDecimals={false}
+              tickFormatter={(value: number) => formatAxisNumber(value, 0)}
               tick={{ fill: "var(--color-fg-faint)", fontSize: 10 }}
               axisLine={false}
               tickLine={false}
-              width={34}
+              width={yAxisWidth(yDomain, 0, 10)}
             />
             {showReps && primaryAxis === "load" && (
               <YAxis yAxisId="reps" orientation="right" hide domain={["dataMin - 2", "dataMax + 2"]} />

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { formatWeight, formatDerivedWeight } from "@/components/progress/utils";
 import { ExerciseLineChart, type ExercisePoint } from "@/components/progress/ExerciseLineChart";
 import { BenchmarkGauge } from "@/components/progress/BenchmarkGauge";
+import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
 import { exerciseProgressAxis, trendBadge } from "@/components/progress/trend";
 
 type SortMode = "recent" | "az";
@@ -290,6 +291,7 @@ function ExerciseCardRow({
             className="overflow-hidden"
           >
             <div className="space-y-3 border-t border-white/8 px-4 pb-4 pt-3">
+              {exercise.muscleMappings.length === 0 && <MissingMusclesNotice exercise={exercise} />}
               <ExerciseLineChart
                 points={points}
                 primaryAxis={primaryAxis}

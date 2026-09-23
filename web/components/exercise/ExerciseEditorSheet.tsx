@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { Stepper } from "@/components/ui/Stepper";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { upsertExercise, deleteExercise } from "@/lib/db/actions";
+import { deleteExercise } from "@/lib/db/actions";
 import { PermanentMutationError, writeThrough } from "@/lib/sync/write-through";
 import {
   BENCHMARK_UNITS,
@@ -32,6 +32,7 @@ import { MuscleMappingEditor, mappingsToParentLevel } from "@/components/exercis
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
 import { listKnownStandards } from "@/lib/engines/benchmark";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
+import { saveExercise } from "@/lib/sync/save-exercise";
 
 const FATIGUE_LABEL: Record<FatigueClass, string> = { heavy: "Lourd", medium: "Moyen", light: "Léger" };
 
@@ -141,25 +142,11 @@ function ExerciseEditorForm({
       category: draft.category.trim() || "Autre",
       sortOrder: isEditing ? draft.sortOrder : catalogLength,
     });
-    // OFFLINE_PWA_SPEC §4 (P4.4) — reflète immédiatement dans le catalogue local (avant même de
-    // savoir si Neon est joignable) : sans ça, créer/éditer un exercice hors-ligne ne serait visible
-    // que dans ce formulaire, jamais dans le reste de l'app (sélecteurs, suggestion(), etc.).
-    const previous = useWorkoutStore.getState().catalog.find((item) => item.id === toSave.id) ?? null;
-    useWorkoutStore.getState().upsertExerciseInCatalog(toSave);
+    // OFFLINE_PWA_SPEC §4 (P4.4) — catalogue local mis à jour immédiatement, écriture ou mise en
+    // file, retour arrière si rien n'a été conservé : tout est dans `saveExercise`.
     try {
-      // Avant ce lot : `await upsertExercise(toSave)` sans try/catch — hors-ligne, la promesse
-      // rejetait sans jamais repasser `saving` à false ni fermer la feuille, ET l'édition était
-      // perdue. `writeThrough` met en file au lieu de perdre l'action (rejouée par SyncProvider).
-      await writeThrough({ kind: "exercise_upsert", exercise: toSave }, () => upsertExercise(toSave));
+      await saveExercise(toSave);
     } catch (cause) {
-      // Ni Neon ni le stockage offline n'ont conservé la mutation : ne pas laisser le catalogue
-      // optimiste prétendre le contraire. Le test d'identité évite d'annuler une édition plus
-      // récente du même exercice qui aurait eu lieu pendant l'await.
-      const current = useWorkoutStore.getState().catalog.find((item) => item.id === toSave.id);
-      if (current === toSave) {
-        if (previous) useWorkoutStore.getState().upsertExerciseInCatalog(previous);
-        else useWorkoutStore.getState().removeExerciseFromCatalog(toSave.id);
-      }
       setError(cause instanceof Error ? cause.message : "Impossible de sécuriser cet exercice.");
       setSaving(false);
       return;

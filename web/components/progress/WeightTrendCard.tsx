@@ -6,6 +6,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { buildWeightTrend, WEIGHT_MILESTONES_PCT } from "@/lib/engines/body-weight";
 import { trainingPhaseDisplayName } from "@/lib/models/enums";
+import { formatAxisNumber, yAxisWidth } from "@/components/progress/chart-axis";
 
 /**
  * Courbe de poids — tendance 7 jours, jamais la pesée brute.
@@ -75,7 +76,7 @@ export function WeightTrendCard() {
 
       <div className="mt-3 h-44 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -22 }}>
+          <AreaChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="weightFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.28} />
@@ -83,7 +84,14 @@ export function WeightTrendCard() {
               </linearGradient>
             </defs>
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.45)" }} tickLine={false} axisLine={false} minTickGap={24} />
-            <YAxis domain={[min, max]} tick={{ fontSize: 10, fill: "rgba(255,255,255,0.45)" }} tickLine={false} axisLine={false} width={44} />
+            <YAxis
+              domain={[min, max]}
+              tickFormatter={(value: number) => formatAxisNumber(value, 1)}
+              tick={{ fontSize: 10, fill: "rgba(255,255,255,0.45)" }}
+              tickLine={false}
+              axisLine={false}
+              width={yAxisWidth([min, max], 1, 10)}
+            />
             <Tooltip
               contentStyle={{ background: "#101011", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, fontSize: 12 }}
               labelStyle={{ color: "rgba(255,255,255,0.6)" }}

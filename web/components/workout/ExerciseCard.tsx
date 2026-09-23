@@ -17,6 +17,7 @@ import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type W
 import { completedWorkSets } from "@/lib/models/types";
 import { SetRow } from "./SetRow";
 import { SetEntry } from "./SetEntry";
+import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
 import { nextSupersetExerciseId, nextSupersetRoundIndex } from "@/lib/store/superset";
@@ -300,6 +301,7 @@ export function ExerciseCard({
                 transition={{ duration: 0.25 }}
                 className="flex flex-col gap-3 overflow-hidden"
               >
+                {exercise && exercise.muscleMappings.length === 0 && <MissingMusclesNotice exercise={exercise} />}
                 {allTimeRecord && (
                   <div className="pill w-fit" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.10)" }}>
                     <Trophy size={11} />
@@ -388,6 +390,9 @@ export function ExerciseCard({
                 {currentLastSet
                   ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"} · dernière ${currentLastSet.weight > 0 ? `${currentLastSet.weight}kg` : "BW"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
                   : "À faire"}
+                {exercise && exercise.muscleMappings.length === 0 && (
+                  <span className="text-amber-200"> · aucun muscle</span>
+                )}
               </span>
               {allTimeRecord && (
                 <span className="shrink-0">

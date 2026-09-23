@@ -244,8 +244,9 @@ export function ActiveSession({
       fatigueClass: "medium",
       progressionPolicy: null,
       voluntaryRepCap: 0,
-      // Aucun muscle mappé : mieux vaut ne rien compter que fausser la couverture avec une
-      // supposition tirée du nom. À compléter dans l'éditeur.
+      // Aucun muscle deviné : une supposition tirée du nom fausserait la couverture. Un profil
+      // connu est repris à l'enregistrement (`withKnownMuscleProfile`) ; sinon la carte affiche
+      // `MissingMusclesNotice` tant que le profil manque, avec les exercices ressemblants à un tap.
       muscleMappings: [],
       lastUsed: null,
       movementPattern: null,
