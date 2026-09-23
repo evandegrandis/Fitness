@@ -7,8 +7,11 @@ data/backups/
 data/jeera_backup.json
 data/recent_sessions.json
 
-# Outils DB opérationnels/destructifs, inutiles au runtime Vercel.
-# `scripts/generate-sw.ts` reste volontairement inclus : package.json::prebuild en dépend.
+# Outils DB opérationnels/destructifs, inutiles au runtime Vercel. Tout le dossier est exclu, sauf
+# `scripts/generate-sw.ts` dont package.json::prebuild dépend : lister les scripts un par un laissait
+# passer chaque nouveau script, qui cassait le build en important `_safety.ts` (exclu, lui).
+scripts/*
+!scripts/generate-sw.ts
 scripts/_safety.ts
 scripts/backfill-*.ts
 scripts/export-backup.ts
