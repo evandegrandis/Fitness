@@ -27,7 +27,7 @@ export function correlationReadout(r: number | null, sampleCount: number): Corre
   }
   return {
     title: r > 0 ? "Tendance positive possible" : "Tendance négative possible",
-    detail: "Signal à surveiller sur davantage de séances — ce n'est pas une preuve de cause.",
+    detail: "Signal à surveiller sur davantage de séances : ce n'est pas une preuve de cause.",
     reliable: true,
   };
 }

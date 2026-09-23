@@ -26,23 +26,23 @@ export type SetPatternMode = (typeof SetPatternMode)[keyof typeof SetPatternMode
 
 export const SET_PATTERN_MODES: SetPatternMode[] = Object.values(SetPatternMode);
 
-/** Nom d'affichage complet (reste en anglais côté Swift d'origine — conservé tel quel). */
+/** Nom d'affichage complet, en français comme le reste de l'interface. */
 export const setPatternModeDisplayName: Record<SetPatternMode, string> = {
-  straight: "Straight Sets",
-  top_set_backoff: "Top Set + Backoffs",
-  ramping: "Ramping",
-  bodyweight: "Bodyweight",
-  weighted_bodyweight: "Weighted Bodyweight",
-  assisted_bodyweight: "Assisted Bodyweight",
+  straight: "Séries droites",
+  top_set_backoff: "Série lourde + séries allégées",
+  ramping: "Montée pyramidale",
+  bodyweight: "Poids du corps",
+  weighted_bodyweight: "Poids du corps lesté",
+  assisted_bodyweight: "Poids du corps assisté",
 };
 
 export const setPatternModeShortName: Record<SetPatternMode, string> = {
-  straight: "Straight",
-  top_set_backoff: "Top + Back",
-  ramping: "Ramp",
-  bodyweight: "BW",
-  weighted_bodyweight: "Weighted BW",
-  assisted_bodyweight: "Assisted",
+  straight: "Droites",
+  top_set_backoff: "Lourde + allégées",
+  ramping: "Pyramide",
+  bodyweight: "PDC",
+  weighted_bodyweight: "PDC lesté",
+  assisted_bodyweight: "PDC assisté",
 };
 
 /**
@@ -330,7 +330,7 @@ export const RESISTANCE_PROFILES: ResistanceProfile[] = Object.values(Resistance
 export const resistanceProfileDisplayName: Record<ResistanceProfile, string> = {
   bottom: "Bas (départ du mouvement)",
   mid: "Milieu",
-  lockout: "Lockout (fin du mouvement)",
+  lockout: "Fin (verrouillage)",
   even: "Uniforme",
 };
 
@@ -355,6 +355,27 @@ export const plateauWeakPointDisplayName: Record<PlateauWeakPoint, string> = {
   mid: resistanceProfileDisplayName.mid,
   lockout: resistanceProfileDisplayName.lockout,
 };
+
+/**
+ * Libellés du point faible selon le mouvement. Les trois valeurs stockées restent les mêmes
+ * (début, milieu, fin de l'amplitude concentrique), mais « Lockout » ne veut rien dire sur une
+ * élévation latérale ou un tirage : chaque famille de mouvement a ses mots.
+ */
+export function plateauWeakPointLabel(point: PlateauWeakPoint, pattern: MovementPattern | null): string {
+  switch (pattern) {
+    case "horizontal_press":
+    case "vertical_press":
+      return { bottom: "Bas (départ de la poussée)", mid: "Milieu", lockout: "Fin (verrouillage des bras)" }[point];
+    case "squat":
+    case "hinge":
+      return { bottom: "Bas (sortie du bas)", mid: "Milieu", lockout: "Fin (verrouillage)" }[point];
+    case "horizontal_pull":
+    case "vertical_pull":
+      return { bottom: "Début (bras tendus)", mid: "Milieu", lockout: "Fin (contraction)" }[point];
+    default:
+      return { bottom: "Début du mouvement", mid: "Milieu", lockout: "Fin (contraction)" }[point];
+  }
+}
 
 // ---------------------------------------------------------------------------
 // BenchmarkUnit

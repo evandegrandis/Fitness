@@ -19,7 +19,7 @@ function createDb(): ReturnType<typeof drizzle<typeof schema>> {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
-      "DATABASE_URL n'est pas défini — impossible d'initialiser le client Drizzle/Neon."
+      "DATABASE_URL n'est pas défini : impossible d'initialiser le client Drizzle/Neon."
     );
   }
   const sql = neon(url);

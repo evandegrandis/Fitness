@@ -4,6 +4,7 @@ import { StatTile } from "@/components/ui/StatTile";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationMinutes } from "./historyHelpers";
+import { formatDecimal } from "@/lib/format";
 
 /**
  * Carte d'aperçu sticky de l'onglet Historique — totaux RÉELS sur tout
@@ -46,7 +47,7 @@ export function HistoryOverviewCard({
         <StatTile value={sessions.length} label="Séances" />
         <StatTile value={displayedTotalSets} label="Sets" />
         <StatTile value={totalPRs} label="PR" accent={totalPRs > 0} />
-        <StatTile value={totalHours.toFixed(1)} label="Heures" />
+        <StatTile value={formatDecimal(totalHours)} label="Heures" />
       </div>
     </div>
   );

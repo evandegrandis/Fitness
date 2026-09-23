@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { buildWeekBuckets, type WeekBucket } from "@/components/progress/utils";
 import { WeeklyBarChart, type WeekDatum } from "@/components/progress/WeeklyBarChart";
 import { ProgressInsights } from "@/components/progress/ProgressInsights";
+import { formatDecimal } from "@/lib/format";
 
 type SortMode = "deficit" | "completion" | "az";
 
@@ -146,7 +147,7 @@ function MuscleCard({
           </div>
         </div>
         <div className="text-right">
-          <p className="tnum text-xl font-bold">{Math.round(progress.effectiveSets * 10) / 10}</p>
+          <p className="tnum text-xl font-bold">{formatDecimal(progress.effectiveSets)}</p>
           <p className="text-[0.65rem] text-[--color-fg-muted]">
             {progress.remaining > 0 ? `${Math.ceil(progress.remaining)} restants` : "Couvert"}
           </p>
@@ -230,7 +231,7 @@ function MuscleDetail({
                 />
               </div>
               <span className="tnum w-8 shrink-0 text-right text-xs text-[--color-fg-muted]">
-                {Math.round(l.sets * 10) / 10}
+                {formatDecimal(l.sets)}
               </span>
             </div>
           ))}
@@ -256,7 +257,7 @@ function MuscleDetail({
       {/* Top exercices de la semaine sélectionnée */}
       <div className="space-y-1.5">
         <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-faint]">
-          Top exercices — {selectedBucket?.label}
+          Top exercices · {selectedBucket?.label}
         </p>
         {topExercises.length === 0 ? (
           <p className="text-xs text-[--color-fg-faint]">Aucun exercice cette semaine-là.</p>
@@ -267,7 +268,7 @@ function MuscleDetail({
                 <span className="tnum text-xs text-[--color-fg-faint]">{i + 1}</span>
                 {t.name}
               </span>
-              <span className="tnum text-xs text-[--color-fg]">{Math.round(t.sets * 10) / 10} sets</span>
+              <span className="tnum text-xs text-[--color-fg]">{formatDecimal(t.sets)} séries</span>
             </div>
           ))
         )}

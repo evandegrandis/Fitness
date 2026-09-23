@@ -397,7 +397,7 @@ export function rollingStatusLine(
     .map((p) => parentDisplayName[p.parent].toLowerCase())
     .join(" et ");
   if (pct >= 70) {
-    return `Couverture ${pct}% — focus ${names}`;
+    return `Couverture ${pct} % · focus ${names}`;
   }
   return `Couverture ${pct}% cette semaine : ${names} à renforcer`;
 }

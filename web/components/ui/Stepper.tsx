@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDecimal } from "@/lib/format";
 
 const SCRUB_DEAD_ZONE = 12; // px : en-dessous, le scroll natif de la page gagne
 const SCRUB_PX_PER_STEP = 18; // px de glissement par cran
@@ -114,7 +115,7 @@ export function Stepper({
         >
           <ChevronUp size={11} className="opacity-30" />
           <span className="tnum min-w-[3.5rem] text-center text-2xl font-bold tabular-nums leading-none">
-            {value}
+            {formatDecimal(value, 2)}
             {suffix && <span className="ml-0.5 text-sm text-[--color-fg-muted]">{suffix}</span>}
           </span>
           <ChevronDown size={11} className="opacity-30" />

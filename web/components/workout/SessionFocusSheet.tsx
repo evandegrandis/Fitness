@@ -10,6 +10,7 @@ import {
   type SessionFocusRow,
 } from "@/lib/engines/session-focus";
 import { parentShortName } from "@/lib/models/muscles";
+import { formatDecimal } from "@/lib/format";
 import type { WorkoutSession } from "@/lib/models/types";
 
 /**
@@ -97,7 +98,7 @@ export function SessionFocusButton({
             <div className="mt-2 flex flex-wrap gap-1.5">
               {focus.workedToday.map((row) => (
                 <span key={row.parent} className="pill text-xs text-[--color-fg-muted]">
-                  {parentShortName[row.parent]} · {row.doneThisSession}
+                  {parentShortName[row.parent]} · {formatDecimal(row.doneThisSession)}
                 </span>
               ))}
             </div>
@@ -110,7 +111,7 @@ export function SessionFocusButton({
             <div className="mt-2 flex flex-wrap gap-1.5">
               {focus.tracked.map((row) => (
                 <span key={row.parent} className="pill text-xs text-[--color-fg-muted]">
-                  {parentShortName[row.parent]} · {row.effectiveSets}
+                  {parentShortName[row.parent]} · {formatDecimal(row.effectiveSets)}
                 </span>
               ))}
             </div>
@@ -153,13 +154,13 @@ function FocusRow({
         </span>
         <span className="tnum text-xs text-[--color-fg-muted]">
           {row.doneThisSession > 0 && (
-            <span style={{ color: "rgb(110,231,183)" }}>+{row.doneThisSession} · </span>
+            <span style={{ color: "rgb(110,231,183)" }}>+{formatDecimal(row.doneThisSession)} · </span>
           )}
-          {Math.round(row.remaining * 10) / 10} à faire
+          {formatDecimal(row.remaining)} à faire
         </span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] text-[--color-fg-faint]">
-        <span className="tnum">{Math.round(row.effectiveSets * 10) / 10} / {row.goalSets} séries cette semaine</span>
+        <span className="tnum">{formatDecimal(row.effectiveSets)} / {row.goalSets} séries cette semaine</span>
         <span>{row.isDormant ? "hors routine · " : ""}{lastTrained}</span>
       </div>
       <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/[0.07]">

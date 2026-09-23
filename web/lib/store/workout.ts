@@ -41,7 +41,7 @@ import {
 } from "@/lib/engines/set-structure";
 import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/finisher";
 import { detectLevelUp, type LevelUp } from "@/lib/engines/level-up";
-import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
+import { defaultEquivalent, equivalenceKey, familyHistory, startingPointFromEquivalent } from "@/lib/engines/equivalence";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
@@ -78,6 +78,7 @@ import {
 } from "@/lib/store/superset";
 import { buildFinishedWorkoutSnapshot, type FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
+import { cleanWeight } from "@/lib/format";
 
 export type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 
@@ -723,56 +724,98 @@ function buildFatigueBaselines(
 ): { baselineSystemicCost: number; baselineSameParentSets: number } | undefined {
   const targetExercise = findExercise(catalog, exerciseId);
   const parent = targetExercise ? primaryParent(targetExercise) : null;
-  const systemicCosts: number[] = [];
-  const sameParentCounts: number[] = [];
+  const samples: { systemicCost: number; sameParentSets: number }[] = [];
 
-  let occurrences = 0;
   for (const session of sessionsNewestFirst(history)) {
-    const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-    const targets = ordered.filter((logged) => logged.exerciseId === exerciseId);
-    const targetSets = targets.flatMap((logged) =>
-      logged.sets.filter(
-        (set) =>
-          set.completed &&
-          (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff)
-      )
-    );
-    if (targetSets.length === 0) continue;
-    occurrences += 1;
-    if (occurrences > 5) break;
-
-    let systemicCost = 0;
-    let sameParentSets = 0;
-    const cutoff = targetSets.reduce(
-      (latest, set) => (set.timestamp > latest ? set.timestamp : latest),
-      targetSets[0].timestamp
-    );
-    const targetIds = new Set(targets.map((target) => target.id));
-    for (const prior of ordered) {
-      if (targetIds.has(prior.id)) continue;
-      const exercise = findExercise(catalog, prior.exerciseId);
-      if (!exercise) continue;
-      const workSetsCompleted = physiologicalSetUnits(
-        prior.sets.filter((set) => set.timestamp <= cutoff),
-        {
-        increment: exercise.smallestIncrement,
-        }
-      );
-      if (workSetsCompleted <= 0) continue;
-      systemicCost += workSetsCompleted * FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
-      if (parent && primaryParent(exercise) === parent) sameParentSets += workSetsCompleted;
-    }
-    systemicCosts.push(systemicCost);
-    sameParentCounts.push(sameParentSets);
+    const sample = fatigueBeforeOccurrence(session, catalog, parent, (logged) => logged.exerciseId === exerciseId);
+    if (!sample) continue;
+    samples.push(sample);
+    if (samples.length >= 5) break;
   }
+  if (samples.length > 0) return medianBaselines(samples);
 
-  if (systemicCosts.length === 0) return undefined;
-  const sortedCosts = [...systemicCosts].sort((a, b) => a - b);
-  const sortedParent = [...sameParentCounts].sort((a, b) => a - b);
-  const mid = Math.floor(sortedCosts.length / 2);
-  const medianOf = (arr: number[]): number =>
-    arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
-  return { baselineSystemicCost: medianOf(sortedCosts), baselineSameParentSets: medianOf(sortedParent) };
+  // Exercice jamais fait : sans habitude propre, la fatigue du moment était comparée à ZÉRO et
+  // tout exercice découvert en milieu de séance déclenchait « fatigue systémique ». À défaut,
+  // l'habitude se lit sur les exercices du même muscle principal (5 dernières séances).
+  // Les exercices du même muscle ET du même type de mouvement occupent la même place dans les
+  // séances (un développé suit le pec deck) : ce sont eux qui disent l'habitude. À défaut, le
+  // même muscle seulement.
+  if (!parent) return undefined;
+  const recent = sessionsNewestFirst(history).slice(0, 5);
+  const collect = (matches: (exercise: Exercise) => boolean) => {
+    const found: { systemicCost: number; sameParentSets: number }[] = [];
+    for (const session of recent) {
+      for (const logged of session.exercises) {
+        const exercise = findExercise(catalog, logged.exerciseId);
+        if (!exercise || exercise.id === exerciseId || primaryParent(exercise) !== parent || !matches(exercise)) continue;
+        const sample = fatigueBeforeOccurrence(session, catalog, parent, (candidate) => candidate.id === logged.id);
+        if (sample) found.push(sample);
+      }
+    }
+    return found;
+  };
+  const pattern = targetExercise?.movementPattern ?? null;
+  const samePattern = pattern ? collect((exercise) => exercise.movementPattern === pattern) : [];
+  const fallback = samePattern.length > 0 ? samePattern : collect(() => true);
+  return fallback.length > 0 ? medianBaselines(fallback) : undefined;
+}
+
+/**
+ * Coût systémique et séries sur le même muscle faits AVANT une occurrence (chronologie réelle :
+ * seuls les sets des autres exercices terminés avant le dernier set de la cible comptent).
+ * `null` si l'occurrence n'a aucun set de travail complété.
+ */
+function fatigueBeforeOccurrence(
+  session: WorkoutSession,
+  catalog: Exercise[],
+  parent: MuscleParent | null,
+  isTarget: (logged: LoggedExercise) => boolean
+): { systemicCost: number; sameParentSets: number } | null {
+  const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
+  const targets = ordered.filter(isTarget);
+  const targetSets = targets.flatMap((logged) =>
+    logged.sets.filter(
+      (set) =>
+        set.completed &&
+        (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff)
+    )
+  );
+  if (targetSets.length === 0) return null;
+
+  let systemicCost = 0;
+  let sameParentSets = 0;
+  const cutoff = targetSets.reduce(
+    (latest, set) => (set.timestamp > latest ? set.timestamp : latest),
+    targetSets[0].timestamp
+  );
+  const targetIds = new Set(targets.map((target) => target.id));
+  for (const prior of ordered) {
+    if (targetIds.has(prior.id)) continue;
+    const exercise = findExercise(catalog, prior.exerciseId);
+    if (!exercise) continue;
+    const workSetsCompleted = physiologicalSetUnits(
+      prior.sets.filter((set) => set.timestamp <= cutoff),
+      { increment: exercise.smallestIncrement }
+    );
+    if (workSetsCompleted <= 0) continue;
+    systemicCost += workSetsCompleted * FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
+    if (parent && primaryParent(exercise) === parent) sameParentSets += workSetsCompleted;
+  }
+  return { systemicCost, sameParentSets };
+}
+
+function medianBaselines(
+  samples: { systemicCost: number; sameParentSets: number }[]
+): { baselineSystemicCost: number; baselineSameParentSets: number } {
+  const medianOf = (values: number[]): number => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
+  return {
+    baselineSystemicCost: medianOf(samples.map((sample) => sample.systemicCost)),
+    baselineSameParentSets: medianOf(samples.map((sample) => sample.sameParentSets)),
+  };
 }
 
 /** ALGO_V2 §5.1 — poids de corps utilisateur, même clé localStorage que `SettingsBodySection`. */
@@ -784,11 +827,6 @@ function readBodyweightKg(settings: UserSettings): number | undefined {
   if (!raw) return undefined;
   const parsed = Number(raw);
   return !Number.isNaN(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-/** Miroir de `Double.cleanWeight` (Swift) : entier sans décimale, sinon 2 décimales max. */
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
 }
 
 /** Renvoie une copie de `record` sans la clé `key`. */
@@ -1000,6 +1038,15 @@ function resolveSessionEquivalents(
     );
   }
   return { ...session, exercises: exercises.map((logged, orderIndex) => ({ ...logged, orderIndex })) };
+}
+
+/**
+ * Mouvements qui justifient une série d'échauffement : les polyarticulaires. Un exercice non
+ * tagué n'en reçoit une que s'il est déclaré lourd.
+ */
+function needsWarmup(exercise: Exercise): boolean {
+  if (exercise.movementPattern === null) return exercise.fatigueClass === "heavy";
+  return exercise.movementPattern !== "isolation";
 }
 
 /** Copie `record` en retirant `keys` (no-op si `keys` est vide — évite une recréation d'objet inutile). */
@@ -2077,8 +2124,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         delete recordsCache[loggedExercise.exerciseId];
 
         const message = removedSet
-          ? `Set supprimé — ${removedSet.weight > 0 ? cleanWeight(removedSet.weight) : "BW"}x${removedSet.reps}`
-          : "Set supprimé";
+          ? `Série supprimée : ${removedSet.weight > 0 ? `${cleanWeight(removedSet.weight)} kg` : "PDC"} × ${removedSet.reps}`
+          : "Série supprimée";
 
         let session = { ...state.active, exercises };
         if (loggedExercise.supersetGroupId) {
@@ -2273,7 +2320,14 @@ export const useWorkoutStore = create<WorkoutState>()(
         // dans les unités de celle-ci, prolongent son historique. Seule la SUGGESTION les lit : les
         // records, le signal feu et les variations restent sur l'historique exact de la machine.
         const family = familyHistory(exercise, state.catalog, state.history);
-        const recentContext = collectExerciseHistory(family.history, exercise.id, HISTORY_WINDOW);
+        // Une série de travail se prédit sur des séances de travail : les occurrences en finisher
+        // seul ne prennent pas de place dans la fenêtre. Exception : un exercice qui n'a JAMAIS
+        // servi autrement garde son profil finisher dédié (patterns.ts, ISOLATION_FINISHER).
+        const workContext = collectExerciseHistory(family.history, exercise.id, HISTORY_WINDOW, {
+          skipFinisherOnlySessions: true,
+        });
+        const recentContext =
+          workContext.sets.length > 0 ? workContext : collectExerciseHistory(family.history, exercise.id, HISTORY_WINDOW);
         const recentHistory = recentContext.sets;
         const currentSessionSets = orderedSets(loggedExercise).filter((s) => s.completed);
         const fatigueBaselines = buildFatigueBaselines(family.history, state.catalog, exercise.id);
@@ -2337,6 +2391,26 @@ export const useWorkoutStore = create<WorkoutState>()(
         };
         let result = compositeCompletionSuggestion(loggedExercise, exercise) ?? suggest(params);
 
+        // Première séance sur cette machine (aucun historique, même converti) : partir de la série
+        // de tête de l'équivalente utilisée récemment plutôt que de 20 kg par défaut. Sans facteur
+        // mesuré, c'est un ordre de grandeur annoncé comme tel, recalé dès la première série.
+        if (recentContext.sets.length === 0 && currentSessionSets.length === 0 && result.weight > 0) {
+          const start = startingPointFromEquivalent(exercise, state.catalog, state.history, new Date());
+          if (start) {
+            const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 2.5;
+            const rounded = Math.max(increment, Math.round(start.set.weight / increment) * increment);
+            const weight = exercise.maxLoad && exercise.maxLoad > 0 ? Math.min(rounded, exercise.maxLoad) : rounded;
+            const reps = Math.min(exercise.repTargetMax, Math.max(exercise.repTargetMin, start.set.reps));
+            result = {
+              ...result,
+              weight,
+              reps,
+              explanation: `Étalonnage · départ d'après ${start.exercise.name} (${cleanWeight(start.set.weight)} kg × ${start.set.reps}), charge à recaler`,
+              reasonCodes: [...result.reasonCodes, "equivalent_starting_point"],
+            };
+          }
+        }
+
         // La référence vient d'une autre machine : le dire, avec le facteur, pour qu'un écart de
         // calibrage se repère tout de suite. Dès la première série du jour, le moteur se recale sur
         // ce qui vient d'être fait ici.
@@ -2392,6 +2466,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         ) return null;
         if (warmupSets(loggedExercise).some((s) => s.completed)) return null;
         if (exercise.setPatternMode !== "straight" && exercise.setPatternMode !== "top_set_backoff") return null;
+        // Un échauffement prépare un mouvement polyarticulaire lourd (articulations, patron moteur).
+        // La seule charge ne suffit pas : 85 kg sur une machine à abdos n'en demande aucun.
+        if (!needsWarmup(exercise)) return null;
 
         const workingSuggestion = get().suggestion(loggedExerciseId);
         if (workingSuggestion.weight < 40) return null;

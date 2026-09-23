@@ -139,7 +139,7 @@ export function trackStats(rawPoints: TrackPoint[]): TrackStats {
 
 /** « 5:30 /km ». */
 export function formatPace(secondsPerKm: number | null): string {
-  if (secondsPerKm === null || !Number.isFinite(secondsPerKm)) return "—";
+  if (secondsPerKm === null || !Number.isFinite(secondsPerKm)) return "–";
   const m = Math.floor(secondsPerKm / 60);
   const s = Math.round(secondsPerKm % 60);
   return `${m}:${String(s).padStart(2, "0")} /km`;

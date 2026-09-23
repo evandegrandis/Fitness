@@ -31,6 +31,12 @@ import { MUSCLE_PARENTS, type MuscleParent } from "@/lib/models/muscles";
 export const SESSION_FOCUS = {
   /** Au-delà de trois semaines sans set effectif, le groupe passe après la routine actuelle. */
   RELEVANCE_WINDOW_DAYS: 21,
+  /**
+   * Coefficient minimal pour proposer un exercice pour un muscle. Sans ce seuil, tout exercice de
+   * la séance qui effleurait le muscle passait en tête : Lateral raises pour les abdos (gainage à
+   * 0,1), curls pour les deltoïdes (0,1), un tirage pour les pecs (0,25).
+   */
+  MIN_SUGGESTION_COEFFICIENT: 0.5,
   /** Même fenêtre pour ne pas ressusciter un exercice pratiqué il y a deux mois. */
   EXERCISE_SUGGESTION_WINDOW_DAYS: 21,
   /** En deçà, le déficit est du bruit d'arrondi. */
@@ -174,7 +180,7 @@ function suggestionsForParent(
     })
     .filter(
       (candidate) =>
-        candidate.coefficient > 0 &&
+        candidate.coefficient >= SESSION_FOCUS.MIN_SUGGESTION_COEFFICIENT &&
         (candidate.inCurrentSession ||
           (candidate.daysSinceLastUsed !== null &&
             candidate.daysSinceLastUsed <= SESSION_FOCUS.EXERCISE_SUGGESTION_WINDOW_DAYS))

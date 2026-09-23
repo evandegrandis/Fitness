@@ -78,5 +78,5 @@ export function gapWeeksLabel(gapDays: number): number {
 export function deloadMessage(gapDays: number): string {
   const weeks = gapWeeksLabel(gapDays);
   const weekLabel = weeks <= 1 ? "1 semaine" : `${weeks} semaines`;
-  return `Reprise après ${weekLabel} — charge ajustée`;
+  return `Reprise après ${weekLabel} : charge ajustée`;
 }

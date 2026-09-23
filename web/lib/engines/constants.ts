@@ -51,8 +51,6 @@ export const ALGO_V2 = {
   FINISHER_POS_RATIO: 0.6,
   /** En dessous de ce nombre de séances, on suit `setPatternMode` figé (§2, étape 2). */
   MIN_SESSIONS_FOR_PATTERN: 3,
-  /** Cap absolu de reps suggérées sur un set de travail (§0 invariant 6, §5.4). */
-  WORK_REP_CAP: 10,
   /** "> 8 reps" => viser le poids suivant ; seuil effectif = min(9, repTargetMax) (§4.4, §8). */
   PROMOTION_REPS: 9,
   /** reps < repMin - 2 => démotion d'un incrément (§4.2, §8). */

@@ -5,10 +5,7 @@ import { fr } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { Star } from "lucide-react";
 import type { Achievement } from "@/lib/engines/achievements";
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
+import { cleanWeight } from "@/lib/format";
 
 const KIND_LABEL: Record<Achievement["kind"], string> = {
   heaviestWeight: "Nouveau record de poids",
@@ -38,7 +35,7 @@ export function RecentAchievements({ achievements }: { achievements: Achievement
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-[--color-fg]">{a.exerciseName}</p>
               <p className="truncate text-xs text-[--color-fg-muted]">
-                {KIND_LABEL[a.kind]} · {a.weight > 0 ? `${cleanWeight(a.weight)}kg×${a.reps}` : `BW×${a.reps}`}
+                {KIND_LABEL[a.kind]} · {a.weight > 0 ? `${cleanWeight(a.weight)}kg×${a.reps}` : `PDC×${a.reps}`}
               </p>
             </div>
             <span className="shrink-0 text-[0.68rem] text-[--color-fg-faint]">

@@ -7,6 +7,7 @@ import { useWorkoutStore } from "@/lib/store/workout";
 import { buildWeightTrend, WEIGHT_MILESTONES_PCT } from "@/lib/engines/body-weight";
 import { trainingPhaseDisplayName } from "@/lib/models/enums";
 import { formatChartNumber, yAxisWidth } from "@/components/progress/chart-axis";
+import { formatDecimal } from "@/lib/format";
 
 /**
  * Courbe de poids — tendance 7 jours, jamais la pesée brute.
@@ -60,16 +61,16 @@ export function WeightTrendCard() {
         <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
           Poids{settings.trainingPhase ? ` · ${trainingPhaseDisplayName[settings.trainingPhase]}` : ""}
         </p>
-        <span className="tnum text-lg font-bold text-[--color-fg]">{trend.currentKg.toFixed(1)} kg</span>
+        <span className="tnum text-lg font-bold text-[--color-fg]">{formatDecimal(trend.currentKg)} kg</span>
       </div>
 
       <p className="mt-1 text-xs text-[--color-fg-muted]">
-        Tendance 7 jours · départ {trend.startKg.toFixed(1)} kg
+        Tendance 7 jours · départ {formatDecimal(trend.startKg)} kg
         {trend.deltaKg !== null && Math.abs(trend.deltaKg) >= 0.05 && (
           <>
             {" · "}
             {trend.deltaKg > 0 ? "+" : "−"}
-            {Math.abs(trend.deltaKg).toFixed(1)} kg
+            {formatDecimal(Math.abs(trend.deltaKg))} kg
           </>
         )}
       </p>
@@ -96,7 +97,7 @@ export function WeightTrendCard() {
               contentStyle={{ background: "#101011", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 12, fontSize: 12 }}
               labelStyle={{ color: "rgba(255,255,255,0.6)" }}
               formatter={(value, name) => [
-                typeof value === "number" ? `${value.toFixed(1)} kg` : "—",
+                typeof value === "number" ? `${formatDecimal(value)} kg` : "–",
                 name === "tendance" ? "Tendance" : "Pesée",
               ]}
             />
@@ -126,7 +127,7 @@ export function WeightTrendCard() {
       )}
       {trend.nextMilestonePct !== null && trend.kgToNextMilestone !== null && (
         <p className="mt-1 text-xs text-[--color-fg-muted]">
-          Encore {trend.kgToNextMilestone.toFixed(1)} kg jusqu&apos;au palier −{trend.nextMilestonePct} %.
+          Encore {formatDecimal(trend.kgToNextMilestone)} kg jusqu&apos;au palier −{trend.nextMilestonePct} %.
         </p>
       )}
     </GlassCard>

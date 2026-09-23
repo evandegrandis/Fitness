@@ -79,13 +79,13 @@ export function SettingsBackupSection() {
         justHitRecord: {},
         recordsCache: {},
       });
-      setStatus("Import réussi — rechargement…");
+      setStatus("Import réussi, rechargement…");
       window.location.reload();
     } catch (error) {
       setStatus(
         error instanceof Error
-          ? `Échec de l'import — ${error.message}`
-          : "Échec de l'import — erreur inconnue"
+          ? `Échec de l'import : ${error.message}`
+          : "Échec de l'import : erreur inconnue"
       );
       setImporting(false);
     } finally {

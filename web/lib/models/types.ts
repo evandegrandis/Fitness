@@ -54,6 +54,12 @@ export interface Exercise {
   progressionPolicy: ProgressionPolicy | null;
   /** Actif seulement si progressionPolicy === "voluntaryCap". 0 == désactivé. */
   voluntaryRepCap: number;
+  /**
+   * Charge maximale réelle de la machine (bout de pile), saisie par l'utilisateur. Au-delà, rien
+   * n'existe : une fois ce poids atteint, la progression passe par les reps, au-delà de la
+   * fourchette s'il le faut pour rejoindre l'échec. `null`/absent = pas de limite connue.
+   */
+  maxLoad?: number | null;
   muscleMappings: MuscleMapping[];
   lastUsed: Date | null;
   /**

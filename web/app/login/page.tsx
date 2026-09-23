@@ -30,7 +30,7 @@ export default async function LoginPage({
             <p className="text-sm text-[--color-danger]">Code incorrect</p>
           )}
           {configuration && (
-            <p className="text-sm text-[--color-danger]">Authentification indisponible — configuration serveur requise</p>
+            <p className="text-sm text-[--color-danger]">Authentification indisponible : configuration serveur requise</p>
           )}
           <button type="submit" className="btn-accent w-full py-3 text-sm">
             Entrer

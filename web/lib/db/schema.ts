@@ -50,6 +50,8 @@ export const exercises = pgTable("exercises", {
   fatigueClass: text("fatigue_class").notNull().default("medium"),
   progressionPolicy: text("progression_policy"),
   voluntaryRepCap: integer("voluntary_rep_cap").notNull().default(0),
+  /** Charge maximale de la machine (bout de pile), saisie par l'utilisateur. Nullable. */
+  maxLoad: doublePrecision("max_load"),
   lastUsed: timestamp("last_used", { mode: "date", withTimezone: true }),
   /** VARIATION_CYCLING_SPEC §5 — nullable (dégradation gracieuse si non tagué, cf. §9). */
   movementPattern: text("movement_pattern"),

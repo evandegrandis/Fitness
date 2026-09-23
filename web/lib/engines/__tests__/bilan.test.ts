@@ -505,7 +505,7 @@ describe("records", () => {
     const bwRecord = review.records.find((record) => record.kind === "bodyweightReps");
     expect(bwRecord?.weight).toBe(0);
     expect(bwRecord?.reps).toBe(12);
-    expect(bwRecord?.label).toContain("BW×12");
+    expect(bwRecord?.label).toContain("PDC×12");
   });
 
   it("fusionne deux occurrences du même exercice dans le bilan", () => {

@@ -4,10 +4,7 @@ import { Flame, Link2, Star } from "lucide-react";
 import { SetType } from "@/lib/models/enums";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
+import { cleanWeight } from "@/lib/format";
 
 function SetLine({
   set,

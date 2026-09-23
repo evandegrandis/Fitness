@@ -93,7 +93,7 @@ describe("allure", () => {
 
   it("s'affiche en minutes par kilomètre", () => {
     expect(formatPace(330)).toBe("5:30 /km");
-    expect(formatPace(null)).toBe("—");
+    expect(formatPace(null)).toBe("–");
   });
 });
 

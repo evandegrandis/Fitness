@@ -28,7 +28,7 @@ import type { ProgressionPolicy, SetPatternMode, SetType } from "@/lib/models/en
 import { FATIGUE_CLASS_PROPERTIES, SetPatternMode as SPM, SetType as ST } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, MuscleGoal, UserSettings, WorkoutSession } from "@/lib/models/types";
 import { primaryParent } from "@/lib/models/types";
-import { buildFinisherRecords, buildRecords, classifyFinisher, isCalibrating, K_E1RM_PR_THRESHOLD, normalRecordSets, recordCalibration } from "@/lib/engines/records";
+import { buildFinisherRecords, buildRecords, classify, classifyFinisher, isCalibrating, normalRecordSets, recordCalibration } from "@/lib/engines/records";
 import {
   benchmarkLevel,
   resolveStandard,
@@ -74,6 +74,7 @@ import {
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { easierVariantName } from "@/lib/engines/variants";
 import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
+import { cleanWeight } from "@/lib/format";
 
 export { estimated1RM, bestE1RM } from "@/lib/engines/e1rm";
 export { applyDeload, deloadTierForGap, deloadMessage } from "@/lib/engines/deload";
@@ -242,10 +243,6 @@ function roundHalfAwayFromZero(value: number): number {
 /** Miroir de `Double.rounded(.up)` Swift = ceil. */
 function roundUp(value: number): number {
   return Math.ceil(value);
-}
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
 }
 
 function effectiveLoad(load: number, mode: SetPatternMode): number {
@@ -965,8 +962,11 @@ function deriveStateV2(
 /** Libellé d'une série qui pose la référence d'un exercice (règle d'étalonnage, records.ts). */
 const CALIBRATION_LABEL_FR = "Étalonnage";
 
+/** Réservé aux suggestions qui battraient réellement un record (`readyForPR`). */
+const RECORD_ATTEMPT_LABEL_FR = "Tentative de record";
+
 const MODE_LABEL_FR: Record<string, string> = {
-  [SuggestionMode.recordAttempt]: "Tentative de record",
+  [SuggestionMode.recordAttempt]: "Cible",
   [SuggestionMode.fallbackHypertrophy]: "Hypertrophie",
   [SuggestionMode.plateauBreak]: "Casser le plateau",
   [SuggestionMode.transitionMode]: "Montée en charge",
@@ -1013,7 +1013,7 @@ export function reprojectSuggestionAtWeight(
   const projected = roundHalfAwayFromZero(
     suggestion.reps - (toEffectiveLoad - fromEffectiveLoad) / kgPerRep
   );
-  const standardCap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
+  const standardCap = exercise.repTargetMax;
   const cap =
     exercise.setPatternMode === SPM.bodyweight && suggestion.mode === SuggestionMode.plateauBreak
       ? Math.max(standardCap, suggestion.reps)
@@ -1382,7 +1382,7 @@ function suggestGeneric(
       weight: 0,
       reps: exercise.repTargetMax,
       setType: ST.work,
-      explanation: "Maximum atteint — pensez à vous lester.",
+      explanation: "Maximum atteint : pense à te lester.",
       confidence: 0.95,
       reasonCodes: ["bw_at_max_suggest_weight"],
       mode: SuggestionMode.transitionMode,
@@ -1417,6 +1417,122 @@ function suggestGeneric(
 
   const confidence = Math.min(0.98, Math.max(0.5, candidates.length / 5.0 + (fatigueConfirmed ? -0.1 : 0.15)));
   return render(best, confidence);
+}
+
+/**
+ * RIR visé par les suggestions de séries de travail : 1, soit dans la zone où une série compte
+ * pleinement (RIR 0 à 2, set-structure.ts). Même cible que la série de tête (`repsAtTargetRir`).
+ */
+const SUGGESTION_TARGET_RIR = 1;
+
+/**
+ * Reps que la série aurait données au RIR visé, dans les DEUX sens : une série à RIR 2 valait
+ * une rep de plus, une série à l'échec (RIR 0) une de moins. Sans RIR rapporté, les reps faites.
+ */
+function repsAtSuggestionRir(set: LoggedSet): number {
+  const reported = set.reportedRir;
+  if (reported === null || reported === undefined || !Number.isFinite(reported)) return set.reps;
+  return set.reps + Math.max(0, Math.min(4, Math.round(reported))) - SUGGESTION_TARGET_RIR;
+}
+
+/**
+ * Charge qui donnerait `reps` au RIR visé pour une capacité (e1RM Epley) donnée, arrondie à
+ * l'incrément inférieur : on vise la fourchette, pas au-dessus.
+ */
+function loadForRepsAtTargetRir(e1rm: number, reps: number, increment: number): number {
+  const raw = e1rm / (1 + (reps + SUGGESTION_TARGET_RIR) / 30);
+  if (!(increment > 0)) return raw;
+  return Math.floor(raw / increment + 1e-9) * increment;
+}
+
+/**
+ * Charge de la série suivante quand la précédente a dépassé la fourchette : calculée depuis la
+ * capacité qu'elle révèle (e1RM sur les reps au RIR visé, fatigue intra-exercice déduite) pour
+ * viser le haut-milieu de la fourchette, jamais moins d'un cran. Un seul cran après 65 × 12 à
+ * RIR 2 restait loin des 72,5 × 10 réellement faits ensuite.
+ */
+function raisedLoadFrom(
+  last: LoggedSet,
+  predictedRepsAtTargetRir: number,
+  exercise: Exercise,
+  increment: number,
+  oneStepHarder: number
+): number {
+  if (exercise.setPatternMode !== SPM.straight || !(last.weight > 0)) return oneStepHarder;
+  const capacity = estimated1RM(last.weight, predictedRepsAtTargetRir + SUGGESTION_TARGET_RIR);
+  const targetReps = clampInt(exercise.repTargetMax - 2, exercise.repTargetMin, exercise.repTargetMax);
+  return Math.max(oneStepHarder, loadForRepsAtTargetRir(capacity, targetReps, increment));
+}
+
+/** En deçà, la série du jour ne démontre pas le niveau d'avant la pause (bruit de mesure admis). */
+const GAP_REFUTATION_RATIO = 0.97;
+
+/**
+ * Capacité démontrée par une série : e1RM Epley sur les reps jusqu'à l'échec (reps + RIR rapporté)
+ * pour une charge externe, reps jusqu'à l'échec au poids du corps.
+ */
+function demonstratedCapacity(set: LoggedSet): number {
+  const repsToFailure = set.reps + Math.max(0, Math.min(4, set.reportedRir ?? 0));
+  return set.weight > 0 ? estimated1RM(set.weight, repsToFailure) : repsToFailure;
+}
+
+function gapRefutedByToday(doneToday: LoggedSet[], lastSession: LoggedSet[]): boolean {
+  const reference = lastSession.filter((set) => set.completed).map(demonstratedCapacity);
+  if (reference.length === 0) return false;
+  const today = Math.max(...doneToday.map(demonstratedCapacity));
+  return today >= Math.max(...reference) * GAP_REFUTATION_RATIO;
+}
+
+/**
+ * Charge maximale de la machine (bout de pile, saisi par l'utilisateur). Au-delà, la charge
+ * n'existe pas : proposer 87,5 kg sur une machine qui s'arrête à 85 ne servait à rien. À ce
+ * poids, la progression passe par les reps, au-delà de la fourchette si c'est ce qu'il faut pour
+ * rejoindre le RIR visé : les reps viennent de ce que les séries à cette charge démontrent.
+ */
+function applyMachineMaxLoad(
+  result: SetSuggestion,
+  exercise: Exercise,
+  doneToday: LoggedSet[],
+  historyNewestFirst: LoggedSet[][]
+): SetSuggestion {
+  const maxLoad = exercise.maxLoad;
+  if (!maxLoad || !(maxLoad > 0) || !(result.weight > 0) || result.weight < maxLoad - 1e-9) return result;
+
+  const atMax = (set: LoggedSet) => set.completed && Math.abs(set.weight - maxLoad) < 1e-9;
+  let reps: number | null = null;
+  const lastToday = doneToday[doneToday.length - 1];
+  if (lastToday && atMax(lastToday)) {
+    const drop = FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
+    reps = roundHalfAwayFromZero(repsAtSuggestionRir(lastToday) - drop);
+  } else if (doneToday.length === 0) {
+    // Première série : ce que la série de tête à cette charge a donné récemment (au RIR visé).
+    const firstSetsAtMax = historyNewestFirst
+      .map((session) => session.find(atMax))
+      .filter((set): set is LoggedSet => set !== undefined)
+      .slice(0, 3)
+      .map(repsAtSuggestionRir);
+    if (firstSetsAtMax.length > 0) {
+      const weighted = firstSetsAtMax.reduce(
+        (acc, value, index) => ({ sum: acc.sum + value * Math.pow(ALGO_V2.RECENCY_ALPHA, index), weight: acc.weight + Math.pow(ALGO_V2.RECENCY_ALPHA, index) }),
+        { sum: 0, weight: 0 }
+      );
+      reps = roundHalfAwayFromZero(weighted.sum / weighted.weight);
+    }
+  }
+  if (reps === null) {
+    // Aucune série à cette charge : même effort que la suggestion, reprojeté au poids maximal.
+    reps = result.weight > maxLoad + 1e-9
+      ? roundHalfAwayFromZero((estimated1RM(result.weight, result.reps) / maxLoad - 1) * 30)
+      : result.reps;
+  }
+  const finalReps = Math.max(1, reps);
+  return {
+    ...result,
+    weight: maxLoad,
+    reps: finalReps,
+    explanation: `Charge max de la machine · ${cleanWeight(maxLoad)} kg × ${finalReps}`,
+    reasonCodes: [...result.reasonCodes, "machine_max_load"],
+  };
 }
 
 function buildCandidates(
@@ -1476,8 +1592,15 @@ function buildCandidates(
   // seule variable et une chute brutale (ex: 10 → 5) est presque toujours un artefact de
   // scoring, pas une vraie fatigue.
   const effectiveDrop = exercise.setPatternMode === SPM.bodyweight ? Math.min(baseDrop, 2.0) : baseDrop;
-  const predicted = roundHalfAwayFromZero(last.reps - effectiveDrop);
+  // Le RIR rapporté dit ce que la série valait vraiment : 12 reps à RIR 2 n'annoncent pas la même
+  // série suivante que 12 reps à l'échec. Sans RIR, les reps faites (comportement historique).
+  const rirReported = last.reportedRir !== null && last.reportedRir !== undefined;
+  const lastAtTargetRir = repsAtSuggestionRir(last);
+  const predicted = roundHalfAwayFromZero(lastAtTargetRir - effectiveDrop);
   const holdReps = clampInt(predicted, Math.max(1, exercise.repTargetMin - 1), exercise.repTargetMax);
+  // Avec un RIR rapporté, dépasser le haut de la fourchette d'une rep suffit à monter : la marge
+  // de 2 reps ne servait qu'à absorber l'incertitude d'une série sans RIR.
+  const overshootMargin = rirReported ? 1 : 2;
   const backoffReps = roundUp((exercise.repTargetMin + exercise.repTargetMax) / 2);
   const harderLoad = stepLoad(last.weight, increment, exercise.setPatternMode, true);
   const easierLoad = stepLoad(last.weight, increment, exercise.setPatternMode, false);
@@ -1516,10 +1639,10 @@ function buildCandidates(
   }
 
   if (doneToday.length === 1) {
-    if (last.reps >= exercise.repTargetMax + 4 && shouldStepLoad(exercise.setPatternMode, last.weight, true)) {
+    if (lastAtTargetRir >= exercise.repTargetMax + 4 && shouldStepLoad(exercise.setPatternMode, last.weight, true)) {
       const aggressiveRaise: Candidate = {
-        load: harderLoad,
-        reps: clampInt(last.reps - Math.trunc(Math.max(2.0, baseDrop)), exercise.repTargetMin, exercise.repTargetMax),
+        load: raisedLoadFrom(last, predicted, exercise, increment, harderLoad),
+        reps: clampInt(lastAtTargetRir - Math.trunc(Math.max(2.0, baseDrop)), exercise.repTargetMin, exercise.repTargetMax),
         mode: SuggestionMode.transitionMode,
         reasonCodes: ["first_set_far_overshoot_raise_now"],
       };
@@ -1537,19 +1660,34 @@ function buildCandidates(
     }
   }
 
-  let result: Candidate[] = [
-    { load: last.weight, reps: holdReps, mode: SuggestionMode.recordAttempt, reasonCodes: ["predicted_drop_same_load"] },
-    { load: easierLoad, reps: backoffReps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"] },
-  ];
+  // Redescendre d'un cran n'a de sens que si la même charge ne tient plus la fourchette, ou si la
+  // fatigue de séance est avérée. Après 65 × 12 à RIR 2, proposer 62,5 kg contredisait la série.
+  // À l'inverse, quand le RIR annonce une série sous le minimum à la même charge, c'est la
+  // descente qui s'impose : garder la charge proposerait une série hors fourchette.
+  const holdFitsRange = predicted >= exercise.repTargetMin;
+  const canEase = shouldStepLoad(exercise.setPatternMode, last.weight, false);
+  // Double progression : une série qui dépasse le haut de la fourchette au RIR visé appelle une
+  // charge plus lourde. Garder la charge gagnait toujours la notation (65 × 12 à RIR 2 donnait
+  // encore 65 kg), si bien que la montée n'arrivait jamais en cours de séance.
+  const overshot =
+    shouldStepLoad(exercise.setPatternMode, last.weight, true) &&
+    lastAtTargetRir >= exercise.repTargetMax + overshootMargin;
+  let result: Candidate[] = [];
+  if (!overshot && (holdFitsRange || !canEase || !rirReported)) {
+    result.push({ load: last.weight, reps: holdReps, mode: SuggestionMode.recordAttempt, reasonCodes: ["predicted_drop_same_load"] });
+  }
+  if (!holdFitsRange || fatigueConfirmed) {
+    result.push({ load: easierLoad, reps: backoffReps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"] });
+  }
 
-  if (shouldStepLoad(exercise.setPatternMode, last.weight, true) && last.reps >= exercise.repTargetMax + 2) {
+  if (overshot) {
     const raisedReps = clampInt(
-      roundHalfAwayFromZero(last.reps - Math.max(1, baseDrop)),
+      Math.min(roundHalfAwayFromZero(lastAtTargetRir - Math.max(1, baseDrop)), exercise.repTargetMax - 2),
       exercise.repTargetMin,
       exercise.repTargetMax
     );
     result.push({
-      load: harderLoad,
+      load: raisedLoadFrom(last, predicted, exercise, increment, harderLoad),
       reps: raisedReps,
       mode: SuggestionMode.transitionMode,
       reasonCodes: ["overshot_target_raise_load_next_set"],
@@ -1666,11 +1804,15 @@ function scoreCandidate(
   const last = doneToday[doneToday.length - 1];
   if (last) {
     if (last.reps <= Math.max(1, exercise.repTargetMin - 2) && candidate.mode === SuggestionMode.recordAttempt) score -= 20;
+    // Le candidat « redescendre » n'existe plus que s'il est justifié (fourchette non tenue ou
+    // fatigue avérée) : après une série correcte, il reste alors le choix raisonnable.
     if (last.reps >= Math.max(exercise.repTargetMin, 7) && candidate.mode === SuggestionMode.fallbackHypertrophy) score += 6;
   }
 
   if (candidate.reps < 5) score -= 10;
-  if (candidate.reps > 10 && candidate.mode !== SuggestionMode.fallbackHypertrophy) score -= 10;
+  // Au-delà du haut de la fourchette de CET exercice, pas d'un seuil fixe de 10 reps : une
+  // fourchette 8-12 rendait 11 reps « trop » et poussait à baisser la charge.
+  if (candidate.reps > exercise.repTargetMax && candidate.mode !== SuggestionMode.fallbackHypertrophy) score -= 10;
   return score;
 }
 
@@ -1779,7 +1921,7 @@ function suggestTopSetBackoffV2(
     const reps = clampInt(
       predictRepsPure(topAdj, "top", { ...baseCtx, formDelta }),
       exercise.repTargetMin,
-      Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP)
+      exercise.repTargetMax
     );
     return render({ load: Math.max(0, topAdj), reps, mode: candidateMode, reasonCodes: ["top_set_v2"] }, 0.88, ST.topSet, "top");
   }
@@ -1818,7 +1960,7 @@ function suggestTopSetBackoffV2(
   const reps = clampInt(
     repsFromActualTop,
     exercise.repTargetMin,
-    Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP)
+    exercise.repTargetMax
   );
   return render(
     { load: backLoad, reps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["backoff_v2"] },
@@ -1852,15 +1994,19 @@ function suggestBWRepV2(
   prAchievedToday: boolean
 ): SetSuggestion {
   const ctx: PredictContext = { ...predictCtx, samples: v2.repSamples };
-  const cap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
+  const cap = exercise.repTargetMax;
 
   if (doneToday.length === 0) {
+    // Au poids du corps, les reps sont la SEULE progression : la série de tête suit ce que les
+    // dernières séries de tête ont démontré (au RIR visé), au-delà de la fourchette s'il le faut.
+    // Plafonner à la fourchette proposait 10 HSPU à quelqu'un qui en faisait 14 à 17.
     const set1Reps = v2.processedHistory
       .slice(0, 3)
-      .map((p) => p.workSets[0]?.reps)
-      .filter((r): r is number => r !== undefined);
+      .map((p) => p.workSets[0])
+      .filter((set): set is LoggedSet => set !== undefined)
+      .map(repsAtSuggestionRir);
     const target = set1Reps.length > 0 ? median(set1Reps) : exercise.repTargetMin;
-    const reps = clampInt(roundHalfAwayFromZeroV2(target), 1, cap);
+    const reps = clampInt(roundHalfAwayFromZeroV2(target), 1, Math.max(cap, roundHalfAwayFromZeroV2(target)));
     return render({ load: 0, reps, mode: SuggestionMode.recordAttempt, reasonCodes: ["bw_rep_v2_first_set"] }, fatigueConfirmed ? 0.72 : 0.92, ST.work, "bw");
   }
 
@@ -1872,7 +2018,7 @@ function suggestBWRepV2(
       weight: 0,
       reps: 10,
       setType: ST.work,
-      explanation: "Variante facile — finir le volume (3x10)",
+      explanation: "Variante facile : finir le volume (3 × 10)",
       confidence: 0.9,
       reasonCodes: ["variant_switch_easier"],
       mode: SuggestionMode.fallbackHypertrophy,
@@ -1990,7 +2136,7 @@ function suggestStraightV2(
   fatigueConfirmed: boolean,
   predictCtxBase: Omit<PredictContext, "samples">
 ): SetSuggestion {
-  const cap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
+  const cap = exercise.repTargetMax;
 
   // Premier set de la séance : la référence + la décision de promotion (§4.2/§4.4) sont déjà
   // entièrement résolues dans `v2.amorceTarget` (computeRoleRef, réactif §4.4). On émet
@@ -2141,8 +2287,8 @@ export function suggest(params: SuggestParams): SetSuggestion {
   // (comportement strictement identique à avant WS4).
   const derivedGapDays =
     explicitGapDays ?? (lastSessionDate ? Math.floor((now.getTime() - lastSessionDate.getTime()) / 86_400_000) : undefined);
-  const effectiveGapDays = freshOverride ? undefined : derivedGapDays;
-  const effectiveGapLestDays = freshOverride ? undefined : gapLestDays;
+  let effectiveGapDays = freshOverride ? undefined : derivedGapDays;
+  let effectiveGapLestDays = freshOverride ? undefined : gapLestDays;
 
   // Sépare primers/warmups des vrais sets de travail.
   // doneToday ne contient que les sets sur lesquels le moteur doit raisonner pour prédire charge/reps.
@@ -2207,6 +2353,13 @@ export function suggest(params: SuggestParams): SetSuggestion {
     excludeFinishers: false,
     }
   );
+  // Une première série du jour au niveau d'avant la pause réfute le deload d'absence : il protège
+  // d'un déconditionnement supposé, pas d'un déconditionnement démenti. Après 80 × 15 à RIR 2,
+  // « Reprise après 2 semaines, charge ajustée » continuait d'abaisser la suite de la séance.
+  if (effectiveGapDays !== undefined && doneToday.length > 0 && gapRefutedByToday(doneToday, history[0] ?? [])) {
+    effectiveGapDays = undefined;
+    effectiveGapLestDays = undefined;
+  }
   const derived = deriveState(exercise, history, increment, effectiveGapDays);
 
   const parent = primaryParent(exercise);
@@ -2421,7 +2574,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
     result.mode === SuggestionMode.recordAttempt &&
     result.switchToVariantId == null
   ) {
-    const cap = Math.min(exercise.repTargetMax, ALGO_V2.WORK_REP_CAP);
+    const cap = exercise.repTargetMax;
     const currentBwFloor =
       exercise.setPatternMode === SPM.bodyweight && !fatigueConfirmed && doneToday.length > 0
         ? Math.min(doneToday.at(-1)!.reps, cap)
@@ -2448,6 +2601,8 @@ export function suggest(params: SuggestParams): SetSuggestion {
       sessionFatigueEvidence: sessionFatigue.fatigueEvidence(parent),
     };
   }
+
+  result = applyMachineMaxLoad(result, exercise, doneToday, history);
 
   // WS4 — signale le deload d'absence sans changer weight/reps déjà calculés par les branches
   // ci-dessus (elles utilisent déjà `derived.targetLoad` post-deload). Uniquement informatif :
@@ -2486,12 +2641,9 @@ export function suggest(params: SuggestParams): SetSuggestion {
         : result;
     }
 
-    // readyForPR — indépendant du profil StrengthLevel. Même garde `reps >= repTargetMin` et même
-    // marge anti-flapping (`K_E1RM_PR_THRESHOLD`, records.ts) que `RecordsEngine.classify` (branche
-    // "estimated1RM"), pour que le feu ne promette jamais un PR qui ne se matérialiserait pas en
-    // étoile une fois le set réellement loggé. `bestE1RM<=0` (jamais fait/aucun set validé avant)
-    // compte comme un PR dès que `proposedE1RM>0` — cohérent avec `classify()` qui flague déjà tout
-    // premier set chargé via sa branche "heaviestWeight" (`heaviestEver` initial = 0).
+    // readyForPR — indépendant du profil StrengthLevel : la série proposée est soumise à
+    // `classify`, la fonction même qui décerne l'étoile, pour que le feu ne promette jamais un PR
+    // qui ne se matérialiserait pas une fois la série loggée.
     if (result.setType === ST.finisher) {
       const proposedFinisher: LoggedSet = {
         id: "suggested-finisher",
@@ -2506,12 +2658,21 @@ export function suggest(params: SuggestParams): SetSuggestion {
       if (classifyFinisher(proposedFinisher, buildFinisherRecords(knownSetsForExercise))) {
         result = { ...result, readyForPR: true };
       }
-    } else if (result.weight > 0 && result.reps >= exercise.repTargetMin) {
-      const priorRecords = buildRecords(exercise, knownSetsForExercise);
-      const proposedE1RM = estimated1RM(result.weight, result.reps);
-      const readyForPR =
-        proposedE1RM > 0 && (priorRecords.bestE1RM <= 0 || proposedE1RM > priorRecords.bestE1RM * K_E1RM_PR_THRESHOLD);
-      if (readyForPR) {
+    } else if (result.reps > 0) {
+      // La série proposée passe par EXACTEMENT la fonction qui décerne l'étoile une fois loggée
+      // (`classify`) : même marge e1RM, même frontière de Pareto, même piste poids du corps. Le feu
+      // ne peut plus promettre un record que l'étoile refuserait, ni l'oublier sur un exercice PDC.
+      const proposed: LoggedSet = {
+        id: "suggested-set",
+        weight: result.weight,
+        reps: result.reps,
+        setType: result.setType,
+        timestamp: now,
+        setSlotIndex: currentSessionSets.length,
+        completed: true,
+        supersetRoundIndex: null,
+      };
+      if (classify(proposed, exercise, buildRecords(exercise, knownSetsForExercise)) !== null) {
         result = { ...result, readyForPR: true };
       }
     }
@@ -2555,6 +2716,15 @@ export function suggest(params: SuggestParams): SetSuggestion {
     }
   }
 
+  // Le mode « record_attempt » n'est que le calcul par défaut : il ne dit « Tentative de record »
+  // que si la série proposée en serait vraiment un. Sinon, « Cible » : 12 × 10 affiché comme une
+  // tentative de record alors que 12 × 11 existe déjà faisait douter de tout le reste.
+  if (result.readyForPR && result.mode === SuggestionMode.recordAttempt) {
+    result = {
+      ...result,
+      explanation: result.explanation.replace(MODE_LABEL_FR[SuggestionMode.recordAttempt], RECORD_ATTEMPT_LABEL_FR),
+    };
+  }
   return result;
 }
 

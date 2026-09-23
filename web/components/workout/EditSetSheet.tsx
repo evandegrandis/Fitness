@@ -139,7 +139,7 @@ function EditSetForm({
         }`}
       >
         <Flame size={15} />
-        Finisher — hors prévision normale
+        Finisher, hors prévision normale
       </button>
       <div className="flex gap-2">
         <button

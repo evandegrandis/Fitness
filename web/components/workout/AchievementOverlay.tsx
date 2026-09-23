@@ -3,10 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Trophy } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
+import { cleanWeight } from "@/lib/format";
 
 const KIND_LABEL: Record<string, string> = {
   heaviestWeight: "Record de poids",
@@ -51,7 +48,7 @@ export function AchievementOverlay() {
             </p>
             <p className="font-display text-xl font-bold text-[--color-fg]">{achievement.exerciseName}</p>
             <p className="tnum text-3xl font-bold text-accent-gradient">
-              {achievement.weight > 0 ? `${cleanWeight(achievement.weight)}kg × ${achievement.reps}` : `BW × ${achievement.reps}`}
+              {achievement.weight > 0 ? `${cleanWeight(achievement.weight)}kg × ${achievement.reps}` : `PDC × ${achievement.reps}`}
             </p>
             {[...Array(6)].map((_, i) => (
               <motion.span

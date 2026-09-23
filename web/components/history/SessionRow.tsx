@@ -9,6 +9,7 @@ import { SwipeRow } from "@/components/ui/SwipeRow";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
+import { formatDecimal } from "@/lib/format";
 
 function relativeDay(date: Date): string {
   if (isToday(date)) return "Aujourd'hui";
@@ -83,7 +84,7 @@ export function SessionRow({
               )}
             </div>
             <p className="mt-0.5 truncate text-xs text-[--color-fg-muted]">
-              {totalSets} sets · {duration} · {ordered.length} exos
+              {formatDecimal(totalSets)} séries · {duration} · {ordered.length} exos
               {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
               {(session.cardioEntries?.length ?? 0) > 0 ? " · cardio" : ""}
             </p>

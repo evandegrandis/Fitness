@@ -176,6 +176,7 @@ export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]
     fatigueClass: asFatigueClass(row.fatigueClass),
     progressionPolicy: asProgressionPolicy(row.progressionPolicy),
     voluntaryRepCap: row.voluntaryRepCap,
+    maxLoad: row.maxLoad ?? null,
     muscleMappings: mappingRows
       .filter((m) => m.exerciseId === row.id)
       .map((m): MuscleMapping => ({
@@ -218,6 +219,7 @@ export function exerciseToUpsertUpdateRow(
     fatigueClass: exercise.fatigueClass,
     progressionPolicy: exercise.progressionPolicy,
     voluntaryRepCap: exercise.voluntaryRepCap,
+    maxLoad: exercise.maxLoad ?? null,
     movementPattern: exercise.movementPattern,
     resistanceProfile: exercise.resistanceProfile,
     strengthStandardKey: exercise.strengthStandardKey,

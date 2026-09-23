@@ -85,7 +85,7 @@ describe("buildFinishedWorkoutSnapshot", () => {
     expect(snapshot.setCount).toBe(1);
     expect(snapshot.exerciseCount).toBe(1);
     expect(snapshot.prCount).toBe(1);
-    expect(snapshot.prHighlights).toEqual([{ title: "Dips", detail: "BW×16 · finisher" }]);
+    expect(snapshot.prHighlights).toEqual([{ title: "Dips", detail: "PDC×16 · finisher" }]);
     expect(snapshot.topMuscles.length).toBeGreaterThan(0);
   });
 

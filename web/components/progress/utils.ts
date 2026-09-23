@@ -1,3 +1,4 @@
+import { cleanWeight } from "@/lib/format";
 /**
  * Utilitaires partagés par les 3 couches de l'onglet Progrès — dates locales,
  * découpage en semaines, formatage. Pas de logique métier ici : tout ce qui
@@ -58,7 +59,7 @@ export function buildWeekBuckets(referenceDate: Date, count: number): WeekBucket
 
 /** Formate un poids sans décimale inutile (miroir `cleanWeight` Swift/store). */
 export function formatWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
+  return cleanWeight(weight);
 }
 
 /**

@@ -161,6 +161,30 @@ describe("selectAlternative — filtre dur movementPattern (SPEC §6)", () => {
     expect(result!.exerciseId).toBe(closeEnough.id);
   });
 
+  it("ne propose pas un exercice d'un autre faisceau : Rear delt fly n'est pas une variation des Lateral raises", () => {
+    const lateralRaises = makeExercise({
+      name: "Lateral raises",
+      movementPattern: MovementPattern.isolation,
+      muscleMappings: [
+        { muscleGroup: MuscleGroup.deltLat, coefficient: 1 },
+        { muscleGroup: MuscleGroup.trapSup, coefficient: 0.3 },
+        { muscleGroup: MuscleGroup.trapInf, coefficient: 0.3 },
+        { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.1 },
+        { muscleGroup: MuscleGroup.deltPost, coefficient: 0.1 },
+      ],
+    });
+    const rearDeltFly = makeExercise({
+      name: "Rear delt fly",
+      movementPattern: MovementPattern.isolation,
+      muscleMappings: [
+        { muscleGroup: MuscleGroup.deltPost, coefficient: 1 },
+        { muscleGroup: MuscleGroup.rhomboides, coefficient: 0.3 },
+        { muscleGroup: MuscleGroup.trapMid, coefficient: 0.3 },
+      ],
+    });
+    expect(selectAlternative(lateralRaises, [lateralRaises, rearDeltFly], [], NO_GOALS)).toBeNull();
+  });
+
   it("ne propose jamais la même machine d'une autre marque comme variation", () => {
     const current = makeExercise({
       name: "Chest Press LifeFitness",
@@ -323,7 +347,7 @@ describe("selectAlternative — weakPointFit (P2.1)", () => {
 
     expect(result).not.toBeNull();
     expect(result!.explanationFR).toContain("point faible");
-    expect(result!.explanationFR).toContain("lockout");
+    expect(result!.explanationFR).toContain("fin (contraction)");
   });
 });
 

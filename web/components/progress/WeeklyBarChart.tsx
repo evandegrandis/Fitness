@@ -22,7 +22,7 @@ export function WeeklyBarChart({
   selectedKey,
   onSelect,
   goal,
-  unit = "sets",
+  unit = "séries",
   height = 160,
   gradientId = "progresBarActive",
 }: {

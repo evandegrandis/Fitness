@@ -10,21 +10,18 @@ import { Sheet } from "@/components/ui/Sheet";
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
 import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { SwipeRow } from "@/components/ui/SwipeRow";
-import { allTimeRecordSet, displayedRecordSetIDs } from "@/lib/engines/records";
+import { allTimeRecordSet, displayedRecordSetIDs, isCalibrating, normalRecordSets, recordCalibration } from "@/lib/engines/records";
+import { headlineSet, lastWorkSession, sameRankSet, staleAgeLabel } from "@/lib/engines/last-session";
 import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
-import { completedWorkSets } from "@/lib/models/types";
 import { SetRow } from "./SetRow";
 import { SetEntry } from "./SetEntry";
 import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
 import { nextSupersetExerciseId, nextSupersetRoundIndex } from "@/lib/store/superset";
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
+import { cleanWeight, formatLoad, formatDecimal } from "@/lib/format";
 
 function supersetRoundLabel(session: WorkoutSession, loggedExercise: LoggedExercise): string | null {
   const group = session.supersetGroups.find((g) => g.id === loggedExercise.supersetGroupId);
@@ -33,18 +30,6 @@ function supersetRoundLabel(session: WorkoutSession, loggedExercise: LoggedExerc
   const round = nextSupersetRoundIndex(session, loggedExercise.id);
   if (memberIdx <= 0 || round === null) return null;
   return `SS · r${round} · ${memberIdx}/${group.memberOrder.length}`;
-}
-
-function lastSessionSetFor(exerciseId: string, history: WorkoutSession[]): LoggedSet | null {
-  for (const session of history) {
-    for (const logged of session.exercises) {
-      if (logged.exerciseId === exerciseId) {
-        const sets = completedWorkSets(logged);
-        if (sets.length > 0) return sets[sets.length - 1];
-      }
-    }
-  }
-  return null;
 }
 
 export function ExerciseCard({
@@ -131,10 +116,16 @@ export function ExerciseCard({
   // `slowing` (préemptif, avant `isPlateau` — qui a sa propre carte dans le bilan, pas ici), et
   // disparaît dès `progressing`/`plateaued`/`undefined` (v1, pas de calcul date-based — §9).
   const isSlowing = currentSuggestion.progressionState === "slowing";
-  const lastSet = useMemo(
-    () => (exercise ? lastSessionSetFor(exercise.id, history) : null),
+  // Dernière vraie séance de travail (lib/engines/last-session.ts) : l'en-tête résume par la
+  // meilleure série, le raccourci « dernier » reprend la série de même rang que la prochaine.
+  const lastSession = useMemo(
+    () => (exercise ? lastWorkSession(exercise, history) : null),
     [exercise, history]
   );
+  const lastHeadline = lastSession ? headlineSet(lastSession) : null;
+  const lastSessionAge = lastSession ? staleAgeLabel(lastSession, new Date()) : null;
+  const completedLeadsToday = exercise ? normalRecordSets(orderedSets(loggedExercise), exercise).length : 0;
+  const repeatSet = lastSession ? sameRankSet(lastSession, completedLeadsToday) : null;
   // Record réellement all-time, séance active comprise, pour donner le bon repère au moment
   // où l'utilisateur ouvre la carte et choisit sa prochaine charge.
   const allRecordSets = useMemo(() => {
@@ -149,10 +140,13 @@ export function ExerciseCard({
       .flatMap((candidate) => candidate.sets);
     return [...historicalSets, ...activeSets];
   }, [exercise, history, session.exercises]);
-  const allTimeRecord = useMemo(
-    () => (exercise ? allTimeRecordSet(exercise, allRecordSets) : undefined),
-    [exercise, allRecordSets]
-  );
+  // Pendant l'étalonnage (première séance, records.ts), il n'y a pas encore de record à afficher :
+  // « Record all-time » sur la toute première série d'une machine contredisait la règle.
+  const allTimeRecord = useMemo(() => {
+    if (!exercise) return undefined;
+    if (isCalibrating(recordCalibration(allRecordSets, exercise), new Date())) return undefined;
+    return allTimeRecordSet(exercise, allRecordSets);
+  }, [exercise, allRecordSets]);
   const displayedRecordIds = useMemo(
     () => (exercise ? displayedRecordSetIDs(loggedExercise, allRecordSets, exercise) : new Set<string>()),
     [exercise, loggedExercise, allRecordSets]
@@ -217,9 +211,9 @@ export function ExerciseCard({
               {exercise.machineSetting && (
                 <span className="block truncate text-xs text-[--color-fg-muted]">{exercise.machineSetting}</span>
               )}
-              {lastSet && (
+              {lastHeadline && (
                 <span className="block truncate text-xs text-[--color-fg-faint]">
-                  Dernière séance : {lastSet.weight > 0 ? `${lastSet.weight}kg` : "BW"} × {lastSet.reps}
+                  Dernière séance{lastSessionAge ? ` (${lastSessionAge})` : ""} : {formatLoad(lastHeadline.weight)} × {lastHeadline.reps}
                 </span>
               )}
             </button>
@@ -305,7 +299,7 @@ export function ExerciseCard({
                 {allTimeRecord && (
                   <div className="pill w-fit" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.10)" }}>
                     <Trophy size={11} />
-                    Record all-time · {allTimeRecord.weight > 0 ? `${cleanWeight(allTimeRecord.weight)}kg` : "BW"} × {allTimeRecord.reps}
+                    Record all-time · {allTimeRecord.weight > 0 ? `${cleanWeight(allTimeRecord.weight)}kg` : "PDC"} × {allTimeRecord.reps}
                   </div>
                 )}
                 {normalSets.length > 0 && (
@@ -319,7 +313,7 @@ export function ExerciseCard({
                       return (
                         <div key={set.id} className="rounded-2xl border border-sky-300/20 bg-sky-300/[0.035] p-2">
                           <div className="mb-1.5 px-1 text-[0.68rem] font-semibold text-sky-200">
-                            {block.kind === "completion" ? "Série complétée" : block.kind === "drop_set" ? "Drop set" : "Rest-pause"} · {block.totalReps} reps cumulées · {Math.round(block.effectiveSetUnits * 10) / 10} série{block.effectiveSetUnits === 1 ? "" : "s"} effective{block.effectiveSetUnits === 1 ? "" : "s"}
+                            {block.kind === "completion" ? "Série complétée" : block.kind === "drop_set" ? "Drop set" : "Rest-pause"} · {block.totalReps} reps cumulées · {formatDecimal(block.effectiveSetUnits)} série{block.effectiveSetUnits === 1 ? "" : "s"} effective{block.effectiveSetUnits === 1 ? "" : "s"}
                           </div>
                           <div className="flex flex-col gap-1.5">
                             {block.sets.map((blockSet) => (
@@ -356,7 +350,7 @@ export function ExerciseCard({
                   exercise={exercise}
                   suggestion={currentSuggestion}
                   warmup={currentWarmup}
-                  lastSessionSet={lastSet}
+                  lastSessionSet={repeatSet}
                   variantCandidateName={variantCandidateName}
                   onLogSet={(input) => {
                     logSet(loggedExercise.id, input);
@@ -388,7 +382,7 @@ export function ExerciseCard({
             <div className="flex min-w-0 items-center justify-between gap-2 text-xs text-[--color-fg-faint]">
               <span className="truncate">
                 {currentLastSet
-                  ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"} · dernière ${currentLastSet.weight > 0 ? `${currentLastSet.weight}kg` : "BW"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
+                  ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"} · dernière ${currentLastSet.weight > 0 ? `${cleanWeight(currentLastSet.weight)}kg` : "PDC"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
                   : "À faire"}
                 {exercise && exercise.muscleMappings.length === 0 && (
                   <span className="text-amber-200"> · aucun muscle</span>
@@ -396,7 +390,7 @@ export function ExerciseCard({
               </span>
               {allTimeRecord && (
                 <span className="shrink-0">
-                  Record {allTimeRecord.weight > 0 ? `${cleanWeight(allTimeRecord.weight)}kg` : "BW"} × {allTimeRecord.reps}
+                  Record {allTimeRecord.weight > 0 ? `${cleanWeight(allTimeRecord.weight)}kg` : "PDC"} × {allTimeRecord.reps}
                 </span>
               )}
             </div>

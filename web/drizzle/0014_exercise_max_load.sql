@@ -1,0 +1,1 @@
+ALTER TABLE "exercises" ADD COLUMN "max_load" double precision;

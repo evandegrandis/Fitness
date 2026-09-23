@@ -13,10 +13,7 @@ import {
 } from "@/lib/engines/progression";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { cn } from "@/lib/utils";
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
+import { cleanWeight, formatDecimal } from "@/lib/format";
 
 /**
  * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — signal feu intra-séance : flamme animée + libellé court quand
@@ -169,7 +166,7 @@ export function SetEntry({
             }}
             className="pill"
           >
-            <History size={11} />↻ dernier · {lastSessionSet.weight > 0 ? `${cleanWeight(lastSessionSet.weight)}kg` : "BW"}×{lastSessionSet.reps}
+            <History size={11} />dernier · {lastSessionSet.weight > 0 ? `${cleanWeight(lastSessionSet.weight)}kg` : "PDC"}×{lastSessionSet.reps}
           </button>
         )}
         {warmup && (
@@ -245,10 +242,10 @@ export function SetEntry({
             </p>
           ) : (
             <p>
-              Coût de séance {Math.round(suggestion.sessionFatigueEvidence.totalSystemicCost * 10) / 10}
+              Coût de séance {formatDecimal(suggestion.sessionFatigueEvidence.totalSystemicCost)}
               {suggestion.sessionFatigueEvidence.baselineSystemicCost === null
                 ? " ; pas encore assez d’historique pour établir l’habitude."
-                : `, contre ${Math.round(suggestion.sessionFatigueEvidence.baselineSystemicCost * 10) / 10} habituellement.`}
+                : `, contre ${formatDecimal(suggestion.sessionFatigueEvidence.baselineSystemicCost)} habituellement.`}
             </p>
           )}
           {suggestion.sessionFatigueEvidence.contributors.length > 0 && (
@@ -296,7 +293,9 @@ export function SetEntry({
         </p>
       )}
 
-      <div className="flex items-center justify-center gap-6">
+      {/* Passe à la ligne plutôt que déborder : dans une carte de superset, plus étroite, les deux
+          sélecteurs côte à côte coupaient les boutons − et + au bord. */}
+      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
         <Stepper
           label="Poids"
           value={weight}

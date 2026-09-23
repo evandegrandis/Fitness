@@ -382,7 +382,7 @@ describe("ALGO_V2 §5.2 — predictReps pente REP_SLOPE_PCT (7.5%/rep)", () => {
     expect(reps).toBe(5);
   });
 
-  it("cap absolu à WORK_REP_CAP (10) même si repTargetMax est plus haut", () => {
+  it("plafonne au haut de la fourchette de l'exercice (le plafond global à 10 reps est abrogé)", () => {
     const reps = predictReps(50, "straight", {
       mode: "external",
       repTargetMin: 8,
@@ -393,7 +393,8 @@ describe("ALGO_V2 §5.2 — predictReps pente REP_SLOPE_PCT (7.5%/rep)", () => {
         { role: "straight", weight: 50, reps: 14 },
       ],
     });
-    expect(reps).toBeLessThanOrEqual(10);
+    expect(reps).toBeGreaterThan(10);
+    expect(reps).toBeLessThanOrEqual(20);
   });
 
   it("cold start (aucun échantillon exploitable) -> milieu de la fourchette de reps", () => {
@@ -446,7 +447,7 @@ describe("reprojectSuggestionAtWeight", () => {
     sessionFatigueWarning: null,
   };
 
-  it("reprojette les reps à la hausse/baisse sans dépasser le cap de travail", () => {
+  it("reprojette les reps à la hausse/baisse sans dépasser le haut de la fourchette", () => {
     const exercise = makeExercise({ repTargetMin: 6, repTargetMax: 12, smallestIncrement: 5 });
     const heavier = reprojectSuggestionAtWeight(baseSuggestion, exercise, 85);
     const lighter = reprojectSuggestionAtWeight(baseSuggestion, exercise, 65);
@@ -454,7 +455,8 @@ describe("reprojectSuggestionAtWeight", () => {
     expect(heavier.weight).toBe(85);
     expect(heavier.reps).toBeLessThan(baseSuggestion.reps);
     expect(heavier.explanation).toContain(`85 kg × ${heavier.reps}`);
-    expect(lighter.reps).toBe(10);
+    expect(lighter.reps).toBeGreaterThan(baseSuggestion.reps);
+    expect(lighter.reps).toBeLessThanOrEqual(exercise.repTargetMax);
   });
 
   it("intègre le poids du corps pour le lest et inverse correctement l'assistance", () => {
@@ -605,7 +607,7 @@ describe("ALGO_V2 §4.4/§4.2 — promotion réactive vs démotion stricte", () 
     expect(trueOverreach.weight).toBe(80);
   });
 
-  it("garde l'explication synchronisée quand le cap v2 réduit les reps", () => {
+  it("garde l'explication synchronisée avec les reps, sans dépasser le haut de la fourchette", () => {
     const exercise = makeExercise({ setPatternMode: SetPatternMode.straight, repTargetMin: 10, repTargetMax: 15, smallestIncrement: 2.5 });
     const fatigue = new SessionFatigueContext([
       { primaryParent: MuscleParent.pectoraux, workSetsCompleted: 5, fatigueClass: FatigueClass.medium },
@@ -618,9 +620,8 @@ describe("ALGO_V2 §4.4/§4.2 — promotion réactive vs démotion stricte", () 
       sessionFatigue: fatigue,
     });
 
-    expect(suggestion.reasonCodes).toContain("rep_cap_v2");
-    expect(suggestion.reps).toBe(10);
-    expect(suggestion.explanation).toMatch(/× 10$/);
+    expect(suggestion.reps).toBeLessThanOrEqual(exercise.repTargetMax);
+    expect(suggestion.explanation).toMatch(new RegExp(`× ${suggestion.reps}$`));
   });
 });
 

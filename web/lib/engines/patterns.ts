@@ -47,7 +47,15 @@ export interface CollectedExerciseHistory {
 export function collectExerciseHistory(
   history: WorkoutSession[],
   exerciseId: string,
-  maxSessions = Number.POSITIVE_INFINITY
+  maxSessions = Number.POSITIVE_INFINITY,
+  options: {
+    /**
+     * Ignore les séances où l'exercice n'a servi qu'en finisher. Pour prédire une série de
+     * TRAVAIL, trois finishers récents (2, 7 et 12 reps de HSPU en fin de séance) occupaient 3
+     * des 5 places de la fenêtre et ne laissaient que 2 vraies séances à comparer.
+     */
+    skipFinisherOnlySessions?: boolean;
+  } = {}
 ): CollectedExerciseHistory {
   const sets: LoggedSet[][] = [];
   const positions: HistoryPosition[] = [];
@@ -75,6 +83,12 @@ export function collectExerciseHistory(
       .map(({ set }, setSlotIndex) => ({ ...set, setSlotIndex }));
 
     if (!merged.some((set) => set.completed)) continue;
+    if (
+      options.skipFinisherOnlySessions &&
+      !merged.some((set) => set.completed && set.setType !== ST.finisher && set.setType !== ST.warmup)
+    ) {
+      continue;
+    }
     sets.push(merged);
     positions.push({
       position: performed.findIndex((logged) => logged.exerciseId === exerciseId),

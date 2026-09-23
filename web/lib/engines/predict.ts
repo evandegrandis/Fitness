@@ -154,7 +154,7 @@ export function empiricalBase(
  * `predictReps` — point d'entrée principal. `role` peut être un `SetRole` (amorce/top/backoff/bw)
  * ou une position numérique (1,2,3+) pour STRAIGHT/FINISHER, voir §5.2.
  * `extendedCapForBWPlateau` — cap étendu (max(repTargetMax, lastReps+2)) pour BW_REP en plateau
- * et burnout finisher (§5.4) ; sinon cap standard min(repTargetMax, WORK_REP_CAP).
+ * et burnout finisher (§5.4) ; sinon le haut de la fourchette de l'exercice.
  */
 export function predictReps(
   P: number,
@@ -185,6 +185,6 @@ export function predictReps(
   }
 
   // §5.4 — bornes.
-  const cap = opts?.extendedCap ?? Math.min(ctx.repTargetMax, ALGO_V2.WORK_REP_CAP);
+  const cap = opts?.extendedCap ?? ctx.repTargetMax;
   return clampInt(roundHalfAwayFromZero(base), 1, Math.max(1, cap));
 }

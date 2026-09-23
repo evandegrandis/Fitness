@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Jeera",
     short_name: "Jeera",
-    description: "Journal de musculation intelligent — suggestions poids/reps adaptatives",
+    description: "Journal de musculation intelligent : suggestions de charges et de reps adaptatives",
     start_url: "/",
     display: "standalone",
     background_color: "#07080e",

@@ -444,6 +444,17 @@ function ExerciseEditorForm({
                 max={25}
                 suffix="kg"
               />
+              {/* Bout de pile : au-delà, l'app progresse par les reps au lieu de proposer une
+                  charge qui n'existe pas. 0 = pas de limite. */}
+              <Stepper
+                label="Charge max machine (0 = aucune)"
+                value={draft.maxLoad ?? 0}
+                onChange={(v) => setDraft({ ...draft, maxLoad: v > 0 ? v : null })}
+                step={draft.smallestIncrement > 0 ? draft.smallestIncrement : 2.5}
+                min={0}
+                max={500}
+                suffix="kg"
+              />
             </div>
 
             {/* Mappings musculaires */}

@@ -48,7 +48,7 @@ export function SettingsNotificationsSection() {
         } else {
           setError(
             result.reason === "denied"
-              ? "Notifications refusées — à réactiver dans les réglages iOS de l'app."
+              ? "Notifications refusées : à réactiver dans les réglages iOS de l'app."
               : result.reason === "missing_key"
                 ? "Clé serveur absente : notifications non configurées."
                 : "Impossible d'activer les notifications."
@@ -99,7 +99,7 @@ export function SettingsNotificationsSection() {
       )}
       {support === "denied" && (
         <p className="mt-3 text-xs text-rose-300/80">
-          Notifications bloquées pour Jeera — à réautoriser dans les réglages du système.
+          Notifications bloquées pour Jeera : à réautoriser dans les réglages du système.
         </p>
       )}
       {error && <p className="mt-3 text-xs text-rose-300/80">{error}</p>}

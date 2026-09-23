@@ -127,7 +127,7 @@
   },
   "Leg extension": {
     "exerciseName": "Leg extension",
-    "weight": 82.5,
+    "weight": 80,
     "reps": 8,
     "mode": "record_attempt",
     "reasonCodes": [
@@ -173,7 +173,7 @@
   "Leg curl": {
     "exerciseName": "Leg curl",
     "weight": 60,
-    "reps": 10,
+    "reps": 12,
     "mode": "record_attempt",
     "reasonCodes": [
       "top_set_anchor_v2"

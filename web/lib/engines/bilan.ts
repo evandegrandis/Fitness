@@ -56,17 +56,14 @@ import {
   type MuscleGoal,
   type WorkoutSession,
 } from "@/lib/models/types";
+import { cleanWeight } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Helpers génériques
 // ---------------------------------------------------------------------------
 
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
-
 function formatSet(weight: number, reps: number): string {
-  return weight > 0 ? `${cleanWeight(weight)}kg×${reps}` : `BW×${reps}`;
+  return weight > 0 ? `${cleanWeight(weight)}kg×${reps}` : `PDC×${reps}`;
 }
 
 /** Effort effectif (mêmes règles que `progression.ts::effectiveLoad`) : assistedBodyweight inverse le signe. */
@@ -176,9 +173,9 @@ function comparePerformance(
       gapReps,
       message: performed
         ? gapReps > 0
-          ? `Performé — ${formatSet(achieved.weight, achieved.reps)}, +${gapReps} reps vs attendu`
-          : `Performé — objectif atteint (${formatSet(achieved.weight, achieved.reps)})`
-        : `En dessous — ${formatSet(achieved.weight, achieved.reps)} au lieu de ×${reference.reps} attendu`,
+          ? `Performé : ${formatSet(achieved.weight, achieved.reps)}, +${gapReps} reps vs attendu`
+          : `Performé : objectif atteint (${formatSet(achieved.weight, achieved.reps)})`
+        : `En dessous : ${formatSet(achieved.weight, achieved.reps)} au lieu de ×${reference.reps} attendu`,
     };
   }
 
@@ -196,8 +193,8 @@ function comparePerformance(
     gapKg,
     gapReps: 0,
     message: performed
-      ? `Performé — ${formatSet(achieved.weight, achieved.reps)}, effort équivalent ou supérieur`
-      : `En dessous — ${formatSet(achieved.weight, achieved.reps)} vs ${formatSet(reference.weight, reference.reps)} attendu`,
+      ? `Performé : ${formatSet(achieved.weight, achieved.reps)}, effort équivalent ou supérieur`
+      : `En dessous : ${formatSet(achieved.weight, achieved.reps)} vs ${formatSet(reference.weight, reference.reps)} attendu`,
   };
 }
 
@@ -456,7 +453,7 @@ function buildPlateauReview(
   } else if (enteringOrOngoing) {
     message = alwaysLegacy
       ? `Entre en plateau (${stalledLabel} à charge égale)`
-      : `Progrès qui ralentit sur cet exercice — approche d'un plateau`;
+      : `Progrès qui ralentit sur cet exercice, approche d'un plateau`;
   }
 
   // VARIATION_CYCLING_SPEC §8 — carte de suggestion : uniquement chemin v2 (`isPlateau`, décision
@@ -604,7 +601,7 @@ function buildExerciseReview(
   const performed = comparison.performed || recordAchievements.length > 0;
   const performedMessage =
     !comparison.performed && recordAchievements.length > 0
-      ? `Performé — nouveau record (${formatSet(recordAchievements[0].weight, recordAchievements[0].reps)})`
+      ? `Performé : nouveau record (${formatSet(recordAchievements[0].weight, recordAchievements[0].reps)})`
       : comparison.message;
 
   // -- Plateau -----------------------------------------------------------------------
@@ -687,8 +684,8 @@ function buildCoverage(
     workedNames.length === 0
       ? "Aucun groupe musculaire travaillé"
       : stillNeedsWork.length === 0
-        ? `Groupes travaillés : ${workedNames.join(", ")} — couverture de la semaine au vert`
-        : `Groupes travaillés : ${workedNames.join(", ")} — encore à renforcer : ${stillNeedsWork
+        ? `Groupes travaillés : ${workedNames.join(", ")}. Couverture de la semaine au vert`
+        : `Groupes travaillés : ${workedNames.join(", ")}. Encore à renforcer : ${stillNeedsWork
             .slice(0, 2)
             .map((s) => parentDisplayName[s.parent].toLowerCase())
             .join(" et ")}`;
@@ -707,7 +704,7 @@ function buildSessionRecords(exercises: ExerciseReview[]): SessionRecordHighligh
       kind: record.kind,
       weight: record.weight,
       reps: record.reps,
-      label: `${review.exerciseName} — ${RECORD_KIND_LABEL[record.kind]} (${
+      label: `${review.exerciseName} · ${RECORD_KIND_LABEL[record.kind]} (${
         formatSet(record.weight, record.reps)
       })`,
     }))
@@ -751,7 +748,7 @@ function buildSessionFinisherRecords(
         kind: "finisherReps",
         weight: set.weight,
         reps: set.reps,
-        label: `${exercise.name} — ${RECORD_KIND_LABEL.finisherReps} (${formatSet(set.weight, set.reps)})`,
+        label: `${exercise.name} · ${RECORD_KIND_LABEL.finisherReps} (${formatSet(set.weight, set.reps)})`,
       });
     }
   }

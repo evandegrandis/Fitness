@@ -167,3 +167,23 @@ describe("groupes suivis sans objectif", () => {
     expect(sessionFocus([vieux], CATALOG_PLUS, GOALS, null, NOW).tracked).toEqual([]);
   });
 });
+
+describe("suggestions d'exercices : seulement ce qui travaille vraiment le muscle", () => {
+  it("ne propose pas un exercice de la séance qui ne fait qu'effleurer le muscle", () => {
+    // Lateral raises en séance : deltoïde latéral à 1, mais trapèzes à 0,3 et gainage à 0,1.
+    const raise: Exercise = {
+      ...exercise("ex-raise", MuscleGroup.deltLat),
+      muscleMappings: [
+        { muscleGroup: MuscleGroup.deltLat, coefficient: 1 },
+        { muscleGroup: MuscleGroup.tricepsLong, coefficient: 0.1 },
+      ],
+    };
+    const catalog = [...CATALOG, raise];
+    const live = session(new Date(NOW.getTime() - 20 * 60_000), [[raise, 0]], true);
+    const history = [session(new Date(NOW.getTime() - 2 * 86_400_000), [[TRI, 3], [raise, 3]])];
+    const focus = sessionFocus(history, catalog, GOALS, live, NOW);
+    const triceps = focus.priorities.find((p) => p.parent === MuscleParent.triceps)!;
+    expect(triceps.suggestedExercises.map((s) => s.exerciseId)).not.toContain("ex-raise");
+    expect(triceps.suggestedExercises.map((s) => s.exerciseId)).toContain("ex-tri");
+  });
+});

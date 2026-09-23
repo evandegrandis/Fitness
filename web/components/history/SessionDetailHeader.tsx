@@ -5,6 +5,7 @@ import { fr } from "date-fns/locale";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
+import { formatDecimal } from "@/lib/format";
 
 /** En-tête du détail de séance : jour + heure + sets + durée. */
 export function SessionDetailHeader({
@@ -43,7 +44,7 @@ export function SessionDetailHeader({
         {session.endTime && ` – ${format(session.endTime, "HH:mm")}`}
       </p>
       <p className="mt-1.5 text-sm text-[--color-fg-muted]">
-        {totalSets} sets{duration ? ` · ${duration}` : ""} · {completedExerciseCount} exercice
+        {formatDecimal(totalSets)} séries{duration ? ` · ${duration}` : ""} · {completedExerciseCount} exercice
         {completedExerciseCount > 1 ? "s" : ""}
         {(session.cardioEntries?.length ?? 0) > 0 ? ` · ${session.cardioEntries?.length} cardio` : ""}
       </p>

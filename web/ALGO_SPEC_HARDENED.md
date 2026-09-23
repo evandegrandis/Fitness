@@ -36,7 +36,7 @@ export const ALGO_V2 = {
   FINISHER_MAX_SETS: 2,           // médiane de sets ≤ 2 pour ISOLATION_FINISHER
   FINISHER_POS_RATIO: 0.6,        // position médiane relative ≥ 0.6 pour ISOLATION_FINISHER
   MIN_SESSIONS_FOR_PATTERN: 3,    // en dessous : on suit setPatternMode figé
-  WORK_REP_CAP: 10,               // cap absolu de reps suggérées sur un set de travail
+  // WORK_REP_CAP : abrogé le 2026-09-23 (cf. invariant 6)
   PROMOTION_REPS: 9,              // "> 8 reps" => viser le poids suivant (seuil effectif : min(9, repTargetMax))
   DEMOTION_MARGIN: 2,             // reps < repMin - 2 => démotion d'un incrément
   PLATEAU_THRESHOLD: 3,           // ≥ 3 séances identiques => plateau
@@ -59,9 +59,15 @@ export const ALGO_V2 = {
 3. Charges arrondies au `smallestIncrement` (arrondi half-away-from-zero), jamais < 0.
 4. `currentSetIndex` reste dans l'API et reste **ignoré** (le signal est `doneToday`).
 5. FR partout dans `explanation`.
-6. Cap de reps suggérées sur un set de travail : `min(repTargetMax, 10)` — **sauf** exceptions
-   explicites (§7.4 BW_REP plateau, burnout finisher). C'est la règle "viser 10 max" d'Evan.
-   (Corrige les suggestions actuelles à 11 reps : Lateral raises 12×11, Pec deck 75×11, etc.)
+6. ~~Cap de reps suggérées sur un set de travail : `min(repTargetMax, 10)`~~ **ABROGÉ le 2026-09-23.**
+   Evan a fixé des fourchettes 8-12 (Lateral raises, Abdominal) et précisé qu'au-delà, quand il
+   n'est pas encore à RIR 0-2, il continue : c'est normal. Le plafond global à 10 coupait ces
+   fourchettes et proposait 10 HSPU à quelqu'un qui en fait 14 à 17. Désormais :
+   - le haut de la fourchette de l'exercice fait foi (`repTargetMax`) ;
+   - au poids du corps pur (BW_REP), la série de tête suit les reps démontrées, sans plafond ;
+   - à la charge max d'une machine (`Exercise.maxLoad`), la progression passe par les reps ;
+   - une série au-delà de la fourchette au RIR visé (1) appelle une charge plus lourde, calculée
+     depuis l'e1RM qu'elle révèle (`raisedLoadFrom`).
 
 ### Arrondis et médianes (une seule définition)
 - `roundToIncrement(x, incr)` = `max(0, roundHalfAway(x / incr) * incr)` (existant dans `deload.ts`).
@@ -287,7 +293,7 @@ effTotal = 75 + lest ≈ 7.1 kg/rep → +5 kg de lest ≈ −0.7 rep (observé :
 ### 5.4 Bornes
 ```
 reps = clamp(roundHalfAway(base), 1, cap)
-cap = min(repTargetMax, WORK_REP_CAP=10)   pour tout set de travail
+cap = repTargetMax   pour tout set de travail (plafond global à 10 abrogé le 2026-09-23, invariant 6)
     = max(repTargetMax, lastReps + 2)      pour BW_REP en plateau (§7.4) et burnout finisher (§8)
 ```
 La valeur sert : (a) au pré-remplissage de la suggestion, (b) au bilan («performé» = réalisé ≥ prédit).

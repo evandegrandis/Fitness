@@ -7,6 +7,7 @@ import { saveBodyWeight } from "@/lib/db/actions";
 import { writeThrough } from "@/lib/sync/write-through";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { buildWeightTrend, latestBodyWeight, WEIGHT_TREND } from "@/lib/engines/body-weight";
+import { formatDecimal } from "@/lib/format";
 
 /**
  * Saisie d'une pesée + lecture de la tendance.
@@ -73,12 +74,12 @@ export function SettingsWeightSection() {
         <div className="mt-4 border-t border-white/[0.06] pt-3">
           <div className="flex items-baseline justify-between">
             <span className="text-xs text-[--color-fg-muted]">Tendance 7 jours</span>
-            <span className="tnum text-lg font-bold text-[--color-fg]">{trend.currentKg.toFixed(1)} kg</span>
+            <span className="tnum text-lg font-bold text-[--color-fg]">{formatDecimal(trend.currentKg)} kg</span>
           </div>
           {trend.deltaKg !== null && trend.deltaPct !== null && Math.abs(trend.deltaKg) >= 0.05 && (
             <p className="mt-1 text-xs text-[--color-fg-muted]">
               {trend.deltaKg > 0 ? "+" : "−"}
-              {Math.abs(trend.deltaKg).toFixed(1)} kg ({Math.abs(trend.deltaPct).toFixed(1)} %) depuis le départ
+              {formatDecimal(Math.abs(trend.deltaKg))} kg ({formatDecimal(Math.abs(trend.deltaPct))} %) depuis le départ
             </p>
           )}
           {trend.weeklyPct !== null && (

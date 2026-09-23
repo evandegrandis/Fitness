@@ -409,3 +409,32 @@ export function familyHistory(
   }
   return { history: rewritten, conversions, latestFrom };
 }
+
+/**
+ * Point de départ d'une PREMIÈRE séance sur une machine, tiré de la machine équivalente utilisée
+ * le plus récemment (8 semaines au plus) : la série de tête de sa dernière séance. Faute de
+ * facteur mesuré, c'est un ordre de grandeur à recaler dès la première série, pas une conversion :
+ * il vaut mieux partir de 60 kg vus 5 jours plus tôt sur l'autre machine que de 20 kg par défaut.
+ */
+export function startingPointFromEquivalent(
+  target: Exercise,
+  catalog: readonly Exercise[],
+  history: readonly WorkoutSession[],
+  now: Date
+): { exercise: Exercise; set: LoggedSet } | null {
+  const others = equivalentExercises(target, catalog);
+  if (others.length === 0) return null;
+  const maxAge = EQUIVALENCE.MAX_BRIDGE_GAP_DAYS * DAY_MS;
+  for (const session of sessionsNewestFirst(history)) {
+    if (session.isActive) continue;
+    if (now.getTime() - session.date.getTime() > maxAge) break;
+    for (const other of others) {
+      const leadSets = normalRecordSets(
+        session.exercises.filter((logged) => logged.exerciseId === other.id).flatMap((logged) => orderedSets(logged)),
+        other
+      ).filter((set) => set.weight > 0);
+      if (leadSets.length > 0) return { exercise: other, set: leadSets[0] };
+    }
+  }
+  return null;
+}

@@ -105,8 +105,8 @@ describe("deloadTierForGap / applyDeload — barème conservateur", () => {
   });
 
   it("message FR mentionne le nombre de semaines", () => {
-    expect(deloadMessage(28)).toBe("Reprise après 4 semaines — charge ajustée");
-    expect(deloadMessage(7)).toBe("Reprise après 1 semaine — charge ajustée");
+    expect(deloadMessage(28)).toBe("Reprise après 4 semaines : charge ajustée");
+    expect(deloadMessage(7)).toBe("Reprise après 1 semaine : charge ajustée");
   });
 });
 

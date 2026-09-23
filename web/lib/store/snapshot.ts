@@ -15,6 +15,7 @@ import {
   type MuscleGoal,
   type WorkoutSession,
 } from "@/lib/models/types";
+import { cleanWeight } from "@/lib/format";
 
 export interface MuscleImpact {
   parent: MuscleParent;
@@ -35,10 +36,6 @@ export interface FinishedWorkoutSnapshot {
   topMuscles: MuscleImpact[];
   remainingMuscles: MuscleImpact[];
   prHighlights: RecordHighlight[];
-}
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
 }
 
 function formatDuration(startTime: Date, endTime: Date): string {
@@ -124,7 +121,7 @@ export function buildFinishedWorkoutSnapshot(params: BuildSnapshotParams): Finis
     const keptSets = eligible.filter((set) => justHitRecord[set.id] !== undefined);
     return keptSets.map((set: LoggedSet) => ({
       title: exercise.name,
-      detail: `${set.weight > 0 ? `${cleanWeight(set.weight)}×${set.reps}` : `BW×${set.reps}`}${
+      detail: `${set.weight > 0 ? `${cleanWeight(set.weight)}×${set.reps}` : `PDC×${set.reps}`}${
         set.setType === SetType.finisher ? " · finisher" : ""
       }`,
     }));

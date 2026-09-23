@@ -18,9 +18,9 @@
  */
 
 import { areEquivalent } from "@/lib/engines/equivalence";
-import { MUSCLE_PARENTS, type MuscleParent } from "@/lib/models/muscles";
+import { MUSCLE_LEAVES, type MuscleParent } from "@/lib/models/muscles";
 import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSession } from "@/lib/models/types";
-import { movementPatternDisplayName, plateauWeakPointDisplayName } from "@/lib/models/enums";
+import { movementPatternDisplayName, plateauWeakPointLabel } from "@/lib/models/enums";
 import type { PlateauWeakPoint } from "@/lib/models/enums";
 import { collectExerciseHistory } from "@/lib/engines/patterns";
 import { weeklyPriorities } from "@/lib/engines/effective-sets";
@@ -80,9 +80,18 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-/** Vecteur des coefficients agrégés par `MuscleParent`, dans un ordre stable. */
+/**
+ * Vecteur des coefficients par muscle FIN (faisceau), dans un ordre stable. Agréger par grand
+ * groupe rendait deltoïde latéral et deltoïde postérieur identiques : Rear delt fly passait pour
+ * une variation des Lateral raises alors qu'il travaille un autre faisceau.
+ */
 function muscleVector(exercise: Exercise): number[] {
-  return MUSCLE_PARENTS.map((parent) => aggregateCoefficient(exercise, parent));
+  return MUSCLE_LEAVES.map((leaf) =>
+    exercise.muscleMappings.reduce(
+      (max, mapping) => (mapping.muscleGroup === leaf ? Math.max(max, mapping.coefficient) : max),
+      0
+    )
+  );
 }
 
 /** Cosinus entre deux vecteurs musculaires ; 0 si l'un des deux est nul (évite NaN). */
@@ -239,7 +248,7 @@ function buildExplanation(
   // (le candidat gagnant a pu l'être pour d'autres raisons, weakPointFit neutre/0).
   const weakPointClause =
     weakPoint && candidate.resistanceProfile === weakPoint
-      ? ` ; cible ton point faible « ${plateauWeakPointDisplayName[weakPoint].toLowerCase()} »`
+      ? ` ; cible ton point faible « ${plateauWeakPointLabel(weakPoint, candidate.movementPattern).toLowerCase()} »`
       : "";
   // §6/§7 (P2.2) — "cycle précédent" cite le MEILLEUR cycle passé (`bestPastCycle` via le roster),
   // pas forcément le run courant (qui peut être en plein plateau) : cf. exemple spec §6 "cycle

@@ -25,7 +25,7 @@ const spaceMono = Space_Mono({
 
 export const metadata: Metadata = {
   title: "Jeera",
-  description: "Journal de musculation intelligent — suggestions poids/reps adaptatives",
+  description: "Journal de musculation intelligent : suggestions de charges et de reps adaptatives",
   applicationName: "Jeera",
   manifest: "/manifest.webmanifest",
   appleWebApp: {

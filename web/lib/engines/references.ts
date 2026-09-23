@@ -150,11 +150,8 @@ export function checkReactivePromotion(lastReps: number | undefined, repTargetMa
 
 /**
  * Amorce : stable — Heavy 2 des 3 dernières séances avec amorce À LA MÊME CHARGE que `last`
- * ET reps >= repTargetMax ; Medium/Light 1 des 2 dernières. `repTargetMax` est plafonné à
- * WORK_REP_CAP (10, invariant §0.6) : comme aucun set de travail n'est jamais suggéré au-delà
- * de ce cap, un exercice avec repTargetMax > 10 (ex. Leg extension 10-15) ne pourrait sinon
- * JAMAIS satisfaire le portillon (10x10 réel ne serait jamais >= 15). Cf. exemple chiffré §12
- * "Leg extension : amorce 80x10 >= cap -> promotion".
+ * ET reps >= repTargetMax ; Medium/Light 1 des 2 dernières. Le haut de la fourchette de
+ * l'exercice fait foi (le plafond global à 10 reps de l'invariant §0.6 est abrogé, cf. spec).
  */
 export function checkAmorcePromotion(
   amorceHistory: AnchorLoad[], // plus récent en premier
@@ -163,7 +160,7 @@ export function checkAmorcePromotion(
   fatigueClass: FatigueClass
 ): boolean {
   if (amorceHistory.length === 0) return false;
-  const effectiveMax = Math.min(repTargetMax, ALGO_V2.WORK_REP_CAP);
+  const effectiveMax = repTargetMax;
   const strict = FATIGUE_CLASS_PROPERTIES[fatigueClass].usesStrictPromotion;
   const windowSize = strict ? 3 : 2;
   const required = strict ? 2 : 1;

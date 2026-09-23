@@ -1325,3 +1325,52 @@ describe("machines équivalentes — la dernière utilisée devient la machine p
     expect(useWorkoutStore.getState().records(OLD_PRESS.id).heaviestEver).toBe(100);
   });
 });
+
+describe("échauffement et fatigue : seulement quand c'est justifié", () => {
+  beforeEach(() => {
+    resetStore();
+    localStorage.clear();
+  });
+
+  it("pas d'échauffement proposé sur une machine d'isolation, même lourde", () => {
+    const ABS: ExerciseType = { ...BENCH, id: "ex-abs", name: "Abdominal LifeFitness", movementPattern: "isolation", fatigueClass: "medium" };
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [ABS], history: [baselineHistory(ABS, "abs-1", 3, 85, 12)], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(ABS.id);
+    const logged = useWorkoutStore.getState().active!.exercises[0];
+    expect(useWorkoutStore.getState().warmupSuggestion(logged.id)).toBeNull();
+  });
+
+  it("un exercice jamais fait n'est pas déclaré « fatigué » pour une fatigue habituelle", () => {
+    // Evan fait toujours 4 séries de pec deck avant son développé : c'est son habitude, pas un excès.
+    const PEC: ExerciseType = { ...BENCH, id: "ex-pec", name: "Pec deck", fatigueClass: "light", movementPattern: "isolation" };
+    const OLD_PRESS: ExerciseType = { ...BENCH, id: "ex-press-old", name: "Chest Press", movementPattern: "horizontal_press" };
+    const NEW_PRESS: ExerciseType = { ...BENCH, id: "ex-press-new", name: "Isolateral incline press", movementPattern: "horizontal_press" };
+    const day = (d: number) => new Date(Date.now() - d * 86_400_000);
+    const pastSession = (d: number) => {
+      const start = day(d);
+      const at = (m: number) => new Date(start.getTime() + m * 60_000);
+      return {
+        id: `past-${d}`, date: start, startTime: start, endTime: at(60), notes: "", isActive: false, templateName: null,
+        supersetGroups: [], cardioEntries: [],
+        exercises: [
+          { id: `pec-${d}`, orderIndex: 0, notes: "", exerciseId: PEC.id, exerciseName: PEC.name, supersetGroupId: null, plateauWeakPoint: null,
+            sets: [0, 1, 2, 3].map((k) => ({ id: `pec-${d}-${k}`, weight: 60, reps: 10, setType: "work" as const, timestamp: at(k * 3), setSlotIndex: k, completed: true, supersetRoundIndex: null })) },
+          { id: `press-${d}`, orderIndex: 1, notes: "", exerciseId: OLD_PRESS.id, exerciseName: OLD_PRESS.name, supersetGroupId: null, plateauWeakPoint: null,
+            sets: [0, 1, 2].map((k) => ({ id: `press-${d}-${k}`, weight: 80, reps: 10, setType: "work" as const, timestamp: at(20 + k * 3), setSlotIndex: k, completed: true, supersetRoundIndex: null })) },
+        ],
+      };
+    };
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [PEC, OLD_PRESS, NEW_PRESS], history: [pastSession(2), pastSession(4), pastSession(6)], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(PEC.id);
+    store.addExercise(NEW_PRESS.id);
+    const exercises = useWorkoutStore.getState().active!.exercises;
+    const pec = exercises.find((logged) => logged.exerciseId === PEC.id)!;
+    const press = exercises.find((logged) => logged.exerciseId === NEW_PRESS.id)!;
+    for (let k = 0; k < 4; k += 1) store.logSet(pec.id, { weight: 60, reps: 10 });
+    expect(useWorkoutStore.getState().suggestion(press.id).sessionFatigueWarning).toBeNull();
+  });
+});

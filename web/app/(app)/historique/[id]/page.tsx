@@ -74,7 +74,7 @@ export default function SessionDetailPage() {
           <ChevronLeft size={16} /> Retour
         </button>
         <div className="glass glass-card mt-4 text-center text-sm text-[--color-fg-muted]">
-          Séance introuvable — elle a peut-être été supprimée.
+          Séance introuvable : elle a peut-être été supprimée.
         </div>
       </main>
     );

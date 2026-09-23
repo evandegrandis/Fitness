@@ -5,10 +5,7 @@ import { reportedRirLabel, SetType, stopReasonDisplayName } from "@/lib/models/e
 import type { LoggedSet } from "@/lib/models/types";
 import type { RecordKind } from "@/lib/engines/records";
 import { cn } from "@/lib/utils";
-
-function cleanWeight(weight: number): string {
-  return Number.isInteger(weight) ? String(weight) : String(Math.round(weight * 100) / 100);
-}
+import { cleanWeight } from "@/lib/format";
 
 export function setRowBadgeLabel(setType: SetType, seriesNumber?: number): string {
   if (setType === SetType.warmup) return "Échauff.";
@@ -59,7 +56,7 @@ export function SetRow({
         {label}
       </span>
       <span className="tnum text-sm text-[--color-fg]">
-        {set.weight > 0 ? `${cleanWeight(set.weight)}kg` : "BW"} × {set.reps}
+        {set.weight > 0 ? `${cleanWeight(set.weight)}kg` : "PDC"} × {set.reps}
       </span>
       {hasRir && (
         <span className="tnum shrink-0 rounded-md bg-white/[0.06] px-1.5 text-[0.65rem] font-semibold text-[--color-fg-muted]">

@@ -25,6 +25,7 @@ import {
   recoverySessionsChronological,
   sleepHoursWithoutAlcohol,
 } from "@/components/progress/recovery-analytics";
+import { formatDecimal } from "@/lib/format";
 
 const WEEK_COUNT = 10;
 
@@ -131,7 +132,7 @@ export function GlobalLayer() {
         <div className="mb-1 flex items-baseline justify-between">
           <p className="text-sm font-semibold text-[--color-fg]">Volume / semaine</p>
           <p className="text-xs text-[--color-fg-muted]">
-            Moy. <span className="tnum text-[--color-fg]">{avgVolume}</span> sets
+            Moy. <span className="tnum text-[--color-fg]">{formatDecimal(avgVolume)}</span> séries
           </p>
         </div>
         <WeeklyBarChart
@@ -139,7 +140,7 @@ export function GlobalLayer() {
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
           goal={avgVolume}
-          unit="sets"
+          unit="séries"
           gradientId="globalVolumeBar"
         />
       </GlassCard>
@@ -189,7 +190,7 @@ export function GlobalLayer() {
             >
               <div className="mt-2 space-y-1.5 border-t border-white/8 pt-3">
                 <p className="text-xs font-semibold text-[--color-fg]">
-                  {parentDisplayName[radarParent]} — top exercices
+                  {parentDisplayName[radarParent]} · top exercices
                 </p>
                 {radarContribution.length === 0 ? (
                   <p className="text-xs text-[--color-fg-faint]">Aucune contribution cette semaine.</p>
@@ -200,7 +201,7 @@ export function GlobalLayer() {
                         <span className="tnum text-xs text-[--color-fg-faint]">{i + 1}</span>
                         {c.name}
                       </span>
-                      <span className="tnum text-xs text-[--color-fg]">{Math.round(c.sets * 10) / 10} sets</span>
+                      <span className="tnum text-xs text-[--color-fg]">{formatDecimal(c.sets)} séries</span>
                     </div>
                   ))
                 )}

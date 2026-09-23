@@ -89,6 +89,8 @@ const exerciseSchema = z.object({
   // Pas toujours présents dans l'export (ajoutés après coup côté modèle Swift) :
   progressionPolicy: z.string().nullish(),
   voluntaryRepCap: finiteNumber.int().nonnegative().nullish(),
+  // Champ web-only, absent des exports antérieurs.
+  maxLoad: finiteNumber.positive().nullish(),
   muscleMappings: z.array(muscleMappingSchema),
   // VARIATION_CYCLING_SPEC §5 — champ web-only, absent de tous les exports Swift existants.
   movementPattern: z.string().nullish(),
@@ -646,6 +648,7 @@ export function parseBackup(json: unknown): BackupData {
       fatigueClass,
       progressionPolicy: resolveProgressionPolicy(exData.progressionPolicy),
       voluntaryRepCap: exData.voluntaryRepCap ?? 0,
+      maxLoad: exData.maxLoad ?? null,
       muscleMappings,
       lastUsed: toDateOrNull(exData.lastUsed),
       movementPattern: resolveMovementPattern(exData.movementPattern),

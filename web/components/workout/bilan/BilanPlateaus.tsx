@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowRightLeft, Check, PartyPopper, RotateCcw, Target, X
 import type { SessionReview } from "@/lib/engines/bilan";
 import { saveSession } from "@/lib/db/actions";
 import { writeThrough } from "@/lib/sync/write-through";
-import { PLATEAU_WEAK_POINTS, plateauWeakPointDisplayName, type PlateauWeakPoint } from "@/lib/models/enums";
+import { PLATEAU_WEAK_POINTS, plateauWeakPointLabel, type PlateauWeakPoint } from "@/lib/models/enums";
 import { useWorkoutStore } from "@/lib/store/workout";
 
 /**
@@ -20,6 +20,7 @@ import { useWorkoutStore } from "@/lib/store/workout";
  */
 function BilanWeakPointCapture({ review, sessionId }: { review: SessionReview; sessionId: string }) {
   const setPlateauWeakPoint = useWorkoutStore((s) => s.setPlateauWeakPoint);
+  const catalog = useWorkoutStore((s) => s.catalog);
 
   const captures = review.exercises.filter((exerciseReview) => exerciseReview.plateau.needsWeakPointCapture);
 
@@ -53,7 +54,10 @@ function BilanWeakPointCapture({ review, sessionId }: { review: SessionReview; s
                 onClick={() => handleTap(exerciseReview.loggedExerciseId, point)}
                 className="glass flex-1 rounded-xl px-3 py-2 text-sm font-medium text-[--color-fg] transition active:scale-[0.97]"
               >
-                {plateauWeakPointDisplayName[point]}
+                {plateauWeakPointLabel(
+                  point,
+                  catalog.find((exercise) => exercise.id === exerciseReview.exerciseId)?.movementPattern ?? null
+                )}
               </button>
             ))}
           </div>
@@ -163,7 +167,7 @@ export function BilanPlateaus({ review, sessionId }: { review: SessionReview; se
         <div className="glass glass-card" style={{ borderColor: "rgba(251,113,133,0.35)" }}>
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#fb7185" }}>
             <RotateCcw size={13} />
-            Anti-plateau échoué — méthode à changer
+            Anti-plateau échoué : méthode à changer
           </p>
           <p className="mt-1.5 text-sm text-[--color-fg]">{antiPlateauFailed.join(", ")}</p>
         </div>
@@ -178,7 +182,7 @@ export function BilanPlateaus({ review, sessionId }: { review: SessionReview; se
                 <span className="font-medium" style={{ color: "#fb7185" }}>
                   Trop haut
                 </span>{" "}
-                — ça t&apos;a coûté : {tooAmbitious.join(", ")}
+                : ça t&apos;a coûté ({tooAmbitious.join(", ")})
               </p>
             )}
             {notAmbitiousEnough.length > 0 && (
