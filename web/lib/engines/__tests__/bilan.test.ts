@@ -99,6 +99,20 @@ function pastSession(daysAgo: number, exercise: Exercise, weight: number, reps: 
   return session(date, [loggedExercise(exercise, [set({ weight, reps, timestamp: date })])]);
 }
 
+/**
+ * Première séance d'un exercice qui pose la référence (règle d'étalonnage, records.ts) : 3 séries,
+ * horodatées dans la séance. Sans elle, aucune série suivante ne peut devenir un record.
+ */
+function baselineSession(daysAgo: number, exercise: Exercise, weight: number, reps: number): WorkoutSession {
+  const date = new Date(Date.now() - daysAgo * 86_400_000);
+  return session(date, [
+    loggedExercise(
+      exercise,
+      [0, 1, 2].map((i) => set({ weight, reps, timestamp: new Date(date.getTime() + i * 180_000) }))
+    ),
+  ]);
+}
+
 // ---------------------------------------------------------------------------
 // Performance : au-dessus / en-dessous de la référence
 // ---------------------------------------------------------------------------
@@ -164,14 +178,14 @@ describe("performed / performanceSignal", () => {
   });
 
   it("un vrai PR du jour neutralise la sous-performance", () => {
-    const todayLogged = loggedExercise(BENCH, [set({ weight: 102.5, reps: 1 })]);
+    const todayLogged = loggedExercise(BENCH, [set({ weight: 102.5, reps: 1, timestamp: new Date() })]);
     const today = session(new Date(), [todayLogged]);
     const reference = {
       weight: 100, reps: 8, setType: SetType.work, explanation: "test", confidence: 1,
       reasonCodes: [], mode: "record_attempt" as const, sessionFatigueWarning: null,
       role: "straight" as const, switchToVariantId: null, intensityTechnique: null,
     };
-    const review = buildSessionReview(today, [], [BENCH], [], {
+    const review = buildSessionReview(today, [baselineSession(7, BENCH, 100, 8)], [BENCH], [], {
       referenceSuggestionByLoggedExerciseId: { [todayLogged.id]: reference },
     });
     expect(review.exercises[0].recordKinds).toContain("heaviestWeight");
@@ -441,24 +455,31 @@ describe("couverture", () => {
 
 describe("records", () => {
   it("un nouveau poids max produit un record heaviestWeight dans le bilan", () => {
-    const history = [pastSession(7, BENCH, 60, 8), pastSession(14, BENCH, 60, 8)];
-    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 65, reps: 8 })])]);
+    const history = [pastSession(7, BENCH, 60, 8), baselineSession(14, BENCH, 60, 8)];
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 65, reps: 8, timestamp: new Date() })])]);
 
     const review = buildSessionReview(today, history, [BENCH]);
     expect(review.exercises[0].recordKinds).toContain("heaviestWeight");
     expect(review.records.some((r) => r.kind === "heaviestWeight" && r.exerciseName === "Développé couché")).toBe(true);
   });
 
-  it("aucun historique préalable -> premier set validé compte comme record (heaviestWeight)", () => {
-    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 60, reps: 8 })])]);
+  it("aucun historique préalable -> la première séance pose la référence, sans record", () => {
+    const now = Date.now();
+    const today = session(new Date(now), [
+      loggedExercise(BENCH, [
+        set({ weight: 60, reps: 8, timestamp: new Date(now) }),
+        set({ weight: 70, reps: 8, timestamp: new Date(now + 180_000) }),
+      ]),
+    ]);
     const review = buildSessionReview(today, [], [BENCH]);
-    expect(review.exercises[0].recordKinds).toContain("heaviestWeight");
+    expect(review.exercises[0].recordKinds).toEqual([]);
+    expect(review.records).toEqual([]);
   });
 
   it("un record vieux de plus de 20 séances reste all-time", () => {
     const history = Array.from({ length: 20 }, (_, index) => pastSession(index + 1, BENCH, 60, 8));
     history.push(pastSession(30, BENCH, 100, 8));
-    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 90, reps: 8 })])]);
+    const today = session(new Date(), [loggedExercise(BENCH, [set({ weight: 90, reps: 8, timestamp: new Date() })])]);
     const review = buildSessionReview(today, history, [BENCH]);
     expect(review.exercises[0].recordKinds).not.toContain("heaviestWeight");
   });
@@ -472,9 +493,13 @@ describe("records", () => {
       repTargetMin: 6,
       repTargetMax: 10,
     };
-    const history = [pastSession(7, pullups, 0, 10), pastSession(8, pullups, 20, 6)];
-    const today = session(new Date(), [
-      loggedExercise(pullups, [set({ weight: 0, reps: 12 }), set({ weight: 20, reps: 4 })]),
+    const history = [pastSession(7, pullups, 0, 10), baselineSession(8, pullups, 20, 6)];
+    const now = Date.now();
+    const today = session(new Date(now), [
+      loggedExercise(pullups, [
+        set({ weight: 0, reps: 12, timestamp: new Date(now) }),
+        set({ weight: 20, reps: 4, timestamp: new Date(now + 180_000) }),
+      ]),
     ]);
     const review = buildSessionReview(today, history, [pullups]);
     const bwRecord = review.records.find((record) => record.kind === "bodyweightReps");
@@ -512,8 +537,8 @@ describe("records", () => {
   });
 
   it("une continuation composite n'ajoute jamais un second record au bilan", () => {
-    const history = [pastSession(7, BENCH, 75, 8)];
-    const started = new Date("2026-07-14T10:00:00Z");
+    const history = [baselineSession(7, BENCH, 75, 8)];
+    const started = new Date();
     const today = session(new Date(), [
       loggedExercise(BENCH, [
         set({ weight: 100, reps: 4, timestamp: started }),

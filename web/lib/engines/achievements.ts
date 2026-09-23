@@ -12,6 +12,7 @@ import {
   buildFinisherRecords,
   classifyFinisher,
   normalRecordSets,
+  recordCalibration,
   RecordsEngine,
   type RecordKind,
 } from "@/lib/engines/records";
@@ -97,7 +98,11 @@ export function recentAchievements(sessions: WorkoutSession[], exercises: Exerci
 
       // Vérifie chaque nouveau set contre les records antérieurs.
       for (const set of newSets) {
-        const kind = RecordsEngine.classify(set, exercise, priorRecords);
+        const calibration = recordCalibration(
+          [...cumulativeSets, ...newSets.filter((earlier) => earlier.timestamp < set.timestamp)],
+          exercise
+        );
+        const kind = RecordsEngine.classify(set, exercise, priorRecords, calibration);
         if (kind && recentIds.has(session.id)) {
           results.push({
             id: nextAchievementId(),

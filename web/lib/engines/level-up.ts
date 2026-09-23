@@ -7,6 +7,7 @@
  */
 
 import { benchmarkLevel, exerciseBenchmarkForSets, strengthLevelRank, type StrengthLevelKey } from "@/lib/engines/benchmark";
+import { isCalibrating, recordCalibration } from "@/lib/engines/records";
 import type { Exercise, LoggedSet, UserSettings } from "@/lib/models/types";
 
 export interface LevelUp {
@@ -29,6 +30,9 @@ export function detectLevelUp(
   newSet: LoggedSet,
   profile: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">
 ): LevelUp | null {
+  // Première séance sur l'exercice (ou référence encore trop courte) : on découvre son niveau,
+  // on ne le franchit pas. Même règle que les records.
+  if (isCalibrating(recordCalibration(previousSets, exercise), newSet.timestamp)) return null;
   const before = exerciseBenchmarkForSets(exercise, previousSets, profile);
   const after = exerciseBenchmarkForSets(exercise, [...previousSets, newSet], profile);
   if (!after.hasBenchmark || !after.level || !after.thresholds) return null;

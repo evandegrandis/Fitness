@@ -28,13 +28,7 @@ import type { ProgressionPolicy, SetPatternMode, SetType } from "@/lib/models/en
 import { FATIGUE_CLASS_PROPERTIES, SetPatternMode as SPM, SetType as ST } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, MuscleGoal, UserSettings, WorkoutSession } from "@/lib/models/types";
 import { primaryParent } from "@/lib/models/types";
-import {
-  buildFinisherRecords,
-  buildRecords,
-  classifyFinisher,
-  K_E1RM_PR_THRESHOLD,
-  normalRecordSets,
-} from "@/lib/engines/records";
+import { buildFinisherRecords, buildRecords, classifyFinisher, isCalibrating, K_E1RM_PR_THRESHOLD, normalRecordSets, recordCalibration } from "@/lib/engines/records";
 import {
   benchmarkLevel,
   resolveStandard,
@@ -2476,6 +2470,10 @@ export function suggest(params: SuggestParams): SetSuggestion {
     // désormais des faits. Les ignorer pouvait rallumer immédiatement « PR possible » ou annoncer
     // le même passage de niveau juste après l'avoir atteint.
     const knownSetsForExercise = [...historicalSetsForExercise, ...currentSessionSets];
+
+    // Étalonnage (records.ts) : tant que l'exercice pose sa référence, aucun feu ne doit promettre
+    // un record ou un palier que la série ne pourra pas décrocher.
+    if (isCalibrating(recordCalibration(knownSetsForExercise, exercise), now)) return result;
 
     // readyForPR — indépendant du profil StrengthLevel. Même garde `reps >= repTargetMin` et même
     // marge anti-flapping (`K_E1RM_PR_THRESHOLD`, records.ts) que `RecordsEngine.classify` (branche

@@ -154,6 +154,97 @@ export const KNOWN_MUSCLE_PROFILES: readonly KnownMuscleProfile[] = [
       { muscleGroup: MuscleGroup.soleaire, coefficient: 0.6 },
     ],
   },
+  {
+    // Technogym Selection : machine d'élévations latérales assises, pas une machine à deltoïde
+    // postérieur (celle-ci est combinée au pec deck chez Technogym).
+    aliases: ["Delts machine", "Machine deltoides", "Delts"],
+    copiedFrom: "Lateral raises",
+    category: "Push",
+    movementPattern: MovementPattern.isolation,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.deltLat, coefficient: 1 },
+      { muscleGroup: MuscleGroup.trapInf, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.trapSup, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.deltAnt, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.deltPost, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.transverse, coefficient: 0.1 },
+    ],
+  },
+  {
+    aliases: ["Shoulder press", "Shoulder press machine", "Machine shoulder press"],
+    copiedFrom: "Shoulder press",
+    category: "Push",
+    movementPattern: MovementPattern.verticalPress,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.deltAnt, coefficient: 1 },
+      { muscleGroup: MuscleGroup.deltLat, coefficient: 1 },
+      { muscleGroup: MuscleGroup.trapSup, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLat, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsLong, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.tricepsMed, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.pectClav, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.transverse, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.trapInf, coefficient: 0.1 },
+    ],
+  },
+  {
+    aliases: ["Leg press", "Leg press machine", "Machine leg press"],
+    copiedFrom: "Presse à cuisses",
+    category: "Legs",
+    movementPattern: MovementPattern.squat,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.vasteLat, coefficient: 1 },
+      { muscleGroup: MuscleGroup.vasteMed, coefficient: 1 },
+      { muscleGroup: MuscleGroup.droitFemoral, coefficient: 0.6 },
+      { muscleGroup: MuscleGroup.glutMax, coefficient: 0.6 },
+    ],
+  },
+  {
+    aliases: ["Leg curl", "Leg curl machine", "Machine leg curl", "Ischios machine"],
+    copiedFrom: "Leg curl",
+    category: "Legs",
+    movementPattern: MovementPattern.isolation,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.bicepsFemoral, coefficient: 1 },
+      { muscleGroup: MuscleGroup.semiTendineux, coefficient: 1 },
+      { muscleGroup: MuscleGroup.droitFemoral, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.glutMax, coefficient: 0.1 },
+      { muscleGroup: MuscleGroup.transverse, coefficient: 0.1 },
+    ],
+  },
+  {
+    // « Vertical Traction » est le nom Technogym du tirage vertical guidé, prise large.
+    aliases: ["Vertical traction", "Traction verticale machine"],
+    copiedFrom: "Tirage vertical prise large",
+    category: "Pull",
+    movementPattern: MovementPattern.verticalPull,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.latSup, coefficient: 1 },
+      { muscleGroup: MuscleGroup.latInf, coefficient: 0.7 },
+      { muscleGroup: MuscleGroup.rhomboides, coefficient: 0.4 },
+      { muscleGroup: MuscleGroup.trapMid, coefficient: 0.4 },
+      { muscleGroup: MuscleGroup.bicepsLong, coefficient: 0.3 },
+      { muscleGroup: MuscleGroup.bracchial, coefficient: 0.3 },
+    ],
+  },
+  {
+    // Prise serrée neutre : même amplitude que la supination, un peu moins de biceps court.
+    aliases: [
+      "Tirage vertical serre neutre",
+      "Tirage vertical neutre",
+      "Tirage vertical prise serree neutre",
+    ],
+    copiedFrom: "Tirage vertical supination",
+    category: "Pull",
+    movementPattern: MovementPattern.verticalPull,
+    muscleMappings: [
+      { muscleGroup: MuscleGroup.latInf, coefficient: 1 },
+      { muscleGroup: MuscleGroup.latSup, coefficient: 0.7 },
+      { muscleGroup: MuscleGroup.bicepsLong, coefficient: 0.5 },
+      { muscleGroup: MuscleGroup.bicepsCourt, coefficient: 0.4 },
+      { muscleGroup: MuscleGroup.bracchial, coefficient: 0.3 },
+    ],
+  },
 ] as const;
 
 /** Normalisation tolérante aux accents, tirets et espaces, mais pas au fuzzy matching. */
@@ -173,8 +264,49 @@ const PROFILE_BY_ALIAS = new Map<string, KnownMuscleProfile>(
   )
 );
 
+/**
+ * Marques de machines. Evan nomme ses exercices d'après la machine qu'il a sous les yeux
+ * (« Low Row Technogym », « Leg curl LifeFitness ») parce que les charges affichées ne sont PAS
+ * comparables d'une marque à l'autre : ces exercices restent distincts, chacun avec son
+ * historique, ses records et sa progression.
+ *
+ * Ce repli ne sert qu'à retrouver le PROFIL MUSCULAIRE, qui, lui, ne dépend pas du constructeur :
+ * un low row reste un low row. Sans ça, chaque nouvelle machine créait un exercice orphelin dont
+ * les séries ne comptaient dans aucun objectif.
+ */
+const MACHINE_BRANDS = [
+  "technogym",
+  "life fitness",
+  "lifefitness",
+  "hammer strength",
+  "hammer",
+  "cybex",
+  "matrix",
+  "precor",
+  "panatta",
+  "nautilus",
+  "gym 80",
+  "gym80",
+  "atlantis",
+  "watson",
+];
+
+/** Retire la marque de machine du nom normalisé, où qu'elle se trouve. */
+function stripMachineBrand(normalized: string): string {
+  let result = ` ${normalized} `;
+  for (const brand of MACHINE_BRANDS) {
+    result = result.split(` ${brand} `).join(" ");
+  }
+  return result.trim().replace(/\s+/g, " ");
+}
+
 export function knownMuscleProfileForName(name: string): KnownMuscleProfile | null {
-  return PROFILE_BY_ALIAS.get(normalizeCatalogExerciseName(name)) ?? null;
+  const normalized = normalizeCatalogExerciseName(name);
+  const exact = PROFILE_BY_ALIAS.get(normalized);
+  if (exact) return exact;
+  const withoutBrand = stripMachineBrand(normalized);
+  if (withoutBrand === normalized || withoutBrand.length === 0) return null;
+  return PROFILE_BY_ALIAS.get(withoutBrand) ?? null;
 }
 
 function cloneMappings(mappings: readonly Readonly<MuscleMapping>[]): MuscleMapping[] {

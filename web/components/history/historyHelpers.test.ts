@@ -30,7 +30,7 @@ const EXERCISE: Exercise = {
   benchmarkUnit: null,
 };
 
-function session(id: string, startIso: string, reps: number): WorkoutSession {
+function session(id: string, startIso: string, reps: number, setCount = 1): WorkoutSession {
   return {
     id,
     // Deux entraînements ont la même date métier; seul startTime les ordonne.
@@ -51,18 +51,16 @@ function session(id: string, startIso: string, reps: number): WorkoutSession {
         notes: "",
         supersetGroupId: null,
         plateauWeakPoint: null,
-        sets: [
-          {
-            id: `set-${id}`,
-            weight: 0,
-            reps,
-            setType: "work",
-            timestamp: new Date(new Date(startIso).getTime() + 60_000),
-            setSlotIndex: 0,
-            completed: true,
-            supersetRoundIndex: null,
-          },
-        ],
+        sets: Array.from({ length: setCount }, (_, i) => ({
+          id: i === 0 ? `set-${id}` : `set-${id}-${i}`,
+          weight: 0,
+          reps,
+          setType: "work" as const,
+          timestamp: new Date(new Date(startIso).getTime() + 60_000 + i * 180_000),
+          setSlotIndex: i,
+          completed: true,
+          supersetRoundIndex: null,
+        })),
       },
     ],
   };
@@ -78,7 +76,8 @@ describe("ordre déterministe de l'historique", () => {
   });
 
   it("compte comme PR une amélioration lors de la deuxième séance du même jour", () => {
-    const morning = session("morning", "2026-08-03T08:00:00.000Z", 10);
+    // Le matin est la première séance de l'exercice : 3 séries qui posent la référence.
+    const morning = session("morning", "2026-08-03T08:00:00.000Z", 10, 3);
     const evening = session("evening", "2026-08-03T18:00:00.000Z", 12);
     const unordered = [evening, morning];
 

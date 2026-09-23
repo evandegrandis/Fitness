@@ -537,7 +537,17 @@ describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
   // Les standards absolus chargés sont la ligne fixe H80 ; aucun scaling n'est inventé pour 75,5 kg.
   const PROFILE = { bodyWeightKg: 80, gender: "male" as const, ageYears: 26 };
 
-  it("premier passage jamais fait (sessionHistory=[]) -> readyForPR ET readyForLevelUp vrais (0 -> tout est un record)", () => {
+  /** Première séance il y a une semaine : 3 séries qui clôturent l'étalonnage (records.ts). */
+  function baselineSession(exercise: Exercise, weight: number, reps: number) {
+    const date = daysAgo(7);
+    return workoutSession(
+      date,
+      exercise,
+      [0, 1, 2].map((i) => makeSet({ weight, reps, timestamp: new Date(date.getTime() + i * 180_000) }))
+    );
+  }
+
+  it("premier passage jamais fait (sessionHistory=[]) -> aucun feu : la première séance pose la référence", () => {
     const exercise = makeExercise({
       name: "Curl debout",
       strengthStandardKey: "Curl debout",
@@ -553,13 +563,13 @@ describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
       sessionHistory: [],
       profile: PROFILE,
     });
-    // Cold start déterministe (constaté) : 20kg x 9 -> e1RM StrengthLevel ≈ 25.9 -> tier "intermediate"
-    // (seuils Curl debout par_bras [8,14,22,32,42]) alors que l'historique est vide (below_beginner).
+    // Cold start déterministe (constaté) : 20kg x 9. Sans aucune série avant, il n'y a ni record à
+    // battre ni palier à franchir : le feu ne doit rien promettre (règle d'étalonnage, records.ts).
     expect(s.weight).toBe(20);
     expect(s.reps).toBe(9);
-    expect(s.readyForPR).toBe(true);
-    expect(s.readyForLevelUp).toBe(true);
-    expect(s.nextLevelName).toBe("Intermédiaire");
+    expect(s.readyForPR).toBeFalsy();
+    expect(s.readyForLevelUp).toBeFalsy();
+    expect(s.nextLevelName).toBeUndefined();
   });
 
   it("déjà au palier Élite (plafond) -> readyForLevelUp reste faux même en progressant encore (pas de palier au-dessus), mais readyForPR peut rester vrai", () => {
@@ -631,7 +641,10 @@ describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
 
   it("sans profile -> readyForLevelUp/nextLevelName restent undefined, mais readyForPR reste calculé (n'a pas besoin du profil)", () => {
     const exercise = makeExercise({ name: "Curl debout", strengthStandardKey: "Curl debout", benchmarkUnit: "load" });
-    const s = suggest({ exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [], sessionHistory: [] });
+    const s = suggest({
+      exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [],
+      sessionHistory: [baselineSession(exercise, 10, 8)],
+    });
     expect(s.readyForPR).toBe(true);
     expect(s.readyForLevelUp).toBeUndefined();
     expect(s.nextLevelName).toBeUndefined();
@@ -639,7 +652,10 @@ describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
 
   it("sans strengthStandardKey (exercice pas encore sourcé) -> readyForLevelUp reste undefined, readyForPR fonctionne quand même", () => {
     const exercise = makeExercise({ name: "Chest Press", strengthStandardKey: null, benchmarkUnit: null });
-    const s = suggest({ exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [], sessionHistory: [], profile: PROFILE });
+    const s = suggest({
+      exercise, currentSetIndex: 0, recentHistory: [], currentSessionSets: [],
+      sessionHistory: [baselineSession(exercise, 10, 8)], profile: PROFILE,
+    });
     expect(s.readyForLevelUp).toBeUndefined();
     expect(s.readyForPR).toBe(true);
   });
@@ -678,7 +694,10 @@ describe("suggest() — signal feu (readyForLevelUp / readyForPR)", () => {
     const history = [
       workoutSession(daysAgo(1), exercise, [makeSet({ weight: 0, reps: 9, timestamp: daysAgo(1) })]),
       workoutSession(daysAgo(5), exercise, [makeSet({ weight: 0, reps: 9, timestamp: daysAgo(5) })]),
-      workoutSession(daysAgo(9), exercise, [makeSet({ weight: 0, reps: 9, timestamp: daysAgo(9) })]),
+      // Première séance de 3 séries : l'étalonnage est clos, un palier peut se franchir ensuite.
+      workoutSession(daysAgo(9), exercise, [0, 1, 2].map((i) =>
+        makeSet({ weight: 0, reps: 9, timestamp: new Date(daysAgo(9).getTime() + i * 180_000) })
+      )),
     ];
     const s = suggest({
       exercise,

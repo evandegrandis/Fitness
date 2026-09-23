@@ -33,6 +33,85 @@ export interface ExerciseRecords {
   bestE1RM: number;
   /** true si aucun historique préalable. */
   isEmpty: boolean;
+  /**
+   * Où en est l'étalonnage de l'exercice (cf. `RECORD_CALIBRATION`). Absent sur des records
+   * construits à la main : aucune restriction n'est alors appliquée.
+   */
+  calibration?: RecordCalibration;
+}
+
+// ---------------------------------------------------------------------------
+// Étalonnage : les premières séries fixent la référence
+// ---------------------------------------------------------------------------
+
+/**
+ * Règle d'Evan : sur un exercice qu'il découvre, les premières séries ne sont pas des records,
+ * elles POSENT la référence. Une machine nouvelle n'a pas encore de score à battre, et ses
+ * charges ne se comparent à aucune autre (chaque marque a son propre calibrage).
+ *
+ *   - toute la première séance de l'exercice est de l'étalonnage ;
+ *   - si elle compte moins de 3 séries, l'étalonnage continue jusqu'à 4 séries au total :
+ *     un record n'est possible qu'à partir de la 5e, face aux 4 premières.
+ *
+ * Les séries comptées sont celles qui peuvent porter un record (`normalRecordSets`) : un
+ * complément de drop-set ou une série arrêtée pour douleur ne mesure rien.
+ */
+export const RECORD_CALIBRATION = {
+  /** À partir de ce nombre de séries, la première séance suffit comme référence. */
+  MIN_FIRST_SESSION_SETS: 3,
+  /** Sinon, la référence s'étend jusqu'à ce nombre de séries. */
+  MIN_BASELINE_SETS: 4,
+  /**
+   * Écart au-delà duquel deux séries du même exercice appartiennent à deux séances. Les séries
+   * ne portent pas leur séance ; 4 h couvrent un exercice fait en début ET en fin de séance.
+   */
+  SESSION_GAP_MS: 4 * 3_600_000,
+} as const;
+
+export interface RecordCalibration {
+  /** Séries de référence déjà faites sur l'exercice. */
+  baselineSets: number;
+  /** Séries de la première séance. */
+  firstSessionSets: number;
+  /** Horodatage (ms) de la dernière série de la première séance, null si aucune série. */
+  firstSessionLastAtMs: number | null;
+}
+
+export const NO_CALIBRATION_YET: RecordCalibration = {
+  baselineSets: 0,
+  firstSessionSets: 0,
+  firstSessionLastAtMs: null,
+};
+
+/** État d'étalonnage à partir des séries DÉJÀ faites sur l'exercice (ordre indifférent). */
+export function recordCalibration(sets: LoggedSet[], exercise: Exercise): RecordCalibration {
+  const leads = normalRecordSets(sets, exercise)
+    .map((set) => set.timestamp.getTime())
+    .sort((a, b) => a - b);
+  if (leads.length === 0) return NO_CALIBRATION_YET;
+
+  let firstSessionSets = 1;
+  while (
+    firstSessionSets < leads.length &&
+    leads[firstSessionSets] - leads[firstSessionSets - 1] <= RECORD_CALIBRATION.SESSION_GAP_MS
+  ) {
+    firstSessionSets += 1;
+  }
+  return {
+    baselineSets: leads.length,
+    firstSessionSets,
+    firstSessionLastAtMs: leads[firstSessionSets - 1],
+  };
+}
+
+/** true si une série faite à `at` sert encore de référence et ne peut donc pas être un record. */
+export function isCalibrating(calibration: RecordCalibration, at: Date): boolean {
+  if (calibration.firstSessionLastAtMs === null) return true;
+  if (at.getTime() - calibration.firstSessionLastAtMs <= RECORD_CALIBRATION.SESSION_GAP_MS) return true;
+  return (
+    calibration.firstSessionSets < RECORD_CALIBRATION.MIN_FIRST_SESSION_SETS &&
+    calibration.baselineSets < RECORD_CALIBRATION.MIN_BASELINE_SETS
+  );
 }
 
 export const EMPTY_RECORDS: ExerciseRecords = {
@@ -43,6 +122,7 @@ export const EMPTY_RECORDS: ExerciseRecords = {
   bestBodyweightReps: 0,
   bestE1RM: 0,
   isEmpty: true,
+  calibration: NO_CALIBRATION_YET,
 };
 
 /** Miroir de `RecordKind` (Swift). */
@@ -214,6 +294,7 @@ export const RecordsEngine = {
    */
   buildRecords(exercise: Exercise, historicalSets: LoggedSet[]): ExerciseRecords {
     const completedWork = normalRecordSets(historicalSets, exercise);
+    const calibration = recordCalibration(historicalSets, exercise);
 
     // Records pondérés : reps validées (>= repTargetMin) ET poids > 0.
     const weightedValidated = completedWork.filter((s) => s.weight > 0 && s.reps >= exercise.repTargetMin);
@@ -231,7 +312,7 @@ export const RecordsEngine = {
     const heaviestEver = allWeighted.reduce((max, s) => Math.max(max, s.weight), 0);
 
     if (weightedValidated.length === 0 && bestBWReps <= 0 && heaviestEver <= 0) {
-      return EMPTY_RECORDS;
+      return { ...EMPTY_RECORDS, calibration };
     }
 
     const bestRepsByWeight: Record<number, number> = {};
@@ -255,6 +336,7 @@ export const RecordsEngine = {
       bestBodyweightReps: bestBWReps,
       bestE1RM: bestE1RMValue,
       isEmpty: false,
+      calibration,
     };
   },
 
@@ -268,8 +350,15 @@ export const RecordsEngine = {
    *   3. repsAtWeight (plus de reps à un poids déjà atteint)
    *   4. bodyweightReps (exercices BW : plus de reps que jamais)
    */
-  classify(set: LoggedSet, exercise: Exercise, priorRecords: ExerciseRecords): RecordKind | null {
+  classify(
+    set: LoggedSet,
+    exercise: Exercise,
+    priorRecords: ExerciseRecords,
+    calibration: RecordCalibration | undefined = priorRecords.calibration
+  ): RecordKind | null {
     if (!set.completed || !WORK_KINDS.has(set.setType)) return null;
+    // Série de référence : elle fixe le score à battre, elle ne peut pas le battre.
+    if (calibration && isCalibrating(calibration, set.timestamp)) return null;
 
     // Branche bodyweight : PR de reps si strictement plus que tout précédent
     // compte de reps BW. Pas de porte repTargetMin pour que le tout premier
@@ -325,6 +414,8 @@ export const RecordsEngine = {
 
     const eligible = normalRecordSets(amongSets, exercise);
     if (!eligible.some((candidate) => candidate.id === set.id)) return false;
+    const earlier = amongSets.filter((candidate) => candidate.timestamp < set.timestamp);
+    if (isCalibrating(recordCalibration(earlier, exercise), set.timestamp)) return false;
     const others = eligible.filter((candidate) => candidate.id !== set.id);
 
     if (set.weight === 0) {

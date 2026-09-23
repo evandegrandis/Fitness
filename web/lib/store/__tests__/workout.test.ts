@@ -165,6 +165,27 @@ function singleExerciseHistory(
   };
 }
 
+/**
+ * Première séance qui pose la référence de l'exercice : 3 séries (règle d'étalonnage, records.ts).
+ * Sans elle, aucune série suivante ne peut être un record.
+ */
+function baselineHistory(exercise: ExerciseType, id: string, daysAgo: number, weight: number, reps: number) {
+  const session = singleExerciseHistory(exercise, id, daysAgo, weight, reps);
+  const [template] = session.exercises[0].sets;
+  return {
+    ...session,
+    exercises: [{
+      ...session.exercises[0],
+      sets: [0, 1, 2].map((i) => ({
+        ...template,
+        id: `${template.id}-${i}`,
+        setSlotIndex: i,
+        timestamp: new Date(template.timestamp.getTime() + i * 180_000),
+      })),
+    }],
+  };
+}
+
 describe("useWorkoutStore", () => {
   beforeEach(() => {
     resetStore();
@@ -1132,7 +1153,8 @@ describe("useWorkoutStore", () => {
 describe("records — un seul par type et par exercice dans la séance", () => {
   it("une montée en charge ne laisse qu'une étoile de poids max, sur la meilleure série", () => {
     const store = useWorkoutStore.getState();
-    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    const history = [baselineHistory(BENCH, "ref", 7, 50, 8)];
+    store.hydrate({ catalog: [BENCH], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     const le = useWorkoutStore.getState().active!.exercises[0];
@@ -1167,9 +1189,25 @@ describe("records — un seul par type et par exercice dans la séance", () => {
     expect(useWorkoutStore.getState().justHitRecord[newSet.id]).toBeUndefined();
   });
 
-  it("compare aussi avec une autre occurrence du même exercice dans la séance active", () => {
+  it("aucune étoile pendant la première séance d'un exercice, même en montant nettement", () => {
     const store = useWorkoutStore.getState();
     store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const le = useWorkoutStore.getState().active!.exercises[0];
+
+    store.logSet(le.id, { weight: 60, reps: 8 });
+    store.logSet(le.id, { weight: 70, reps: 8 });
+    store.logSet(le.id, { weight: 80, reps: 8 });
+
+    expect(useWorkoutStore.getState().justHitRecord).toEqual({});
+    expect(useWorkoutStore.getState().levelUp).toBeNull();
+  });
+
+  it("compare aussi avec une autre occurrence du même exercice dans la séance active", () => {
+    const store = useWorkoutStore.getState();
+    const history = [baselineHistory(BENCH, "ref", 7, 10, 8)];
+    store.hydrate({ catalog: [BENCH], history, goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
     store.startEmpty("normal");
     store.addExercise(BENCH.id);
     store.addExercise(BENCH.id);
@@ -1178,9 +1216,13 @@ describe("records — un seul par type et par exercice dans la séance", () => {
     store.logSet(occurrences[0].id, { weight: 18, reps: 9 });
     store.logSet(occurrences[1].id, { weight: 16, reps: 8 });
 
+    const firstSet = useWorkoutStore
+      .getState()
+      .active!.exercises.find((exercise) => exercise.id === occurrences[0].id)!.sets[0];
     const secondSet = useWorkoutStore
       .getState()
       .active!.exercises.find((exercise) => exercise.id === occurrences[1].id)!.sets[0];
+    expect(useWorkoutStore.getState().justHitRecord[firstSet.id]).toBe("heaviestWeight");
     expect(useWorkoutStore.getState().justHitRecord[secondSet.id]).toBeUndefined();
   });
 

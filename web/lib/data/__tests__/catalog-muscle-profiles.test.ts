@@ -28,6 +28,33 @@ describe("profils musculaires des machines connues", () => {
     expect(mapped.movementPattern).not.toBeNull();
   });
 
+  it.each([
+    ["Delts machine Technogym", MuscleGroup.deltLat],
+    ["Leg Press Technogym", MuscleGroup.vasteLat],
+    ["Leg curl LifeFitness", MuscleGroup.bicepsFemoral],
+    ["Low Row Technogym", MuscleGroup.latSup],
+    ["Shoulder press Technogym", MuscleGroup.deltAnt],
+    ["Vertical Traction Technogym", MuscleGroup.latSup],
+    ["Tirage vertical serré neutre", MuscleGroup.latInf],
+  ])("reconnaît %s malgré la marque de la machine", (name, expectedMuscle) => {
+    const mapped = withKnownMuscleProfile(unmapped(name));
+    expect(mapped.muscleMappings.some((mapping) => mapping.muscleGroup === expectedMuscle)).toBe(true);
+  });
+
+  it("garde l'exercice de marque distinct : seul le profil musculaire est recopié", () => {
+    // Les charges ne sont pas comparables d'une marque à l'autre : pas de fusion, pas de renommage.
+    const technogym = unmapped("Low Row Technogym");
+    const mapped = withKnownMuscleProfile(technogym);
+    expect(mapped.id).toBe(technogym.id);
+    expect(mapped.name).toBe("Low Row Technogym");
+    expect(mapped.strengthStandardKey).toBeNull();
+  });
+
+  it("ne reconnaît rien à partir de la seule marque", () => {
+    expect(knownMuscleProfileForName("Technogym")).toBeNull();
+    expect(knownMuscleProfileForName("Machine mystère Technogym")).toBeNull();
+  });
+
   it("n'écrase jamais un mapping manuel existant", () => {
     const manual = {
       ...unmapped("Low row"),

@@ -23,6 +23,7 @@ import {
   classify,
   classifyFinisher,
   displayedRecordSetIDs,
+  recordCalibration,
   type RecordKind,
 } from "@/lib/engines/records";
 import {
@@ -589,7 +590,11 @@ function buildExerciseReview(
   >();
   for (const set of workSetsToday) {
     if (!displayedIds.has(set.id)) continue;
-    const kind = classify(set, exercise, priorRecords);
+    const calibration = recordCalibration(
+      [...allHistory, ...workSetsToday.filter((earlier) => earlier.timestamp < set.timestamp)],
+      exercise
+    );
+    const kind = classify(set, exercise, priorRecords, calibration);
     if (kind) achievementsByKind.set(kind, { kind, setId: set.id, weight: set.weight, reps: set.reps });
   }
   const recordAchievements = [...achievementsByKind.values()];

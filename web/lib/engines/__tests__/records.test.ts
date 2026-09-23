@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   allTimeRecordSet,
+  isCalibrating,
+  recordCalibration,
   buildFinisherRecords,
   classifyFinisher,
   EMPTY_RECORDS,
   isFinisherRepRecord,
   RecordsEngine,
 } from "@/lib/engines/records";
-import { SetType } from "@/lib/models/enums";
+import { SetType, StopReason } from "@/lib/models/enums";
 import type { Exercise, LoggedSet } from "@/lib/models/types";
 
 const BENCH: Exercise = {
@@ -51,6 +53,19 @@ function set(overrides: Partial<LoggedSet>): LoggedSet {
     supersetRoundIndex: null,
     ...overrides,
   };
+}
+
+/**
+ * Première séance neutre, bien avant les fixtures : 3 séries à 1 kg × 1. Sous repTargetMin et
+ * jamais au poids du corps, elle ne pèse sur aucun record ; elle clôt seulement l'étalonnage, pour
+ * que les tests de LOGIQUE de classement ne testent pas, sans le vouloir, la première séance.
+ */
+const BASELINE: LoggedSet[] = [0, 1, 2].map((i) =>
+  set({ id: `baseline-${i}`, weight: 1, reps: 1, timestamp: new Date(Date.UTC(2026, 0, 5, 9, i * 3)) })
+);
+
+function builtWithBaseline(exercise: Exercise, sets: LoggedSet[]) {
+  return RecordsEngine.buildRecords(exercise, [...BASELINE, ...sets]);
 }
 
 describe("buildRecords", () => {
@@ -109,7 +124,7 @@ describe("buildRecords", () => {
       plateauWeakPoint: null,
       sets: [lead, continuation],
     };
-    const displayed = RecordsEngine.displayedRecordSetIDs(logged, [lead, continuation], BENCH);
+    const displayed = RecordsEngine.displayedRecordSetIDs(logged, [...BASELINE, lead, continuation], BENCH);
     expect(displayed.has(lead.id)).toBe(true);
     expect(displayed.has(continuation.id)).toBe(false);
   });
@@ -160,27 +175,27 @@ describe("buildRecords", () => {
 
 describe("classify — ordre de priorité exact des 4 types de records", () => {
   it("1. bodyweight: reps > bestBodyweightReps quand weight == 0", () => {
-    const prior = RecordsEngine.buildRecords(PULLUPS, [set({ weight: 0, reps: 8 })]);
+    const prior = builtWithBaseline(PULLUPS, [set({ weight: 0, reps: 8 })]);
     const kind = RecordsEngine.classify(set({ weight: 0, reps: 10 }), PULLUPS, prior);
     expect(kind).toBe("bodyweightReps");
   });
 
   it("2. heaviestWeight bat tout le reste, même sans reps validées", () => {
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 80, reps: 10 })]);
+    const prior = builtWithBaseline(BENCH, [set({ weight: 80, reps: 10 })]);
     // 90kg pour seulement 1 rep (< repTargetMin 6) — record de poids quand même
     const kind = RecordsEngine.classify(set({ weight: 90, reps: 1 }), BENCH, prior);
     expect(kind).toBe("heaviestWeight");
   });
 
   it("guard: reps < repTargetMin et poids pas nouveau -> null (pas de record e1RM/reps)", () => {
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 80, reps: 10 })]);
+    const prior = builtWithBaseline(BENCH, [set({ weight: 80, reps: 10 })]);
     const kind = RecordsEngine.classify(set({ weight: 70, reps: 3 }), BENCH, prior);
     expect(kind).toBeNull();
   });
 
   it("3. estimated1RM avec marge x1.02 — 80x10 puis 80x9 NE déclenche PAS", () => {
     // e1RM(80,10) = 80 * (1 + 10/30) = 106.667
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 80, reps: 10 })]);
+    const prior = builtWithBaseline(BENCH, [set({ weight: 80, reps: 10 })]);
     // e1RM(80,9) = 80 * (1 + 9/30) = 104 < 106.667 * 1.02 = 108.8
     const kind = RecordsEngine.classify(set({ weight: 80, reps: 9 }), BENCH, prior);
     expect(kind).toBeNull();
@@ -188,7 +203,7 @@ describe("classify — ordre de priorité exact des 4 types de records", () => {
 
   it("3bis. estimated1RM déclenche quand la marge de 2% est dépassée (même poids, plus de reps)", () => {
     // Poids déjà atteint (donc pas de branche heaviestWeight) mais e1RM nettement meilleur.
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 80, reps: 10 }), set({ weight: 85, reps: 1 })]); // heaviestEver=85, e1RM=106.667
+    const prior = builtWithBaseline(BENCH, [set({ weight: 80, reps: 10 }), set({ weight: 85, reps: 1 })]); // heaviestEver=85, e1RM=106.667
     // e1RM(80,12) = 80 * 1.4 = 112 > 106.667 * 1.02 = 108.8, poids 80 <= heaviestEver 85
     const kind = RecordsEngine.classify(set({ weight: 80, reps: 12 }), BENCH, prior);
     expect(kind).toBe("estimated1RM");
@@ -197,13 +212,13 @@ describe("classify — ordre de priorité exact des 4 types de records", () => {
   it("4. repsAtWeight: plus de reps au même poids déjà atteint, sans battre e1RM", () => {
     // 100 x 6 garde un e1RM élevé mais ne domine pas 80 x 9 sur les reps : ce
     // dernier reste un compromis poids/reps légitime.
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 100, reps: 6 }), set({ weight: 80, reps: 8 })]);
+    const prior = builtWithBaseline(BENCH, [set({ weight: 100, reps: 6 }), set({ weight: 80, reps: 8 })]);
     const kind = RecordsEngine.classify(set({ weight: 80, reps: 9 }), BENCH, prior);
     expect(kind).toBe("repsAtWeight");
   });
 
   it("n'étoile jamais un PR de reps à une charge dominée par une performance plus lourde", () => {
-    const prior = RecordsEngine.buildRecords(BENCH, [
+    const prior = builtWithBaseline(BENCH, [
       set({ weight: 20, reps: 7 }),
       set({ weight: 18, reps: 9 }),
       set({ weight: 16, reps: 7 }),
@@ -213,7 +228,7 @@ describe("classify — ordre de priorité exact des 4 types de records", () => {
   });
 
   it("préserve un vrai compromis de Pareto : plus de reps à 18 kg face à 20 kg × 7", () => {
-    const prior = RecordsEngine.buildRecords(BENCH, [
+    const prior = builtWithBaseline(BENCH, [
       set({ weight: 20, reps: 7 }),
       set({ weight: 18, reps: 8 }),
     ]);
@@ -222,12 +237,12 @@ describe("classify — ordre de priorité exact des 4 types de records", () => {
   });
 
   it("retourne null si le set n'est pas complété", () => {
-    const prior = RecordsEngine.buildRecords(BENCH, []);
+    const prior = builtWithBaseline(BENCH, []);
     expect(RecordsEngine.classify(set({ completed: false, weight: 200, reps: 10 }), BENCH, prior)).toBeNull();
   });
 
   it("retourne null quand rien n'est battu", () => {
-    const prior = RecordsEngine.buildRecords(BENCH, [set({ weight: 80, reps: 10 })]);
+    const prior = builtWithBaseline(BENCH, [set({ weight: 80, reps: 10 })]);
     const kind = RecordsEngine.classify(set({ weight: 80, reps: 10 }), BENCH, prior);
     expect(kind).toBeNull();
   });
@@ -240,9 +255,9 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
     const s3 = set({ weight: 80, reps: 6 }); // pas record (moins que s1 au même poids)
     const all = [s1, s2, s3];
 
-    expect(RecordsEngine.isRecordSet(s1, all, BENCH)).toBe(true);
-    expect(RecordsEngine.isRecordSet(s2, all, BENCH)).toBe(true);
-    expect(RecordsEngine.isRecordSet(s3, all, BENCH)).toBe(false);
+    expect(RecordsEngine.isRecordSet(s1, [...BASELINE, ...all], BENCH)).toBe(true);
+    expect(RecordsEngine.isRecordSet(s2, [...BASELINE, ...all], BENCH)).toBe(true);
+    expect(RecordsEngine.isRecordSet(s3, [...BASELINE, ...all], BENCH)).toBe(false);
   });
 
   it("displayedRecordSetIDs garde au plus les catégories distinctes (validé + BW + absolu)", () => {
@@ -256,7 +271,7 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
       plateauWeakPoint: null,
       sets: [set({ weight: 80, reps: 10 }), set({ weight: 85, reps: 3 })],
     };
-    const ids = RecordsEngine.displayedRecordSetIDs(le, le.sets, BENCH);
+    const ids = RecordsEngine.displayedRecordSetIDs(le, [...BASELINE, ...le.sets], BENCH);
     // 80x10 = meilleur set validé ; 85x3 = meilleur poids absolu (distinct, sous validation)
     expect(ids.size).toBe(2);
     expect(ids.has(le.sets[0].id)).toBe(true);
@@ -279,8 +294,8 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
       sets: [dominated],
     };
 
-    expect(RecordsEngine.isRecordSet(dominated, all, BENCH)).toBe(false);
-    expect(RecordsEngine.displayedRecordSetIDs(logged, all, BENCH)).toEqual(new Set());
+    expect(RecordsEngine.isRecordSet(dominated, [...BASELINE, ...all], BENCH)).toBe(false);
+    expect(RecordsEngine.displayedRecordSetIDs(logged, [...BASELINE, ...all], BENCH)).toEqual(new Set());
   });
 
   it("conserve les deux points non dominés d'un même historique : 20×7 et 18×9", () => {
@@ -297,7 +312,7 @@ describe("isRecordSet / displayedRecordSetIDs", () => {
       sets: [heaviest, higherReps],
     };
 
-    expect(RecordsEngine.displayedRecordSetIDs(logged, logged.sets, BENCH)).toEqual(
+    expect(RecordsEngine.displayedRecordSetIDs(logged, [...BASELINE, ...logged.sets], BENCH)).toEqual(
       new Set([heaviest.id, higherReps.id])
     );
   });
@@ -361,5 +376,77 @@ describe("exclusion des séries arrêtées pour douleur/matériel (oui.rtf #7)",
     const technique = set({ id: "tech", weight: 125, reps: 6, stopReason: "technique" });
     expect(allTimeRecordSet(BENCH, [muscular, technique])?.id).toBe("tech");
     expect(RecordsEngine.buildRecords(BENCH, [muscular, technique])).not.toEqual(EMPTY_RECORDS);
+  });
+});
+
+describe("étalonnage — les premières séries posent la référence", () => {
+  const day = (d: number, minutes = 0) => new Date(Date.UTC(2026, 8, d, 17, minutes));
+  const logged = (sets: LoggedSet[]) => ({
+    id: "le-new-machine",
+    orderIndex: 0,
+    notes: "",
+    exerciseId: BENCH.id,
+    exerciseName: "Low Row Technogym",
+    supersetGroupId: null,
+    plateauWeakPoint: null,
+    sets,
+  });
+
+  it("aucun record sur la toute première série d'un exercice", () => {
+    const first = set({ weight: 120, reps: 10, timestamp: day(21) });
+    expect(RecordsEngine.classify(first, BENCH, EMPTY_RECORDS)).toBeNull();
+    expect(RecordsEngine.classify(first, BENCH, RecordsEngine.buildRecords(BENCH, []))).toBeNull();
+  });
+
+  it("aucun record pendant toute la première séance, même en montant nettement", () => {
+    const s1 = set({ weight: 60, reps: 10, timestamp: day(21, 0) });
+    const s2 = set({ weight: 70, reps: 10, timestamp: day(21, 4) });
+    const s3 = set({ weight: 80, reps: 10, timestamp: day(21, 8) });
+    const s4 = set({ weight: 90, reps: 8, timestamp: day(21, 12) });
+    expect(RecordsEngine.classify(s4, BENCH, RecordsEngine.buildRecords(BENCH, [s1, s2, s3]))).toBeNull();
+    expect(RecordsEngine.displayedRecordSetIDs(logged([s1, s2, s3, s4]), [s1, s2, s3, s4], BENCH)).toEqual(new Set());
+  });
+
+  it("dès la deuxième séance, un record est possible si la première a compté 3 séries ou plus", () => {
+    const first = [0, 4, 8].map((m) => set({ weight: 60, reps: 10, timestamp: day(21, m) }));
+    const next = set({ weight: 65, reps: 10, timestamp: day(24) });
+    expect(RecordsEngine.classify(next, BENCH, RecordsEngine.buildRecords(BENCH, first))).toBe("heaviestWeight");
+    expect(RecordsEngine.isRecordSet(next, [...first, next], BENCH)).toBe(true);
+  });
+
+  it("première séance de moins de 3 séries : record seulement à partir de la 5e série au total", () => {
+    const first = [0, 4].map((m) => set({ weight: 60, reps: 10, timestamp: day(21, m) }));
+    const third = set({ weight: 65, reps: 10, timestamp: day(24, 0) });
+    const fourth = set({ weight: 70, reps: 10, timestamp: day(24, 4) });
+    const fifth = set({ weight: 75, reps: 10, timestamp: day(24, 8) });
+
+    // 3e et 4e séries : elles complètent la référence, même plus lourdes.
+    expect(RecordsEngine.classify(third, BENCH, RecordsEngine.buildRecords(BENCH, first))).toBeNull();
+    expect(RecordsEngine.classify(fourth, BENCH, RecordsEngine.buildRecords(BENCH, [...first, third]))).toBeNull();
+    // 5e série : elle se mesure aux 4 premières.
+    expect(
+      RecordsEngine.classify(fifth, BENCH, RecordsEngine.buildRecords(BENCH, [...first, third, fourth]))
+    ).toBe("heaviestWeight");
+
+    const all = [...first, third, fourth, fifth];
+    expect(RecordsEngine.isRecordSet(third, all, BENCH)).toBe(false);
+    expect(RecordsEngine.isRecordSet(fourth, all, BENCH)).toBe(false);
+    expect(RecordsEngine.isRecordSet(fifth, all, BENCH)).toBe(true);
+  });
+
+  it("l'exercice fait en début ET en fin de séance reste une seule séance", () => {
+    const early = [0, 3, 6].map((m) => set({ weight: 60, reps: 10, timestamp: day(21, m) }));
+    const late = set({ weight: 70, reps: 10, timestamp: new Date(day(21).getTime() + 2 * 3_600_000) });
+    expect(recordCalibration(early, BENCH).firstSessionSets).toBe(3);
+    expect(isCalibrating(recordCalibration(early, BENCH), late.timestamp)).toBe(true);
+  });
+
+  it("une série arrêtée pour douleur ne compte pas dans la référence", () => {
+    const first = [
+      set({ weight: 60, reps: 10, timestamp: day(21, 0) }),
+      set({ weight: 60, reps: 10, timestamp: day(21, 4) }),
+      set({ weight: 60, reps: 3, timestamp: day(21, 8), stopReason: StopReason.pain }),
+    ];
+    expect(recordCalibration(first, BENCH).firstSessionSets).toBe(2);
   });
 });
