@@ -6,6 +6,7 @@ import type { WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useSyncStatus } from "@/lib/sync/status";
 import { SessionFocusButton } from "./SessionFocusSheet";
+import { formatDecimal } from "@/lib/format";
 
 /** Badge de synchronisation HONNÊTE : reflète l'état réel, jamais un faux « enregistré ». */
 function SyncBadge() {
@@ -75,7 +76,7 @@ export function SessionHeader({
       <div>
         <p className="tnum font-display text-2xl font-bold text-[--color-fg]">{formatElapsed(session.startTime, nowMs)}</p>
         <div className="flex items-center gap-2 text-xs text-[--color-fg-muted]">
-          <span>{totalSets} set{totalSets > 1 ? "s" : ""} loggué{totalSets > 1 ? "s" : ""}</span>
+          <span>{formatDecimal(totalSets)} série{totalSets > 1 ? "s" : ""} faite{totalSets > 1 ? "s" : ""}</span>
           <SyncBadge />
         </div>
       </div>

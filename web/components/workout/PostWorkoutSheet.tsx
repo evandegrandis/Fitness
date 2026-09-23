@@ -171,7 +171,7 @@ function PostWorkoutContent({
 
         <div className="grid grid-cols-3 gap-2">
           <StatTile value={snapshot.duration} label="Durée" />
-          <StatTile value={snapshot.setCount} label="Sets" />
+          <StatTile value={snapshot.setCount} label="Séries" />
           <StatTile value={snapshot.exerciseCount} label="Exos" />
         </div>
 

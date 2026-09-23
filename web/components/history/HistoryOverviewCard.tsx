@@ -45,7 +45,7 @@ export function HistoryOverviewCard({
     <div className="sticky top-0 z-30 -mx-5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl bg-gradient-to-b from-[var(--bg-top)] via-[var(--bg-top)]/90 to-transparent">
       <div className="grid grid-cols-4 gap-2">
         <StatTile value={sessions.length} label="Séances" />
-        <StatTile value={displayedTotalSets} label="Sets" />
+        <StatTile value={displayedTotalSets} label="Séries" />
         <StatTile value={totalPRs} label="PR" accent={totalPRs > 0} />
         <StatTile value={formatDecimal(totalHours)} label="Heures" />
       </div>

@@ -152,7 +152,7 @@ export function GlobalLayer() {
             Semaine du {selectedBucket?.label}
           </p>
           <div className="grid grid-cols-2 gap-2.5">
-            <StatTile value={selectedSnapshot.sets} label="Sets" accent />
+            <StatTile value={selectedSnapshot.sets} label="Séries" accent />
             <StatTile value={selectedSnapshot.sessionCount} label="Séances" />
             {selectedSnapshot.creatinePct !== null && (
               <StatTile value={`${selectedSnapshot.creatinePct}%`} label="Créatine" />

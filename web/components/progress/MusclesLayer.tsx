@@ -236,7 +236,7 @@ function MuscleDetail({
             </div>
           ))}
         {leafBreakdown.every((l) => l.sets === 0) && (
-          <p className="text-xs text-[--color-fg-faint]">Aucun set cette semaine.</p>
+          <p className="text-xs text-[--color-fg-faint]">Aucune série cette semaine.</p>
         )}
       </div>
 
@@ -249,7 +249,7 @@ function MuscleDetail({
           data={weekData}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
-          unit="sets effectifs"
+          unit="séries effectives"
           gradientId={`muscleBar-${parent}`}
         />
       </div>
