@@ -51,9 +51,9 @@ export function MuscleMappingEditor({
 
   return (
     <div className="flex flex-col gap-2.5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Muscles travaillés</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Muscles travaillés</p>
       {mappings.length === 0 && (
-        <p className="text-sm text-[--color-fg-faint]">Aucun muscle mappé pour l&apos;instant.</p>
+        <p className="text-sm text-(--color-fg-faint)">Aucun muscle mappé pour l&apos;instant.</p>
       )}
       <div className="flex flex-col gap-2">
         {mappings.map(([parent, coefficient]) => (
@@ -61,13 +61,13 @@ export function MuscleMappingEditor({
             <select
               value={parent}
               onChange={(e) => updateParent(parent, e.target.value as MuscleParent)}
-              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-[--color-fg] outline-none"
+              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-(--color-fg) outline-none"
             >
-              <option className="bg-[--color-ink-800]" value={parent}>
+              <option className="bg-(--color-ink-800)" value={parent}>
                 {parentDisplayName[parent]}
               </option>
               {available.map((p) => (
-                <option key={p} className="bg-[--color-ink-800]" value={p}>
+                <option key={p} className="bg-(--color-ink-800)" value={p}>
                   {parentDisplayName[p]}
                 </option>
               ))}
@@ -84,7 +84,7 @@ export function MuscleMappingEditor({
               type="button"
               onClick={() => remove(parent)}
               aria-label={`Retirer ${parentDisplayName[parent]}`}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/5 text-[--color-fg-faint] active:scale-90 transition"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/5 text-(--color-fg-faint) active:scale-90 transition"
             >
               <Trash2 size={14} />
             </button>

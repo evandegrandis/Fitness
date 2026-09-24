@@ -32,7 +32,7 @@ export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
           setState("loading");
           setShown(true);
         }}
-        className="glass flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium text-[--color-fg-muted] active:scale-[0.98] transition"
+        className="glass flex items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-sm font-medium text-(--color-fg-muted) active:scale-[0.98] transition"
       >
         <Film size={15} />
         Voir la démonstration
@@ -44,12 +44,12 @@ export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
     <div className="glass overflow-hidden rounded-xl">
       <div className="relative grid aspect-square w-full place-items-center bg-black/20">
         {state === "loading" && (
-          <div className="absolute inset-0 grid place-items-center text-[--color-fg-faint]">
+          <div className="absolute inset-0 grid place-items-center text-(--color-fg-faint)">
             <Loader2 size={20} className="animate-spin" />
           </div>
         )}
         {state === "error" ? (
-          <p className="px-6 text-center text-xs text-[--color-fg-faint]">
+          <p className="px-6 text-center text-xs text-(--color-fg-faint)">
             Démo indisponible pour l&apos;instant (pas de réseau ?). Réessaie une fois connecté.
           </p>
         ) : (
@@ -68,7 +68,7 @@ export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
           />
         )}
       </div>
-      <p className="px-3 py-1.5 text-[0.65rem] text-[--color-fg-faint]">
+      <p className="px-3 py-1.5 text-[0.65rem] text-(--color-fg-faint)">
         Démo générique · dataset communautaire (usage personnel)
       </p>
     </div>

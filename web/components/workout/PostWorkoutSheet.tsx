@@ -165,7 +165,7 @@ function PostWorkoutContent({
   return (
       <div className="flex flex-col gap-5 pb-4">
         <header>
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Bilan express</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Bilan express</p>
           <h2 className="font-display text-2xl font-bold text-accent-gradient">Séance terminée</h2>
         </header>
 
@@ -184,7 +184,7 @@ function PostWorkoutContent({
         <BilanCoverage review={review} />
 
         <div className="flex flex-col gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Récupération</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Récupération</p>
           <RecoveryCheckinRow label="Hier (J-1)" value={d1} onChange={setD1} />
           <RecoveryCheckinRow label="Avant-hier (J-2)" value={d2} onChange={setD2} />
         </div>

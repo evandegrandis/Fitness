@@ -22,16 +22,16 @@ export function SettingsExercisesSection({ catalog }: { catalog: Exercise[] }) {
           <div className="flex items-center gap-2.5">
             <Dumbbell size={16} style={{ color: "var(--accent)" }} />
             <div className="text-left">
-              <p className="text-sm font-semibold text-[--color-fg]">Exercices</p>
-              <p className="text-xs text-[--color-fg-muted]">{catalog.length} dans le catalogue</p>
+              <p className="text-sm font-semibold text-(--color-fg)">Exercices</p>
+              <p className="text-xs text-(--color-fg-muted)">{catalog.length} dans le catalogue</p>
             </div>
           </div>
-          <ChevronRight size={16} className="text-[--color-fg-faint]" />
+          <ChevronRight size={16} className="text-(--color-fg-faint)" />
         </button>
       </GlassCard>
 
       <Sheet open={open} onClose={() => setOpen(false)} full>
-        <h2 className="font-display text-lg font-bold text-[--color-fg]">Gestion des exercices</h2>
+        <h2 className="font-display text-lg font-bold text-(--color-fg)">Gestion des exercices</h2>
         <div className="mt-4">
           <ExerciseList catalog={catalog} />
         </div>

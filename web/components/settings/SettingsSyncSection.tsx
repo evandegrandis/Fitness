@@ -95,12 +95,12 @@ export function SettingsSyncSection() {
           type="button"
           onClick={() => void forceSync()}
           disabled={busy}
-          className="inline-flex items-center gap-1 text-sm text-[--accent] disabled:opacity-50"
+          className="inline-flex items-center gap-1 text-sm text-(--accent) disabled:opacity-50"
         >
           <RefreshCw size={14} className={busy ? "animate-spin" : ""} /> Synchroniser
         </button>
       </div>
-      <p className="text-sm text-[--color-fg-faint]">
+      <p className="text-sm text-(--color-fg-faint)">
         {pending === 0 ? "Aucune écriture en attente." : `${pending} écriture${pending > 1 ? "s" : ""} en attente d'envoi.`}
         {lastError ? ` Dernière erreur : ${lastError.message.slice(0, 160)}` : ""}
       </p>
@@ -109,15 +109,15 @@ export function SettingsSyncSection() {
           {letters.map((letter) => (
             <li key={letter.entryId} className="rounded-xl p-3 text-sm" style={{ background: "color-mix(in srgb, var(--color-danger) 10%, transparent)" }}>
               <div className="font-medium">{describeOp(letter)}</div>
-              <div className="text-xs text-[--color-fg-faint] mt-0.5">
+              <div className="text-xs text-(--color-fg-faint) mt-0.5">
                 Refusée le {new Date(letter.failedAt).toLocaleString("fr-FR")}{letter.error.code ? ` · code ${letter.error.code}` : ""}
               </div>
               <div className="text-xs mt-1 break-words">{letter.error.message}</div>
               <div className="flex gap-3 mt-2">
-                <button type="button" onClick={() => retry(letter.entryId)} className="inline-flex items-center gap-1 text-xs text-[--accent]">
+                <button type="button" onClick={() => retry(letter.entryId)} className="inline-flex items-center gap-1 text-xs text-(--accent)">
                   <RefreshCw size={12} /> Réessayer
                 </button>
-                <button type="button" onClick={() => discard(letter.entryId)} className="inline-flex items-center gap-1 text-xs text-[--color-danger]">
+                <button type="button" onClick={() => discard(letter.entryId)} className="inline-flex items-center gap-1 text-xs text-(--color-danger)">
                   <Trash2 size={12} /> Abandonner
                 </button>
               </div>
@@ -125,7 +125,7 @@ export function SettingsSyncSection() {
           ))}
         </ul>
       )}
-      {message && <p className="text-xs text-[--color-fg-faint]">{message}</p>}
+      {message && <p className="text-xs text-(--color-fg-faint)">{message}</p>}
     </GlassCard>
   );
 }

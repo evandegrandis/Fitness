@@ -42,14 +42,14 @@ export function FinisherPromptBanner() {
         >
           <Flame aria-hidden="true" size={18} className="shrink-0" style={{ color: "var(--accent)" }} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-[--color-fg]">Série finisher ?</p>
-            <p className="truncate text-xs text-[--color-fg-muted]">{finisherPromptLabel[prompt.reason]}</p>
+            <p className="text-sm font-semibold text-(--color-fg)">Série finisher ?</p>
+            <p className="truncate text-xs text-(--color-fg-muted)">{finisherPromptLabel[prompt.reason]}</p>
           </div>
           <button
             type="button"
             onClick={dismissFinisherPrompt}
             aria-label={`Non, garder une série normale pour ${prompt.exerciseName}`}
-            className="min-h-11 shrink-0 px-2 text-sm text-[--color-fg-muted]"
+            className="min-h-11 shrink-0 px-2 text-sm text-(--color-fg-muted)"
           >
             Non
           </button>

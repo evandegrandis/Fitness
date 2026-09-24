@@ -178,8 +178,6 @@ export function freshCapacity(
 ): number | null {
   const occurrences = session.exercises.filter((logged) => logged.exerciseId === exercise.id);
   if (occurrences.length === 0) return null;
-  const targetIds = new Set(occurrences.map((logged) => logged.id));
-  const parent = primaryParent(exercise);
   const sets = normalRecordSets(
     occurrences.flatMap((logged) => orderedSets(logged)),
     exercise
@@ -187,15 +185,32 @@ export function freshCapacity(
 
   let best: number | null = null;
   for (const set of sets) {
-    const context = new SessionFatigueContext(
-      priorLoadsBefore(session, targetIds, set.timestamp.getTime(), catalogById),
-      { baselineSystemicCost: 0, baselineSameParentSets: 0 }
-    );
     const repsToFailure = set.reps + Math.max(0, set.reportedRir ?? 0);
-    const capacity = estimated1RM(set.weight, repsToFailure + context.fatiguePenalty(parent));
+    const capacity = estimated1RM(set.weight, repsToFailure + fatigueRepsBefore(session, exercise, set, catalogById));
     if (best === null || capacity > best) best = capacity;
   }
   return best;
+}
+
+/**
+ * Reps que la fatigue accumulée dans la séance avant `set` a coûtées, selon le modèle de fatigue
+ * de l'app (mesure absolue, comme ci-dessus). Sert aussi à la tendance de l'onglet Progrès : un
+ * exercice fait en fin de séance n'y passe pas pour une baisse.
+ */
+export function fatigueRepsBefore(
+  session: WorkoutSession,
+  exercise: Exercise,
+  set: LoggedSet,
+  catalogById: ReadonlyMap<string, Exercise>
+): number {
+  const targetIds = new Set(
+    session.exercises.filter((logged) => logged.exerciseId === exercise.id).map((logged) => logged.id)
+  );
+  const context = new SessionFatigueContext(
+    priorLoadsBefore(session, targetIds, set.timestamp.getTime(), catalogById),
+    { baselineSystemicCost: 0, baselineSameParentSets: 0 }
+  );
+  return context.fatiguePenalty(primaryParent(exercise));
 }
 
 // ---------------------------------------------------------------------------

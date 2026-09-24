@@ -70,14 +70,14 @@ export function SettingsGoalsSection({ goals }: { goals: MuscleGoal[] }) {
   return (
     <GlassCard>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Objectifs hebdo (sets)</p>
-        {saving && <span className="text-[0.65rem] text-[--color-fg-faint]">Enregistrement…</span>}
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Objectifs hebdo (sets)</p>
+        {saving && <span className="text-[0.65rem] text-(--color-fg-faint)">Enregistrement…</span>}
         {!saving && saved && <span className="text-[0.65rem] text-emerald-300">Enregistré</span>}
       </div>
       <div className="mt-3 flex flex-col gap-2.5">
         {GOAL_MUSCLE_PARENTS.map((parent) => (
           <div key={parent} className="flex items-center justify-between gap-2">
-            <span className="text-sm text-[--color-fg]">{parentDisplayName[parent]}</span>
+            <span className="text-sm text-(--color-fg)">{parentDisplayName[parent]}</span>
             <Stepper value={values[parent]} onChange={(v) => update(parent, v)} min={0} max={40} className="scale-90" />
           </div>
         ))}

@@ -44,8 +44,8 @@ export function SettingsPhaseSection() {
   return (
     <GlassCard>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Phase</p>
-        {saving && <span className="text-[0.65rem] text-[--color-fg-faint]">Enregistrement…</span>}
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Phase</p>
+        {saving && <span className="text-[0.65rem] text-(--color-fg-faint)">Enregistrement…</span>}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -66,7 +66,7 @@ export function SettingsPhaseSection() {
         })}
       </div>
 
-      <p className="mt-3 text-xs text-[--color-fg-muted]">
+      <p className="mt-3 text-xs text-(--color-fg-muted)">
         {current === "cut"
           ? "Tenir ta charge compte comme une réussite : le suivi ne signalera plus de plateau."
           : current === "bulk"

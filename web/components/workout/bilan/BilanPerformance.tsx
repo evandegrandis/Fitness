@@ -20,7 +20,7 @@ function gapLabel(review: ExerciseReview): string {
 function ExerciseRow({ review, positive }: { review: ExerciseReview; positive: boolean }) {
   return (
     <li className="flex items-center justify-between gap-2 text-sm">
-      <span className="min-w-0 truncate text-[--color-fg]">{review.exerciseName}</span>
+      <span className="min-w-0 truncate text-(--color-fg)">{review.exerciseName}</span>
       <span
         className="tnum shrink-0 pill"
         style={
@@ -38,8 +38,9 @@ function ExerciseRow({ review, positive }: { review: ExerciseReview; positive: b
 
 /** Ce qui a marché (outperformed) vs à surveiller (underperformed), avec l'écart chiffré. */
 export function BilanPerformance({ exercises }: { exercises: ExerciseReview[] }) {
-  const outperformed = exercises.filter((e) => e.performed);
-  const underperformed = exercises.filter((e) => !e.performed);
+  const outperformed = exercises.filter((e) => !e.calibrating && e.performed);
+  const underperformed = exercises.filter((e) => !e.calibrating && !e.performed);
+  const calibrating = exercises.filter((e) => e.calibrating);
 
   if (exercises.length === 0) return null;
 
@@ -52,7 +53,7 @@ export function BilanPerformance({ exercises }: { exercises: ExerciseReview[] })
     >
       {outperformed.length > 0 && (
         <div className="glass glass-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Ça a marché</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Ça a marché</p>
           <ul className="mt-2 flex flex-col gap-1.5">
             {outperformed.map((r) => (
               <ExerciseRow key={r.loggedExerciseId} review={r} positive />
@@ -61,9 +62,25 @@ export function BilanPerformance({ exercises }: { exercises: ExerciseReview[] })
         </div>
       )}
 
+      {calibrating.length > 0 && (
+        <div className="glass glass-card">
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Étalonnage</p>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {calibrating.map((r) => (
+              <li key={r.loggedExerciseId} className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-(--color-fg)">{r.exerciseName}</span>
+                <span className="tnum pill shrink-0 text-(--color-fg-muted)">
+                  {r.achievedWeight > 0 ? `${cleanWeight(r.achievedWeight)} kg × ${r.achievedReps}` : `${r.achievedReps} reps`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {underperformed.length > 0 && (
         <div className="glass glass-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">À surveiller</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">À surveiller</p>
           <ul className="mt-2 flex flex-col gap-1.5">
             {underperformed.map((r) => (
               <ExerciseRow key={r.loggedExerciseId} review={r} positive={false} />

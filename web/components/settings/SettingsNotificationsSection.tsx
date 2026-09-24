@@ -65,12 +65,12 @@ export function SettingsNotificationsSection() {
 
   return (
     <GlassCard>
-      <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Notifications</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Notifications</p>
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm text-[--color-fg]">Fin de repos</p>
-          <p className="text-xs text-[--color-fg-muted]">
+          <p className="text-sm text-(--color-fg)">Fin de repos</p>
+          <p className="text-xs text-(--color-fg-muted)">
             Une alerte quand le minuteur arrive à zéro, même écran éteint.
           </p>
         </div>
@@ -95,7 +95,7 @@ export function SettingsNotificationsSection() {
         </p>
       )}
       {support === "unsupported" && (
-        <p className="mt-3 text-xs text-[--color-fg-muted]">Ce navigateur ne gère pas les notifications push.</p>
+        <p className="mt-3 text-xs text-(--color-fg-muted)">Ce navigateur ne gère pas les notifications push.</p>
       )}
       {support === "denied" && (
         <p className="mt-3 text-xs text-rose-300/80">

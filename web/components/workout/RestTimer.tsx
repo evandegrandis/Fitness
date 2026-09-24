@@ -113,10 +113,10 @@ function RestTimerCard({
         />
       </svg>
       <div className="min-w-0 flex-1">
-        <p className="tnum text-lg font-bold text-[--color-fg]">
+        <p className="tnum text-lg font-bold text-(--color-fg)">
           {done ? "C'est parti !" : `${mins}:${String(secs).padStart(2, "0")}`}
         </p>
-        <p className="text-xs text-[--color-fg-muted]">Repos · glisser ↑ pour passer</p>
+        <p className="text-xs text-(--color-fg-muted)">Repos · glisser ↑ pour passer</p>
       </div>
       {!done && (
         <button

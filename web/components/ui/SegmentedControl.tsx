@@ -31,7 +31,7 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(opt.value)}
             className={cn(
               "relative flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
-              active ? "text-[#06070d]" : "text-[--color-fg-muted]",
+              active ? "text-[#06070d]" : "text-(--color-fg-muted)",
             )}
           >
             {active && (

@@ -41,7 +41,7 @@ export function MissingMusclesNotice({ exercise }: { exercise: Exercise }) {
         <CircleAlert size={13} />
         Ne compte dans aucun objectif musculaire
       </p>
-      <p className="mt-1 text-[0.7rem] text-[--color-fg-muted]">
+      <p className="mt-1 text-[0.7rem] text-(--color-fg-muted)">
         {donors.length > 0
           ? "Reprendre les muscles de :"
           : "Aucun exercice ressemblant dans ton catalogue : choisis les muscles."}
@@ -53,7 +53,7 @@ export function MissingMusclesNotice({ exercise }: { exercise: Exercise }) {
             type="button"
             disabled={savingId !== null}
             onClick={() => void adopt(donor)}
-            className="pill text-[0.7rem] text-[--color-fg] transition active:scale-95 disabled:opacity-50"
+            className="pill text-[0.7rem] text-(--color-fg) transition active:scale-95 disabled:opacity-50"
           >
             {savingId === donor.id ? "…" : donor.name}
           </button>
@@ -61,17 +61,17 @@ export function MissingMusclesNotice({ exercise }: { exercise: Exercise }) {
         <button
           type="button"
           onClick={() => setEditorOpen(true)}
-          className="pill text-[0.7rem] text-[--color-fg-muted] transition active:scale-95"
+          className="pill text-[0.7rem] text-(--color-fg-muted) transition active:scale-95"
         >
           Choisir les muscles
         </button>
       </div>
-      <p className="mt-2 text-[0.68rem] text-[--color-fg-faint]">
+      <p className="mt-2 text-[0.68rem] text-(--color-fg-faint)">
         {exercise.createdByUser
           ? "Sinon Barbis cherche ses muscles dès que le téléphone capte. Les séries déjà faites compteront aussi."
           : "Les séries déjà faites compteront aussi."}
       </p>
-      {error && <p className="mt-2 text-[0.7rem] text-[--color-danger]">{error}</p>}
+      {error && <p className="mt-2 text-[0.7rem] text-(--color-danger)">{error}</p>}
       <ExerciseEditorSheet open={editorOpen} onClose={() => setEditorOpen(false)} exercise={exercise} />
     </div>
   );

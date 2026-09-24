@@ -51,13 +51,13 @@ export function SettingsWeightSection() {
   return (
     <GlassCard>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Poids</p>
-        {saving && <span className="text-[0.65rem] text-[--color-fg-faint]">Enregistrement…</span>}
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Poids</p>
+        {saving && <span className="text-[0.65rem] text-(--color-fg-faint)">Enregistrement…</span>}
         {!saving && saved && <span className="text-[0.65rem] text-emerald-300">Enregistré</span>}
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-sm text-[--color-fg]">Pesée du jour</span>
+        <span className="text-sm text-(--color-fg)">Pesée du jour</span>
         <Stepper label="" value={draft} onChange={setDraft} step={0.1} min={30} max={300} suffix="kg" />
       </div>
 
@@ -73,11 +73,11 @@ export function SettingsWeightSection() {
       {trend.currentKg !== null && (
         <div className="mt-4 border-t border-white/[0.06] pt-3">
           <div className="flex items-baseline justify-between">
-            <span className="text-xs text-[--color-fg-muted]">Tendance 7 jours</span>
-            <span className="tnum text-lg font-bold text-[--color-fg]">{formatDecimal(trend.currentKg)} kg</span>
+            <span className="text-xs text-(--color-fg-muted)">Tendance 7 jours</span>
+            <span className="tnum text-lg font-bold text-(--color-fg)">{formatDecimal(trend.currentKg)} kg</span>
           </div>
           {trend.deltaKg !== null && trend.deltaPct !== null && Math.abs(trend.deltaKg) >= 0.05 && (
-            <p className="mt-1 text-xs text-[--color-fg-muted]">
+            <p className="mt-1 text-xs text-(--color-fg-muted)">
               {trend.deltaKg > 0 ? "+" : "−"}
               {formatDecimal(Math.abs(trend.deltaKg))} kg ({formatDecimal(Math.abs(trend.deltaPct))} %) depuis le départ
             </p>
@@ -88,7 +88,7 @@ export function SettingsWeightSection() {
             </p>
           )}
           {trend.weeklyPct === null && (
-            <p className="mt-1 text-xs text-[--color-fg-faint]">
+            <p className="mt-1 text-xs text-(--color-fg-faint)">
               Encore trop peu de recul pour estimer une vitesse ({WEIGHT_TREND.MIN_DAYS_FOR_RATE} jours minimum).
             </p>
           )}
@@ -97,7 +97,7 @@ export function SettingsWeightSection() {
 
       {error && <p className="mt-3 text-xs text-amber-200/80">{error}</p>}
       {bodyWeights.length === 0 && (
-        <p className="mt-3 text-xs text-[--color-fg-faint]">
+        <p className="mt-3 text-xs text-(--color-fg-faint)">
           Aucune pesée enregistrée. La première sert de point de départ.
         </p>
       )}

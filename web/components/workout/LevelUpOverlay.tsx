@@ -79,8 +79,8 @@ export function LevelUpOverlay() {
             <p className="mt-5 font-mono text-[0.7rem] uppercase tracking-[0.2em]" style={{ color: style.color }}>
               Nouveau palier
             </p>
-            <p className="mt-1 font-display text-3xl font-bold text-[--color-fg]">{style.label}</p>
-            <p className="mt-2 max-w-xs text-sm text-[--color-fg-muted]">{levelUp.exerciseName}</p>
+            <p className="mt-1 font-display text-3xl font-bold text-(--color-fg)">{style.label}</p>
+            <p className="mt-2 max-w-xs text-sm text-(--color-fg-muted)">{levelUp.exerciseName}</p>
 
             {/* Les cinq crans : voir d'où l'on vient rend le palier concret. */}
             <div className="mt-5 flex items-center gap-1.5">

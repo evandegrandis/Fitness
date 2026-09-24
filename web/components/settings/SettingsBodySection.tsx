@@ -80,12 +80,12 @@ export function SettingsBodySection({ settings }: { settings: UserSettings }) {
   return (
     <GlassCard>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Corps</p>
-        {saving && <span className="text-[0.65rem] text-[--color-fg-faint]">Enregistrement…</span>}
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Corps</p>
+        {saving && <span className="text-[0.65rem] text-(--color-fg-faint)">Enregistrement…</span>}
         {!saving && saved && <span className="text-[0.65rem] text-emerald-300">Enregistré</span>}
       </div>
       <div className="mt-3 flex items-center justify-between">
-        <span className="text-sm text-[--color-fg]">Poids de corps</span>
+        <span className="text-sm text-(--color-fg)">Poids de corps</span>
         <Stepper
           value={profile.bodyWeightKg ?? DEFAULT_WEIGHT}
           onChange={(bodyWeightKg) => void update({ bodyWeightKg })}
@@ -96,7 +96,7 @@ export function SettingsBodySection({ settings }: { settings: UserSettings }) {
         />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <label className="text-xs text-[--color-fg-muted]">
+        <label className="text-xs text-(--color-fg-muted)">
           Sexe du profil benchmark
           <select
             value={profile.gender ?? ""}
@@ -104,14 +104,14 @@ export function SettingsBodySection({ settings }: { settings: UserSettings }) {
               const gender = event.target.value === "male" || event.target.value === "female" ? event.target.value : null;
               void update({ gender });
             }}
-            className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-[#11131a] px-3 text-sm text-[--color-fg]"
+            className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-[#11131a] px-3 text-sm text-(--color-fg)"
           >
             <option value="">Non renseigné</option>
             <option value="male">Homme</option>
             <option value="female">Femme</option>
           </select>
         </label>
-        <label className="text-xs text-[--color-fg-muted]">
+        <label className="text-xs text-(--color-fg-muted)">
           Âge
           <input
             type="number"
@@ -140,11 +140,11 @@ export function SettingsBodySection({ settings }: { settings: UserSettings }) {
                 setError("L'âge doit être un entier entre 10 et 120 ans.");
               }
             }}
-            className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-[--color-fg]"
+            className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-(--color-fg)"
           />
         </label>
       </div>
-      <p className="mt-2 text-[0.68rem] text-[--color-fg-faint]">
+      <p className="mt-2 text-[0.68rem] text-(--color-fg-faint)">
         Ces champs contextualisent les repères de force; ils ne créent aucun benchmark pour une modalité inconnue.
       </p>
       {error && <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}

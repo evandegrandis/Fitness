@@ -53,9 +53,9 @@ export function WeekGroup({
   return (
     <section>
       <div className="mb-2 flex items-center justify-between px-1">
-        <h2 className="text-sm font-semibold text-[--color-fg]">{weekLabel(weekStart)}</h2>
+        <h2 className="text-sm font-semibold text-(--color-fg)">{weekLabel(weekStart)}</h2>
         <div className="flex items-center gap-2">
-          <span className="text-[0.7rem] text-[--color-fg-faint]">{parentsWorked} muscles</span>
+          <span className="text-[0.7rem] text-(--color-fg-faint)">{parentsWorked} muscles</span>
           <span className={`pill border ${coverageTone(coverage)}`}>{pct}%</span>
         </div>
       </div>

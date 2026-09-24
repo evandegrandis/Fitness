@@ -45,14 +45,14 @@ function BilanWeakPointCapture({ review, sessionId }: { review: SessionReview; s
             <Target size={13} />
             Où ça a calé ?
           </p>
-          <p className="mt-1.5 text-sm text-[--color-fg]">{exerciseReview.exerciseName}</p>
+          <p className="mt-1.5 text-sm text-(--color-fg)">{exerciseReview.exerciseName}</p>
           <div className="mt-3 flex gap-2">
             {PLATEAU_WEAK_POINTS.map((point) => (
               <button
                 key={point}
                 type="button"
                 onClick={() => handleTap(exerciseReview.loggedExerciseId, point)}
-                className="glass flex-1 rounded-xl px-3 py-2 text-sm font-medium text-[--color-fg] transition active:scale-[0.97]"
+                className="glass flex-1 rounded-xl px-3 py-2 text-sm font-medium text-(--color-fg) transition active:scale-[0.97]"
               >
                 {plateauWeakPointLabel(
                   point,
@@ -95,7 +95,7 @@ function BilanVariantSuggestions({ review, sessionId }: { review: SessionReview;
             <ArrowRightLeft size={13} />
             Rotation de variation
           </p>
-          <p className="mt-1.5 text-sm text-[--color-fg]">{variant.explanationFR}</p>
+          <p className="mt-1.5 text-sm text-(--color-fg)">{variant.explanationFR}</p>
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -108,7 +108,7 @@ function BilanVariantSuggestions({ review, sessionId }: { review: SessionReview;
             <button
               type="button"
               onClick={() => dismissVariantSwitch(sessionId, exerciseId)}
-              className="flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-sm text-[--color-fg-muted] transition active:scale-[0.97]"
+              className="flex items-center justify-center gap-1.5 rounded-2xl px-3 py-2 text-sm text-(--color-fg-muted) transition active:scale-[0.97]"
               style={{ background: "rgba(255,255,255,0.06)" }}
             >
               <X size={15} />
@@ -149,7 +149,7 @@ export function BilanPlateaus({ review, sessionId }: { review: SessionReview; se
             <PartyPopper size={13} />
             Plateau débloqué
           </p>
-          <p className="mt-1.5 text-sm text-[--color-fg]">{plateausBroken.join(", ")}</p>
+          <p className="mt-1.5 text-sm text-(--color-fg)">{plateausBroken.join(", ")}</p>
         </div>
       )}
 
@@ -159,7 +159,7 @@ export function BilanPlateaus({ review, sessionId }: { review: SessionReview; se
             <AlertTriangle size={13} />
             Plateau en cours
           </p>
-          <p className="mt-1.5 text-sm text-[--color-fg]">{enteringPlateau.join(", ")}</p>
+          <p className="mt-1.5 text-sm text-(--color-fg)">{enteringPlateau.join(", ")}</p>
         </div>
       )}
 
@@ -169,16 +169,16 @@ export function BilanPlateaus({ review, sessionId }: { review: SessionReview; se
             <RotateCcw size={13} />
             Anti-plateau échoué : méthode à changer
           </p>
-          <p className="mt-1.5 text-sm text-[--color-fg]">{antiPlateauFailed.join(", ")}</p>
+          <p className="mt-1.5 text-sm text-(--color-fg)">{antiPlateauFailed.join(", ")}</p>
         </div>
       )}
 
       {hasAmbitionInfo && (
         <div className="glass glass-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Ambition</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Ambition</p>
           <div className="mt-2 flex flex-col gap-1.5 text-sm">
             {tooAmbitious.length > 0 && (
-              <p className="text-[--color-fg]">
+              <p className="text-(--color-fg)">
                 <span className="font-medium" style={{ color: "#fb7185" }}>
                   Trop haut
                 </span>{" "}
@@ -186,7 +186,7 @@ export function BilanPlateaus({ review, sessionId }: { review: SessionReview; se
               </p>
             )}
             {notAmbitiousEnough.length > 0 && (
-              <p className="text-[--color-fg]">
+              <p className="text-(--color-fg)">
                 <span className="font-medium" style={{ color: "var(--accent)" }}>
                   Tu peux charger plus
                 </span>{" "}

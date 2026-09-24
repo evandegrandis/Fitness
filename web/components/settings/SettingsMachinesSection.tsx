@@ -28,21 +28,21 @@ export function SettingsMachinesSection() {
           <div className="flex items-center gap-2.5">
             <Trophy size={16} style={{ color: "#fbbf24" }} />
             <div className="text-left">
-              <p className="text-sm font-semibold text-[--color-fg]">Machines maxées</p>
-              <p className="text-xs text-[--color-fg-muted]">
+              <p className="text-sm font-semibold text-(--color-fg)">Machines maxées</p>
+              <p className="text-xs text-(--color-fg-muted)">
                 {known.length > 0
                   ? `${maxed} sur ${known.length} · ${machines.length - known.length} sans charge max`
                   : `${machines.length} machines récentes, charge max à renseigner`}
               </p>
             </div>
           </div>
-          <ChevronRight size={16} className="text-[--color-fg-faint]" />
+          <ChevronRight size={16} className="text-(--color-fg-faint)" />
         </button>
       </GlassCard>
 
       <Sheet open={open} onClose={() => setOpen(false)} full>
-        <h2 className="font-display text-lg font-bold text-[--color-fg]">Charges max des machines</h2>
-        <p className="mt-1 text-xs text-[--color-fg-muted]">
+        <h2 className="font-display text-lg font-bold text-(--color-fg)">Charges max des machines</h2>
+        <p className="mt-1 text-xs text-(--color-fg-muted)">
           Le bout de pile de chaque machine. Au-delà, l&apos;app ne propose rien de plus lourd et fait progresser par les reps.
         </p>
         <div className="mt-4 flex flex-col">
@@ -85,8 +85,8 @@ function MachineRow({ status, isLast }: { status: MachineMaxStatus; isLast: bool
     <div className={`py-3 ${isLast ? "" : "border-b border-white/[0.06]"}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-[--color-fg]">{status.exercise.name}</p>
-          <p className="tnum text-[0.7rem] text-[--color-fg-faint]">
+          <p className="truncate text-sm font-medium text-(--color-fg)">{status.exercise.name}</p>
+          <p className="tnum text-[0.7rem] text-(--color-fg-faint)">
             {status.maxed ? (
               <span style={{ color: "#fbbf24" }}>Maxée</span>
             ) : status.progress !== null ? (
@@ -96,7 +96,7 @@ function MachineRow({ status, isLast }: { status: MachineMaxStatus; isLast: bool
             )}
           </p>
         </div>
-        <label className="flex shrink-0 items-center gap-1 text-xs text-[--color-fg-muted]">
+        <label className="flex shrink-0 items-center gap-1 text-xs text-(--color-fg-muted)">
           max
           <input
             value={draft}
@@ -108,7 +108,7 @@ function MachineRow({ status, isLast }: { status: MachineMaxStatus; isLast: bool
             inputMode="decimal"
             placeholder="–"
             aria-label={`Charge max de ${status.exercise.name}`}
-            className="glass tnum w-16 rounded-lg px-2 py-1.5 text-right text-sm text-[--color-fg] outline-none"
+            className="glass tnum w-16 rounded-lg px-2 py-1.5 text-right text-sm text-(--color-fg) outline-none"
           />
           kg
         </label>
@@ -118,7 +118,7 @@ function MachineRow({ status, isLast }: { status: MachineMaxStatus; isLast: bool
           <div className="h-full rounded-full" style={{ width: `${Math.round(status.progress * 100)}%`, background: "var(--accent)" }} />
         </div>
       )}
-      {error && <p className="mt-1 text-[0.7rem] text-[--color-danger]">{error}</p>}
+      {error && <p className="mt-1 text-[0.7rem] text-(--color-danger)">{error}</p>}
     </div>
   );
 }

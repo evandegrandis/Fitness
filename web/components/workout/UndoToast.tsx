@@ -38,7 +38,7 @@ export function UndoToast() {
               : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))]"
           }`}
         >
-          <p className="text-sm text-[--color-fg]">{undo.message}</p>
+          <p className="text-sm text-(--color-fg)">{undo.message}</p>
           <button
             type="button"
             onClick={undoLastAction}

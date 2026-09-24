@@ -5,20 +5,20 @@ import { motion } from "framer-motion";
 
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { MusclesLayer } from "@/components/progress/MusclesLayer";
+import { WeekLayer } from "@/components/progress/WeekLayer";
 import { ExercisesLayer } from "@/components/progress/ExercisesLayer";
-import { GlobalLayer } from "@/components/progress/GlobalLayer";
+import { BodyLayer } from "@/components/progress/BodyLayer";
 
-type Layer = "muscles" | "exercices" | "global";
+type Layer = "semaine" | "exercices" | "corps";
 
 const LAYER_OPTIONS: { value: Layer; label: string }[] = [
-  { value: "muscles", label: "Muscles" },
+  { value: "semaine", label: "Semaine" },
   { value: "exercices", label: "Exercices" },
-  { value: "global", label: "Global" },
+  { value: "corps", label: "Corps" },
 ];
 
 export default function ProgresPage() {
-  const [layer, setLayer] = useState<Layer>("muscles");
+  const [layer, setLayer] = useState<Layer>("semaine");
   const hasHydratedStorage = useWorkoutStore((s) => s.hasHydratedStorage);
 
   const ready = hasHydratedStorage;
@@ -27,7 +27,7 @@ export default function ProgresPage() {
     <main className="mx-auto w-full max-w-md px-5 py-8 pb-6">
       <header className="mb-5">
         <h1 className="font-display text-2xl font-bold text-accent-gradient">Progrès</h1>
-        <p className="mt-1 text-sm text-[--color-fg-muted]">Ta progression, en détail.</p>
+        <p className="mt-1 text-sm text-(--color-fg-muted)">La semaine, chaque exercice, le corps.</p>
       </header>
 
       <SegmentedControl
@@ -47,9 +47,9 @@ export default function ProgresPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: "easeOut" }}
         >
-          {layer === "muscles" && <MusclesLayer />}
+          {layer === "semaine" && <WeekLayer />}
           {layer === "exercices" && <ExercisesLayer />}
-          {layer === "global" && <GlobalLayer />}
+          {layer === "corps" && <BodyLayer />}
         </motion.div>
       )}
     </main>

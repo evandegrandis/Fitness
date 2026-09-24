@@ -38,8 +38,8 @@ export function WeightTrendCard() {
   if (trend.currentKg === null || trend.startKg === null) {
     return (
       <GlassCard>
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Poids</p>
-        <p className="mt-3 text-sm text-[--color-fg-muted]">
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Poids</p>
+        <p className="mt-3 text-sm text-(--color-fg-muted)">
           Aucune pesée enregistrée. Ajoute-la depuis les réglages : c&apos;est le levier qui pèse le plus
           lourd, et l&apos;app ne peut rien en dire tant qu&apos;elle n&apos;a pas de point de départ.
         </p>
@@ -58,13 +58,13 @@ export function WeightTrendCard() {
   return (
     <GlassCard>
       <div className="flex items-baseline justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
           Poids{settings.trainingPhase ? ` · ${trainingPhaseDisplayName[settings.trainingPhase]}` : ""}
         </p>
-        <span className="tnum text-lg font-bold text-[--color-fg]">{formatDecimal(trend.currentKg)} kg</span>
+        <span className="tnum text-lg font-bold text-(--color-fg)">{formatDecimal(trend.currentKg)} kg</span>
       </div>
 
-      <p className="mt-1 text-xs text-[--color-fg-muted]">
+      <p className="mt-1 text-xs text-(--color-fg-muted)">
         Tendance 7 jours · départ {formatDecimal(trend.startKg)} kg
         {trend.deltaKg !== null && Math.abs(trend.deltaKg) >= 0.05 && (
           <>
@@ -126,7 +126,7 @@ export function WeightTrendCard() {
         </p>
       )}
       {trend.nextMilestonePct !== null && trend.kgToNextMilestone !== null && (
-        <p className="mt-1 text-xs text-[--color-fg-muted]">
+        <p className="mt-1 text-xs text-(--color-fg-muted)">
           Encore {formatDecimal(trend.kgToNextMilestone)} kg jusqu&apos;au palier −{trend.nextMilestonePct} %.
         </p>
       )}

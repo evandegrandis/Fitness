@@ -97,12 +97,12 @@ export function RunTracker({
   return (
     <div className="mt-3 rounded-2xl border border-white/10 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[--color-fg]">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-(--color-fg)">
           <MapPin size={13} style={{ color: "rgb(110,231,183)" }} />
           Course suivie au GPS
         </span>
         {status === "running" && (
-          <span className="text-[0.65rem] text-[--color-fg-faint]">
+          <span className="text-[0.65rem] text-(--color-fg-faint)">
             {stats.points.length} point{stats.points.length > 1 ? "s" : ""}
           </span>
         )}
@@ -115,7 +115,7 @@ export function RunTracker({
       </div>
 
       {stats.stopCount > 0 && (
-        <p className="mt-2 text-[0.68rem] text-[--color-fg-muted]">
+        <p className="mt-2 text-[0.68rem] text-(--color-fg-muted)">
           {stats.stopCount} arrêt{stats.stopCount > 1 ? "s" : ""} ({formatDuration(stats.stoppedSeconds)}),
           exclus de l&apos;allure.
         </p>
@@ -160,8 +160,8 @@ export function RunTracker({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="tnum text-sm font-bold text-[--color-fg]">{value}</p>
-      <p className="text-[0.6rem] uppercase tracking-wide text-[--color-fg-faint]">{label}</p>
+      <p className="tnum text-sm font-bold text-(--color-fg)">{value}</p>
+      <p className="text-[0.6rem] uppercase tracking-wide text-(--color-fg-faint)">{label}</p>
     </div>
   );
 }

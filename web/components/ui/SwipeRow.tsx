@@ -130,7 +130,7 @@ export function SwipeRow({
               close();
               action.onClick();
             }}
-            className="flex flex-col items-center justify-center gap-1 font-mono text-[0.62rem] font-bold uppercase tracking-wider text-[--color-fg] active:opacity-70 transition"
+            className="flex flex-col items-center justify-center gap-1 font-mono text-[0.62rem] font-bold uppercase tracking-wider text-(--color-fg) active:opacity-70 transition"
             style={{ width: ACTION_WIDTH, background: "rgba(236,230,216,0.12)" }}
           >
             <action.icon size={16} />

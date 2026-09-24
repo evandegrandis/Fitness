@@ -32,7 +32,7 @@ export function WeeklyPriority({
     <div className="glass glass-card">
       <p className="eyebrow">Objectifs de la semaine</p>
       {rows.length === 0 ? (
-        <p className="mt-2.5 text-sm text-[--color-fg]">Tous couverts ✓</p>
+        <p className="mt-2.5 text-sm text-(--color-fg)">Tous couverts ✓</p>
       ) : (
         <div className="mt-3 flex flex-col">
           {rows.map((p, i) => (
@@ -54,7 +54,7 @@ function CardioRow({ cardio, separated }: { cardio: CardioProgress; separated: b
   return (
     <div className={separated ? "mt-3 border-t border-white/[0.06] pt-3" : "mt-3"}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[0.7rem] uppercase tracking-wide text-[--color-fg-muted]">Cardio</span>
+        <span className="font-mono text-[0.7rem] uppercase tracking-wide text-(--color-fg-muted)">Cardio</span>
         <span className="tnum text-sm font-semibold" style={{ color: done ? "rgb(110,231,183)" : "var(--color-fg)" }}>
           {cardio.minutes}/{cardio.goalMinutes} min
         </span>
@@ -93,7 +93,7 @@ function PriorityRow({
       style={!isLast ? { borderBottom: "1px solid var(--line)" } : undefined}
     >
       <div className="min-w-0 flex-1">
-        <span className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-[--color-fg]">{label}</span>
+        <span className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-(--color-fg)">{label}</span>
         <div className="mt-1.5 h-[3px] w-full overflow-hidden rounded-full bg-white/8">
           <div
             className="h-full rounded-full transition-[width]"

@@ -28,13 +28,13 @@ export function SessionCardioBlock({ entries }: { entries: CardioEntry[] }) {
           .sort((a, b) => a.orderIndex - b.orderIndex)
           .map((entry) => (
             <div key={entry.id} className="rounded-xl bg-white/5 px-3 py-2.5">
-              <p className="text-sm font-semibold text-[--color-fg]">{entry.activityName}</p>
+              <p className="text-sm font-semibold text-(--color-fg)">{entry.activityName}</p>
               {(entry.machineName || entry.machineModel) && (
-                <p className="text-[0.68rem] text-[--color-fg-faint]">
+                <p className="text-[0.68rem] text-(--color-fg-faint)">
                   {[entry.machineName, entry.machineModel].filter(Boolean).join(" · ")}
                 </p>
               )}
-              <p className="mt-0.5 text-xs text-[--color-fg-muted]">
+              <p className="mt-0.5 text-xs text-(--color-fg-muted)">
                 {durationLabel(entry.durationSeconds)}
                 {entry.level != null ? ` · niveau ${entry.level}` : ""}
                 {entry.resistance != null ? ` · résistance ${entry.resistance}` : ""}

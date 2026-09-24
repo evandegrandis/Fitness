@@ -18,7 +18,7 @@ export function BilanCoverage({ review }: { review: SessionReview }) {
     >
       {coverage.workedParents.length > 0 && (
         <div className="glass glass-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Couverture musculaire</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Couverture musculaire</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {coverage.workedParents.map((p) => (
               <span key={p} className="pill">
@@ -28,7 +28,7 @@ export function BilanCoverage({ review }: { review: SessionReview }) {
           </div>
           {coverage.stillNeedsWork.length > 0 && (
             <>
-              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+              <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                 Encore à couvrir cette semaine
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
@@ -45,10 +45,10 @@ export function BilanCoverage({ review }: { review: SessionReview }) {
 
       {records.length > 0 && (
         <div className="glass glass-card">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Records de séance</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Records de séance</p>
           <ul className="mt-2 flex flex-col gap-1.5">
             {records.map((r, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm text-[--color-fg]">
+              <li key={i} className="flex items-center gap-2 text-sm text-(--color-fg)">
                 <Star size={14} className="shrink-0 text-amber-300" fill="currentColor" />
                 <span>{r.label}</span>
               </li>

@@ -130,7 +130,7 @@ export function ExercisePicker({
     <Sheet open={open} onClose={onClose} full>
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="font-display text-lg font-bold text-[--color-fg]">Ajouter un exercice</h2>
+          <h2 className="font-display text-lg font-bold text-(--color-fg)">Ajouter un exercice</h2>
           {canDeficitSort && (
             <button
               type="button"
@@ -138,7 +138,7 @@ export function ExercisePicker({
               aria-pressed={deficitSort}
               className={cn(
                 "pill shrink-0 border transition active:scale-95",
-                deficitSort ? "border-transparent text-white" : "border-white/10 text-[--color-fg-muted]"
+                deficitSort ? "border-transparent text-white" : "border-white/10 text-(--color-fg-muted)"
               )}
               style={deficitSort ? { background: "linear-gradient(120deg, var(--accent), var(--accent-2))" } : undefined}
             >
@@ -148,13 +148,13 @@ export function ExercisePicker({
           )}
         </div>
         <div className="glass mt-3 flex items-center gap-2 rounded-full px-4 py-2.5">
-          <Search size={16} className="text-[--color-fg-muted]" />
+          <Search size={16} className="text-(--color-fg-muted)" />
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher un exercice…"
-            className="w-full bg-transparent text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+            className="w-full bg-transparent text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
           />
         </div>
 
@@ -180,17 +180,17 @@ export function ExercisePicker({
             >
               <Plus size={16} style={{ color: "var(--accent)" }} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-[--color-fg]">
+                <span className="block truncate text-sm font-medium text-(--color-fg)">
                   Créer « {trimmedQuery} »
                 </span>
-                <span className="block text-xs text-[--color-fg-muted]">
+                <span className="block text-xs text-(--color-fg-muted)">
                   {creating ? "Création…" : "Utilisable tout de suite, réglable ensuite"}
                 </span>
               </span>
             </button>
           )}
           {filtered.length === 0 && !canCreate && (
-            <p className="mt-8 text-center text-sm text-[--color-fg-muted]">Aucun exercice trouvé</p>
+            <p className="mt-8 text-center text-sm text-(--color-fg-muted)">Aucun exercice trouvé</p>
           )}
         </div>
       </div>
@@ -209,7 +209,7 @@ function ExerciseSection({
 }) {
   return (
     <div className="mb-4">
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">{title}</p>
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">{title}</p>
       <div className="flex flex-col gap-1.5">
         {exercises.map((e) => (
           <button
@@ -218,10 +218,10 @@ function ExerciseSection({
             onClick={() => onPick(e.id)}
             className="glass flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left active:scale-[0.98] transition"
           >
-            <span className={cn("text-sm font-medium text-[--color-fg]")}>{e.name}</span>
+            <span className={cn("text-sm font-medium text-(--color-fg)")}>{e.name}</span>
             <span className="flex shrink-0 items-center gap-1.5">
               {hasExerciseGif(e.name) && (
-                <Film size={13} className="text-[--color-fg-faint]" aria-label="Démo disponible" />
+                <Film size={13} className="text-(--color-fg-faint)" aria-label="Démo disponible" />
               )}
               {e.isFavorite && <Star size={14} className="text-amber-300" fill="currentColor" />}
             </span>

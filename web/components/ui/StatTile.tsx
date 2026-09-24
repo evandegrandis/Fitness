@@ -19,7 +19,7 @@ export function StatTile({
         {/* Un nombre passé tel quel s'affiche à la française (916,8 et non 916.8). */}
         {typeof value === "number" ? formatDecimal(value) : value}
       </p>
-      <p className="mt-1 text-xs text-[--color-fg-muted]">{label}</p>
+      <p className="mt-1 text-xs text-(--color-fg-muted)">{label}</p>
     </div>
   );
 }

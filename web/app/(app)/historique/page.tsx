@@ -128,7 +128,7 @@ export default function HistoriquePage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="glass glass-card mt-4 text-center text-sm text-[--color-fg-muted]"
+            className="glass glass-card mt-4 text-center text-sm text-(--color-fg-muted)"
           >
             Aucune séance enregistrée pour le moment.
           </motion.div>
@@ -162,7 +162,7 @@ export default function HistoriquePage() {
             transition={{ type: "spring", stiffness: 340, damping: 28 }}
             className="surface-solid fixed inset-x-0 bottom-[calc(6.25rem+env(safe-area-inset-bottom))] z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md items-center justify-between gap-3 rounded-2xl px-4 py-3"
           >
-            <p className="eyebrow text-[--color-fg]">Séance supprimée</p>
+            <p className="eyebrow text-(--color-fg)">Séance supprimée</p>
             <button
               type="button"
               onClick={handleUndoDelete}

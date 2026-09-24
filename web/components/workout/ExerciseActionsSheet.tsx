@@ -26,7 +26,7 @@ export function ExerciseActionsSheet({
     <Sheet open={loggedExerciseId !== null} onClose={onClose}>
       {loggedExercise && (
         <div className="flex flex-col gap-1.5">
-          <h2 className="mb-1 font-display text-base font-bold text-[--color-fg]">{loggedExercise.exerciseName}</h2>
+          <h2 className="mb-1 font-display text-base font-bold text-(--color-fg)">{loggedExercise.exerciseName}</h2>
 
           <ActionRow
             icon={Repeat}
@@ -57,7 +57,7 @@ function ActionRow({
       type="button"
       onClick={onClick}
       className={`flex items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium active:scale-[0.98] transition ${
-        danger ? "text-rose-400" : "text-[--color-fg]"
+        danger ? "text-rose-400" : "text-(--color-fg)"
       }`}
     >
       <Icon size={18} />

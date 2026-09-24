@@ -44,8 +44,8 @@ export function RecoveryCheckinRow({
   return (
     <div className="glass glass-card flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-[--color-fg]">{label}</p>
-        <span className="text-[0.65rem] text-[--color-fg-faint]">
+        <p className="text-sm font-semibold text-(--color-fg)">{label}</p>
+        <span className="text-[0.65rem] text-(--color-fg-faint)">
           {isRecoveryDraftConfirmed(value) ? "Partiellement confirmé" : "Non renseigné"}
         </span>
       </div>
@@ -74,7 +74,7 @@ export function RecoveryCheckinRow({
             className="shrink-0"
             style={{ color: hasConfirmedSleep ? tone.color : "var(--color-fg-faint)" }}
           />
-          <span className="text-xs text-[--color-fg-muted]">Sommeil</span>
+          <span className="text-xs text-(--color-fg-muted)">Sommeil</span>
           <span
             className="tnum ml-auto whitespace-nowrap text-right text-sm font-semibold leading-none"
             style={{ color: hasConfirmedSleep ? tone.color : "var(--color-fg-muted)" }}
@@ -85,7 +85,7 @@ export function RecoveryCheckinRow({
             type="button"
             onClick={() => onChange({ ...value, sleepHours: null })}
             disabled={!hasConfirmedSleep}
-            className="grid min-h-11 min-w-11 shrink-0 place-items-center text-base text-[--color-fg-faint] disabled:opacity-30"
+            className="grid min-h-11 min-w-11 shrink-0 place-items-center text-base text-(--color-fg-faint) disabled:opacity-30"
             aria-label="Remettre le sommeil à inconnu"
           >
             ×
@@ -125,7 +125,7 @@ function TriStateField({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-xs text-[--color-fg-muted]">{label}</span>
+      <span className="text-xs text-(--color-fg-muted)">{label}</span>
       <div className="grid grid-cols-3 rounded-xl border border-white/10 p-0.5">
         {([
           [null, "?"],
@@ -142,8 +142,8 @@ function TriStateField({
               value === next
                 ? warning && next === true
                   ? "bg-amber-300/15 text-amber-200"
-                  : "bg-white/12 text-[--color-fg]"
-                : "text-[--color-fg-faint]"
+                  : "bg-white/12 text-(--color-fg)"
+                : "text-(--color-fg-faint)"
             )}
           >
             {text}

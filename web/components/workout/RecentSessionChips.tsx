@@ -59,7 +59,7 @@ export function RecentSessionChips({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="px-1 text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Séances récentes</p>
+      <p className="px-1 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Séances récentes</p>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {distinct.map((session, i) => (
           <motion.button
@@ -72,11 +72,11 @@ export function RecentSessionChips({
             className="glass flex shrink-0 flex-col items-start gap-0.5 rounded-2xl px-3.5 py-2.5 text-left active:scale-[0.97] transition"
             style={{ maxWidth: "13rem" }}
           >
-            <span className="flex items-center gap-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-[--color-fg-faint]">
+            <span className="flex items-center gap-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-(--color-fg-faint)">
               <CalendarClock size={11} />
               {formatRelativeDate(session.date)}
             </span>
-            <span className="truncate text-sm font-semibold text-[--color-fg]">{formatChipLabel(session)}</span>
+            <span className="truncate text-sm font-semibold text-(--color-fg)">{formatChipLabel(session)}</span>
           </motion.button>
         ))}
       </div>

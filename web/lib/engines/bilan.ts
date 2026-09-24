@@ -203,7 +203,7 @@ function comparePerformance(
 // ---------------------------------------------------------------------------
 
 /** Libellé FR du signal de performance global. */
-export type PerformanceLabel = "Bonne séance" | "En demi-teinte" | "Difficile";
+export type PerformanceLabel = "Bonne séance" | "En demi-teinte" | "Difficile" | "Séance d'étalonnage";
 
 export interface PlateauReview {
   /**
@@ -267,6 +267,11 @@ export interface ExerciseReview {
 
   /** true si aucun work set complété aujourd'hui — le reste des champs est neutre. */
   noData: boolean;
+  /**
+   * Première séance sur cette machine : ses charges ne se comparent à rien (marque, salle), elle
+   * sert d'étalonnage. Ni « au-dessus » ni « en dessous », hors du signal de performance.
+   */
+  calibrating: boolean;
 
   // -- Performé ? ------------------------------------------------------------
   performed: boolean;
@@ -597,10 +602,14 @@ function buildExerciseReview(
   const recordAchievements = [...achievementsByKind.values()];
   const recordKinds = recordAchievements.map((record) => record.kind);
 
+  // Changement de salle (sept. 2026) : une machine découverte aujourd'hui n'a pas d'historique
+  // propre, la suggestion n'était qu'un point de départ. Rien à comparer, donc rien à juger.
+  const calibrating = allHistory.length === 0;
   const comparison = comparePerformance(exercise, bestToday, reference);
-  const performed = comparison.performed || recordAchievements.length > 0;
-  const performedMessage =
-    !comparison.performed && recordAchievements.length > 0
+  const performed = !calibrating && (comparison.performed || recordAchievements.length > 0);
+  const performedMessage = calibrating
+    ? `Étalonnage : ${formatSet(bestToday.weight, bestToday.reps)} sert de référence`
+    : !comparison.performed && recordAchievements.length > 0
       ? `Performé : nouveau record (${formatSet(recordAchievements[0].weight, recordAchievements[0].reps)})`
       : comparison.message;
 
@@ -637,6 +646,7 @@ function buildExerciseReview(
     exerciseName: exercise.name,
     parent,
     noData: false,
+    calibrating,
     performed,
     referenceWeight: reference.weight,
     referenceReps: reference.reps,
@@ -786,8 +796,10 @@ export function buildSessionReview(
     if (review) exercises.push(review);
   }
 
-  const outperformed = exercises.filter((e) => e.performed).map((e) => e.exerciseName);
-  const underperformed = exercises.filter((e) => !e.performed).map((e) => e.exerciseName);
+  // Les machines en étalonnage ne pèsent ni dans un sens ni dans l'autre.
+  const rated = exercises.filter((e) => !e.calibrating);
+  const outperformed = rated.filter((e) => e.performed).map((e) => e.exerciseName);
+  const underperformed = rated.filter((e) => !e.performed).map((e) => e.exerciseName);
   const plateausBroken = exercises.filter((e) => e.plateau.brokenToday).map((e) => e.exerciseName);
   // En sèche, stagner en charge est attendu et souhaitable : on suspend l'alerte plateau plutôt
   // que de répéter un faux négatif pendant toute la phase. Les plateaux CASSÉS restent célébrés.
@@ -801,9 +813,11 @@ export function buildSessionReview(
   const notAmbitiousEnough = exercises.filter((e) => e.ambition.notAmbitiousEnough).map((e) => e.exerciseName);
   const antiPlateauFailed = exercises.filter((e) => e.antiPlateauFailed).map((e) => e.exerciseName);
 
-  const performanceSignal = exercises.length > 0 ? Math.round((outperformed.length / exercises.length) * 100) : 0;
+  const performanceSignal = rated.length > 0 ? Math.round((outperformed.length / rated.length) * 100) : 0;
   const performanceLabel: PerformanceLabel =
-    exercises.length === 0
+    exercises.length > 0 && rated.length === 0
+      ? "Séance d'étalonnage"
+      : rated.length === 0
       ? "Difficile"
       : performanceSignal >= 60
         ? "Bonne séance"

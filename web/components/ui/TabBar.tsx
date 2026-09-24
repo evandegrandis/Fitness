@@ -25,7 +25,7 @@ export function TabBar() {
               href={href}
               className={cn(
                 "flex flex-1 flex-col items-center gap-0.5 rounded-full py-2 text-[0.68rem] font-semibold transition",
-                active ? "text-[--color-fg]" : "text-[--color-fg-faint]",
+                active ? "text-(--color-fg)" : "text-(--color-fg-faint)",
               )}
             >
               <Icon

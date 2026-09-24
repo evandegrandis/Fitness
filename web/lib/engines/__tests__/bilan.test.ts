@@ -207,6 +207,42 @@ describe("performed / performanceSignal", () => {
 // Ambition
 // ---------------------------------------------------------------------------
 
+describe("changement de salle : machine en étalonnage", () => {
+  const ROW_FP: Exercise = { ...ROW, id: "ex-row-fp", name: "Low row Fitness Park" };
+
+  it("une machine découverte aujourd'hui n'est ni au-dessus ni en dessous, et sort du signal", () => {
+    const history = [pastSession(3, BENCH, 60, 8), pastSession(10, BENCH, 60, 8), pastSession(17, BENCH, 60, 7)];
+    const today = session(new Date(), [
+      loggedExercise(BENCH, [set({ weight: 60, reps: 10 })]),
+      loggedExercise(ROW_FP, [set({ weight: 30, reps: 6 }), set({ weight: 30, reps: 5 })], { orderIndex: 1 }),
+    ]);
+
+    const review = buildSessionReview(today, history, [BENCH, ROW_FP]);
+    const row = review.exercises.find((e) => e.exerciseId === ROW_FP.id)!;
+
+    expect(row.calibrating).toBe(true);
+    expect(row.performed).toBe(false);
+    expect(review.underperformed).not.toContain("Low row Fitness Park");
+    expect(review.outperformed).not.toContain("Low row Fitness Park");
+    expect(review.performanceSignal).toBe(100);
+    expect(review.performanceLabel).toBe("Bonne séance");
+  });
+
+  it("une séance entièrement sur des machines nouvelles est une séance d'étalonnage, pas une séance difficile", () => {
+    const today = session(new Date(), [loggedExercise(ROW_FP, [set({ weight: 30, reps: 6 })])]);
+    const review = buildSessionReview(today, [], [ROW_FP]);
+    expect(review.performanceLabel).toBe("Séance d'étalonnage");
+    expect(review.underperformed).toHaveLength(0);
+  });
+
+  it("dès la deuxième séance, la machine est jugée normalement", () => {
+    const history = [pastSession(3, ROW_FP, 30, 10)];
+    const today = session(new Date(), [loggedExercise(ROW_FP, [set({ weight: 30, reps: 6 })])]);
+    const review = buildSessionReview(today, history, [ROW_FP]);
+    expect(review.exercises[0].calibrating).toBe(false);
+  });
+});
+
 describe("ambition", () => {
   it("2 work sets sous repTargetMin -> tooAmbitious", () => {
     const history = [pastSession(7, BENCH, 60, 8)];

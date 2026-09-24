@@ -1,294 +1,270 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowDownRight, ArrowUpRight, ChevronDown, Star, Trophy } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
-import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { estimated1RM } from "@/lib/engines/e1rm";
-import { buildRecords } from "@/lib/engines/records";
-import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
-import { machineMaxStatus } from "@/lib/engines/machine-max";
 import {
-  benchmarkAxesFor,
-  benchmarkPrimaryAxisFor,
-  bestBenchmarkSets,
-  exerciseBenchmarkForSets,
-  personalProgress as computePersonalProgress,
-} from "@/lib/engines/benchmark";
-import { completedBenchmarkSets, type Exercise, type UserSettings, type WorkoutSession } from "@/lib/models/types";
+  exercisesSummary,
+  exerciseStats,
+  isCurrentGym,
+  recordEvents,
+  type ExerciseStat,
+  type ExerciseStatus,
+} from "@/lib/engines/progress-stats";
+import { exerciseBenchmarkForSets } from "@/lib/engines/benchmark";
+import type { UserSettings, WorkoutSession } from "@/lib/models/types";
+import { cleanWeight } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { formatWeight, formatDerivedWeight } from "@/components/progress/utils";
 import { ExerciseLineChart, type ExercisePoint } from "@/components/progress/ExerciseLineChart";
 import { BenchmarkGauge } from "@/components/progress/BenchmarkGauge";
 import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
-import { exerciseProgressAxis, trendBadge } from "@/components/progress/trend";
 
-type SortMode = "recent" | "az";
+const GOLD = "var(--color-warning)";
+const DAY_MS = 86_400_000;
 
-const SORT_OPTIONS: { value: SortMode; label: string }[] = [
-  { value: "recent", label: "Récents" },
-  { value: "az", label: "A-Z" },
-];
+type Filter = "all" | "progress" | "plateau" | "new" | "decline";
 
-interface ExerciseHistory {
-  exercise: Exercise;
-  points: ExercisePoint[];
-  lastDate: Date;
-  /** Machines équivalentes dont les séances, converties, prolongent la courbe. */
-  conversions: { exercise: Exercise; ratio: number }[];
+const STATUS_STYLE: Record<ExerciseStatus, { color: string; label: (stat: ExerciseStat, now: Date) => string }> = {
+  progress: { color: "var(--color-success)", label: (stat) => `+${Math.round((stat.delta ?? 0) * 100)} %` },
+  decline: { color: "var(--color-danger)", label: (stat) => `−${Math.abs(Math.round((stat.delta ?? 0) * 100))} %` },
+  stable: { color: "var(--color-fg-muted)", label: () => "Stable" },
+  plateau: { color: GOLD, label: () => "Plateau" },
+  maxed: { color: GOLD, label: () => "Maxée" },
+  new: { color: "var(--accent)", label: () => "Étalonnage" },
+  young: { color: "var(--color-fg-muted)", label: (stat) => `${stat.points.length} séances` },
+  dormant: {
+    color: "var(--color-fg-faint)",
+    label: (stat, now) => `Pause · ${Math.floor((now.getTime() - stat.lastDate.getTime()) / (7 * DAY_MS))} sem`,
+  },
+};
+
+/** En jours de calendrier : une séance d'avant-hier soir n'est pas « hier » le surlendemain à midi. */
+function relativeDay(date: Date, now: Date): string {
+  const midnight = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((midnight(now) - midnight(date)) / DAY_MS);
+  if (days <= 0) return "aujourd'hui";
+  if (days === 1) return "hier";
+  if (days < 14) return `il y a ${days} j`;
+  return `il y a ${Math.floor(days / 7)} sem`;
+}
+
+function bestSetLabel(stat: ExerciseStat): string {
+  const last = stat.points.at(-1)!;
+  return last.weight > 0 ? `${cleanWeight(last.weight)} kg × ${last.reps}` : `PDC × ${last.reps}`;
 }
 
 /**
- * Meilleur set normal de la séance pour le chemin benchmark/niveau (finishers et warmups exclus).
- * Le classement suit l'axe réellement publié : reps brutes ou e1RM de charge.
+ * Onglet « Exercices » : la vue micro. Une carte par mouvement (machines équivalentes fusionnées,
+ * vues depuis la machine du moment), sa courbe de capacité, un statut qui dit vraiment quelque
+ * chose, et ses records. Les machines de l'ancienne salle se rangent à part.
  */
-function bestSetOfSession(session: WorkoutSession, exercise: Exercise) {
-  const sets = session.exercises.filter((e) => e.exerciseId === exercise.id).flatMap((e) => completedBenchmarkSets(e));
-  const best = bestBenchmarkSets(exercise, sets);
-  const axes = benchmarkAxesFor(exercise);
-  for (const axis of axes) {
-    if (best[axis]) return best[axis];
-  }
-  return axes.length === 0 ? best.load ?? best.reps : null;
-}
-
 export function ExercisesLayer() {
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
   const settings = useWorkoutStore((s) => s.settings);
-
-  const [sort, setSort] = useState<SortMode>("recent");
+  const bodyWeights = useWorkoutStore((s) => s.bodyWeights);
+  const now = useMemo(() => new Date(), []);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [showOld, setShowOld] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const exerciseHistories = useMemo<ExerciseHistory[]>(() => {
-    const finished = history.filter((s) => !s.isActive).slice().sort((a, b) => a.date.getTime() - b.date.getTime());
-    const byExercise = new Map<string, ExerciseHistory>();
+  const bodyweightKg = useMemo(() => {
+    const latest = [...bodyWeights].sort((a, b) => b.measuredOn.getTime() - a.measuredOn.getTime())[0];
+    return latest?.weightKg ?? settings.bodyWeightKg ?? null;
+  }, [bodyWeights, settings.bodyWeightKg]);
+  const events = useMemo(() => recordEvents(history, catalog), [history, catalog]);
+  const stats = useMemo(() => exerciseStats(history, catalog, now, bodyweightKg, events), [history, catalog, now, bodyweightKg, events]);
+  const summary = useMemo(() => exercisesSummary(stats, events, now), [stats, events, now]);
 
-    // Machines équivalentes : une seule courbe par mouvement, tracée dans les unités de la machine
-    // utilisée en dernier. Les séances des autres machines y entrent converties, tant que leur
-    // facteur a pu être mesuré ; sinon elles gardent leur propre carte.
-    const absorbed = new Set<string>();
-    const families = new Map<string, ReturnType<typeof familyHistory>>();
-    const seenKeys = new Set<string>();
-    for (const exercise of catalog) {
-      const key = equivalenceKey(exercise);
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      const target = defaultEquivalent(exercise, catalog, finished);
-      const family = familyHistory(target, catalog, finished);
-      if (family.conversions.length === 0) continue;
-      families.set(target.id, family);
-      for (const conversion of family.conversions) absorbed.add(conversion.exercise.id);
-    }
+  const current = stats.filter((stat) => isCurrentGym(stat, now));
+  const old = stats.filter((stat) => !isCurrentGym(stat, now));
+  const matches = (stat: ExerciseStat) =>
+    filter === "all" ||
+    stat.status === filter ||
+    (filter === "plateau" && stat.status === "maxed");
+  const visible = current.filter(matches);
+  const declines = current.filter((stat) => stat.status === "decline").length;
 
-    const addPoint = (session: WorkoutSession, exercise: Exercise, conversions: ExerciseHistory["conversions"]) => {
-      const best = bestSetOfSession(session, exercise);
-      if (!best) return;
-      const occurrences = session.exercises.filter((e) => e.exerciseId === exercise.id);
-      const convertedFrom = occurrences.every((e) => e.id.endsWith(`~${exercise.id}`))
-        ? occurrences[0]?.exerciseName
-        : undefined;
-      const entry = byExercise.get(exercise.id) ?? { exercise, points: [], lastDate: session.date, conversions };
-      entry.points.push({
-        date: session.date,
-        weight: best.weight,
-        reps: best.reps,
-        e1rm: estimated1RM(best.weight, best.reps),
-        convertedFrom,
-      });
-      entry.lastDate = session.date;
-      byExercise.set(exercise.id, entry);
-    };
-
-    for (const session of finished) {
-      const exerciseIdsInSession = new Set(session.exercises.map((e) => e.exerciseId));
-      for (const exerciseId of exerciseIdsInSession) {
-        if (absorbed.has(exerciseId) || families.has(exerciseId)) continue;
-        const exercise = catalog.find((e) => e.id === exerciseId);
-        if (!exercise) continue;
-        addPoint(session, exercise, []);
-      }
-    }
-    for (const [targetId, family] of families) {
-      const target = catalog.find((e) => e.id === targetId);
-      if (!target) continue;
-      const ordered = family.history
-        .filter((s) => !s.isActive)
-        .sort((a, b) => a.date.getTime() - b.date.getTime());
-      for (const session of ordered) {
-        if (session.exercises.some((e) => e.exerciseId === targetId)) addPoint(session, target, family.conversions);
-      }
-    }
-
-    return [...byExercise.values()].map((entry) => {
-      const axes = benchmarkAxesFor(entry.exercise);
-      const comparablePoints =
-        axes.length === 2 && entry.points.some((point) => point.weight > 0)
-          ? entry.points.filter((point) => point.weight > 0)
-          : entry.points;
-      return {
-        ...entry,
-        points: comparablePoints,
-        lastDate: comparablePoints.at(-1)?.date ?? entry.lastDate,
-      };
-    });
-  }, [history, catalog]);
-
-  const sorted = useMemo(() => {
-    const copy = [...exerciseHistories];
-    if (sort === "recent") {
-      copy.sort((a, b) => b.lastDate.getTime() - a.lastDate.getTime());
-    } else {
-      copy.sort((a, b) => a.exercise.name.localeCompare(b.exercise.name, "fr"));
-    }
-    return copy;
-  }, [exerciseHistories, sort]);
-
-  if (sorted.length === 0) {
+  if (stats.length === 0) {
     return (
-      <GlassCard className="text-center py-8">
-        <p className="text-sm text-[--color-fg-muted]">Aucun historique d&apos;exercice pour l&apos;instant.</p>
+      <GlassCard className="py-8 text-center">
+        <p className="text-sm text-(--color-fg-muted)">Aucun historique d&apos;exercice pour l&apos;instant.</p>
       </GlassCard>
     );
   }
 
+  const filters: { value: Filter; label: string; count: number }[] = [
+    { value: "all", label: "Tous", count: current.length },
+    { value: "progress", label: "En progrès", count: summary.progressing },
+    { value: "plateau", label: "Plateaux", count: summary.plateaus + summary.maxed },
+    { value: "new", label: "Étalonnage", count: summary.newMachines },
+    { value: "decline", label: "En baisse", count: declines },
+  ];
+
   return (
     <div className="space-y-3">
-      <SegmentedControl options={SORT_OPTIONS} value={sort} onChange={setSort} layoutId="exercises-sort" />
+      <GlassCard strong>
+        <div className="grid grid-cols-3 gap-2">
+          <Headline value={summary.recentRecords} label="records · 30 j" icon={<Star size={13} fill={GOLD} style={{ color: GOLD }} />} />
+          <Headline value={summary.progressing} label="en progrès" icon={<ArrowUpRight size={14} style={{ color: "var(--color-success)" }} />} />
+          <Headline
+            value={summary.withMaxLoad > 0 ? `${summary.maxed}/${summary.withMaxLoad}` : summary.maxed}
+            label="maxées"
+            icon={<Trophy size={13} style={{ color: GOLD }} />}
+          />
+        </div>
+      </GlassCard>
 
-      {sorted.map((entry) => (
-        <ExerciseCardRow
-          key={entry.exercise.id}
-          entry={entry}
-          expanded={expanded === entry.exercise.id}
-          onToggle={() => setExpanded((cur) => (cur === entry.exercise.id ? null : entry.exercise.id))}
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {filters
+          .filter((option) => option.value === "all" || option.count > 0)
+          .map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setFilter(option.value)}
+              className={cn("pill shrink-0 transition active:scale-95", filter === option.value && "!border-(--color-fg) !text-(--color-fg)")}
+            >
+              {option.label} <span className="tnum">{option.count}</span>
+            </button>
+          ))}
+      </div>
+
+      {visible.map((stat) => (
+        <ExerciseRow
+          key={stat.exercise.id}
+          stat={stat}
+          now={now}
           history={history}
-          benchmarkProfile={settings}
+          settings={settings}
+          expanded={expanded === stat.exercise.id}
+          onToggle={() => setExpanded((cur) => (cur === stat.exercise.id ? null : stat.exercise.id))}
         />
       ))}
+      {visible.length === 0 && <p className="py-4 text-center text-xs text-(--color-fg-faint)">Rien dans ce filtre.</p>}
+
+      {old.length > 0 && filter === "all" && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowOld((value) => !value)}
+            className="flex w-full items-center justify-center gap-1.5 py-2 text-[0.72rem] text-(--color-fg-muted)"
+          >
+            {showOld ? "Masquer" : "Voir"} les {old.length} exercices en pause
+            <ChevronDown size={13} className={cn("transition-transform", showOld && "rotate-180")} />
+          </button>
+          {showOld &&
+            old.map((stat) => (
+              <ExerciseRow
+                key={stat.exercise.id}
+                stat={stat}
+                now={now}
+                history={history}
+                settings={settings}
+                expanded={expanded === stat.exercise.id}
+                onToggle={() => setExpanded((cur) => (cur === stat.exercise.id ? null : stat.exercise.id))}
+              />
+            ))}
+        </>
+      )}
     </div>
   );
 }
 
-function ExerciseCardRow({
-  entry,
+function Headline({ value, label, icon }: { value: number | string; label: string; icon: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="tnum flex items-center gap-1 text-xl font-bold text-(--color-fg)">
+        {icon}
+        {value}
+      </p>
+      <p className="eyebrow mt-0.5 !text-[0.56rem] !tracking-[0.1em]">{label}</p>
+    </div>
+  );
+}
+
+/** Courbe de capacité miniature : points creux = machine équivalente convertie. */
+function Sparkline({ stat, color }: { stat: ExerciseStat; color: string }) {
+  const points = stat.points.slice(-12);
+  const width = 84;
+  const height = 26;
+  if (points.length < 2) {
+    return <div style={{ width, height }} className="flex items-center justify-end"><span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} /></div>;
+  }
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const x = (index: number) => 3 + (index / (points.length - 1)) * (width - 6);
+  const y = (value: number) => 3 + (1 - (value - min) / span) * (height - 6);
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden>
+      <path d={path} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" opacity={0.9} />
+      {points.map((point, index) =>
+        point.records > 0 || index === points.length - 1 ? (
+          <circle
+            key={index}
+            cx={x(index)}
+            cy={y(point.value)}
+            r={point.records > 0 ? 2.4 : 2}
+            fill={point.convertedFrom ? "var(--bg-top)" : point.records > 0 ? GOLD : color}
+            stroke={point.records > 0 ? GOLD : color}
+            strokeWidth={1}
+          />
+        ) : null
+      )}
+    </svg>
+  );
+}
+
+function ExerciseRow({
+  stat,
+  now,
+  history,
+  settings,
   expanded,
   onToggle,
-  history,
-  benchmarkProfile,
 }: {
-  entry: ExerciseHistory;
+  stat: ExerciseStat;
+  now: Date;
+  history: WorkoutSession[];
+  settings: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
   expanded: boolean;
   onToggle: () => void;
-  history: WorkoutSession[];
-  benchmarkProfile: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
 }) {
-  const { exercise, points } = entry;
-  const last = points[points.length - 1];
-  const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 0.5;
-  const publishedAxes = benchmarkAxesFor(exercise);
-  const primaryAxis = exerciseProgressAxis(
-    points,
-    publishedAxes.length === 1 ? benchmarkPrimaryAxisFor(exercise) : null
-  );
-
-  const historicalSets = useMemo(
-    () =>
-      history
-        .filter((s) => !s.isActive)
-        .flatMap((s) => s.exercises)
-        .filter((e) => e.exerciseId === exercise.id)
-        .flatMap((e) => e.sets),
-    [history, exercise]
-  );
-
-  const benchmark = useMemo(
-    () => exerciseBenchmarkForSets(exercise, historicalSets, benchmarkProfile),
-    [exercise, historicalSets, benchmarkProfile]
-  );
-
-  const records = useMemo(() => buildRecords(exercise, historicalSets), [historicalSets, exercise]);
-  const machineStatus = useMemo(
-    () => (exercise.maxLoad ? machineMaxStatus(exercise, historicalSets) : null),
-    [exercise, historicalSets]
-  );
-
-  /**
-   * BENCHMARK_LEVEL_SPEC.md §2 (P3.2) — introduit "les deux" pour les machines (`isMachine`).
-   * OFFLINE_PWA_SPEC §5 (P4.5) — élargi : calculé pour TOUT exercice (plus seulement les machines),
-   * `personalProgress()` étant déjà une pure lecture de `historicalSets` qui dégrade gracieusement
-   * (`hasData:false`) s'il n'y a pas assez d'historique chargé — aucun changement de signature ni
-   * de coût de calcul significatif, juste un gate en moins. `BenchmarkGauge` décide ensuite QUAND
-   * l'afficher (jauge StrengthLevel gated sur `hasBenchmark`, ce marqueur non).
-   */
-  const personalProgress = useMemo(
-    () => computePersonalProgress(exercise, historicalSets),
-    [exercise, historicalSets]
-  );
-
-  const trend = useMemo(
-    () => trendBadge(points.map((p) => ({ date: p.date, value: primaryAxis === "reps" ? p.reps : p.weight }))),
-    [points, primaryAxis]
-  );
-
-  /** Date du set qui a établi le heaviestEver actuel — pour "record il y a X sem". */
-  const heaviestRecordAgeLabel = useMemo(() => {
-    if (records.heaviestEver <= 0) return null;
-    const matching = historicalSets
-      .filter((s) => s.completed && s.weight === records.heaviestEver)
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())[0];
-    if (!matching) return null;
-    return weeksAgoLabel(matching.timestamp);
-  }, [historicalSets, records.heaviestEver]);
+  const style = STATUS_STYLE[stat.status];
+  const Arrow = stat.status === "progress" ? ArrowUpRight : stat.status === "decline" ? ArrowDownRight : null;
+  const sparkColor = stat.status === "progress" ? "var(--color-success)" : stat.status === "dormant" ? "var(--color-fg-faint)" : "var(--accent)";
 
   return (
-    <GlassCard className="overflow-hidden !p-0">
-      <button type="button" onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="truncate font-semibold text-[--color-fg]">{exercise.name}</p>
-            {trend && (
-              <span
-                className="pill shrink-0"
-                style={{
-                  color: trend.tone === "up" ? "var(--color-success)" : trend.tone === "down" ? "var(--color-danger)" : "var(--color-fg-muted)",
-                }}
-              >
-                {trend.label}
-              </span>
-            )}
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <span className="pill">
-              Dernier <span className="tnum ml-1 text-[--color-fg]">{formatPerformance(last, primaryAxis)}</span>
+    <GlassCard className={cn("overflow-hidden !p-0", stat.status === "dormant" && "opacity-70")}>
+      <button type="button" onClick={onToggle} aria-expanded={expanded} className="block w-full px-4 py-3 text-left">
+        <div className="flex items-center gap-3">
+          <p className="min-w-0 flex-1 truncate text-[0.92rem] font-semibold text-(--color-fg)">{stat.exercise.name}</p>
+          <Sparkline stat={stat} color={sparkColor} />
+        </div>
+        <div>
+          <div className="mt-1 flex items-center gap-2">
+            <span className="pill shrink-0 !px-1.5 !py-0.5" style={{ color: style.color, borderColor: "currentColor" }}>
+              {Arrow && <Arrow size={11} />}
+              {style.label(stat, now)}
             </span>
-            {records.bestE1RM > 0 && (
-              <span className="pill">
-                e1RM <span className="tnum ml-1 text-[--color-fg]">{formatDerivedWeight(records.bestE1RM, increment)}kg</span>
-              </span>
-            )}
-            {machineStatus && machineStatus.maxLoad !== null && (
-              <span className="pill" style={machineStatus.maxed ? { color: "#fbbf24" } : undefined}>
-                {machineStatus.maxed ? "Machine maxée" : `Max ${Math.round((machineStatus.progress ?? 0) * 100)} %`}
-              </span>
-            )}
-            {records.heaviestEver > 0 && (
-              <span className="pill">
-                Best <span className="tnum ml-1 text-[--color-fg]">{formatWeight(records.heaviestEver)}kg</span>
-                {heaviestRecordAgeLabel && (
-                  <span className="ml-1 text-[--color-fg-faint]">· {heaviestRecordAgeLabel}</span>
-                )}
-              </span>
-            )}
+            <p className="tnum flex min-w-0 items-center gap-2 truncate text-[0.72rem] text-(--color-fg-muted)">
+              <span className="text-(--color-fg)">{bestSetLabel(stat)}</span>
+              <span className="text-(--color-fg-faint)">{relativeDay(stat.lastDate, now)}</span>
+              {stat.records > 0 && (
+                <span className="flex items-center gap-0.5" style={{ color: GOLD }}>
+                  <Star size={10} fill={GOLD} />
+                  {stat.records}
+                </span>
+              )}
+            </p>
           </div>
         </div>
-        <ChevronDown
-          size={18}
-          className={cn("shrink-0 text-[--color-fg-faint] transition-transform", expanded && "rotate-180")}
-        />
       </button>
 
       <AnimatePresence initial={false}>
@@ -300,34 +276,7 @@ function ExerciseCardRow({
             transition={{ duration: 0.25, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="space-y-3 border-t border-white/8 px-4 pb-4 pt-3">
-              {exercise.muscleMappings.length === 0 && <MissingMusclesNotice exercise={exercise} />}
-              <ExerciseLineChart
-                points={points}
-                primaryAxis={primaryAxis}
-                showReps={primaryAxis === "load" && points.length > 1}
-                smallestIncrement={increment}
-              />
-              {entry.conversions.length > 0 && (
-                <p className="text-xs text-[--color-fg-faint]">
-                  Points creux : {entry.conversions
-                    .map((c) => `${c.exercise.name} × ${c.ratio.toFixed(2).replace(".", ",")}`)
-                    .join(", ")}, convertis dans les charges de cette machine (fatigue corrigée). Records propres à chaque machine.
-                </p>
-              )}
-              {/* OFFLINE_PWA_SPEC §5 (P4.5) — avant ce lot : gate `benchmark.hasBenchmark` seul, donc
-                  un exercice sans standard fiable n'affichait RIEN (même avec de l'historique
-                  exploitable pour la progression perso). `BenchmarkGauge` gère maintenant lui-même
-                  le détail (jauge StrengthLevel gated sur hasBenchmark, progression perso non) —
-                  ce gate d'appel élargi évite juste de monter le composant quand il n'a RIEN à
-                  montrer dans les deux cas. */}
-              {(benchmark.hasBenchmark || personalProgress.hasData) && (
-                <BenchmarkGauge benchmark={benchmark} personalProgress={personalProgress} />
-              )}
-              <p className="text-xs text-[--color-fg-faint]">
-                Dernière séance : {formatPerformance(last, primaryAxis)}
-              </p>
-            </div>
+            <ExerciseDetail stat={stat} now={now} history={history} settings={settings} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -335,15 +284,73 @@ function ExerciseCardRow({
   );
 }
 
-function formatPerformance(point: Pick<ExercisePoint, "weight" | "reps">, axis: "load" | "reps"): string {
-  if (axis === "reps" && point.weight <= 0) return `PDC × ${point.reps} reps`;
-  return `${formatWeight(point.weight)}kg × ${point.reps} reps`;
-}
+const STATUS_EXPLAINED: Record<ExerciseStatus, (stat: ExerciseStat) => string> = {
+  progress: () => "Meilleure des 3 dernières séances contre les 3 d'avant, fatigue de la séance corrigée.",
+  decline: () => "Meilleure des 3 dernières séances sous les 3 d'avant, fatigue de la séance corrigée.",
+  stable: () => "Ni mieux ni moins bien que les 3 séances d'avant.",
+  plateau: () => "Aucun record sur les 4 dernières séances.",
+  maxed: (stat) => `Toute la pile (${cleanWeight(stat.maxStatus?.maxLoad ?? 0)} kg) : la progression passe par les reps.`,
+  new: () => "Première séance sur cette machine : elle sert de référence, ni record ni comparaison.",
+  young: () => "Encore trop peu de séances pour une tendance.",
+  dormant: () => "Pas pratiqué depuis 4 semaines : pas de tendance.",
+};
 
-/** "il y a 8 sem" / "cette semaine" — contexte temporel d'un record ancien. */
-function weeksAgoLabel(date: Date): string {
-  const days = Math.floor((Date.now() - date.getTime()) / 86_400_000);
-  const weeks = Math.floor(days / 7);
-  if (weeks <= 0) return "cette semaine";
-  return `il y a ${weeks} sem`;
+function ExerciseDetail({
+  stat,
+  now,
+  history,
+  settings,
+}: {
+  stat: ExerciseStat;
+  now: Date;
+  history: WorkoutSession[];
+  settings: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
+}) {
+  const { exercise } = stat;
+  const ownSets = useMemo(
+    () => history.filter((s) => !s.isActive).flatMap((s) => s.exercises).filter((e) => e.exerciseId === exercise.id).flatMap((e) => e.sets),
+    [history, exercise.id]
+  );
+  const benchmark = useMemo(() => exerciseBenchmarkForSets(exercise, ownSets, settings), [exercise, ownSets, settings]);
+  const chartPoints: ExercisePoint[] = stat.points.map((point) => ({
+    date: point.date,
+    weight: point.weight,
+    reps: point.reps,
+    capacity: point.value,
+    records: point.records,
+    convertedFrom: point.convertedFrom ?? undefined,
+  }));
+  const max = stat.maxStatus;
+
+  return (
+    <div className="space-y-3 border-t border-white/[0.06] px-4 pb-4 pt-3">
+      {exercise.muscleMappings.length === 0 && <MissingMusclesNotice exercise={exercise} />}
+      <p className="text-[0.7rem] text-(--color-fg-muted)">{STATUS_EXPLAINED[stat.status](stat)}</p>
+      {chartPoints.length > 1 && <ExerciseLineChart points={chartPoints} axis={stat.axis} />}
+      {stat.conversions.length > 0 && (
+        <p className="text-[0.68rem] text-(--color-fg-faint)">
+          Points creux : {stat.conversions.map((c) => `${c.exercise.name} × ${c.ratio.toFixed(2).replace(".", ",")}`).join(", ")}, convertis dans les charges de cette machine. Records propres à chaque machine.
+        </p>
+      )}
+      {max && max.maxLoad !== null && (
+        <div>
+          <div className="flex justify-between text-[0.7rem] text-(--color-fg-muted)">
+            <span>Pile de la machine</span>
+            <span className="tnum" style={max.maxed ? { color: GOLD } : undefined}>
+              {max.maxed ? "maxée" : `${cleanWeight(max.bestLoad)} / ${cleanWeight(max.maxLoad)} kg`}
+            </span>
+          </div>
+          <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.07]">
+            <div className="h-full rounded-full" style={{ width: `${Math.round((max.progress ?? 0) * 100)}%`, background: max.maxed ? GOLD : "var(--accent)" }} />
+          </div>
+        </div>
+      )}
+      {/* Niveau de force (standards publiés) ; la courbe ci-dessus remplace le repère perso. */}
+      {benchmark.hasBenchmark && <BenchmarkGauge benchmark={benchmark} />}
+      <p className="tnum text-[0.68rem] text-(--color-fg-faint)">
+        {stat.ownSessions} séance{stat.ownSessions > 1 ? "s" : ""} sur cette machine
+        {stat.records > 0 && stat.lastRecordDate && ` · ${stat.records} record${stat.records > 1 ? "s" : ""}, le dernier ${relativeDay(stat.lastRecordDate, now)}`}
+      </p>
+    </div>
+  );
 }

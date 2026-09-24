@@ -103,8 +103,8 @@ export function CardioSection({
             <HeartPulse size={16} />
           </span>
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-[--color-fg]">Cardio · fin de séance</h3>
-            <p className="text-[0.68rem] text-[--color-fg-faint]">
+            <h3 className="text-sm font-semibold text-(--color-fg)">Cardio · fin de séance</h3>
+            <p className="text-[0.68rem] text-(--color-fg-faint)">
               {hint ?? "Modalité et métriques machine, sans benchmark implicite"}
             </p>
           </div>
@@ -112,7 +112,7 @@ export function CardioSection({
         <button
           type="button"
           onClick={() => setEditing((value) => !value)}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 text-[--color-fg-muted] active:scale-90 transition"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 text-(--color-fg-muted) active:scale-90 transition"
           aria-label={editing ? "Fermer le formulaire cardio" : "Ajouter un cardio"}
         >
           {editing ? <X size={17} /> : <Plus size={17} />}
@@ -124,15 +124,15 @@ export function CardioSection({
           {ordered.map((entry) => (
             <div key={entry.id} className="flex items-center gap-2 rounded-xl bg-white/[0.045] px-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-[--color-fg]">
+                <p className="truncate text-sm font-semibold text-(--color-fg)">
                   {entry.activityName || activityLabel(entry.activityType)}
                 </p>
                 {(entry.machineName || entry.machineModel) && (
-                  <p className="truncate text-[0.68rem] text-[--color-fg-faint]">
+                  <p className="truncate text-[0.68rem] text-(--color-fg-faint)">
                     {[entry.machineName, entry.machineModel].filter(Boolean).join(" · ")}
                   </p>
                 )}
-                <p className="text-xs text-[--color-fg-muted]">
+                <p className="text-xs text-(--color-fg-muted)">
                   {durationLabel(entry.durationSeconds)}
                   {entry.distanceKm != null ? ` · ${entry.distanceKm} km` : ""}
                   {entry.level != null ? ` · niveau ${entry.level}` : ""}
@@ -158,7 +158,7 @@ export function CardioSection({
       {editing && (
         <div className="mt-3 rounded-2xl border border-white/8 bg-black/10 p-3">
           <div className="grid grid-cols-2 gap-2">
-            <label className="text-[0.65rem] font-semibold text-[--color-fg-faint]">
+            <label className="text-[0.65rem] font-semibold text-(--color-fg-faint)">
               Modalité
               <select
                 value={activityType}
@@ -167,7 +167,7 @@ export function CardioSection({
                   setActivityType(next);
                   setActivityName(activityLabel(next));
                 }}
-                className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-[#11131a] px-2 text-sm text-[--color-fg] outline-none"
+                className="mt-1.5 h-10 w-full rounded-xl border border-white/10 bg-[#11131a] px-2 text-sm text-(--color-fg) outline-none"
               >
                 {ACTIVITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
@@ -230,13 +230,13 @@ export function CardioSection({
 
 function TextField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
   return (
-    <label className="min-w-0 text-[0.65rem] font-semibold text-[--color-fg-faint]">
+    <label className="min-w-0 text-[0.65rem] font-semibold text-(--color-fg-faint)">
       {label}
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-2 text-sm text-[--color-fg] outline-none focus:border-emerald-300/50"
+        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-2 text-sm text-(--color-fg) outline-none focus:border-emerald-300/50"
       />
     </label>
   );
@@ -244,7 +244,7 @@ function TextField({ label, value, onChange, placeholder }: { label: string; val
 
 function NumericField({ label, value, onChange, step, min, max }: { label: string; value: string; onChange: (value: string) => void; step: string; min: string; max: string }) {
   return (
-    <label className="min-w-0 text-[0.65rem] font-semibold text-[--color-fg-faint]">
+    <label className="min-w-0 text-[0.65rem] font-semibold text-(--color-fg-faint)">
       <span className="block truncate">{label}</span>
       <input
         type="number"
@@ -254,7 +254,7 @@ function NumericField({ label, value, onChange, step, min, max }: { label: strin
         step={step}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-2 text-center text-sm text-[--color-fg] outline-none focus:border-emerald-300/50"
+        className="mt-1.5 h-10 w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-2 text-center text-sm text-(--color-fg) outline-none focus:border-emerald-300/50"
       />
     </label>
   );

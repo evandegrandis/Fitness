@@ -21,7 +21,7 @@ export function RecentAchievements({ achievements }: { achievements: Achievement
 
   return (
     <div className="glass glass-card">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Records récents</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Records récents</p>
       <ul className="mt-2.5 flex flex-col gap-2">
         {achievements.slice(0, 10).map((a, i) => (
           <motion.li
@@ -33,12 +33,12 @@ export function RecentAchievements({ achievements }: { achievements: Achievement
           >
             <Star size={16} className="shrink-0 text-amber-300" fill="currentColor" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[--color-fg]">{a.exerciseName}</p>
-              <p className="truncate text-xs text-[--color-fg-muted]">
+              <p className="truncate text-sm font-semibold text-(--color-fg)">{a.exerciseName}</p>
+              <p className="truncate text-xs text-(--color-fg-muted)">
                 {KIND_LABEL[a.kind]} · {a.weight > 0 ? `${cleanWeight(a.weight)}kg×${a.reps}` : `PDC×${a.reps}`}
               </p>
             </div>
-            <span className="shrink-0 text-[0.68rem] text-[--color-fg-faint]">
+            <span className="shrink-0 text-[0.68rem] text-(--color-fg-faint)">
               {formatDistanceToNow(a.date, { addSuffix: true, locale: fr })}
             </span>
           </motion.li>

@@ -72,9 +72,9 @@ export function SessionRow({
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-semibold text-[--color-fg]">
+              <p className="truncate text-sm font-semibold text-(--color-fg)">
                 {relativeDay(session.date)}{" "}
-                <span className="text-[--color-fg-faint]">· {format(session.startTime, "HH:mm")}</span>
+                <span className="text-(--color-fg-faint)">· {format(session.startTime, "HH:mm")}</span>
               </p>
               {prCount > 0 && (
                 <span className="pill shrink-0 border-amber-400/40 bg-amber-400/10 text-amber-300">
@@ -83,18 +83,18 @@ export function SessionRow({
                 </span>
               )}
             </div>
-            <p className="mt-0.5 truncate text-xs text-[--color-fg-muted]">
+            <p className="mt-0.5 truncate text-xs text-(--color-fg-muted)">
               {formatDecimal(totalSets)} séries · {duration} · {ordered.length} exos
               {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
               {(session.cardioEntries?.length ?? 0) > 0 ? " · cardio" : ""}
             </p>
-            <p className="mt-1 truncate text-xs text-[--color-fg-faint]">
+            <p className="mt-1 truncate text-xs text-(--color-fg-faint)">
               {shown.join(", ")}
               {extra > 0 && ` +${extra}`}
             </p>
           </div>
 
-          <ChevronRight size={16} className="shrink-0 text-[--color-fg-faint]" />
+          <ChevronRight size={16} className="shrink-0 text-(--color-fg-faint)" />
         </Link>
       </SwipeRow>
     </motion.div>

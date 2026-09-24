@@ -33,6 +33,7 @@ import { ExerciseGif } from "@/components/exercise/ExerciseGif";
 import { listKnownStandards } from "@/lib/engines/benchmark";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
 import { saveExercise } from "@/lib/sync/save-exercise";
+import { equivalentExercises } from "@/lib/engines/equivalence";
 
 const FATIGUE_LABEL: Record<FatigueClass, string> = { heavy: "Lourd", medium: "Moyen", light: "Léger" };
 
@@ -123,7 +124,8 @@ function ExerciseEditorForm({
   exercise: Exercise | null;
   allowDelete: boolean;
 }) {
-  const catalogLength = useWorkoutStore((s) => s.catalog.length);
+  const catalog = useWorkoutStore((s) => s.catalog);
+  const catalogLength = catalog.length;
   const [draft, setDraft] = useState<Exercise>(() => exercise ?? emptyExercise());
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -131,6 +133,9 @@ function ExerciseEditorForm({
   const isEditing = exercise !== null;
 
   const parentMappings = mappingsToParentLevel(draft.muscleMappings, LEAF_TO_PARENT);
+  // Rapprochement de machines (même exercice, autre marque) : posé par le nom ou par Barbis ;
+  // « Délier » donne à l'exercice une famille à lui seul.
+  const equivalents = isEditing ? equivalentExercises(draft, catalog) : [];
   // BENCHMARK_LEVEL_SPEC.md §4 (P3.4) — recalculé à chaque rendu (pas de useMemo : `listKnownStandards()`
   // relit un import JSON déjà en mémoire, coût négligeable, et reste toujours à jour si le fichier
   // gagne des entrées entre deux ouvertures de la feuille sans re-render forcé).
@@ -213,7 +218,7 @@ function ExerciseEditorForm({
 
   return (
       <div className="flex h-full flex-col">
-        <h2 className="font-display text-lg font-bold text-[--color-fg]">
+        <h2 className="font-display text-lg font-bold text-(--color-fg)">
           {isEditing ? "Modifier l'exercice" : "Nouvel exercice"}
         </h2>
 
@@ -221,20 +226,20 @@ function ExerciseEditorForm({
           <div className="flex flex-col gap-5">
             {/* Nom + favori */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Nom</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Nom</label>
               <div className="mt-1.5 flex items-center gap-2">
                 <input
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   placeholder="Ex. Développé couché"
-                  className="glass min-w-0 flex-1 rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+                  className="glass min-w-0 flex-1 rounded-xl px-3.5 py-2.5 text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
                 />
                 {isEditing && (
                   <button
                     type="button"
                     onClick={() => setDraft({ ...draft, isFavorite: !draft.isFavorite })}
                     className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border transition ${
-                      draft.isFavorite ? "border-amber-400/40 bg-amber-400/10 text-amber-300" : "border-white/10 bg-white/5 text-[--color-fg-faint]"
+                      draft.isFavorite ? "border-amber-400/40 bg-amber-400/10 text-amber-300" : "border-white/10 bg-white/5 text-(--color-fg-faint)"
                     }`}
                     aria-label="Basculer favori"
                   >
@@ -249,18 +254,18 @@ function ExerciseEditorForm({
 
             {/* Catégorie */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Catégorie</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Catégorie</label>
               <input
                 value={draft.category}
                 onChange={(e) => setDraft({ ...draft, category: e.target.value })}
                 placeholder="Ex. push, pull, legs…"
-                className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+                className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
               />
             </div>
 
             {/* SetPatternMode */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Mode de sets</label>
+              <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Mode de sets</label>
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 {SET_PATTERN_MODES.map((mode: SetPatternMode) => (
                   <button
@@ -268,7 +273,7 @@ function ExerciseEditorForm({
                     type="button"
                     onClick={() => setDraft({ ...draft, setPatternMode: mode })}
                     className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                      draft.setPatternMode === mode ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                      draft.setPatternMode === mode ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                     }`}
                   >
                     {setPatternModeDisplayName[mode]}
@@ -285,7 +290,7 @@ function ExerciseEditorForm({
               de crash — mais on préfère taguer dès que possible.
             */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+              <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                 Pattern de mouvement
               </label>
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -293,7 +298,7 @@ function ExerciseEditorForm({
                   type="button"
                   onClick={() => setDraft({ ...draft, movementPattern: null })}
                   className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                    draft.movementPattern === null ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                    draft.movementPattern === null ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                   }`}
                 >
                   Non taggé
@@ -304,7 +309,7 @@ function ExerciseEditorForm({
                     type="button"
                     onClick={() => setDraft({ ...draft, movementPattern: pattern })}
                     className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                      draft.movementPattern === pattern ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                      draft.movementPattern === pattern ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                     }`}
                   >
                     {movementPatternDisplayName[pattern]}
@@ -321,7 +326,7 @@ function ExerciseEditorForm({
               Seed par défaut null partout (pas de tagging manuel des 29 exos, décision tracée en P2.1).
             */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+              <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                 Profil de résistance
               </label>
               <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -329,7 +334,7 @@ function ExerciseEditorForm({
                   type="button"
                   onClick={() => setDraft({ ...draft, resistanceProfile: null })}
                   className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                    draft.resistanceProfile === null ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                    draft.resistanceProfile === null ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                   }`}
                 >
                   Non taggé
@@ -340,7 +345,7 @@ function ExerciseEditorForm({
                     type="button"
                     onClick={() => setDraft({ ...draft, resistanceProfile: profile })}
                     className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                      draft.resistanceProfile === profile ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                      draft.resistanceProfile === profile ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                     }`}
                   >
                     {resistanceProfileDisplayName[profile]}
@@ -360,7 +365,7 @@ function ExerciseEditorForm({
               (`benchmarkLow`/`benchmarkHigh`, non consommé aujourd'hui — §1).
             */}
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+              <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                 Standard StrengthLevel
               </label>
               <select
@@ -376,7 +381,7 @@ function ExerciseEditorForm({
                     benchmarkUnit: entry ? entry.unit : draft.benchmarkUnit,
                   });
                 }}
-                className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none"
+                className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-(--color-fg) outline-none"
               >
                 <option value="">Aucun (repère manuel ou pas encore sourcé)</option>
                 {knownStandards.map((standard) => (
@@ -387,7 +392,7 @@ function ExerciseEditorForm({
                 ))}
               </select>
               {selectedStandard && (
-                <p className="mt-1.5 text-[0.68rem] text-[--color-fg-faint]">
+                <p className="mt-1.5 text-[0.68rem] text-(--color-fg-faint)">
                   Unité {benchmarkUnitDisplayName[selectedStandard.unit].toLowerCase()} · charge{" "}
                   {CONVENTION_LABEL[selectedStandard.convention]}
                   {selectedStandard.isMachine && " · machine : jauge indicative uniquement"}
@@ -403,7 +408,7 @@ function ExerciseEditorForm({
             */}
             {draft.strengthStandardKey === null && (
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                   Unité du repère (si saisi à la main)
                 </label>
                 <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -411,7 +416,7 @@ function ExerciseEditorForm({
                     type="button"
                     onClick={() => setDraft({ ...draft, benchmarkUnit: null })}
                     className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                      draft.benchmarkUnit === null ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                      draft.benchmarkUnit === null ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                     }`}
                   >
                     Aucune
@@ -422,7 +427,7 @@ function ExerciseEditorForm({
                       type="button"
                       onClick={() => setDraft({ ...draft, benchmarkUnit: unit })}
                       className={`glass rounded-xl px-3 py-2 text-xs font-medium transition ${
-                        draft.benchmarkUnit === unit ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                        draft.benchmarkUnit === unit ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                       }`}
                     >
                       {benchmarkUnitDisplayName[unit]}
@@ -470,6 +475,23 @@ function ExerciseEditorForm({
               />
             </div>
 
+            {equivalents.length > 0 && (
+              <div className="glass flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-[0.7rem] text-(--color-fg-muted)">Même exercice que</p>
+                  <p className="truncate text-sm text-(--color-fg)">{equivalents.map((e) => e.name).join(", ")}</p>
+                  <p className="text-[0.66rem] text-(--color-fg-faint)">Courbe et suggestions partagées, records propres à chaque machine.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, equivalenceKey: `solo:${draft.id}` })}
+                  className="pill shrink-0 text-[0.7rem] text-(--color-fg-muted) transition active:scale-95"
+                >
+                  Délier
+                </button>
+              </div>
+            )}
+
             {/* Mappings musculaires */}
             <MuscleMappingEditor
               mappings={parentMappings}
@@ -480,7 +502,7 @@ function ExerciseEditorForm({
               <>
                 {/* FatigueClass */}
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                     Classe de fatigue
                   </label>
                   <div className="mt-1.5">
@@ -495,7 +517,7 @@ function ExerciseEditorForm({
 
                 {/* ProgressionPolicy */}
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                     Politique de progression
                   </label>
                   <div className="mt-1.5 flex flex-col gap-1.5">
@@ -505,7 +527,7 @@ function ExerciseEditorForm({
                         type="button"
                         onClick={() => setDraft({ ...draft, progressionPolicy: policy === "generic" ? null : policy })}
                         className={`glass flex items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-sm transition ${
-                          (draft.progressionPolicy ?? "generic") === policy ? "glass-strong text-[--color-fg]" : "text-[--color-fg-muted]"
+                          (draft.progressionPolicy ?? "generic") === policy ? "glass-strong text-(--color-fg)" : "text-(--color-fg-muted)"
                         }`}
                       >
                         {progressionPolicyDisplayName[policy]}
@@ -537,24 +559,24 @@ function ExerciseEditorForm({
 
                 {/* Machine / notes */}
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
                     Réglage machine
                   </label>
                   <input
                     value={draft.machineSetting}
                     onChange={(e) => setDraft({ ...draft, machineSetting: e.target.value })}
                     placeholder="Ex. Niveau 5, banc position 3…"
-                    className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+                    className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Notes</label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Notes</label>
                   <textarea
                     value={draft.setupNotes}
                     onChange={(e) => setDraft({ ...draft, setupNotes: e.target.value })}
                     rows={2}
                     placeholder="Notes de mise en place…"
-                    className="glass mt-1.5 w-full resize-none rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+                    className="glass mt-1.5 w-full resize-none rounded-xl px-3.5 py-2.5 text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
                   />
                 </div>
 
@@ -565,7 +587,7 @@ function ExerciseEditorForm({
                   className={`rounded-xl border px-3.5 py-2.5 text-center text-sm font-semibold transition ${
                     confirmingDelete
                       ? "border-rose-400/50 bg-rose-400/15 text-rose-300"
-                      : "border-white/10 bg-white/5 text-[--color-fg-muted]"
+                      : "border-white/10 bg-white/5 text-(--color-fg-muted)"
                   }`}
                 >
                   {confirmingDelete ? "Confirmer la suppression" : "Supprimer l'exercice"}

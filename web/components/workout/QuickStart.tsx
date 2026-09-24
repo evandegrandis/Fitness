@@ -53,7 +53,7 @@ export function QuickStart() {
     <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-5 pb-6 pt-8">
       <header className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-[--color-fg-muted]">Bonjour{greetingName}</p>
+          <p className="text-sm text-(--color-fg-muted)">Bonjour{greetingName}</p>
           <h1 className="font-display text-2xl font-bold text-accent-gradient">Séance</h1>
         </div>
         <Link

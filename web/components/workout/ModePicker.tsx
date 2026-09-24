@@ -39,7 +39,7 @@ export function ModePicker({ value, onChange }: { value: WorkoutMode; onChange: 
               />
             )}
             <Icon size={20} style={{ color: active ? meta.accent : "var(--color-fg-muted)" }} />
-            <span className={cn("text-xs font-semibold", active ? "text-[--color-fg]" : "text-[--color-fg-muted]")}>
+            <span className={cn("text-xs font-semibold", active ? "text-(--color-fg)" : "text-(--color-fg-muted)")}>
               {meta.label}
             </span>
           </button>

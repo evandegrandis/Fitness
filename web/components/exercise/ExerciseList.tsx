@@ -42,12 +42,12 @@ export function ExerciseList({ catalog }: { catalog: Exercise[] }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="glass flex items-center gap-2 rounded-full px-4 py-2.5">
-        <Search size={16} className="text-[--color-fg-muted]" />
+        <Search size={16} className="text-(--color-fg-muted)" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Rechercher un exercice…"
-          className="w-full bg-transparent text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+          className="w-full bg-transparent text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
         />
       </div>
 
@@ -79,16 +79,16 @@ export function ExerciseList({ catalog }: { catalog: Exercise[] }) {
               ) : (
                 <span className="w-3.5 shrink-0" />
               )}
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-[--color-fg]">{exercise.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-(--color-fg)">{exercise.name}</span>
               {parent && <span className="pill shrink-0 bg-white/8 text-[0.65rem]">{parentShortName[parent]}</span>}
-              <span className="pill shrink-0 bg-white/6 text-[0.65rem] text-[--color-fg-muted]">
+              <span className="pill shrink-0 bg-white/6 text-[0.65rem] text-(--color-fg-muted)">
                 {setPatternModeShortName[exercise.setPatternMode]}
               </span>
             </button>
           );
         })}
         {sorted.length === 0 && (
-          <p className="mt-4 text-center text-sm text-[--color-fg-muted]">Aucun exercice trouvé</p>
+          <p className="mt-4 text-center text-sm text-(--color-fg-muted)">Aucun exercice trouvé</p>
         )}
       </div>
 

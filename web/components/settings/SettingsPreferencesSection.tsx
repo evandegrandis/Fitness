@@ -81,25 +81,25 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
   return (
     <GlassCard>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Préférences</p>
-        {saving && <span className="text-[0.65rem] text-[--color-fg-faint]">Enregistrement…</span>}
+        <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Préférences</p>
+        {saving && <span className="text-[0.65rem] text-(--color-fg-faint)">Enregistrement…</span>}
         {!saving && saved && <span className="text-[0.65rem] text-emerald-300">Enregistré</span>}
       </div>
 
       <div className="mt-3 flex flex-col gap-4">
         <div>
-          <label className="text-xs text-[--color-fg-muted]">Nom</label>
+          <label className="text-xs text-(--color-fg-muted)">Nom</label>
           <input
             value={draft.userName}
             onChange={(e) => setDraft({ ...draft, userName: e.target.value })}
             onBlur={() => persist({ userName: draft.userName })}
             placeholder="Ton prénom"
-            className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[--color-fg] outline-none placeholder:text-[--color-fg-faint]"
+            className="glass mt-1.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
           />
         </div>
 
         <div>
-          <label className="text-xs text-[--color-fg-muted]">Unités</label>
+          <label className="text-xs text-(--color-fg-muted)">Unités</label>
           <div className="mt-1.5">
             <SegmentedControl
               layoutId="units-segmented"
@@ -114,7 +114,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-[--color-fg]">Incrément par défaut</span>
+          <span className="text-sm text-(--color-fg)">Incrément par défaut</span>
           <Stepper
             value={draft.defaultSmallestIncrement}
             onChange={(v) => persist({ defaultSmallestIncrement: v })}
@@ -126,7 +126,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-[--color-fg]">Repos par défaut</span>
+          <span className="text-sm text-(--color-fg)">Repos par défaut</span>
           <Stepper
             value={draft.defaultRestTimerSeconds}
             onChange={(v) => persist({ defaultRestTimerSeconds: v })}
@@ -138,7 +138,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-[--color-fg]">Objectif cardio / semaine</span>
+          <span className="text-sm text-(--color-fg)">Objectif cardio / semaine</span>
           <Stepper
             value={draft.weeklyCardioMinutesGoal ?? CARDIO_GOAL.DEFAULT_WEEKLY_MINUTES}
             onChange={(v) => persist({ weeklyCardioMinutesGoal: v })}
@@ -150,7 +150,7 @@ export function SettingsPreferencesSection({ settings }: { settings: UserSetting
         </div>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-[--color-fg]">Repos superset</span>
+          <span className="text-sm text-(--color-fg)">Repos superset</span>
           <Stepper
             value={draft.supersetRestSeconds}
             onChange={(v) => persist({ supersetRestSeconds: v })}

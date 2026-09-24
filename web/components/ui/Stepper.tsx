@@ -96,7 +96,7 @@ export function Stepper({
 
   return (
     <div className={cn("flex flex-col items-center gap-1", className)}>
-      {label && <span className="text-xs text-[--color-fg-muted]">{label}</span>}
+      {label && <span className="text-xs text-(--color-fg-muted)">{label}</span>}
       <div className="flex items-center gap-2">
         {renderButton(-1, Minus, "Diminuer")}
         <span
@@ -116,7 +116,7 @@ export function Stepper({
           <ChevronUp size={11} className="opacity-30" />
           <span className="tnum min-w-[3.5rem] text-center text-2xl font-bold tabular-nums leading-none">
             {formatDecimal(value, 2)}
-            {suffix && <span className="ml-0.5 text-sm text-[--color-fg-muted]">{suffix}</span>}
+            {suffix && <span className="ml-0.5 text-sm text-(--color-fg-muted)">{suffix}</span>}
           </span>
           <ChevronDown size={11} className="opacity-30" />
         </span>

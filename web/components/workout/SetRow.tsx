@@ -50,16 +50,16 @@ export function SetRow({
             ? "min-w-5 bg-amber-400/15 px-1.5 text-amber-300"
             : isFinisher
               ? "min-w-5 bg-rose-400/15 px-1.5 text-rose-300"
-              : "w-5 bg-white/8 text-[--color-fg-muted]"
+              : "w-5 bg-white/8 text-(--color-fg-muted)"
         )}
       >
         {label}
       </span>
-      <span className="tnum text-sm text-[--color-fg]">
+      <span className="tnum text-sm text-(--color-fg)">
         {set.weight > 0 ? `${cleanWeight(set.weight)}kg` : "PDC"} × {set.reps}
       </span>
       {hasRir && (
-        <span className="tnum shrink-0 rounded-md bg-white/[0.06] px-1.5 text-[0.65rem] font-semibold text-[--color-fg-muted]">
+        <span className="tnum shrink-0 rounded-md bg-white/[0.06] px-1.5 text-[0.65rem] font-semibold text-(--color-fg-muted)">
           RIR {reportedRirLabel(set.reportedRir as number)}
         </span>
       )}

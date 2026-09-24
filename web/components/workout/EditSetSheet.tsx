@@ -57,7 +57,7 @@ function EditSetForm({
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="font-display text-base font-bold text-[--color-fg]">Modifier le set</h2>
+      <h2 className="font-display text-base font-bold text-(--color-fg)">Modifier le set</h2>
       <div className="flex items-center justify-center gap-6">
         <Stepper label="Poids" value={weight} onChange={setWeight} step={increment} min={0} suffix="kg" />
         <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={1} />
@@ -67,7 +67,7 @@ function EditSetForm({
       {!isWarmup && (
         <>
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-[--color-fg-muted]">Reps en réserve (RIR)</span>
+            <span className="text-xs text-(--color-fg-muted)">Reps en réserve (RIR)</span>
             <div className="flex flex-wrap items-center gap-1.5">
               {REPORTED_RIR_OPTIONS.map((option) => {
                 const selected = rir === option;
@@ -93,7 +93,7 @@ function EditSetForm({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-[--color-fg-muted]">Arrêt de la série</span>
+            <span className="text-xs text-(--color-fg-muted)">Arrêt de la série</span>
             <div className="flex flex-wrap items-center gap-1.5">
               {STOP_REASONS.map((reason) => {
                 const selected = stopReason === reason;
@@ -135,7 +135,7 @@ function EditSetForm({
         className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition ${
           isFinisher
             ? "border-rose-300/40 bg-rose-300/12 text-rose-200"
-            : "border-white/10 text-[--color-fg-muted]"
+            : "border-white/10 text-(--color-fg-muted)"
         }`}
       >
         <Flame size={15} />

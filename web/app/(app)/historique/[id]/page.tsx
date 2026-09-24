@@ -69,11 +69,11 @@ export default function SessionDetailPage() {
         <button
           type="button"
           onClick={() => router.push("/historique")}
-          className="flex items-center gap-1 text-sm text-[--color-fg-muted]"
+          className="flex items-center gap-1 text-sm text-(--color-fg-muted)"
         >
           <ChevronLeft size={16} /> Retour
         </button>
-        <div className="glass glass-card mt-4 text-center text-sm text-[--color-fg-muted]">
+        <div className="glass glass-card mt-4 text-center text-sm text-(--color-fg-muted)">
           Séance introuvable : elle a peut-être été supprimée.
         </div>
       </main>
@@ -91,7 +91,7 @@ export default function SessionDetailPage() {
         <button
           type="button"
           onClick={() => router.push("/historique")}
-          className="flex items-center gap-1 text-sm text-[--color-fg-muted]"
+          className="flex items-center gap-1 text-sm text-(--color-fg-muted)"
         >
           <ChevronLeft size={16} /> Historique
         </button>

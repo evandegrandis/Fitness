@@ -54,7 +54,8 @@ export async function POST(request: Request): Promise<Response> {
     }
   }
 
-  const categoryIsBlank = current.category.trim() === "";
+  // L'éditeur enregistre « Autre » quand rien n'est choisi : c'est une catégorie vide.
+  const categoryIsBlank = ["", "autre"].includes(current.category.trim().toLowerCase());
   await db.batch([
     db
       .update(exercises)

@@ -41,15 +41,15 @@ function PersonalProgressMarker({ progress, standalone = false }: { progress: Pe
   return (
     <div className={standalone ? "" : "mt-2.5 border-t border-white/8 pt-2.5"}>
       <div className="flex items-center justify-between gap-1.5">
-        <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-[--color-fg-faint]">
+        <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-(--color-fg-faint)">
           Progression perso · cet exercice
         </p>
-        <span className="tnum text-[0.66rem] text-[--color-fg-muted]">
+        <span className="tnum text-[0.66rem] text-(--color-fg-muted)">
           {formatDerivedWeight(progress.currentE1RM, 0.1)}kg
         </span>
       </div>
       {sameMinMax ? (
-        <p className="mt-1 text-[0.62rem] text-[--color-fg-faint]">Pas encore assez d&apos;historique pour situer la progression.</p>
+        <p className="mt-1 text-[0.62rem] text-(--color-fg-faint)">Pas encore assez d&apos;historique pour situer la progression.</p>
       ) : (
         <>
           <div className="relative mt-2 h-1.5 rounded-full bg-white/10">
@@ -58,7 +58,7 @@ function PersonalProgressMarker({ progress, standalone = false }: { progress: Pe
               style={{ left: `${clamped * 100}%`, background: "var(--accent)", borderColor: "var(--color-ink-950)" }}
             />
           </div>
-          <div className="mt-1 flex items-center justify-between text-[0.58rem] text-[--color-fg-faint]">
+          <div className="mt-1 flex items-center justify-between text-[0.58rem] text-(--color-fg-faint)">
             <span className="tnum">{formatDerivedWeight(progress.minE1RM, 0.1)}kg</span>
             <span>historique observé</span>
             <span className="tnum">{formatDerivedWeight(progress.maxE1RM, 0.1)}kg</span>
@@ -89,11 +89,11 @@ function StrengthLevelAxisGauge({
     <div className={secondary ? "mt-3 border-t border-white/8 pt-3" : ""}>
       <div className="flex flex-wrap items-start justify-between gap-1.5">
         <div>
-          <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-[--color-fg-faint]">
+          <p className="text-[0.62rem] font-semibold uppercase tracking-wide text-(--color-fg-faint)">
             Repère StrengthLevel · {gauge.axis === "load" ? "1RM estimé" : "répétitions"}
           </p>
           {profileLabel && (
-            <p className="mt-0.5 text-[0.66rem] text-[--color-fg-faint]">{profileLabel}</p>
+            <p className="mt-0.5 text-[0.66rem] text-(--color-fg-faint)">{profileLabel}</p>
           )}
         </div>
         <span className="pill" style={{ color, borderColor: color }}>
@@ -115,7 +115,7 @@ function StrengthLevelAxisGauge({
         />
       </div>
 
-      <div className="mt-1.5 grid grid-cols-5 gap-1 text-center text-[0.54rem] text-[--color-fg-faint]">
+      <div className="mt-1.5 grid grid-cols-5 gap-1 text-center text-[0.54rem] text-(--color-fg-faint)">
         {STRENGTH_LEVEL_KEYS.map((key) => (
           <span key={key} className="min-w-0">
             <span className="block truncate">{strengthLevelLabel(key)}</span>
@@ -125,11 +125,11 @@ function StrengthLevelAxisGauge({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5 text-xs">
-        <span className="tnum text-[--color-fg-muted]">
+        <span className="tnum text-(--color-fg-muted)">
           {gauge.axis === "load" ? "e1RM " : ""}{formatGaugeAmount(gauge.axis, gauge.currentValue)}
         </span>
         {gauge.nextLevel && (gauge.gapToNext ?? 0) > 0 && (
-          <span className="text-[--color-fg-faint]">
+          <span className="text-(--color-fg-faint)">
             encore {formatGaugeAmount(gauge.axis, gauge.gapToNext!)} → {strengthLevelLabel(gauge.nextLevel).toLowerCase()}
           </span>
         )}
@@ -179,7 +179,7 @@ export function BenchmarkGauge({
           <StrengthLevelAxisGauge gauge={primaryGauge} profileLabel={benchmark.profileLabel} />
           {benchmark.secondary && <StrengthLevelAxisGauge gauge={benchmark.secondary} secondary />}
 
-          <p className="mt-2 text-[0.62rem] leading-relaxed text-[--color-fg-faint]">
+          <p className="mt-2 text-[0.62rem] leading-relaxed text-(--color-fg-faint)">
             <a href={benchmark.source.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
               {benchmark.source.title}
             </a>

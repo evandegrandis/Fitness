@@ -99,7 +99,7 @@ export function Sheet({
                 type="button"
                 onClick={onClose}
                 aria-label="Fermer"
-                className="grid h-11 w-11 place-items-center rounded-full text-[--color-fg-muted] active:scale-90 transition"
+                className="grid h-11 w-11 place-items-center rounded-full text-(--color-fg-muted) active:scale-90 transition"
               >
                 <X aria-hidden="true" size={18} />
               </button>

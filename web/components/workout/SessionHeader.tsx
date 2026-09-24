@@ -16,7 +16,7 @@ function SyncBadge() {
   if (status === "idle") return null;
   if (status === "saving")
     return (
-      <span className="inline-flex items-center gap-1 text-[0.7rem] text-[--color-fg-faint]">
+      <span className="inline-flex items-center gap-1 text-[0.7rem] text-(--color-fg-faint)">
         <Loader2 size={12} className="animate-spin" /> enregistrement…
       </span>
     );
@@ -28,7 +28,7 @@ function SyncBadge() {
     );
   if (status === "error")
     return (
-      <span className="inline-flex items-center gap-1 text-[0.7rem] text-[--color-danger]">
+      <span className="inline-flex items-center gap-1 text-[0.7rem] text-(--color-danger)">
         <CloudOff size={12} /> non synchronisé{pending > 1 ? ` (${pending})` : ""}
       </span>
     );
@@ -74,8 +74,8 @@ export function SessionHeader({
   return (
     <div className="glass glass-strong glass-card flex items-center justify-between gap-3">
       <div>
-        <p className="tnum font-display text-2xl font-bold text-[--color-fg]">{formatElapsed(session.startTime, nowMs)}</p>
-        <div className="flex items-center gap-2 text-xs text-[--color-fg-muted]">
+        <p className="tnum font-display text-2xl font-bold text-(--color-fg)">{formatElapsed(session.startTime, nowMs)}</p>
+        <div className="flex items-center gap-2 text-xs text-(--color-fg-muted)">
           <span>{formatDecimal(totalSets)} série{totalSets > 1 ? "s" : ""} faite{totalSets > 1 ? "s" : ""}</span>
           <SyncBadge />
         </div>

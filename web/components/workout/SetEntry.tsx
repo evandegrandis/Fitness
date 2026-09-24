@@ -281,7 +281,7 @@ export function SetEntry({
       )}
 
       {!useWarmup && !intensityReasonCode && (
-        <p className="text-xs text-[--color-fg-muted]">
+        <p className="text-xs text-(--color-fg-muted)">
           {suggestion.explanation}
           {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 (P2.3) — rotation PRÉEMPTIVE ("slowing",
               `reasonCodes` contient "variation_preemptive", volontairement PAS dans
@@ -317,7 +317,7 @@ export function SetEntry({
           `reportedRir=null` (zéro friction). Éditable ensuite via la ligne du set. */}
       {!useWarmup && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-[--color-fg-muted]">RIR</span>
+          <span className="text-xs text-(--color-fg-muted)">RIR</span>
           {REPORTED_RIR_OPTIONS.map((option) => {
             const selected = rir === option;
             return (

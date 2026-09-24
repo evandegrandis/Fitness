@@ -66,15 +66,15 @@ export function SessionFocusButton({
         aria-label="Voir quoi prioriser maintenant"
         className="pill grid h-11 w-11 shrink-0 place-items-center rounded-full"
       >
-        <Target size={17} className="text-[--color-fg-muted]" />
+        <Target size={17} className="text-(--color-fg-muted)" />
       </button>
 
       <Sheet open={open} onClose={() => setOpen(false)} ariaLabel="Priorités de la séance">
-        <h2 className="font-display text-lg font-bold text-[--color-fg]">Quoi faire maintenant</h2>
+        <h2 className="font-display text-lg font-bold text-(--color-fg)">Quoi faire maintenant</h2>
 
         {focus.priorities.length > 0 ? (
           <>
-            <p className="mt-1 text-xs text-[--color-fg-muted]">
+            <p className="mt-1 text-xs text-(--color-fg-muted)">
               {focus.weekPlan.sessionsLeftIncludingToday > 1
                 ? `Séance ${focus.weekPlan.sessionsDoneThisWeek + 1} sur ${focus.weekPlan.habitualSessionsPerWeek} habituelles : le trait clair marque ta part du jour.`
                 : "Dernière séance habituelle de la semaine : tout le reste est pour aujourd'hui."}
@@ -92,7 +92,7 @@ export function SessionFocusButton({
             </div>
           </>
         ) : (
-          <p className="mt-3 text-sm text-[--color-fg]">Tous tes objectifs de la semaine sont couverts.</p>
+          <p className="mt-3 text-sm text-(--color-fg)">Tous tes objectifs de la semaine sont couverts.</p>
         )}
 
         {focus.workedToday.length > 0 && (
@@ -100,7 +100,7 @@ export function SessionFocusButton({
             <p className="eyebrow">Déjà fait aujourd&apos;hui</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {focus.workedToday.map((row) => (
-                <span key={row.parent} className="pill text-xs text-[--color-fg-muted]">
+                <span key={row.parent} className="pill text-xs text-(--color-fg-muted)">
                   {parentShortName[row.parent]} · {formatDecimal(row.doneThisSession)}
                 </span>
               ))}
@@ -113,19 +113,19 @@ export function SessionFocusButton({
             <p className="eyebrow">Suivi, sans objectif</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {focus.tracked.map((row) => (
-                <span key={row.parent} className="pill text-xs text-[--color-fg-muted]">
+                <span key={row.parent} className="pill text-xs text-(--color-fg-muted)">
                   {parentShortName[row.parent]} · {formatDecimal(row.effectiveSets)}
                 </span>
               ))}
             </div>
-            <p className="mt-2 text-[0.7rem] text-[--color-fg-faint]">
+            <p className="mt-2 text-[0.7rem] text-(--color-fg-faint)">
               Volume de la semaine, à titre indicatif : aucun quota, rien à rattraper.
             </p>
           </div>
         )}
 
         {focus.dormantCount > 0 && (
-          <p className="mt-4 text-[0.7rem] text-[--color-fg-faint]">
+          <p className="mt-4 text-[0.7rem] text-(--color-fg-faint)">
             {focus.dormantCount} groupe{focus.dormantCount > 1 ? "s" : ""} sans travail récent : conservé{focus.dormantCount > 1 ? "s" : ""} à titre informatif, tout en bas.
           </p>
         )}
@@ -164,17 +164,17 @@ function FocusRow({
   return (
     <div className={`${isLast ? "py-3" : "border-b border-white/[0.06] py-3"} ${row.isDormant ? "opacity-55" : ""}`}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-mono text-[0.7rem] uppercase tracking-wide text-[--color-fg]">
+        <span className="font-mono text-[0.7rem] uppercase tracking-wide text-(--color-fg)">
           {parentShortName[row.parent]}
         </span>
-        <span className="tnum text-xs text-[--color-fg-muted]">
+        <span className="tnum text-xs text-(--color-fg-muted)">
           {row.doneThisSession > 0 && (
             <span style={{ color: "rgb(110,231,183)" }}>+{formatDecimal(row.doneThisSession)} · </span>
           )}
           {formatDecimal(row.remaining)} à faire
         </span>
       </div>
-      <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] text-[--color-fg-faint]">
+      <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] text-(--color-fg-faint)">
         <span className="tnum">{formatDecimal(row.effectiveSets)} / {row.goalSets} cette semaine</span>
         {sessionsLeft > 1 && row.todayShare > 0 ? (
           <span className="tnum" style={todayReached ? { color: "rgb(110,231,183)" } : undefined}>
@@ -207,7 +207,7 @@ function FocusRow({
               key={suggestion.exerciseId}
               type="button"
               onClick={() => onSuggestion(suggestion)}
-              className="pill inline-flex items-center gap-1 text-[0.68rem] text-[--color-fg-muted] active:scale-95 transition"
+              className="pill inline-flex items-center gap-1 text-[0.68rem] text-(--color-fg-muted) active:scale-95 transition"
             >
               {suggestion.inCurrentSession ? <Check size={11} /> : <Plus size={11} />}
               {suggestion.exerciseName}

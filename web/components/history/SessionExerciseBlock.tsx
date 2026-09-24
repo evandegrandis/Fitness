@@ -18,11 +18,11 @@ function SetLine({
   const typeLabel = set.setType === SetType.warmup ? "Échauff." : set.setType === SetType.finisher ? "Finisher" : null;
   return (
     <div className="flex items-center gap-2.5 rounded-xl bg-white/5 px-3 py-2">
-      <span className="tnum w-5 shrink-0 text-center text-xs text-[--color-fg-faint]">{slot}</span>
+      <span className="tnum w-5 shrink-0 text-center text-xs text-(--color-fg-faint)">{slot}</span>
       {set.supersetRoundIndex != null && (
         <span className="pill shrink-0 bg-white/8 text-[0.62rem]">R{set.supersetRoundIndex}</span>
       )}
-      <span className="tnum flex-1 text-sm font-semibold text-[--color-fg]">
+      <span className="tnum flex-1 text-sm font-semibold text-(--color-fg)">
         {set.weight > 0 ? `${cleanWeight(set.weight)} kg` : "PDC"} × {set.reps}
       </span>
       {typeLabel && <span className="pill shrink-0 bg-white/8 text-[0.62rem]">{typeLabel}</span>}
@@ -46,8 +46,8 @@ function ExerciseSetsList({
   const finisherSets = indexed.filter(({ set }) => set.setType === SetType.finisher);
   return (
     <div>
-      <p className="text-sm font-semibold text-[--color-fg]">{logged.exerciseName}</p>
-      {logged.notes && <p className="mt-0.5 text-xs text-[--color-fg-faint]">{logged.notes}</p>}
+      <p className="text-sm font-semibold text-(--color-fg)">{logged.exerciseName}</p>
+      {logged.notes && <p className="mt-0.5 text-xs text-(--color-fg-faint)">{logged.notes}</p>}
       <div className="mt-2 flex flex-col gap-1.5">
         {normalSets.map(({ set, slot }) => (
           <SetLine key={set.id} set={set} slot={slot} isRecord={recordSetIds.has(set.id)} />
@@ -66,7 +66,7 @@ function ExerciseSetsList({
           </div>
         )}
       </div>
-      {!exercise && <p className="mt-1 text-[0.68rem] text-[--color-fg-faint]">Exercice supprimé du catalogue</p>}
+      {!exercise && <p className="mt-1 text-[0.68rem] text-(--color-fg-faint)">Exercice supprimé du catalogue</p>}
     </div>
   );
 }
@@ -105,7 +105,7 @@ export function SessionSupersetBlock({
 
   return (
     <div className={cn("glass glass-card border-l-2", "border-l-[var(--accent)]")}>
-      <div className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+      <div className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
         <Link2 size={13} style={{ color: "var(--accent)" }} />
         <span className="truncate">{members.map((m) => m.exerciseName).join(" + ")}</span>
         <span className="shrink-0 pill bg-white/8">{rounds} round{rounds > 1 ? "s" : ""}</span>

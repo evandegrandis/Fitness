@@ -214,7 +214,7 @@ export function ExerciseCard({
               title="Appui long : réglages de l'exercice"
             >
               <span className="flex flex-wrap items-center gap-1.5">
-                <span className="truncate font-display text-base font-bold text-[--color-fg]">{exercise.name}</span>
+                <span className="truncate font-display text-base font-bold text-(--color-fg)">{exercise.name}</span>
                 {roundLabel && (
                   <span className="pill shrink-0" style={{ color: "#ff8a3d", background: "rgba(255,138,61,0.12)" }}>
                     <Link2 size={11} />
@@ -231,10 +231,10 @@ export function ExerciseCard({
                 )}
               </span>
               {exercise.machineSetting && (
-                <span className="block truncate text-xs text-[--color-fg-muted]">{exercise.machineSetting}</span>
+                <span className="block truncate text-xs text-(--color-fg-muted)">{exercise.machineSetting}</span>
               )}
               {lastHeadline && (
-                <span className="block truncate text-xs text-[--color-fg-faint]">
+                <span className="block truncate text-xs text-(--color-fg-faint)">
                   Dernière séance{lastSessionAge ? ` (${lastSessionAge})` : ""} : {formatLoad(lastHeadline.weight)} × {lastHeadline.reps}
                 </span>
               )}
@@ -252,8 +252,8 @@ export function ExerciseCard({
               onPointerLeave={() => setHandleArmed(false)}
               onPointerCancel={() => setHandleArmed(false)}
               className={cn(
-                "shrink-0 grid h-8 w-8 touch-none place-items-center rounded-full text-[--color-fg-faint] transition",
-                handleArmed ? "scale-90 cursor-grabbing text-[--color-fg]" : "cursor-grab"
+                "shrink-0 grid h-8 w-8 touch-none place-items-center rounded-full text-(--color-fg-faint) transition",
+                handleArmed ? "scale-90 cursor-grabbing text-(--color-fg)" : "cursor-grab"
               )}
               aria-label="Réordonner (appui maintenu)"
             >
@@ -267,7 +267,7 @@ export function ExerciseCard({
                   setGifOpen(true);
                 }}
                 aria-label={`Voir la démonstration de ${exercise.name}`}
-                className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-[--color-fg-muted] transition active:scale-90"
+                className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-(--color-fg-muted) transition active:scale-90"
               >
                 <Film size={15} />
               </button>
@@ -296,7 +296,7 @@ export function ExerciseCard({
               aria-pressed={isArmed}
               className={cn(
                 "shrink-0 grid h-8 w-8 place-items-center rounded-full transition active:scale-90",
-                isLinked || isArmed ? "text-white" : "text-[--color-fg-muted]"
+                isLinked || isArmed ? "text-white" : "text-(--color-fg-muted)"
               )}
               style={
                 isLinked || isArmed
@@ -411,7 +411,7 @@ export function ExerciseCard({
           </AnimatePresence>
 
           {!expanded && (
-            <div className="flex min-w-0 items-center justify-between gap-2 text-xs text-[--color-fg-faint]">
+            <div className="flex min-w-0 items-center justify-between gap-2 text-xs text-(--color-fg-faint)">
               <span className="truncate">
                 {currentLastSet
                   ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"} · dernière ${currentLastSet.weight > 0 ? `${cleanWeight(currentLastSet.weight)}kg` : "PDC"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
@@ -433,7 +433,7 @@ export function ExerciseCard({
       {/* La démo n'était atteignable que par Réglages > Exercices > édition, donc jamais au moment
           utile. Chargée uniquement à l'ouverture : rien ne pèse tant qu'on ne la demande pas. */}
       <Sheet open={gifOpen} onClose={() => setGifOpen(false)} ariaLabel={`Démonstration : ${exercise.name}`}>
-        <h2 className="font-display text-lg font-bold text-[--color-fg]">{exercise.name}</h2>
+        <h2 className="font-display text-lg font-bold text-(--color-fg)">{exercise.name}</h2>
         <div className="mt-3">
           <ExerciseGif exerciseName={exercise.name} />
         </div>

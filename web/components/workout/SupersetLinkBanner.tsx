@@ -36,14 +36,14 @@ export function SupersetLinkBanner() {
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full" style={{ background: "rgba(255,138,61,0.15)", color: "#ff8a3d" }}>
               <Link2 size={15} />
             </div>
-            <p className="truncate text-sm text-[--color-fg]">
+            <p className="truncate text-sm text-(--color-fg)">
               Superset : touche un exercice ou un groupe · 4 max
             </p>
           </div>
           <button
             type="button"
             onClick={() => handleSupersetLink(armedExercise.id)}
-            className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[--color-fg-muted] active:scale-95 transition"
+            className="flex shrink-0 items-center gap-1 text-sm font-semibold text-(--color-fg-muted) active:scale-95 transition"
           >
             <X size={15} />
             Annuler

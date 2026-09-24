@@ -97,12 +97,12 @@ export function SettingsBackupSection() {
 
   return (
     <GlassCard>
-      <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">Sauvegarde</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">Sauvegarde</p>
       <div className="mt-3 flex flex-col gap-2.5">
         <button
           type="button"
           onClick={handleExport}
-          className="glass flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-[--color-fg] active:scale-[0.98] transition"
+          className="glass flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-(--color-fg) active:scale-[0.98] transition"
         >
           <Download size={16} /> Exporter (JSON)
         </button>
@@ -111,13 +111,13 @@ export function SettingsBackupSection() {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
-          className="glass flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-[--color-fg] active:scale-[0.98] transition disabled:opacity-50"
+          className="glass flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-(--color-fg) active:scale-[0.98] transition disabled:opacity-50"
         >
           <Upload size={16} /> Importer un fichier…
         </button>
         <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleFileSelected} />
 
-        {status && <p className="text-center text-xs text-[--color-fg-muted]">{status}</p>}
+        {status && <p className="text-center text-xs text-(--color-fg-muted)">{status}</p>}
       </div>
 
       {confirmingImport && (

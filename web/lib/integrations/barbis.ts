@@ -66,7 +66,7 @@ export function adoptServerProfile(local: Exercise, remote: ServerProfile): Exer
     profileSource: remote.profileSource,
     movementPattern: remote.movementPattern,
     fatigueClass: remote.fatigueClass,
-    category: local.category.trim() === "" ? remote.category : local.category,
+    category: ["", "autre"].includes(local.category.trim().toLowerCase()) ? remote.category : local.category,
     equivalenceKey: remote.equivalenceKey ?? local.equivalenceKey ?? null,
   };
 }

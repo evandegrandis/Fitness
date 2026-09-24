@@ -62,8 +62,8 @@ export function QuickActions({
             <span className="pill" style={{ color: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 45%, transparent)" }}>
               Recommandé
             </span>
-            <p className="mt-1 truncate font-display text-lg font-semibold text-[--color-fg]">{recommended.name}</p>
-            <p className="truncate text-xs text-[--color-fg-muted]">{recommended.exercises.length} exercices</p>
+            <p className="mt-1 truncate font-display text-lg font-semibold text-(--color-fg)">{recommended.name}</p>
+            <p className="truncate text-xs text-(--color-fg-muted)">{recommended.exercises.length} exercices</p>
           </div>
         </button>
       )}
@@ -77,11 +77,11 @@ export function QuickActions({
             className="glass glass-card flex items-center gap-3 text-left opacity-80 transition active:scale-[0.98]"
           >
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/8">
-              <Sparkles size={16} className="text-[--color-fg-muted]" />
+              <Sparkles size={16} className="text-(--color-fg-muted)" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-[--color-fg]">{t.name}</p>
-              <p className="truncate text-xs text-[--color-fg-muted]">{t.exercises.length} exercices</p>
+              <p className="truncate text-sm font-semibold text-(--color-fg)">{t.name}</p>
+              <p className="truncate text-xs text-(--color-fg-muted)">{t.exercises.length} exercices</p>
             </div>
           </button>
         ))}
@@ -93,11 +93,11 @@ export function QuickActions({
             className="glass glass-card flex items-center gap-3 text-left opacity-80 transition active:scale-[0.98]"
           >
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/8">
-              <History size={16} className="text-[--color-fg-muted]" />
+              <History size={16} className="text-(--color-fg-muted)" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-[--color-fg]">Répéter la dernière</p>
-              <p className="truncate text-xs text-[--color-fg-muted]">{formatSessionSummary(lastSession)}</p>
+              <p className="text-sm font-semibold text-(--color-fg)">Répéter la dernière</p>
+              <p className="truncate text-xs text-(--color-fg-muted)">{formatSessionSummary(lastSession)}</p>
             </div>
           </button>
         )}
@@ -112,15 +112,15 @@ export function QuickActions({
             <HeartPulse size={16} style={{ color: "rgb(110,231,183)" }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-[--color-fg]">Séance cardio</p>
-            <p className="truncate text-xs text-[--color-fg-muted]">{cardioHint}</p>
+            <p className="text-sm font-semibold text-(--color-fg)">Séance cardio</p>
+            <p className="truncate text-xs text-(--color-fg-muted)">{cardioHint}</p>
           </div>
         </button>
 
         <button
           type="button"
           onClick={() => onStartEmpty("normal")}
-          className="glass flex items-center justify-center gap-2 rounded-2xl border-dashed py-3 text-sm font-semibold text-[--color-fg-muted] opacity-80 transition active:scale-[0.98]"
+          className="glass flex items-center justify-center gap-2 rounded-2xl border-dashed py-3 text-sm font-semibold text-(--color-fg-muted) opacity-80 transition active:scale-[0.98]"
           style={{ borderStyle: "dashed" }}
         >
           <Plus size={16} />

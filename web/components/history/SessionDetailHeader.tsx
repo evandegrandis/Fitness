@@ -36,14 +36,14 @@ export function SessionDetailHeader({
 
   return (
     <div className="glass glass-card">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
+      <p className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
         {format(session.date, "EEEE d MMMM yyyy", { locale: fr })}
       </p>
-      <p className="mt-1 font-display text-xl font-bold text-[--color-fg]">
+      <p className="mt-1 font-display text-xl font-bold text-(--color-fg)">
         {format(session.startTime, "HH:mm")}
         {session.endTime && ` – ${format(session.endTime, "HH:mm")}`}
       </p>
-      <p className="mt-1.5 text-sm text-[--color-fg-muted]">
+      <p className="mt-1.5 text-sm text-(--color-fg-muted)">
         {formatDecimal(totalSets)} séries{duration ? ` · ${duration}` : ""} · {completedExerciseCount} exercice
         {completedExerciseCount > 1 ? "s" : ""}
         {(session.cardioEntries?.length ?? 0) > 0 ? ` · ${session.cardioEntries?.length} cardio` : ""}

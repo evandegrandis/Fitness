@@ -14,7 +14,7 @@ export default async function LoginPage({
           J
         </div>
         <h1 className="font-display text-2xl font-bold tracking-tight">Jeera</h1>
-        <p className="mt-1 text-sm text-[--color-fg-muted]">Entre ton code d&apos;accès</p>
+        <p className="mt-1 text-sm text-(--color-fg-muted)">Entre ton code d&apos;accès</p>
 
         <form action={login} className="mt-6 space-y-3">
           <input type="hidden" name="from" value={from ?? "/"} />
@@ -27,10 +27,10 @@ export default async function LoginPage({
             className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-center tnum text-lg outline-none focus:border-[var(--accent)] transition"
           />
           {error && (
-            <p className="text-sm text-[--color-danger]">Code incorrect</p>
+            <p className="text-sm text-(--color-danger)">Code incorrect</p>
           )}
           {configuration && (
-            <p className="text-sm text-[--color-danger]">Authentification indisponible : configuration serveur requise</p>
+            <p className="text-sm text-(--color-danger)">Authentification indisponible : configuration serveur requise</p>
           )}
           <button type="submit" className="btn-accent w-full py-3 text-sm">
             Entrer

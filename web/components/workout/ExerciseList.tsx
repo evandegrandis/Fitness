@@ -143,7 +143,7 @@ export function ExerciseList({
       <button
         type="button"
         onClick={onAddExercise}
-        className="glass flex items-center justify-center gap-2 rounded-2xl border-dashed py-3.5 text-sm font-semibold text-[--color-fg-muted] active:scale-[0.98] transition"
+        className="glass flex items-center justify-center gap-2 rounded-2xl border-dashed py-3.5 text-sm font-semibold text-(--color-fg-muted) active:scale-[0.98] transition"
         style={{ borderStyle: "dashed" }}
       >
         <Plus size={16} />
