@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sessionFocus, SESSION_FOCUS } from "@/lib/engines/session-focus";
+import { weekSessionPlan, sessionFocus, SESSION_FOCUS } from "@/lib/engines/session-focus";
 import { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
 import type { Exercise, MuscleGoal, WorkoutSession } from "@/lib/models/types";
 
@@ -17,7 +17,7 @@ function exercise(id: string, muscle: MuscleGroup): Exercise {
   };
 }
 
-const DELT = exercise("ex-delt", MuscleGroup.deltAnt);
+const DELT = exercise("ex-delt", MuscleGroup.deltLat);
 const TRI = exercise("ex-tri", MuscleGroup.tricepsLong);
 const QUAD = exercise("ex-quad", MuscleGroup.vasteLat);
 const OLD_QUAD = exercise("ex-old-quad", MuscleGroup.vasteMed);
@@ -40,7 +40,7 @@ function session(date: Date, entries: [Exercise, number][], isActive = false): W
 }
 
 const GOALS: MuscleGoal[] = [
-  { parent: MuscleParent.deltoides, weeklyGoalSets: 12 },
+  { parent: MuscleParent.deltLateral, weeklyGoalSets: 12 },
   { parent: MuscleParent.triceps, weeklyGoalSets: 12 },
   { parent: MuscleParent.quads, weeklyGoalSets: 12 },
 ];
@@ -107,8 +107,8 @@ describe("mise à jour en direct pendant la séance", () => {
     const avant = sessionFocus(history, CATALOG, GOALS, null, NOW);
     const pendant = sessionFocus(history, CATALOG, GOALS, live, NOW);
 
-    const deltAvant = avant.priorities.find((p) => p.parent === MuscleParent.deltoides)!;
-    const deltPendant = pendant.priorities.find((p) => p.parent === MuscleParent.deltoides)!;
+    const deltAvant = avant.priorities.find((p) => p.parent === MuscleParent.deltLateral)!;
+    const deltPendant = pendant.priorities.find((p) => p.parent === MuscleParent.deltLateral)!;
     expect(deltPendant.remaining).toBeLessThan(deltAvant.remaining);
     expect(deltPendant.doneThisSession).toBe(6);
   });
@@ -116,7 +116,7 @@ describe("mise à jour en direct pendant la séance", () => {
   it("liste ce qui est déjà couvert aujourd'hui, du plus travaillé au moins", () => {
     const live = session(NOW, [[DELT, 5], [TRI, 2]], true);
     const focus = sessionFocus([session(daysAgo(3), [[DELT, 1], [TRI, 1]])], CATALOG, GOALS, live, NOW);
-    expect(focus.workedToday.map((p) => p.parent)).toEqual([MuscleParent.deltoides, MuscleParent.triceps]);
+    expect(focus.workedToday.map((p) => p.parent)).toEqual([MuscleParent.deltLateral, MuscleParent.triceps]);
     expect(focus.workedToday[0].doneThisSession).toBe(5);
   });
 
@@ -185,5 +185,48 @@ describe("suggestions d'exercices : seulement ce qui travaille vraiment le muscl
     const triceps = focus.priorities.find((p) => p.parent === MuscleParent.triceps)!;
     expect(triceps.suggestedExercises.map((s) => s.exerciseId)).not.toContain("ex-raise");
     expect(triceps.suggestedExercises.map((s) => s.exerciseId)).toContain("ex-tri");
+  });
+});
+
+describe("plan de séances de la semaine", () => {
+  // NOW = jeudi 20/08/2026 : la semaine a commencé le lundi 17.
+  const at = (iso: string) => session(new Date(iso), [[QUAD, 3]]);
+  const fourPerWeek = [
+    // 4 séances par semaine sur les 4 semaines complètes précédentes
+    ...["2026-08-10", "2026-08-11", "2026-08-13", "2026-08-15"],
+    ...["2026-08-03", "2026-08-04", "2026-08-06", "2026-08-08"],
+    ...["2026-07-27", "2026-07-28", "2026-07-30", "2026-08-01"],
+    ...["2026-07-20", "2026-07-21", "2026-07-23", "2026-07-25"],
+  ].map((d) => at(`${d}T17:00:00`));
+
+  it("déduit le rythme habituel des 4 dernières semaines complètes", () => {
+    const plan = weekSessionPlan(fourPerWeek, NOW);
+    expect(plan.habitualSessionsPerWeek).toBe(4);
+    expect(plan.sessionsDoneThisWeek).toBe(0);
+    expect(plan.sessionsLeftIncludingToday).toBe(4);
+  });
+
+  it("à la 3e séance de la semaine, il reste 2 séances en comptant celle du jour", () => {
+    const history = [...fourPerWeek, at("2026-08-17T17:00:00"), at("2026-08-18T17:00:00")];
+    expect(weekSessionPlan(history, NOW).sessionsLeftIncludingToday).toBe(2);
+  });
+
+  it("ignore les semaines sans séance (vacances) pour le rythme", () => {
+    const withBreak = fourPerWeek.filter((s) => s.date < new Date("2026-08-01T00:00:00") || s.date >= new Date("2026-08-10T00:00:00"));
+    expect(weekSessionPlan(withBreak, NOW).habitualSessionsPerWeek).toBe(4);
+  });
+
+  it("au-delà du rythme habituel, la séance du jour porte tout le reste", () => {
+    const history = [...fourPerWeek, ...["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-19"].map((d, i) => at(`${d}T1${i}:00:00`))];
+    expect(weekSessionPlan(history, NOW).sessionsLeftIncludingToday).toBe(1);
+  });
+
+  it("la part du jour divise ce qui restait au début de la séance", () => {
+    const live = session(new Date(NOW.getTime() - 30 * 60_000), [[QUAD, 2]], true);
+    const focus = sessionFocus(fourPerWeek, CATALOG, GOALS, live, NOW);
+    const quads = [...focus.priorities, ...focus.workedToday].find((p) => p.parent === MuscleParent.quads)!;
+    expect(quads.doneBeforeSession).toBe(0);
+    expect(quads.todayShare).toBeCloseTo(12 / 4, 5);
+    expect(quads.doneThisSession).toBe(2);
   });
 });

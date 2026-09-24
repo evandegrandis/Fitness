@@ -93,7 +93,7 @@ export function searchTermsFor(exercise: Exercise): string[] {
     if (mapping.coefficient < PRIMARY_MUSCLE_COEFFICIENT) continue;
     const parent = LEAF_TO_PARENT[mapping.muscleGroup as MuscleGroup];
     if (!parent) continue;
-    // La CLÉ du groupe (« deltoides ») autant que son libellé court (« Delts ») : les alias
+    // La CLÉ du groupe (« delt_lateral ») autant que son libellé court (« Delt. lat. ») : les alias
     // ci-dessous pointent sur la clé, et le libellé seul ne suffirait pas à les résoudre.
     terms.push(normalizeSearch(parent), normalizeSearch(parentShortName[parent]));
   }
@@ -102,9 +102,10 @@ export function searchTermsFor(exercise: Exercise): string[] {
 }
 
 const MUSCLE_ALIASES: Record<string, string[]> = {
-  epaule: ["deltoides"],
-  epaules: ["deltoides"],
-  delto: ["deltoides"],
+  epaule: ["delt anterieur", "delt lateral", "delt posterieur"],
+  epaules: ["delt anterieur", "delt lateral", "delt posterieur"],
+  delto: ["delt anterieur", "delt lateral", "delt posterieur"],
+  deltoide: ["delt anterieur", "delt lateral", "delt posterieur"],
   dos: ["dos haut", "grand dorsal"],
   pecs: ["pectoraux"],
   pec: ["pectoraux"],

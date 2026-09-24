@@ -45,7 +45,7 @@ describe("recommendTemplateId", () => {
     expect(recommendTemplateId(
       [template("ancien-volume", [oldBack, curl]), template("épaules", [shoulder])],
       catalog,
-      [{ parent: MuscleParent.deltoides, remaining: 10 }],
+      [{ parent: MuscleParent.deltLateral, remaining: 10 }],
       []
     )).toBe("épaules");
   });

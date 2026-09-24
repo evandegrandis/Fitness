@@ -18,6 +18,7 @@ import {
   parentSets,
   weeklyProgress,
   weeklyTrackedVolume,
+  currentWeekWindow,
   type ParentMuscleProgress,
 } from "@/lib/engines/effective-sets";
 import {
@@ -59,6 +60,10 @@ export interface SessionFocusExerciseSuggestion {
 export interface SessionFocusRow extends ParentMuscleProgress {
   /** Séries effectives déjà faites sur ce muscle DANS la séance en cours. */
   doneThisSession: number;
+  /** Séries effectives de la semaine au début de la séance en cours. */
+  doneBeforeSession: number;
+  /** Part du reste qui revient à la séance du jour (reste au début de séance / séances restantes). */
+  todayShare: number;
   /** Jours depuis le dernier set effectif connu ; null si jamais vu. */
   daysSinceLastTrained: number | null;
   /** Ni travaillé récemment, ni déjà prévu dans la séance courante. */
@@ -67,7 +72,63 @@ export interface SessionFocusRow extends ParentMuscleProgress {
   suggestedExercises: SessionFocusExerciseSuggestion[];
 }
 
+/**
+ * Où en est la semaine, en séances. Evan veut voir, sur chaque barre, la part de ce qui reste à
+ * faire qui revient à la séance du jour : ce qui restait au début de la séance, divisé par le
+ * nombre de séances qu'il lui reste d'habitude dans la semaine (celle du jour comprise).
+ */
+export interface WeekSessionPlan {
+  /** Séances par semaine d'habitude : médiane des 4 dernières semaines complètes pratiquées. */
+  habitualSessionsPerWeek: number;
+  /** Séances terminées cette semaine, hors séance en cours. */
+  sessionsDoneThisWeek: number;
+  /** Séances qu'il reste d'habitude cette semaine, celle du jour comprise (au moins 1). */
+  sessionsLeftIncludingToday: number;
+}
+
+export const WEEK_PLAN = {
+  /** Semaines complètes retenues pour l'habitude. */
+  HABIT_WEEKS: 4,
+  /** Jusqu'où remonter pour trouver ces semaines (vacances, pause). */
+  HABIT_LOOKBACK_WEEKS: 10,
+  /** Sans historique exploitable. */
+  DEFAULT_SESSIONS_PER_WEEK: 3,
+} as const;
+
+export function weekSessionPlan(history: readonly WorkoutSession[], referenceDate: Date): WeekSessionPlan {
+  const weekStart = currentWeekWindow(referenceDate).start.getTime();
+  const WEEK_MS = 7 * 86_400_000;
+  const finished = history.filter((session) => !session.isActive);
+  const sessionsDoneThisWeek = finished.filter(
+    (session) => session.date.getTime() >= weekStart && session.date.getTime() <= referenceDate.getTime()
+  ).length;
+
+  // Semaines complètes précédentes : on ignore celles sans aucune séance (pause, vacances), elles
+  // ne disent rien du rythme habituel.
+  const counts: number[] = [];
+  for (let k = 1; k <= WEEK_PLAN.HABIT_LOOKBACK_WEEKS && counts.length < WEEK_PLAN.HABIT_WEEKS; k += 1) {
+    const start = weekStart - k * WEEK_MS;
+    const end = start + WEEK_MS;
+    const count = finished.filter((session) => session.date.getTime() >= start && session.date.getTime() < end).length;
+    if (count > 0) counts.push(count);
+  }
+  const sorted = [...counts].sort((a, b) => a - b);
+  const median = sorted.length === 0
+    ? WEEK_PLAN.DEFAULT_SESSIONS_PER_WEEK
+    : sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  const habitualSessionsPerWeek = Math.max(1, Math.round(median));
+  return {
+    habitualSessionsPerWeek,
+    sessionsDoneThisWeek,
+    sessionsLeftIncludingToday: Math.max(1, habitualSessionsPerWeek - sessionsDoneThisWeek),
+  };
+}
+
 export interface SessionFocus {
+  /** Rythme de la semaine : découpe les barres en parts de séance. */
+  weekPlan: WeekSessionPlan;
   /** Muscles à viser : routine active d'abord, groupes dormants à la fin. */
   priorities: SessionFocusRow[];
   /** Muscles travaillés aujourd'hui, pour montrer ce qui est déjà couvert. */
@@ -222,9 +283,12 @@ export function sessionFocus(
   const recency = activityRecency(history, exercises);
   const doneNow = doneIn(liveSession, exercises);
   const planned = plannedParents(liveSession, exercises);
+  const weekPlan = weekSessionPlan(history, referenceDate);
 
   const withSession = progress.map((p): SessionFocusRow => {
     const doneThisSession = Math.round((doneNow.get(p.parent) ?? 0) * 10) / 10;
+    const doneBeforeSession = Math.max(0, p.effectiveSets - (doneNow.get(p.parent) ?? 0));
+    const todayShare = Math.max(0, p.goalSets - doneBeforeSession) / weekPlan.sessionsLeftIncludingToday;
     const lastHistoricalUse = recency.lastByParent.get(p.parent) ?? null;
     const daysSinceLastTrained = doneThisSession > 0
       ? 0
@@ -238,6 +302,8 @@ export function sessionFocus(
     return {
       ...p,
       doneThisSession,
+      doneBeforeSession,
+      todayShare,
       daysSinceLastTrained,
       isDormant,
       suggestedExercises: suggestionsForParent(p.parent, exercises, liveSession, recency, referenceDate),
@@ -268,5 +334,5 @@ export function sessionFocus(
 
   const tracked = weeklyTrackedVolume(history, exercises, referenceDate, liveSession);
 
-  return { priorities, workedToday, dormantCount, tracked };
+  return { weekPlan, priorities, workedToday, dormantCount, tracked };
 }

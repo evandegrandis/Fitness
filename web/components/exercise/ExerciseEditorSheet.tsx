@@ -96,15 +96,20 @@ export function ExerciseEditorSheet({
   open,
   onClose,
   exercise,
+  allowDelete = true,
 }: {
   open: boolean;
   onClose: () => void;
   /** null = création. */
   exercise: Exercise | null;
+  /** Faux en pleine séance : supprimer l'exercice en cours casserait la séance. */
+  allowDelete?: boolean;
 }) {
   return (
     <Sheet open={open} onClose={onClose} full>
-      {open && <ExerciseEditorForm key={exercise?.id ?? "new"} onClose={onClose} exercise={exercise} />}
+      {open && (
+        <ExerciseEditorForm key={exercise?.id ?? "new"} onClose={onClose} exercise={exercise} allowDelete={allowDelete} />
+      )}
     </Sheet>
   );
 }
@@ -112,9 +117,11 @@ export function ExerciseEditorSheet({
 function ExerciseEditorForm({
   onClose,
   exercise,
+  allowDelete,
 }: {
   onClose: () => void;
   exercise: Exercise | null;
+  allowDelete: boolean;
 }) {
   const catalogLength = useWorkoutStore((s) => s.catalog.length);
   const [draft, setDraft] = useState<Exercise>(() => exercise ?? emptyExercise());
@@ -545,7 +552,7 @@ function ExerciseEditorForm({
                   />
                 </div>
 
-                <button
+                {allowDelete && <button
                   type="button"
                   onClick={handleDelete}
                   disabled={saving}
@@ -556,7 +563,7 @@ function ExerciseEditorForm({
                   }`}
                 >
                   {confirmingDelete ? "Confirmer la suppression" : "Supprimer l'exercice"}
-                </button>
+                </button>}
                 {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
               </>
             )}

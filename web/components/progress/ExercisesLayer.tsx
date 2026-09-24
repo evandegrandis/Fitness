@@ -10,6 +10,7 @@ import { useWorkoutStore } from "@/lib/store/workout";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { buildRecords } from "@/lib/engines/records";
 import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
+import { machineMaxStatus } from "@/lib/engines/machine-max";
 import {
   benchmarkAxesFor,
   benchmarkPrimaryAxisFor,
@@ -210,6 +211,10 @@ function ExerciseCardRow({
   );
 
   const records = useMemo(() => buildRecords(exercise, historicalSets), [historicalSets, exercise]);
+  const machineStatus = useMemo(
+    () => (exercise.maxLoad ? machineMaxStatus(exercise, historicalSets) : null),
+    [exercise, historicalSets]
+  );
 
   /**
    * BENCHMARK_LEVEL_SPEC.md §2 (P3.2) — introduit "les deux" pour les machines (`isMachine`).
@@ -263,6 +268,11 @@ function ExerciseCardRow({
             {records.bestE1RM > 0 && (
               <span className="pill">
                 e1RM <span className="tnum ml-1 text-[--color-fg]">{formatDerivedWeight(records.bestE1RM, increment)}kg</span>
+              </span>
+            )}
+            {machineStatus && machineStatus.maxLoad !== null && (
+              <span className="pill" style={machineStatus.maxed ? { color: "#fbbf24" } : undefined}>
+                {machineStatus.maxed ? "Machine maxée" : `Max ${Math.round((machineStatus.progress ?? 0) * 100)} %`}
               </span>
             )}
             {records.heaviestEver > 0 && (

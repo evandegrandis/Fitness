@@ -115,6 +115,8 @@ export interface AchievementState {
   exerciseName: string;
   weight: number;
   reps: number;
+  /** Le record atteint la charge max de la machine (objectif « maxer chaque machine »). */
+  machineMaxed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1953,6 +1955,11 @@ export const useWorkoutStore = create<WorkoutState>()(
               exerciseName: exercise.name,
               weight: newSet.weight,
               reps: newSet.reps,
+              machineMaxed:
+                kind === "heaviestWeight" &&
+                !!exercise.maxLoad &&
+                newSet.weight >= exercise.maxLoad - 1e-9 &&
+                newSet.reps >= exercise.repTargetMin,
             };
             createdAchievement = true;
 

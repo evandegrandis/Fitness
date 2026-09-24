@@ -12,12 +12,15 @@ import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { SwipeRow } from "@/components/ui/SwipeRow";
 import { allTimeRecordSet, displayedRecordSetIDs, isCalibrating, normalRecordSets, recordCalibration } from "@/lib/engines/records";
 import { headlineSet, lastWorkSession, sameRankSet, staleAgeLabel } from "@/lib/engines/last-session";
+import { machineMaxStatus } from "@/lib/engines/machine-max";
 import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
 import { SetRow } from "./SetRow";
 import { SetEntry } from "./SetEntry";
 import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
+import { ExerciseEditorSheet } from "@/components/exercise/ExerciseEditorSheet";
+import { useLongPress } from "@/lib/hooks/use-long-press";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
 import { nextSupersetExerciseId, nextSupersetRoundIndex } from "@/lib/store/superset";
@@ -56,6 +59,10 @@ export function ExerciseCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: loggedExercise.id });
   const [handleArmed, setHandleArmed] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
+  // Appui long sur le nom : réglages de l'exercice (fourchette, charge max, muscles…) sans quitter
+  // la séance. Hors réseau, l'enregistrement part dans la file de synchronisation (saveExercise).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const longPress = useLongPress(() => setSettingsOpen(true));
   const logSet = useWorkoutStore((s) => s.logSet);
   const suggestion = useWorkoutStore((s) => s.suggestion);
   const warmupSuggestion = useWorkoutStore((s) => s.warmupSuggestion);
@@ -147,6 +154,11 @@ export function ExerciseCard({
     if (isCalibrating(recordCalibration(allRecordSets, exercise), new Date())) return undefined;
     return allTimeRecordSet(exercise, allRecordSets);
   }, [exercise, allRecordSets]);
+  // Objectif « maxer chaque machine » : où en est la pile, séance du jour comprise.
+  const machineStatus = useMemo(
+    () => (exercise && exercise.maxLoad ? machineMaxStatus(exercise, allRecordSets) : null),
+    [exercise, allRecordSets]
+  );
   const displayedRecordIds = useMemo(
     () => (exercise ? displayedRecordSetIDs(loggedExercise, allRecordSets, exercise) : new Set<string>()),
     [exercise, loggedExercise, allRecordSets]
@@ -187,9 +199,19 @@ export function ExerciseCard({
           <div className="flex items-start justify-between gap-2">
             <button
               type="button"
-              className="min-w-0 flex-1 cursor-pointer text-left"
-              onClick={onToggleExpanded}
+              className="min-w-0 flex-1 cursor-pointer select-none text-left [-webkit-touch-callout:none]"
+              onClick={(event) => {
+                // Un appui long vient d'ouvrir les réglages : ce relâchement ne doit pas replier la carte.
+                if (longPress.consumeClick()) {
+                  event.preventDefault();
+                  return;
+                }
+                onToggleExpanded();
+              }}
+              onContextMenu={(event) => event.preventDefault()}
+              {...longPress.handlers}
               aria-expanded={expanded}
+              title="Appui long : réglages de l'exercice"
             >
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="truncate font-display text-base font-bold text-[--color-fg]">{exercise.name}</span>
@@ -296,6 +318,16 @@ export function ExerciseCard({
                 className="flex flex-col gap-3 overflow-hidden"
               >
                 {exercise && exercise.muscleMappings.length === 0 && <MissingMusclesNotice exercise={exercise} />}
+                {machineStatus && machineStatus.maxLoad !== null && (
+                  <div
+                    className="pill w-fit tnum"
+                    style={machineStatus.maxed ? { color: "#fbbf24", background: "rgba(251,191,36,0.10)" } : undefined}
+                  >
+                    {machineStatus.maxed
+                      ? `Machine maxée · ${cleanWeight(machineStatus.maxLoad)} kg`
+                      : `Vers le max : ${cleanWeight(machineStatus.bestLoad)} / ${cleanWeight(machineStatus.maxLoad)} kg`}
+                  </div>
+                )}
                 {allTimeRecord && (
                   <div className="pill w-fit" style={{ color: "#fbbf24", background: "rgba(251,191,36,0.10)" }}>
                     <Trophy size={11} />
@@ -406,6 +438,14 @@ export function ExerciseCard({
           <ExerciseGif exerciseName={exercise.name} />
         </div>
       </Sheet>
+
+      {/* Appui long sur le nom de l'exercice : ses réglages, sans quitter la séance. */}
+      <ExerciseEditorSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        exercise={exercise}
+        allowDelete={false}
+      />
     </div>
   );
 }

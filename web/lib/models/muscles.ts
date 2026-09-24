@@ -18,7 +18,11 @@ export const MuscleParent = {
   pectoraux: "pectoraux",
   dosHaut: "dos_haut",
   grandDorsal: "grand_dorsal",
-  deltoides: "deltoides",
+  // Trois faisceaux, trois groupes : Evan fixe ses objectifs d'épaules par faisceau (latéral et
+  // postérieur prioritaires), ce qu'un seul groupe « deltoïdes » ne permettait pas d'exprimer.
+  deltAnterieur: "delt_anterieur",
+  deltLateral: "delt_lateral",
+  deltPosterieur: "delt_posterieur",
   biceps: "biceps",
   triceps: "triceps",
   abs: "abs",
@@ -49,7 +53,12 @@ export const MUSCLE_PARENTS: MuscleParent[] = Object.values(MuscleParent);
  * travaillent surtout en secondaire (tirages, curls, portés), et leur fixer une cible pousserait
  * à ajouter des exercices dédiés qu'il ne veut pas. Même raisonnement pour les obliques.
  */
-export const TRACKED_ONLY_PARENTS: MuscleParent[] = [MuscleParent.obliques, MuscleParent.forearms];
+export const TRACKED_ONLY_PARENTS: MuscleParent[] = [
+  MuscleParent.obliques,
+  MuscleParent.forearms,
+  // Le deltoïde antérieur travaille à chaque développé : suivi, sans quota qui pousserait à en rajouter.
+  MuscleParent.deltAnterieur,
+];
 
 const TRACKED_ONLY_SET = new Set<MuscleParent>(TRACKED_ONLY_PARENTS);
 
@@ -154,9 +163,9 @@ export const LEAF_TO_PARENT: Record<MuscleGroup, MuscleParent> = {
   lat_sup: MuscleParent.grandDorsal,
   lat_inf: MuscleParent.grandDorsal,
 
-  delt_ant: MuscleParent.deltoides,
-  delt_lat: MuscleParent.deltoides,
-  delt_post: MuscleParent.deltoides,
+  delt_ant: MuscleParent.deltAnterieur,
+  delt_lat: MuscleParent.deltLateral,
+  delt_post: MuscleParent.deltPosterieur,
 
   bracchial: MuscleParent.biceps,
   biceps_long: MuscleParent.biceps,
@@ -211,7 +220,9 @@ export const parentDisplayName: Record<MuscleParent, string> = {
   pectoraux: "Pectoraux",
   dos_haut: "Dos haut",
   grand_dorsal: "Grand dorsal",
-  deltoides: "Deltoïdes",
+  delt_anterieur: "Deltoïde antérieur",
+  delt_lateral: "Deltoïde latéral",
+  delt_posterieur: "Deltoïde postérieur",
   biceps: "Biceps",
   triceps: "Triceps",
   abs: "Abdos",
@@ -230,7 +241,9 @@ export const parentShortName: Record<MuscleParent, string> = {
   pectoraux: "Pecs",
   dos_haut: "Dos haut",
   grand_dorsal: "Dorsaux",
-  deltoides: "Delts",
+  delt_anterieur: "Delt. ant.",
+  delt_lateral: "Delt. lat.",
+  delt_posterieur: "Delt. post.",
   biceps: "Biceps",
   triceps: "Triceps",
   abs: "Abdos",

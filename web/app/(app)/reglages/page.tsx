@@ -7,6 +7,7 @@ import { SettingsGoalsSection } from "@/components/settings/SettingsGoalsSection
 import { SettingsBodySection } from "@/components/settings/SettingsBodySection";
 import { SettingsPreferencesSection } from "@/components/settings/SettingsPreferencesSection";
 import { SettingsExercisesSection } from "@/components/settings/SettingsExercisesSection";
+import { SettingsMachinesSection } from "@/components/settings/SettingsMachinesSection";
 import { SettingsNotificationsSection } from "@/components/settings/SettingsNotificationsSection";
 import { SettingsWeightSection } from "@/components/settings/SettingsWeightSection";
 import { SettingsPhaseSection } from "@/components/settings/SettingsPhaseSection";
@@ -38,6 +39,7 @@ export default function ReglagesPage() {
 
       <div className="mt-4 flex flex-col gap-4">
         <SettingsExercisesSection catalog={catalog} />
+        <SettingsMachinesSection />
         <SettingsGoalsSection goals={goals} />
         <SettingsBodySection settings={settings} />
         <SettingsWeightSection />

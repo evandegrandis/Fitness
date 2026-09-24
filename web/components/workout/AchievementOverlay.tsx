@@ -44,7 +44,7 @@ export function AchievementOverlay() {
               <Trophy size={30} className="text-[#06070d]" />
             </motion.div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[--color-fg-muted]">
-              {KIND_LABEL[achievement.kind] ?? "Nouveau record"}
+              {achievement.machineMaxed ? "Machine maxée" : KIND_LABEL[achievement.kind] ?? "Nouveau record"}
             </p>
             <p className="font-display text-xl font-bold text-[--color-fg]">{achievement.exerciseName}</p>
             <p className="tnum text-3xl font-bold text-accent-gradient">

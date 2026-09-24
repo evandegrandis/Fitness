@@ -75,13 +75,16 @@ export function SessionFocusButton({
         {focus.priorities.length > 0 ? (
           <>
             <p className="mt-1 text-xs text-[--color-fg-muted]">
-              Ce qu&apos;il reste à construire cette semaine, du plus important au plus petit. Les muscles hors routine sont relégués à la fin.
+              {focus.weekPlan.sessionsLeftIncludingToday > 1
+                ? `Séance ${focus.weekPlan.sessionsDoneThisWeek + 1} sur ${focus.weekPlan.habitualSessionsPerWeek} habituelles : le trait clair marque ta part du jour.`
+                : "Dernière séance habituelle de la semaine : tout le reste est pour aujourd'hui."}
             </p>
             <div className="mt-3 flex flex-col">
               {focus.priorities.map((row, i) => (
                 <FocusRow
                   key={row.parent}
                   row={row}
+                  sessionsLeft={focus.weekPlan.sessionsLeftIncludingToday}
                   isLast={i === focus.priorities.length - 1}
                   onSuggestion={chooseExercise}
                 />
@@ -133,10 +136,12 @@ export function SessionFocusButton({
 
 function FocusRow({
   row,
+  sessionsLeft,
   isLast,
   onSuggestion,
 }: {
   row: SessionFocusRow;
+  sessionsLeft: number;
   isLast: boolean;
   onSuggestion: (suggestion: SessionFocusExerciseSuggestion) => void;
 }) {
@@ -146,6 +151,16 @@ function FocusRow({
     : row.daysSinceLastTrained === 0
       ? "travaillé aujourd’hui"
       : `il y a ${row.daysSinceLastTrained} j`;
+  // Repères de séance : ce qui restait au début de la séance, découpé en autant de parts qu'il
+  // reste de séances habituelles. Le premier trait (clair) est la fin de la part du jour.
+  const ticks: { left: number; today: boolean }[] = [];
+  if (row.goalSets > 0 && sessionsLeft > 1) {
+    for (let k = 1; k < sessionsLeft; k += 1) {
+      const position = (row.doneBeforeSession + k * row.todayShare) / row.goalSets;
+      if (position > 0 && position < 1) ticks.push({ left: position * 100, today: k === 1 });
+    }
+  }
+  const todayReached = row.doneThisSession >= row.todayShare - 0.05;
   return (
     <div className={`${isLast ? "py-3" : "border-b border-white/[0.06] py-3"} ${row.isDormant ? "opacity-55" : ""}`}>
       <div className="flex items-baseline justify-between gap-2">
@@ -160,11 +175,30 @@ function FocusRow({
         </span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-3 text-[0.68rem] text-[--color-fg-faint]">
-        <span className="tnum">{formatDecimal(row.effectiveSets)} / {row.goalSets} séries cette semaine</span>
-        <span>{row.isDormant ? "hors routine · " : ""}{lastTrained}</span>
+        <span className="tnum">{formatDecimal(row.effectiveSets)} / {row.goalSets} cette semaine</span>
+        {sessionsLeft > 1 && row.todayShare > 0 ? (
+          <span className="tnum" style={todayReached ? { color: "rgb(110,231,183)" } : undefined}>
+            aujourd&apos;hui {formatDecimal(row.doneThisSession)} / {formatDecimal(row.todayShare)}
+          </span>
+        ) : (
+          <span>{row.isDormant ? "hors routine · " : ""}{lastTrained}</span>
+        )}
       </div>
-      <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/[0.07]">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)" }} />
+      <div className="relative mt-1.5">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.07]">
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--accent)" }} />
+        </div>
+        {ticks.map((tick) => (
+          <span
+            key={tick.left}
+            aria-hidden
+            className="absolute -top-[3px] h-3 w-[2px] -translate-x-1/2 rounded-full"
+            style={{
+              left: `${tick.left}%`,
+              background: tick.today ? "var(--color-fg)" : "rgba(255,255,255,0.28)",
+            }}
+          />
+        ))}
       </div>
       {!row.isDormant && row.suggestedExercises.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
