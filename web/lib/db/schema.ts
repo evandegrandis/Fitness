@@ -52,6 +52,10 @@ export const exercises = pgTable("exercises", {
   voluntaryRepCap: integer("voluntary_rep_cap").notNull().default(0),
   /** Charge maximale de la machine (bout de pile), saisie par l'utilisateur. Nullable. */
   maxLoad: doublePrecision("max_load"),
+  /** Origine du profil musculaire (`ProfileSource`). Nullable : aucun profil vérifié. */
+  profileSource: text("profile_source"),
+  /** Famille d'équivalence explicite entre machines de salles différentes. Nullable. */
+  equivalenceKey: text("equivalence_key"),
   lastUsed: timestamp("last_used", { mode: "date", withTimezone: true }),
   /** VARIATION_CYCLING_SPEC §5 — nullable (dégradation gracieuse si non tagué, cf. §9). */
   movementPattern: text("movement_pattern"),

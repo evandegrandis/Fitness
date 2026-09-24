@@ -143,11 +143,17 @@ function ExerciseEditorForm({
     if (!draft.name.trim()) return;
     setSaving(true);
     setError(null);
+    // Des muscles choisis ou modifiés à la main font foi : ni Barbis ni un profil copié ne les
+    // remplaceront (PROFILE_SOURCE_RANK). Inchangés, ils gardent leur origine.
+    const musclesEditedByHand =
+      draft.muscleMappings.length > 0 &&
+      JSON.stringify(draft.muscleMappings) !== JSON.stringify(exercise?.muscleMappings ?? []);
     const toSave: Exercise = withKnownMuscleProfile({
       ...draft,
       name: draft.name.trim(),
       category: draft.category.trim() || "Autre",
       sortOrder: isEditing ? draft.sortOrder : catalogLength,
+      profileSource: musclesEditedByHand ? "user" : draft.profileSource ?? null,
     });
     // OFFLINE_PWA_SPEC §4 (P4.4) — catalogue local mis à jour immédiatement, écriture ou mise en
     // file, retour arrière si rien n'a été conservé : tout est dans `saveExercise`.

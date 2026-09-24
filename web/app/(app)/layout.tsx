@@ -3,6 +3,7 @@ import { requireAuthenticatedSession } from "@/lib/auth";
 import { StoreHydrator } from "@/components/providers/StoreHydrator";
 import { ModeProvider } from "@/components/providers/ModeProvider";
 import { SyncProvider } from "@/components/providers/SyncProvider";
+import { BarbisProfileWatcher } from "@/components/providers/BarbisProfileWatcher";
 import { SyncAlertBanner } from "@/components/sync/SyncAlertBanner";
 import { TabBar } from "@/components/ui/TabBar";
 
@@ -29,6 +30,7 @@ export default async function AppLayout({
     <ModeProvider>
       <StoreHydrator data={initial.data} source={initial.source} fetchedAt={initial.fetchedAt} />
       <SyncProvider>
+        <BarbisProfileWatcher />
         <div className="flex-1 flex flex-col min-h-full">
           {/* padding-bottom = hauteur de la TabBar sticky, pour que le contenu ne passe jamais dessous */}
           <SyncAlertBanner />

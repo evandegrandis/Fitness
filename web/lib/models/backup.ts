@@ -91,6 +91,8 @@ const exerciseSchema = z.object({
   voluntaryRepCap: finiteNumber.int().nonnegative().nullish(),
   // Champ web-only, absent des exports antérieurs.
   maxLoad: finiteNumber.positive().nullish(),
+  profileSource: z.enum(["legacy", "known_profile", "donor", "barbis", "user"]).nullish(),
+  equivalenceKey: z.string().max(200).nullish(),
   muscleMappings: z.array(muscleMappingSchema),
   // VARIATION_CYCLING_SPEC §5 — champ web-only, absent de tous les exports Swift existants.
   movementPattern: z.string().nullish(),
@@ -649,6 +651,8 @@ export function parseBackup(json: unknown): BackupData {
       progressionPolicy: resolveProgressionPolicy(exData.progressionPolicy),
       voluntaryRepCap: exData.voluntaryRepCap ?? 0,
       maxLoad: exData.maxLoad ?? null,
+      profileSource: exData.profileSource ?? null,
+      equivalenceKey: exData.equivalenceKey ?? null,
       muscleMappings,
       lastUsed: toDateOrNull(exData.lastUsed),
       movementPattern: resolveMovementPattern(exData.movementPattern),

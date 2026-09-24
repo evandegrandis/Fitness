@@ -66,7 +66,11 @@ export function MissingMusclesNotice({ exercise }: { exercise: Exercise }) {
           Choisir les muscles
         </button>
       </div>
-      <p className="mt-2 text-[0.68rem] text-[--color-fg-faint]">Les séries déjà faites compteront aussi.</p>
+      <p className="mt-2 text-[0.68rem] text-[--color-fg-faint]">
+        {exercise.createdByUser
+          ? "Sinon Barbis cherche ses muscles dès que le téléphone capte. Les séries déjà faites compteront aussi."
+          : "Les séries déjà faites compteront aussi."}
+      </p>
       {error && <p className="mt-2 text-[0.7rem] text-[--color-danger]">{error}</p>}
       <ExerciseEditorSheet open={editorOpen} onClose={() => setEditorOpen(false)} exercise={exercise} />
     </div>

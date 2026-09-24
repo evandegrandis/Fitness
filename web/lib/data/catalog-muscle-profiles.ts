@@ -287,6 +287,11 @@ const MACHINE_BRANDS = [
   "nautilus",
   "gym 80",
   "gym80",
+  // Salles : Evan suffixe parfois une machine du nom de la salle plutôt que de la marque.
+  "fitness park",
+  "fitnesspark",
+  "on air",
+  "onair",
   "atlantis",
   "watson",
 ];
@@ -332,5 +337,6 @@ export function withKnownMuscleProfile(exercise: Exercise): Exercise {
       : exercise.category,
     movementPattern: exercise.movementPattern ?? profile.movementPattern,
     muscleMappings: cloneMappings(profile.muscleMappings),
+    profileSource: exercise.profileSource ?? "known_profile",
   };
 }

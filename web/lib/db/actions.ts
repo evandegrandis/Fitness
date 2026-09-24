@@ -9,6 +9,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { and, desc, eq, notExists, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 
@@ -46,12 +47,15 @@ import {
 } from "./schema";
 import { parseBackup } from "@/lib/models/backup";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
+import { needsBarbisProfile, notifyBarbisExercisesNeedProfile } from "@/lib/integrations/barbis";
+import { PROFILE_SOURCE_RANK, profileSourceRank } from "@/lib/models/types";
 import { hasAnyRecoveryValue } from "@/lib/models/recovery";
 import { isGoalMuscleParent } from "@/lib/models/muscles";
 import { requireAuthenticatedSession } from "@/lib/auth";
 import type {
   Exercise,
   MuscleGoal,
+  ProfileSource,
   RecoveryCheckinInput,
   UserSettings,
   WorkoutSession,
@@ -118,23 +122,57 @@ export async function upsertExercise(exercise: Exercise): Promise<void> {
   // arriver ici avec `muscleMappings=[]`. Les compléter côté serveur rend le
   // rejeu de l'outbox sûr, sans écraser un mapping saisi manuellement.
   const catalogExercise = withKnownMuscleProfile(exercise);
-  const row = exerciseToRow(catalogExercise);
-  const updateRow = exerciseToUpsertUpdateRow(catalogExercise);
+  const incomingSource: ProfileSource | null =
+    catalogExercise.muscleMappings.length === 0
+      ? null
+      : catalogExercise.profileSource ?? "legacy";
+
+  // Un profil ne se remplace que par un profil au moins aussi sûr (PROFILE_SOURCE_RANK). Sans
+  // cette garde, un téléphone resté hors ligne rejouait son ancienne copie (profil vide ou
+  // copié) par-dessus ce que Barbis venait de trouver, ou par-dessus un réglage fait à la main.
+  const [current] = await db
+    .select({ profileSource: exercises.profileSource, equivalenceKey: exercises.equivalenceKey, movementPattern: exercises.movementPattern })
+    .from(exercises)
+    .where(eq(exercises.id, exercise.id));
+  const currentSource = current ? asStoredProfileSource(current.profileSource) : null;
+  const keepServerProfile = current !== undefined && profileSourceRank(currentSource) > profileSourceRank(incomingSource);
+
+  const row = exerciseToRow({ ...catalogExercise, profileSource: incomingSource });
+  const updateRow = exerciseToUpsertUpdateRow({ ...catalogExercise, profileSource: incomingSource });
+  if (keepServerProfile) {
+    updateRow.profileSource = current.profileSource;
+    updateRow.movementPattern = current.movementPattern;
+  }
+  // Un lien d'équivalence posé (par Barbis ou à la main) ne s'efface pas par un envoi qui l'ignore.
+  if (!updateRow.equivalenceKey && current?.equivalenceKey) updateRow.equivalenceKey = current.equivalenceKey;
+
   const operations: BatchItem<"pg">[] = [
     db
       .insert(exercises)
       .values(row)
       .onConflictDoUpdate({ target: exercises.id, set: updateRow }),
-    db.delete(muscleMappings).where(eq(muscleMappings.exerciseId, exercise.id)),
   ];
-  const mappingRows = exerciseToMappingRows(catalogExercise);
-  if (mappingRows.length > 0) {
-    operations.push(db.insert(muscleMappings).values(mappingRows));
+  if (!keepServerProfile) {
+    operations.push(db.delete(muscleMappings).where(eq(muscleMappings.exerciseId, exercise.id)));
+    const mappingRows = exerciseToMappingRows(catalogExercise);
+    if (mappingRows.length > 0) {
+      operations.push(db.insert(muscleMappings).values(mappingRows));
+    }
   }
 
   await db.batch(operations as unknown as [BatchItem<"pg">, ...BatchItem<"pg">[]]);
 
+  const finalSource = keepServerProfile ? currentSource : incomingSource;
+  if (catalogExercise.createdByUser && needsBarbisProfile(finalSource)) {
+    // Après la réponse : le téléphone n'attend pas Barbis, en séance moins que jamais.
+    after(() => notifyBarbisExercisesNeedProfile([exercise.id]));
+  }
+
   revalidateWorkoutData();
+}
+
+function asStoredProfileSource(value: string | null): ProfileSource | null {
+  return value !== null && value in PROFILE_SOURCE_RANK ? (value as ProfileSource) : null;
 }
 
 export type DeleteExerciseResult = "deleted" | "referenced" | "not_found";

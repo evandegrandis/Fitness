@@ -69,6 +69,18 @@ export async function getExercises(): Promise<Exercise[]> {
   return exerciseRows.map((row) => mapExerciseRow(row, mappingRows));
 }
 
+/** Quelques exercices précis, avec leurs muscles : le téléphone y guette le profil écrit par Barbis. */
+export async function getExercisesByIds(ids: readonly string[]): Promise<Exercise[]> {
+  if (!hasDatabaseUrl() || ids.length === 0) return [];
+  const exerciseRows = await db.select().from(exercises).where(inArray(exercises.id, [...ids]));
+  if (exerciseRows.length === 0) return [];
+  const mappingRows = await db
+    .select()
+    .from(muscleMappings)
+    .where(inArray(muscleMappings.exerciseId, exerciseRows.map((e) => e.id)));
+  return exerciseRows.map((row) => mapExerciseRow(row, mappingRows));
+}
+
 // ---------------------------------------------------------------------------
 // getSessions — séances FINIES (endTime non nul), triées date DESC, avec
 // logged_exercises + logged_sets + superset_groups imbriqués.

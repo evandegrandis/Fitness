@@ -66,9 +66,19 @@ const GROUP_KEY_BY_ALIAS = new Map<string, string>(
   })
 );
 
-/** Clé de famille : deux exercices sont équivalents si et seulement si leurs clés sont égales. */
-export function equivalenceKey(exercise: Pick<Exercise, "name">): string {
-  const normalized = normalizeCatalogExerciseName(exercise.name);
+/**
+ * Clé de famille : deux exercices sont équivalents si et seulement si leurs clés sont égales. Un
+ * lien explicite (posé par Barbis ou à la main) prime sur la famille déduite du nom : une machine
+ * « Pectoraux convergents » de Fitness Park peut ainsi rejoindre la Chest Press de l'ancienne salle.
+ */
+export function equivalenceKey(exercise: Pick<Exercise, "name"> & { equivalenceKey?: string | null }): string {
+  if (exercise.equivalenceKey && exercise.equivalenceKey.trim().length > 0) return exercise.equivalenceKey.trim();
+  return nameEquivalenceKey(exercise.name);
+}
+
+/** Famille déduite du seul nom (marque retirée, groupes connus). */
+export function nameEquivalenceKey(name: string): string {
+  const normalized = normalizeCatalogExerciseName(name);
   const withoutBrand = stripMachineBrand(normalized) || normalized;
   return GROUP_KEY_BY_ALIAS.get(withoutBrand) ?? withoutBrand;
 }
@@ -79,7 +89,10 @@ export function equivalentExercises(exercise: Exercise, catalog: readonly Exerci
   return catalog.filter((candidate) => candidate.id !== exercise.id && equivalenceKey(candidate) === key);
 }
 
-export function areEquivalent(a: Pick<Exercise, "name">, b: Pick<Exercise, "name">): boolean {
+export function areEquivalent(
+  a: Pick<Exercise, "name"> & { equivalenceKey?: string | null },
+  b: Pick<Exercise, "name"> & { equivalenceKey?: string | null }
+): boolean {
   return equivalenceKey(a) === equivalenceKey(b);
 }
 

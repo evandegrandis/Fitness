@@ -53,6 +53,7 @@ import type {
   LoggedSet,
   MuscleGoal,
   MuscleMapping,
+  ProfileSource,
   RecoveryCheckin,
   RecoveryCheckinInput,
   SupersetGroup,
@@ -156,6 +157,12 @@ function asFatigueClass(raw: string): FatigueClassT {
 // Exercise
 // ---------------------------------------------------------------------------
 
+const PROFILE_SOURCES = new Set<string>(["legacy", "known_profile", "donor", "barbis", "user"]);
+
+function asProfileSource(value: string | null | undefined): ProfileSource | null {
+  return value && PROFILE_SOURCES.has(value) ? (value as ProfileSource) : null;
+}
+
 export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]): Exercise {
   return withKnownMuscleProfile({
     id: row.id,
@@ -177,6 +184,8 @@ export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]
     progressionPolicy: asProgressionPolicy(row.progressionPolicy),
     voluntaryRepCap: row.voluntaryRepCap,
     maxLoad: row.maxLoad ?? null,
+    profileSource: asProfileSource(row.profileSource),
+    equivalenceKey: row.equivalenceKey ?? null,
     muscleMappings: mappingRows
       .filter((m) => m.exerciseId === row.id)
       .map((m): MuscleMapping => ({
@@ -220,6 +229,8 @@ export function exerciseToUpsertUpdateRow(
     progressionPolicy: exercise.progressionPolicy,
     voluntaryRepCap: exercise.voluntaryRepCap,
     maxLoad: exercise.maxLoad ?? null,
+    profileSource: exercise.profileSource ?? null,
+    equivalenceKey: exercise.equivalenceKey ?? null,
     movementPattern: exercise.movementPattern,
     resistanceProfile: exercise.resistanceProfile,
     strengthStandardKey: exercise.strengthStandardKey,

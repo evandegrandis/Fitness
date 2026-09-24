@@ -86,5 +86,6 @@ export function withDonorProfile(exercise: Exercise, donor: Exercise): Exercise 
     muscleMappings: donor.muscleMappings.map((mapping) => ({ ...mapping })),
     category: category.length === 0 || normalizeCatalogExerciseName(category) === "autre" ? donor.category : exercise.category,
     movementPattern: exercise.movementPattern ?? donor.movementPattern,
+    profileSource: "donor",
   };
 }

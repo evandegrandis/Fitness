@@ -31,6 +31,26 @@ export interface MuscleMapping {
   coefficient: number;
 }
 
+/**
+ * Origine d'un profil musculaire, de la moins sûre à la plus sûre : `legacy` (profils antérieurs
+ * au suivi), `known_profile` (copié d'une machine connue), `donor` (copié d'un exercice ressemblant
+ * d'un tap), `barbis` (recherche automatique), `user` (réglé à la main, prioritaire sur tout).
+ */
+export type ProfileSource = "legacy" | "known_profile" | "donor" | "barbis" | "user";
+
+export const PROFILE_SOURCE_RANK: Record<ProfileSource, number> = {
+  legacy: 1,
+  known_profile: 2,
+  donor: 3,
+  barbis: 4,
+  user: 5,
+};
+
+/** Rang d'une origine de profil ; un exercice sans profil vérifié vaut 0. */
+export function profileSourceRank(source: ProfileSource | null | undefined): number {
+  return source ? PROFILE_SOURCE_RANK[source] ?? 0 : 0;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -60,6 +80,17 @@ export interface Exercise {
    * fourchette s'il le faut pour rejoindre l'échec. `null`/absent = pas de limite connue.
    */
   maxLoad?: number | null;
+  /**
+   * D'où vient le profil musculaire. Décide qui peut le remplacer : un réglage fait à la main
+   * (`user`) n'est jamais écrasé, Barbis complète ce que l'app a seulement copié ou deviné.
+   * `null`/absent = aucun profil vérifié (exercice créé en salle, à faire cartographier).
+   */
+  profileSource?: ProfileSource | null;
+  /**
+   * Famille d'équivalence explicite (machine d'une autre salle pour le même mouvement), posée par
+   * Barbis ou à la main. Prime sur la famille déduite du nom (lib/engines/equivalence.ts).
+   */
+  equivalenceKey?: string | null;
   muscleMappings: MuscleMapping[];
   lastUsed: Date | null;
   /**

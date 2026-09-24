@@ -248,6 +248,8 @@ export function ActiveSession({
       // connu est repris à l'enregistrement (`withKnownMuscleProfile`) ; sinon la carte affiche
       // `MissingMusclesNotice` tant que le profil manque, avec les exercices ressemblants à un tap.
       muscleMappings: [],
+      // Aucun profil vérifié : Barbis le cartographiera dès que la séance atteindra le serveur.
+      profileSource: null,
       lastUsed: null,
       movementPattern: null,
       resistanceProfile: null,

@@ -21,6 +21,7 @@ import {
   workoutSessions,
 } from "./schema";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
+import { needsBarbisProfile } from "@/lib/integrations/barbis";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 
 /**
@@ -44,14 +45,17 @@ import type { Exercise, WorkoutSession } from "@/lib/models/types";
  * Un exercice connu n'est jamais réécrit ici : le catalogue central garde la
  * main, et un rejeu de l'outbox ne peut pas rétrograder une édition récente.
  */
-export async function missingExerciseOperations(referenced: readonly Exercise[]): Promise<{ operations: BatchItem<"pg">[]; inserted: string[] }> {
-  if (referenced.length === 0) return { operations: [], inserted: [] };
+export async function missingExerciseOperations(
+  referenced: readonly Exercise[]
+): Promise<{ operations: BatchItem<"pg">[]; inserted: string[]; needsProfile: string[] }> {
+  if (referenced.length === 0) return { operations: [], inserted: [], needsProfile: [] };
   const ids = referenced.map((exercise) => exercise.id);
   const known = new Set(
     (await db.select({ id: exercises.id }).from(exercises).where(inArray(exercises.id, ids))).map((row) => row.id),
   );
   const operations: BatchItem<"pg">[] = [];
   const inserted: string[] = [];
+  const needsProfile: string[] = [];
   for (const raw of referenced) {
     if (known.has(raw.id)) continue;
     const exercise = withKnownMuscleProfile(raw);
@@ -59,8 +63,9 @@ export async function missingExerciseOperations(referenced: readonly Exercise[])
     const mappingRows = exerciseToMappingRows(exercise);
     if (mappingRows.length > 0) operations.push(db.insert(muscleMappings).values(mappingRows).onConflictDoNothing());
     inserted.push(exercise.id);
+    if (exercise.createdByUser && needsBarbisProfile(exercise.profileSource)) needsProfile.push(exercise.id);
   }
-  return { operations, inserted };
+  return { operations, inserted, needsProfile };
 }
 
 /**

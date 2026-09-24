@@ -32,6 +32,8 @@ import {
 } from "./actions";
 import { missingExerciseOperations, sessionWriteOperations } from "./session-writes";
 import { requireAuthenticatedSession } from "@/lib/auth";
+import { after } from "next/server";
+import { notifyBarbisExercisesNeedProfile } from "@/lib/integrations/barbis";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { classifySyncError, type SyncOutcome } from "@/lib/sync/outcome";
 import type { OutboxOp } from "@/lib/sync/outbox";
@@ -65,6 +67,11 @@ export async function syncSession(payload: { session: WorkoutSession; exercises:
     await db.batch(operations as unknown as [BatchItem<"pg">, ...BatchItem<"pg">[]]);
     if (missing.inserted.length > 0) {
       console.log(JSON.stringify({ event: "sync_session_created_exercises", session: target, exercises: missing.inserted }));
+    }
+    // Machines créées en salle et arrivées avec la séance : Barbis les cartographie, après la réponse.
+    if (missing.needsProfile.length > 0) {
+      const ids = missing.needsProfile;
+      after(() => notifyBarbisExercisesNeedProfile(ids));
     }
     revalidatePath("/", "layout");
     return { ok: true };
