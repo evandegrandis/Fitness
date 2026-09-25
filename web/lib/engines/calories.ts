@@ -20,8 +20,12 @@ import type { BodyWeightEntry } from "@/lib/engines/body-weight";
 export const CALORIES = {
   /** Poids de corps quand rien n'est connu (ni pesée, ni réglage). */
   DEFAULT_BODY_WEIGHT_KG: 75,
-  /** MET hors série : debout, on marche jusqu'à la machine, on règle, on récupère. */
-  BACKGROUND_MET: 1.5,
+  /**
+   * MET hors série : debout, on marche jusqu'à la machine, on règle, on parle (Compendium 2024,
+   * « debout, parler » ~1,8). 1,5 (immobile) sous-estimait les longues séances : 126 des 154 min
+   * de la séance du 25/09/2026 se passent entre les séries.
+   */
+  BACKGROUND_MET: 1.8,
   /** MET d'une série sur un muscle minuscule (plancher du Compendium, musculation légère). */
   SET_MET_FLOOR: 3.5,
   /** Pente du MET de série par fraction de la masse musculaire totale sollicitée. */
@@ -220,12 +224,28 @@ export function movedLoadKg(set: LoggedSet, exercise: Exercise | undefined, body
 
 /** Plus on s'approche de l'échec, plus on recrute et plus la part anaérobie grimpe. */
 export function rirFactor(rir: number | null | undefined): number {
-  if (rir === null || rir === undefined) return 1.05;
-  if (rir <= 0) return 1.15;
-  if (rir === 1) return 1.1;
-  if (rir === 2) return 1.05;
+  if (rir === null || rir === undefined) return 1.1;
+  if (rir <= 0) return 1.3;
+  if (rir === 1) return 1.2;
+  if (rir === 2) return 1.1;
   if (rir === 3) return 1;
   return 0.95;
+}
+
+/**
+ * Récupération après la série, en part de son coût net. Une série courte menée à l'échec est
+ * surtout anaérobie : sa dette d'oxygène se paie pendant le repos, et elle croît avec la
+ * proximité de l'échec (lactatémie). À l'échec, la récupération coûte autant que la série.
+ */
+export function recoveryRatio(set: Pick<LoggedSet, "reportedRir" | "setType">): number {
+  if (set.setType === "warmup") return CALORIES.RECOVERY_RATIO;
+  const rir = set.reportedRir;
+  if (rir === null || rir === undefined) return 0.7;
+  if (rir <= 0) return 1;
+  if (rir === 1) return 0.85;
+  if (rir === 2) return 0.7;
+  if (rir === 3) return 0.6;
+  return CALORIES.RECOVERY_RATIO;
 }
 
 /** Coût brut d'une série (kcal) et son temps sous tension (s). */
@@ -325,10 +345,11 @@ export function estimateSessionCalories(
     for (const set of done) {
       const { grossKcal, seconds } = setCost(set, exercise, kg);
       const net = Math.max(0, grossKcal - (CALORIES.BACKGROUND_MET * kg * seconds) / 3600);
+      const ratio = recoveryRatio(set);
       setsGross += grossKcal;
-      recovery += net * CALORIES.RECOVERY_RATIO;
+      recovery += net * ratio;
       workSeconds += seconds;
-      exerciseKcal += grossKcal + net * CALORIES.RECOVERY_RATIO;
+      exerciseKcal += grossKcal + net * ratio;
     }
     allSets.push(...done);
     perExercise.push({ loggedExerciseId: logged.id, exerciseName: logged.exerciseName, kcal: Math.round(exerciseKcal), sets: done.length });

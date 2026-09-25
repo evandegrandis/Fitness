@@ -111,7 +111,7 @@ describe("ordres de grandeur", () => {
     expect(met).toBeLessThanOrEqual(6);
   });
 
-  it("deux heures de musculation ne dépensent pas 1 000 kcal", () => {
+  it("deux heures très dures, tout à l'échec, restent sous le MET vigoureux du Compendium (6 MET)", () => {
     const long = session(120, [
       { exercise: LEG_PRESS, sets: repeat(8, () => set(160, 10, { reportedRir: 0 })) },
       { exercise: PULLDOWN, sets: repeat(8, () => set(70, 10, { reportedRir: 0 })) },
@@ -119,8 +119,16 @@ describe("ordres de grandeur", () => {
       { exercise: PULL_UP, sets: repeat(8, () => set(0, 10, { reportedRir: 0 })) },
     ]);
     const estimate = estimateSessionCalories(long, CATALOG, BW);
-    expect(estimate.high).toBeLessThan(900);
-    expect(estimate.kcal).toBeGreaterThan(350);
+    expect(estimate.kcal).toBeLessThanOrEqual(6 * BW.kg * 2);
+    expect(estimate.kcal).toBeGreaterThan(3.5 * BW.kg * 2);
+  });
+
+  it("la même séance loin de l'échec coûte nettement moins : l'échec se paie pendant le repos", () => {
+    const at = (rir: number) => estimateSessionCalories(session(60, [
+      { exercise: PULLDOWN, sets: repeat(4, () => set(70, 10, { reportedRir: rir })) },
+      { exercise: CURL, sets: repeat(4, () => set(16, 12, { reportedRir: rir })) },
+    ]), CATALOG, BW).activeKcal;
+    expect(at(0)).toBeGreaterThan(at(4) * 1.1);
   });
 
   it("donne une fourchette qui encadre l'estimation et une part active inférieure au total", () => {

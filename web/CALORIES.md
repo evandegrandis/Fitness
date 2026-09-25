@@ -31,7 +31,9 @@ d'elle-même.
 
 Pour chaque séance, au poids de corps connu à sa date :
 
-1. **Fond** : tout le temps hors série à **1,5 MET** (debout, on change de machine, on règle).
+1. **Fond** : tout le temps hors série à **1,8 MET** (debout, on marche jusqu'à la machine, on règle,
+   on parle : Compendium 2024 ~1,8). Recalé le 26/09/2026 : 1,5 (immobile) sous-estimait les longues
+   séances, où l'essentiel du temps se passe entre les séries (126 min sur 154 le 25/09).
 2. **Chaque série validée** (`completed`, reps > 0) :
    - durée = reps × 3,5 s ;
    - **MET de série = 3,5 + 27 × fraction de masse musculaire sollicitée** (plafonné à 12).
@@ -46,9 +48,13 @@ Pour chaque séance, au poids de corps connu à sa date :
      (amplitude par pattern, 0,35 à 0,55 m). Au poids du corps, la charge est la part du corps
      déplacée (traction 95 %, pompe 65 %, crunch 35 %) ; lestée on ajoute le lest, assistée on
      retranche l'assistance.
-   - **× intensité** selon le RIR rapporté : RIR 0 ×1,15 · 1 ×1,10 · 2 ×1,05 · 3 ×1 · 4+ ×0,95
-     (non rapporté ×1,05) ; échauffement ×0,7.
-3. **Récupération** : +50 % du coût net (au-dessus du fond) de chaque série.
+   - **× intensité** selon le RIR rapporté : RIR 0 ×1,3 · 1 ×1,2 · 2 ×1,1 · 3 ×1 · 4+ ×0,95
+     (non rapporté ×1,1) ; échauffement ×0,7.
+3. **Récupération** : une part du coût net (au-dessus du fond) de chaque série, qui croît avec la
+   proximité de l'échec : RIR 0 +100 % · 1 +85 % · 2 +70 % · 3 +60 % · 4+ +50 % (non rapporté
+   +70 %, échauffement +50 %). Une série courte menée à l'échec est surtout anaérobie : sa dette
+   d'oxygène se paie pendant le repos et augmente avec la lactatémie (Scott 2011). Recalé le
+   26/09/2026 : l'échec (23 séries sur 37 le 25/09) pesait à peine plus qu'une série facile.
 4. **Cardio loggé dans la séance** : watts → travail / rendement 22 % + repos (équivalent de
    l'équation ACSM du vélo) ; course avec distance → ~1 kcal/kg/km + repos ; sinon MET du
    Compendium par activité. Ses minutes ne comptent pas en plus comme repos de musculation.
@@ -63,17 +69,21 @@ première pesée, sinon le poids des réglages, sinon 75 kg (l'écran le dit).
 
 **Fourchette.** Le repos (1 kcal/kg/h) est sûr ; la part active est donnée à ±25 %.
 
-## Ce que ça donne (78 kg, RIR 1, mélange presse / tirage / curl / élévations)
+## Ce que ça donne (78 kg, mélange presse 140 kg / tirage 60 kg / curl 14 kg / tractions)
 
-| Séance | Estimation | Fourchette | Au-dessus du repos |
+| Séance | RIR 1 | RIR 0 (échec) | Au-dessus du repos (RIR 1) |
 |---|---|---|---|
-| 45 min, 12 séries | ~195 kcal | 160–230 | ~135 |
-| 1 h, 16 séries | ~260 kcal | 210–300 | ~180 |
-| 1 h 30, 24 séries | ~390 kcal | 320–460 | ~270 |
-| 2 h, 32 séries | ~520 kcal | 430–610 | ~360 |
+| 45 min, 12 séries | ~270 kcal (220–320) | ~300 kcal | ~210 |
+| 1 h, 16 séries | ~360 kcal (290–430) | ~400 kcal | ~280 |
+| 1 h 30, 24 séries | ~540 kcal (430–640) | ~600 kcal | ~420 |
+| 2 h, 32 séries | ~720 kcal (580–860) | ~800 kcal | ~560 |
 
-Soit ~3,3 MET en moyenne, dans la plage du Compendium. Coût d'une série de 10 reps :
-presse 140 kg ≈ 15 kcal, tirage 60 kg ≈ 6, curl 14 kg ≈ 4, élévations 10 kg ≈ 3,5.
+Soit ~4,6 MET en moyenne pour une séance dense avec la presse, dans la plage du Compendium
+(3,5 à 6 MET). Une séance réelle d'Evan, haut du corps : 1 h ≈ 290–300 kcal ; la séance « Upper »
+du 25/09 (2 h 34, 37 séries dont 23 à l'échec, 73,7 kg) ≈ 615 kcal (510–720), dont ~430 au-dessus
+du repos. La montre de son partenaire affichait 1 418 kcal (1 195 actives) : les montres déduisent
+la dépense du rythme cardiaque, qui monte en musculation sans la consommation d'oxygène qui va
+avec, d'où une surestimation forte sur ce type de séance.
 
 ## Deux chiffres, deux usages
 
