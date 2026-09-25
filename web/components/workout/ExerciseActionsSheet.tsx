@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Copy, Film, Minus, Plus, Repeat, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, Film, Repeat, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
+import { InlineStepper, SettingRow } from "@/components/ui/SettingRow";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { saveExercise } from "@/lib/sync/save-exercise";
 import { cleanWeight } from "@/lib/format";
@@ -299,49 +300,5 @@ function ActionTile({
       <Icon size={18} aria-hidden />
       <span className="font-mono text-[0.66rem] uppercase tracking-[0.14em]">{label}</span>
     </button>
-  );
-}
-
-function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-14 items-center justify-between gap-3 py-1.5">
-      <span className="min-w-0">
-        <span className="block text-sm text-(--color-fg)">{label}</span>
-        {hint && <span className="block text-[0.7rem] text-(--color-fg-faint)">{hint}</span>}
-      </span>
-      {children}
-    </div>
-  );
-}
-
-function InlineStepper({
-  label,
-  display,
-  onDecrement,
-  onIncrement,
-  canDecrement,
-  canIncrement,
-}: {
-  label: string;
-  display: string;
-  onDecrement: () => void;
-  onIncrement: () => void;
-  canDecrement: boolean;
-  canIncrement: boolean;
-}) {
-  const buttonClass =
-    "grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-(--color-fg) transition active:scale-90 disabled:opacity-30 disabled:active:scale-100";
-  return (
-    <div className="flex items-center gap-1">
-      <button type="button" aria-label={`${label} : diminuer`} disabled={!canDecrement} onClick={onDecrement} className={buttonClass}>
-        <Minus size={16} aria-hidden />
-      </button>
-      <output aria-live="polite" aria-label={label} className="tnum min-w-[4.25rem] text-center text-base text-(--color-fg)">
-        {display}
-      </output>
-      <button type="button" aria-label={`${label} : augmenter`} disabled={!canIncrement} onClick={onIncrement} className={buttonClass}>
-        <Plus size={16} aria-hidden />
-      </button>
-    </div>
   );
 }

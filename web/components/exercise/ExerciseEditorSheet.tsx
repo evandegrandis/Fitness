@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
-import { Stepper } from "@/components/ui/Stepper";
+import { InlineStepper, SettingRow } from "@/components/ui/SettingRow";
+import { mergeExerciseEdits } from "@/components/exercise/exercise-edits";
+import { formatRest } from "@/components/workout/exercise-quick-settings";
+import { formatDecimal } from "@/lib/format";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { deleteExercise } from "@/lib/db/actions";
 import { PermanentMutationError, writeThrough } from "@/lib/sync/write-through";
@@ -153,12 +156,16 @@ function ExerciseEditorForm({
     const musclesEditedByHand =
       draft.muscleMappings.length > 0 &&
       JSON.stringify(draft.muscleMappings) !== JSON.stringify(exercise?.muscleMappings ?? []);
+    // Sur la version à jour du catalogue, seuls les champs modifiés : un profil posé par Barbis
+    // pendant que l'éditeur était ouvert n'est plus écrasé par la copie de l'ouverture.
+    const latest = exercise ? useWorkoutStore.getState().catalog.find((entry) => entry.id === exercise.id) ?? exercise : null;
+    const edited = exercise && latest ? mergeExerciseEdits(exercise, draft, latest) : draft;
     const toSave: Exercise = withKnownMuscleProfile({
-      ...draft,
-      name: draft.name.trim(),
-      category: draft.category.trim() || "Autre",
-      sortOrder: isEditing ? draft.sortOrder : catalogLength,
-      profileSource: musclesEditedByHand ? "user" : draft.profileSource ?? null,
+      ...edited,
+      name: edited.name.trim(),
+      category: edited.category.trim() || "Autre",
+      sortOrder: isEditing ? edited.sortOrder : catalogLength,
+      profileSource: musclesEditedByHand ? "user" : edited.profileSource ?? null,
     });
     // OFFLINE_PWA_SPEC §4 (P4.4) — catalogue local mis à jour immédiatement, écriture ou mise en
     // file, retour arrière si rien n'a été conservé : tout est dans `saveExercise`.
@@ -437,42 +444,58 @@ function ExerciseEditorForm({
               </div>
             )}
 
-            {/* Reps min/max + incrément */}
-            <div className="grid grid-cols-3 gap-2">
-              <Stepper
-                label="Reps min"
-                value={draft.repTargetMin}
-                onChange={(v) => setDraft({ ...draft, repTargetMin: v })}
-                min={1}
-                max={draft.repTargetMax}
-              />
-              <Stepper
-                label="Reps max"
-                value={draft.repTargetMax}
-                onChange={(v) => setDraft({ ...draft, repTargetMax: v })}
-                min={draft.repTargetMin}
-                max={50}
-              />
-              <Stepper
-                label="Incrément"
-                value={draft.smallestIncrement}
-                onChange={(v) => setDraft({ ...draft, smallestIncrement: v })}
-                step={0.25}
-                min={0.25}
-                max={25}
-                suffix="kg"
-              />
+            {/* Un réglage par ligne, comme dans le menu de séance : à trois compteurs par ligne, les
+                boutons se chevauchaient et sortaient de l'écran. */}
+            <div className="divide-y divide-(--line)">
+              <SettingRow label="Reps min">
+                <InlineStepper
+                  label="Reps min"
+                  display={String(draft.repTargetMin)}
+                  onDecrement={() => setDraft({ ...draft, repTargetMin: draft.repTargetMin - 1 })}
+                  onIncrement={() => setDraft({ ...draft, repTargetMin: draft.repTargetMin + 1 })}
+                  canDecrement={draft.repTargetMin > 1}
+                  canIncrement={draft.repTargetMin < draft.repTargetMax}
+                />
+              </SettingRow>
+              <SettingRow label="Reps max">
+                <InlineStepper
+                  label="Reps max"
+                  display={String(draft.repTargetMax)}
+                  onDecrement={() => setDraft({ ...draft, repTargetMax: draft.repTargetMax - 1 })}
+                  onIncrement={() => setDraft({ ...draft, repTargetMax: draft.repTargetMax + 1 })}
+                  canDecrement={draft.repTargetMax > draft.repTargetMin}
+                  canIncrement={draft.repTargetMax < 50}
+                />
+              </SettingRow>
+              <SettingRow label="Plus petit saut" hint="de charge">
+                <InlineStepper
+                  label="Plus petit saut de charge"
+                  display={`${formatDecimal(draft.smallestIncrement)} kg`}
+                  onDecrement={() => setDraft({ ...draft, smallestIncrement: Math.round((draft.smallestIncrement - 0.25) * 100) / 100 })}
+                  onIncrement={() => setDraft({ ...draft, smallestIncrement: Math.round((draft.smallestIncrement + 0.25) * 100) / 100 })}
+                  canDecrement={draft.smallestIncrement > 0.25}
+                  canIncrement={draft.smallestIncrement < 25}
+                />
+              </SettingRow>
               {/* Bout de pile : au-delà, l'app progresse par les reps au lieu de proposer une
-                  charge qui n'existe pas. 0 = pas de limite. */}
-              <Stepper
-                label="Charge max machine (0 = aucune)"
-                value={draft.maxLoad ?? 0}
-                onChange={(v) => setDraft({ ...draft, maxLoad: v > 0 ? v : null })}
-                step={draft.smallestIncrement > 0 ? draft.smallestIncrement : 2.5}
-                min={0}
-                max={500}
-                suffix="kg"
-              />
+                  charge qui n'existe pas. */}
+              <SettingRow label="Charge max" hint="bout de pile">
+                <InlineStepper
+                  label="Charge max"
+                  display={draft.maxLoad ? `${formatDecimal(draft.maxLoad)} kg` : "Aucune"}
+                  onDecrement={() => {
+                    const step = draft.smallestIncrement > 0 ? draft.smallestIncrement : 2.5;
+                    const next = Math.round(((draft.maxLoad ?? 0) - step) * 100) / 100;
+                    setDraft({ ...draft, maxLoad: next > 0 ? next : null });
+                  }}
+                  onIncrement={() => {
+                    const step = draft.smallestIncrement > 0 ? draft.smallestIncrement : 2.5;
+                    setDraft({ ...draft, maxLoad: Math.min(500, Math.round(((draft.maxLoad ?? 0) + step) * 100) / 100) });
+                  }}
+                  canDecrement={(draft.maxLoad ?? 0) > 0}
+                  canIncrement={(draft.maxLoad ?? 0) < 500}
+                />
+              </SettingRow>
             </div>
 
             {equivalents.length > 0 && (
@@ -537,25 +560,28 @@ function ExerciseEditorForm({
                 </div>
 
                 {draft.progressionPolicy === "voluntaryCap" && (
-                  <Stepper
-                    label="Cap de reps volontaire"
-                    value={draft.voluntaryRepCap}
-                    onChange={(v) => setDraft({ ...draft, voluntaryRepCap: v })}
-                    min={0}
-                    max={50}
-                  />
+                  <SettingRow label="Cap de reps volontaire">
+                    <InlineStepper
+                      label="Cap de reps volontaire"
+                      display={String(draft.voluntaryRepCap)}
+                      onDecrement={() => setDraft({ ...draft, voluntaryRepCap: draft.voluntaryRepCap - 1 })}
+                      onIncrement={() => setDraft({ ...draft, voluntaryRepCap: draft.voluntaryRepCap + 1 })}
+                      canDecrement={draft.voluntaryRepCap > 0}
+                      canIncrement={draft.voluntaryRepCap < 50}
+                    />
+                  </SettingRow>
                 )}
 
-                {/* Repos */}
-                <Stepper
-                  label="Repos suggéré"
-                  value={draft.suggestedRestSeconds}
-                  onChange={(v) => setDraft({ ...draft, suggestedRestSeconds: v })}
-                  step={15}
-                  min={30}
-                  max={300}
-                  suffix="s"
-                />
+                <SettingRow label="Repos suggéré">
+                  <InlineStepper
+                    label="Repos suggéré"
+                    display={formatRest(draft.suggestedRestSeconds)}
+                    onDecrement={() => setDraft({ ...draft, suggestedRestSeconds: draft.suggestedRestSeconds - 15 })}
+                    onIncrement={() => setDraft({ ...draft, suggestedRestSeconds: draft.suggestedRestSeconds + 15 })}
+                    canDecrement={draft.suggestedRestSeconds > 30}
+                    canIncrement={draft.suggestedRestSeconds < 300}
+                  />
+                </SettingRow>
 
                 {/* Machine / notes */}
                 <div>

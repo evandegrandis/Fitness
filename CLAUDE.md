@@ -172,7 +172,7 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 - Bouton ⋯ sur chaque carte (et appui long sur le nom) → `components/workout/ExerciseActionsSheet.tsx` : Remplacer / Dupliquer / Démo en un tap, réglages utiles à la prochaine série (réglage machine, reps min/max, plus petit saut, charge max, repos), « Tous les réglages » vers l'éditeur complet, « Retirer de la séance » (confirmation si des séries existent). L'appui long ouvrait avant le formulaire complet du catalogue.
 - Réglages rapides fusionnés sur la version À JOUR du catalogue (`exercise-quick-settings.ts`) : un profil posé par Barbis pendant que la feuille est ouverte n'est plus écrasé.
 - `replaceExercise` pousse un « Annuler » quand l'exercice remplacé portait des séries (elles étaient perdues sans filet).
-- Reste à faire : `ExerciseEditorSheet` écrase encore le catalogue avec la copie lue à l'ouverture (même risque Barbis) ; ses 4 steppers en `grid-cols-3` débordent sur mobile.
+- 26/09 (revue à l'écran avec Evan) : plus aucun bouton +/- dans l'app. Les valeurs se règlent en glissant le chiffre vers le haut ou le bas, ou d'un tap sur le chevron du dessus ou du dessous (`components/ui/Stepper.tsx`, `components/ui/SettingRow.tsx`). « Tous les réglages » (`ExerciseEditorSheet`) : un réglage par ligne (les 4 compteurs en `grid-cols-3` se chevauchaient et sortaient de l'écran), enregistrement des seuls champs modifiés sur la version à jour du catalogue (`exercise-edits.ts`), bouton Enregistrer toujours visible. Les feuilles sont opaques (`surface-solid`) : en verre, la séance transparaissait derrière les formulaires.
 
 ### 2026-09-17 · Claude — Synchro web réparée structurellement (voir `web/SYNC.md`)
 
