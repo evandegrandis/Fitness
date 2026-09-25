@@ -39,12 +39,14 @@ export function SessionCaloriesCard({ session, exercises }: { session: WorkoutSe
         <p className="tnum mt-0.5 font-display text-2xl font-bold text-(--color-fg)">
           ≈ {estimate.kcal} <span className="text-base font-semibold text-(--color-fg-muted)">kcal</span>
         </p>
-        <p className="tnum mt-0.5 text-sm text-(--color-fg-muted)">
-          entre {estimate.low} et {estimate.high} · ~{estimate.activeKcal} au-dessus du repos
+        {/* Police du texte, chiffres alignés : la police à chasse fixe coupait « au- / dessus ». */}
+        <p className="mt-0.5 text-sm tabular-nums text-(--color-fg-muted)">
+          {estimate.low !== estimate.high && <>{estimate.low} à {estimate.high} kcal · </>}~{estimate.activeKcal} au-dessus du repos
         </p>
         {top && top.kcal > 0 && (
-          <p className="mt-1 truncate text-xs text-(--color-fg-faint)">
-            Le plus coûteux : {top.exerciseName} (~{top.kcal} kcal)
+          // Le chiffre d'abord : un nom de machine long ne doit jamais le couper.
+          <p className="mt-1 text-xs text-(--color-fg-faint)">
+            Le plus coûteux : ~{top.kcal} kcal, {top.exerciseName}
             {estimate.cardioKcal > 0 ? ` · cardio ~${estimate.cardioKcal} kcal` : ""}
           </p>
         )}
