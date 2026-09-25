@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { Copy, Film, Flame, GripVertical, Link2, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
+import { Copy, Flame, GripVertical, Link2, MoreHorizontal, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Sheet } from "@/components/ui/Sheet";
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
@@ -20,6 +20,7 @@ import { SetRow } from "./SetRow";
 import { SetEntry } from "./SetEntry";
 import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
 import { ExerciseEditorSheet } from "@/components/exercise/ExerciseEditorSheet";
+import { ExerciseActionsSheet } from "./ExerciseActionsSheet";
 import { useLongPress } from "@/lib/hooks/use-long-press";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
@@ -59,10 +60,11 @@ export function ExerciseCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: loggedExercise.id });
   const [handleArmed, setHandleArmed] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
-  // Appui long sur le nom : réglages de l'exercice (fourchette, charge max, muscles…) sans quitter
-  // la séance. Hors réseau, l'enregistrement part dans la file de synchronisation (saveExercise).
+  // Menu de l'exercice en séance (bouton ⋯ ou appui long sur le nom) : actions en un tap et
+  // réglages utiles à la prochaine série. Le formulaire complet du catalogue n'est qu'un lien.
+  const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const longPress = useLongPress(() => setSettingsOpen(true));
+  const longPress = useLongPress(() => setMenuOpen(true));
   const logSet = useWorkoutStore((s) => s.logSet);
   const suggestion = useWorkoutStore((s) => s.suggestion);
   const warmupSuggestion = useWorkoutStore((s) => s.warmupSuggestion);
@@ -211,7 +213,7 @@ export function ExerciseCard({
               onContextMenu={(event) => event.preventDefault()}
               {...longPress.handlers}
               aria-expanded={expanded}
-              title="Appui long : réglages de l'exercice"
+              title="Appui long : options de l'exercice"
             >
               <span className="flex flex-wrap items-center gap-1.5">
                 <span className="truncate font-display text-base font-bold text-(--color-fg)">{exercise.name}</span>
@@ -252,26 +254,13 @@ export function ExerciseCard({
               onPointerLeave={() => setHandleArmed(false)}
               onPointerCancel={() => setHandleArmed(false)}
               className={cn(
-                "shrink-0 grid h-8 w-8 touch-none place-items-center rounded-full text-(--color-fg-faint) transition",
+                "-my-1 shrink-0 grid h-10 w-10 touch-none place-items-center rounded-full text-(--color-fg-faint) transition",
                 handleArmed ? "scale-90 cursor-grabbing text-(--color-fg)" : "cursor-grab"
               )}
               aria-label="Réordonner (appui maintenu)"
             >
               <GripVertical size={16} />
             </button>
-            {hasExerciseGif(exercise.name) && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setGifOpen(true);
-                }}
-                aria-label={`Voir la démonstration de ${exercise.name}`}
-                className="shrink-0 grid h-8 w-8 place-items-center rounded-full text-(--color-fg-muted) transition active:scale-90"
-              >
-                <Film size={15} />
-              </button>
-            )}
             <button
               type="button"
               onClick={(e) => {
@@ -295,7 +284,7 @@ export function ExerciseCard({
               }
               aria-pressed={isArmed}
               className={cn(
-                "shrink-0 grid h-8 w-8 place-items-center rounded-full transition active:scale-90",
+                "-my-1 shrink-0 grid h-10 w-10 place-items-center rounded-full transition active:scale-90",
                 isLinked || isArmed ? "text-white" : "text-(--color-fg-muted)"
               )}
               style={
@@ -305,6 +294,18 @@ export function ExerciseCard({
               }
             >
               {isLinked ? <Unlink size={16} /> : <Link2 size={16} />}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(true);
+              }}
+              aria-label={`Options de ${exercise.name}`}
+              aria-haspopup="dialog"
+              className="-my-1 -mr-1.5 shrink-0 grid h-10 w-10 place-items-center rounded-full text-(--color-fg-muted) transition active:scale-90 active:bg-white/[0.06]"
+            >
+              <MoreHorizontal size={18} />
             </button>
           </div>
 
@@ -439,7 +440,38 @@ export function ExerciseCard({
         </div>
       </Sheet>
 
-      {/* Appui long sur le nom de l'exercice : ses réglages, sans quitter la séance. */}
+      <ExerciseActionsSheet
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        loggedExercise={loggedExercise}
+        exercise={exercise}
+        onReplace={() => {
+          setMenuOpen(false);
+          onReplace(loggedExercise.id);
+        }}
+        onDuplicate={() => {
+          setMenuOpen(false);
+          onDuplicate();
+        }}
+        onShowDemo={
+          hasExerciseGif(exercise.name)
+            ? () => {
+                setMenuOpen(false);
+                setGifOpen(true);
+              }
+            : null
+        }
+        onOpenAllSettings={() => {
+          setMenuOpen(false);
+          setSettingsOpen(true);
+        }}
+        onRemove={() => {
+          setMenuOpen(false);
+          removeExercise(loggedExercise.id);
+        }}
+      />
+
+      {/* « Tous les réglages » depuis le menu : le formulaire complet, sans quitter la séance. */}
       <ExerciseEditorSheet
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

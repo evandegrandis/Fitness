@@ -70,8 +70,10 @@ export function Sheet({
             aria-modal="true"
             aria-label={ariaLabel}
             tabIndex={-1}
-            className={`glass glass-strong relative w-full max-w-md rounded-t-3xl px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] ${
-              full ? "h-[92vh] overflow-y-auto" : "max-h-[85vh] overflow-y-auto"
+            // Surface opaque : en verre (4,5 % d'opacité), on voyait à travers la feuille les boutons
+            // de la séance, flous mais bien là, comme superposés au formulaire (Evan, 26/09/2026).
+            className={`surface-solid relative w-full max-w-md rounded-t-3xl px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] ${
+              full ? "flex h-[92dvh] flex-col" : "max-h-[85vh] overflow-y-auto"
             }`}
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
@@ -104,7 +106,9 @@ export function Sheet({
                 <X aria-hidden="true" size={18} />
               </button>
             </div>
-            {children}
+            {/* Pleine hauteur : le contenu prend la place qui reste sous la poignée. En « h-full »
+                sous la poignée, le bas du formulaire (et son bouton Enregistrer) sortait de l'écran. */}
+            {full ? <div className="min-h-0 flex-1 overflow-y-auto">{children}</div> : children}
           </motion.div>
         </motion.div>
       )}

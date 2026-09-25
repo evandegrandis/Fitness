@@ -1662,7 +1662,14 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!state.active) return;
         const newExercise = findExercise(state.catalog, newExerciseId);
         if (!newExercise) return;
+        const replaced = state.active.exercises.find((e) => e.id === loggedExerciseId);
+        if (!replaced) return;
         set({
+          // Les séries faites partent avec l'ancien exercice : sans filet, un mauvais choix dans le
+          // sélecteur les effaçait pour de bon. Rien à annuler quand l'exercice était encore vide.
+          ...(replaced.sets.length > 0
+            ? { undo: { message: `${replaced.exerciseName} remplacé`, snapshot: state.active } }
+            : {}),
           active: {
             ...state.active,
             exercises: state.active.exercises.map((e) =>
@@ -1686,7 +1693,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           .map((e, i) => ({ ...e, orderIndex: i }));
         set({
           active: { ...detached, exercises: remaining },
-          undo: { message: `${exerciseName} supprimé`, snapshot },
+          undo: { message: `${exerciseName} retiré de la séance`, snapshot },
         });
       },
 
