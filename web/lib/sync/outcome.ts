@@ -26,6 +26,12 @@ export interface SyncFailure {
 
 export type SyncOutcome = { ok: true } | SyncFailure;
 
+/**
+ * Refus du garde-fou de synchro (`lib/db/stale-writes.ts`) : le serveur avait une version plus
+ * récente que l'écriture rejouée. Rien n'a été écrasé ; ce n'est pas une panne.
+ */
+export const STALE_WRITE_CODE = "stale_write";
+
 /** Codes SQLSTATE dont un rejeu identique ne changera jamais l'issue. */
 const PERMANENT_SQLSTATE_CLASSES = new Set(["22", "23", "42"]);
 

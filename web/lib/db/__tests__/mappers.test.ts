@@ -52,6 +52,7 @@ describe("exercise mappers — movementPattern", () => {
     resistanceProfile: null,
     strengthStandardKey: null,
     benchmarkUnit: null,
+    updatedAt: new Date("2026-09-26T00:00:00Z"),
   };
 
   it("hydrates a tagged movementPattern from the database", () => {
@@ -129,6 +130,7 @@ describe("exercise mappers — resistanceProfile", () => {
     resistanceProfile: "lockout",
     strengthStandardKey: null,
     benchmarkUnit: null,
+    updatedAt: new Date("2026-09-26T00:00:00Z"),
   };
 
   it("hydrates a tagged resistanceProfile from the database", () => {
@@ -195,6 +197,7 @@ describe("logged exercise mappers — plateauWeakPoint (capture 1-tap)", () => {
       notes: "",
       isActive: false,
       templateName: null,
+      updatedAt: new Date("2026-09-26T00:00:00Z"),
     };
     const session = mapSessionRow(
       sessionRow,
@@ -226,6 +229,7 @@ describe("logged set mappers — suggestion snapshot and logical groups", () => 
     notes: "",
     isActive: true,
     templateName: null,
+    updatedAt: new Date("2026-09-26T00:00:00Z"),
   };
 
   it("normalizes missing cache-era metadata to null/[] before a DB write", () => {
@@ -338,6 +342,7 @@ describe("cardio session mappers", () => {
     notes: "",
     isActive: false,
     templateName: null,
+    updatedAt: new Date("2026-09-26T00:00:00Z"),
   };
 
   it("hydrates only the session cardio entries in display order", () => {
@@ -482,6 +487,7 @@ describe("recovery checkin alcohol mapper", () => {
       proteinTargetMet: false,
       sleepHours: 7.5,
       hadAlcohol: true,
+      updatedAt: new Date("2026-09-26T00:00:00Z"),
     };
 
     expect(mapRecoveryCheckinRow(row).hadAlcohol).toBe(true);

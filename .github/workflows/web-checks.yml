@@ -1,0 +1,29 @@
+name: web-checks
+
+# Contrôles de chaque PR de l'app web, dont les garde-fous de données
+# (web/DATA_SAFETY.md) : une migration destructive sans accord explicite échoue.
+on:
+  pull_request:
+    branches: [web/nextjs-app]
+    paths: ["web/**", ".github/workflows/web-checks.yml"]
+  push:
+    branches: [web/nextjs-app]
+    paths: ["web/**", ".github/workflows/web-checks.yml"]
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm test

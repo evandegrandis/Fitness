@@ -150,6 +150,7 @@ Calendar week (Monday to today) for guidance AND history display
 | Post-session review: a machine's first session is calibration | Evan's gym change (On Air to Fitness Park): a new machine's suggestion is only a starting point, so its first session is neither above nor below it. It leaves the performance signal (`calibrating` in `bilan.ts`); a session made only of new machines is a "Séance d'étalonnage", never "Difficile" | 2026-09 |
 | Session-share ticks on the weekly bars | In "Quoi faire maintenant", what remained at the START of the session is split by the sessions left this week (habit = median of the last 4 practiced weeks, including today); the bright tick is today's share, and each row shows today's done / share | 2026-09 |
 | Session calories = hybrid estimate, computed on read, shown as a range | Evan wants the calories of each session (post-session and History), accounting for exercise, muscles, load, reps, RIR, duration and body weight. `lib/engines/calories.ts`: background 1.8 MET off-set + per-set MET driven by the muscle mass of the profile (+15 % compound bracing) + mechanical work of the load, × RIR (×1.3 at failure), + immediate recovery growing with proximity to failure (+100 % at RIR 0, +50 % far from it); cardio via watts/distance/Compendium. Body weight = last weigh-in at the session date. Recalibrated 26/09 on Evan's real sessions: 1 h of upper body ≈ 290–300 kcal, the 2 h 34 « Upper » of 25/09 (23 sets to failure) ≈ 615 (510–720), within the Compendium (3.5 to 6 MET). A watch (heart rate) showed 1 418 for the same session: heart-rate estimates overshoot strength training. Nothing stored: every past session benefits. Barbis reads `GET /api/barbis/session-calories` and must add `activeKcal`, not `kcal`, to a daily expenditure. Method: `web/CALORIES.md` | 2026-09 |
+| No PR can erase data; data is copied twice | 26/09/2026: a Safari left on its 16/09 storage replayed August writes over production (identical by luck; the next ones would have reverted goals, weight, rep ranges). The database now guards itself whatever code is deployed: `updated_at` kept by trigger, every overwritten or deleted row kept 30 days in `row_history` (deferred trigger, identical rewrites leave nothing), TRUNCATE refused. A replayed write older than the server version becomes a `stale_write` dead letter instead of overwriting (`lib/db/stale-writes.ts`). Barbis copies every table hourly to Cloudflare R2 through a read-only Neon role. `data-safety.test.ts` fails any later migration that drops/deletes/updates without `-- destructive-ok:` (Evan's decision only). See `web/DATA_SAFETY.md` | 2026-09 |
 | Forearms and obliques tracked without a goal | Volume shown, no target: they work as secondaries, and a quota would push toward dedicated work he does not want | 2026-08 |
 | Suggest from today's sets, not last session replay | Old behavior caused inflated set 2 suggestions after a good previous session | 2026-04 |
 | Beast Mode = weight bias NOT extra reps | User explicitly: "harder on weight, not reps" | 2026-04 |
@@ -166,6 +167,13 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 ---
 
 ## HANDOFF
+
+### 2026-09-26 · Claude — Garde-fous de données (voir `web/DATA_SAFETY.md`)
+
+- Incident : un Safari resté sur le stockage du 16/09 a rejoué 39 écritures d'août (contenu identique, vérifié ligne à ligne contre une branche Neon figée juste avant) ; 62 autres attendaient.
+- Migration 0016 (appliquée AVANT le déploiement) : `updated_at` + trigger sur 7 tables, `row_history` + trigger différé sur 14 tables, TRUNCATE refusé. Garde-fou `stale_write` dans `lib/db/sync-actions.ts`, heure de décision `intentAt` dans l'outbox.
+- Barbis : copie horaire de toutes les tables sur R2 (`src/jeera-backup.ts`, rôle Neon `barbis_backup` en lecture seule).
+- `lib/db/__tests__/data-safety.test.ts` + CI `.github/workflows/web-checks.yml`. Ne jamais ajouter `-- destructive-ok:` sans l'accord d'Evan.
 
 ### 2026-09-25 · Claude — Menu d'exercice en séance refait
 

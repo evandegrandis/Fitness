@@ -76,7 +76,9 @@ export async function missingExerciseOperations(
 export function sessionWriteOperations(session: WorkoutSession): BatchItem<"pg">[] {
   const sessionRow = sessionToRow(session);
   const operations: BatchItem<"pg">[] = [
-    db.insert(workoutSessions).values(sessionRow).onConflictDoUpdate({ target: workoutSessions.id, set: sessionRow }),
+    // `updated_at` avance à chaque écriture de la séance : ses séries vivent dans d'autres tables,
+    // l'en-tête seul ne dirait pas qu'elle a changé (garde-fou `stale-writes.ts`).
+    db.insert(workoutSessions).values(sessionRow).onConflictDoUpdate({ target: workoutSessions.id, set: { ...sessionRow, updatedAt: sql`now()` } }),
   ];
 
   // `undefined` identifie une ancienne séance restaurée depuis localStorage :

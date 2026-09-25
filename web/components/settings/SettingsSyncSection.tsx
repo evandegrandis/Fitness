@@ -5,7 +5,8 @@ import { RefreshCw, Trash2 } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
-import { deadLettersSnapshot, discardDeadLetter, flush, retryDeadLetter, snapshot, subscribeDeadLetters, type DeadLetter } from "@/lib/sync/outbox";
+import { deadLettersSnapshot, discardDeadLetter, discardStaleDeadLetters, flush, retryDeadLetter, snapshot, subscribeDeadLetters, type DeadLetter } from "@/lib/sync/outbox";
+import { STALE_WRITE_CODE } from "@/lib/sync/outcome";
 
 const EMPTY: DeadLetter[] = [];
 import { useSyncStatus } from "@/lib/sync/status";
@@ -81,6 +82,14 @@ export function SettingsSyncSection() {
     void forceSync();
   }
 
+  const staleCount = letters.filter((letter) => letter.error.code === STALE_WRITE_CODE).length;
+
+  function discardStale() {
+    if (!window.confirm(`Abandonner ${staleCount > 1 ? `ces ${staleCount} anciennes écritures` : "cette ancienne écriture"} ? Le serveur garde ses versions actuelles.`)) return;
+    discardStaleDeadLetters();
+    refresh();
+  }
+
   function discard(entryId: string) {
     if (!window.confirm("Abandonner cette écriture ? Elle ne sera jamais envoyée au serveur.")) return;
     discardDeadLetter(entryId);
@@ -104,13 +113,27 @@ export function SettingsSyncSection() {
         {pending === 0 ? "Aucune écriture en attente." : `${pending} écriture${pending > 1 ? "s" : ""} en attente d'envoi.`}
         {lastError ? ` Dernière erreur : ${lastError.message.slice(0, 160)}` : ""}
       </p>
+      {staleCount > 0 && (
+        <div className="rounded-xl p-3 text-sm space-y-2" style={{ background: "color-mix(in srgb, var(--color-warning) 12%, transparent)" }}>
+          <p>
+            {staleCount > 1 ? `${staleCount} anciennes écritures mises de côté` : "Une ancienne écriture mise de côté"} : le serveur avait une version plus récente, rien n&apos;a été écrasé.
+          </p>
+          <button type="button" onClick={discardStale} className="inline-flex items-center gap-1 text-xs text-(--color-danger)">
+            <Trash2 size={12} /> Tout abandonner
+          </button>
+        </div>
+      )}
       {letters.length > 0 && (
         <ul className="space-y-2">
           {letters.map((letter) => (
-            <li key={letter.entryId} className="rounded-xl p-3 text-sm" style={{ background: "color-mix(in srgb, var(--color-danger) 10%, transparent)" }}>
+            <li
+              key={letter.entryId}
+              className="rounded-xl p-3 text-sm"
+              style={{ background: `color-mix(in srgb, var(${letter.error.code === STALE_WRITE_CODE ? "--color-warning" : "--color-danger"}) 10%, transparent)` }}
+            >
               <div className="font-medium">{describeOp(letter)}</div>
               <div className="text-xs text-(--color-fg-faint) mt-0.5">
-                Refusée le {new Date(letter.failedAt).toLocaleString("fr-FR")}{letter.error.code ? ` · code ${letter.error.code}` : ""}
+                {letter.error.code === STALE_WRITE_CODE ? "Mise de côté" : "Refusée"} le {new Date(letter.failedAt).toLocaleString("fr-FR")}{letter.error.code ? ` · code ${letter.error.code}` : ""}
               </div>
               <div className="text-xs mt-1 break-words">{letter.error.message}</div>
               <div className="flex gap-3 mt-2">
