@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, CloudOff } from "lucide-react";
 
+import { deadLettersSnapshot, subscribeDeadLetters, type DeadLetter } from "@/lib/sync/outbox";
+import { STALE_WRITE_CODE } from "@/lib/sync/outcome";
 import { useSyncStatus } from "@/lib/sync/status";
+
+const NO_LETTERS: DeadLetter[] = [];
 
 /** Au-delà, une file encore pleine n'est plus « en cours » : c'est un problème à montrer. */
 const STALE_PENDING_MS = 2 * 60_000;
@@ -33,6 +37,7 @@ export function SyncAlertBanner() {
   const deadLetters = useSyncStatus((s) => s.deadLetters);
   const oldestPendingAt = useSyncStatus((s) => s.oldestPendingAt);
   const lastError = useSyncStatus((s) => s.lastError);
+  const letters = useSyncExternalStore(subscribeDeadLetters, deadLettersSnapshot, () => NO_LETTERS);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -43,6 +48,27 @@ export function SyncAlertBanner() {
   const staleFor = oldestPendingAt !== null ? now - oldestPendingAt : 0;
   const stale = pending > 0 && staleFor > STALE_PENDING_MS;
   if (deadLetters === 0 && !stale) return null;
+
+  // Écritures mises de côté parce que le serveur avait plus récent : rien n'est perdu ni écrasé,
+  // ce n'est pas une panne. Le ton et le message le disent.
+  const onlyOutdated = deadLetters > 0 && letters.length === deadLetters && letters.every((letter) => letter.error.code === STALE_WRITE_CODE);
+  if (onlyOutdated) {
+    return (
+      <Link
+        href="/reglages#synchronisation"
+        className="block mx-3 mt-3 rounded-2xl px-4 py-3 text-sm"
+        style={{ background: "color-mix(in srgb, var(--color-warning) 14%, transparent)", color: "var(--color-warning)" }}
+      >
+        <span className="inline-flex items-center gap-2 font-medium">
+          <CloudOff size={16} />
+          {deadLetters > 1 ? `${deadLetters} anciennes écritures mises de côté` : "Une ancienne écriture mise de côté"}
+        </span>
+        <span className="block mt-0.5 text-xs opacity-80">
+          Le serveur avait une version plus récente : rien n&apos;a été écrasé. Ouvre les réglages pour les abandonner.
+        </span>
+      </Link>
+    );
+  }
 
   return (
     <Link

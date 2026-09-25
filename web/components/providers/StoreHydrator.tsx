@@ -97,7 +97,11 @@ export function StoreHydrator({
           );
           try {
             for (const exercise of missingExercises) enqueue({ kind: "exercise_upsert", exercise });
-            for (const session of missingSessions) enqueue({ kind: "session", session });
+            // L'heure de la séance, pas celle de la récupération : une séance supprimée depuis
+            // sur le serveur ne revient pas (garde-fou de `sync-actions.ts`).
+            for (const session of missingSessions) {
+              enqueue({ kind: "session", session }, { intentAt: (session.endTime ?? session.date).getTime() });
+            }
           } catch {
             // L'outbox n'a pas pu garantir la persistance : conserver le cache tel quel est la
             // seule réponse sûre. Aucun snapshot serveur ne sera appliqué dans ce passage.

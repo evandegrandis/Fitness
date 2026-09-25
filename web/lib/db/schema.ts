@@ -14,6 +14,7 @@
 
 import { relations, sql, type InferInsertModel, type InferSelectModel } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   check,
   date,
@@ -26,6 +27,14 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+/**
+ * Heure SERVEUR de la dernière modification réelle de la ligne, tenue par un trigger
+ * (`jeera_touch_updated_at`, migration 0016) : le code n'a pas à y penser. Sert au garde-fou de
+ * synchro : une écriture rejouée plus ancienne que cette heure est mise de côté au lieu
+ * d'écraser la version du serveur (DATA_SAFETY.md).
+ */
+const updatedAt = () => timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow();
 
 // ---------------------------------------------------------------------------
 // exercises
@@ -65,6 +74,7 @@ export const exercises = pgTable("exercises", {
   strengthStandardKey: text("strength_standard_key"),
   /** BENCHMARK_LEVEL_SPEC.md §1 (P3.1) — "load"|"reps"|"reps_and_load", nullable. */
   benchmarkUnit: text("benchmark_unit"),
+  updatedAt: updatedAt(),
 });
 
 export const exercisesRelations = relations(exercises, ({ many }) => ({
@@ -111,6 +121,7 @@ export const workoutSessions = pgTable(
     notes: text("notes").notNull().default(""),
     isActive: boolean("is_active").notNull().default(false),
     templateName: text("template_name"),
+    updatedAt: updatedAt(),
   },
   (table) => [index("workout_sessions_date_idx").on(table.date)]
 );
@@ -313,6 +324,7 @@ export const muscleGoals = pgTable("muscle_goals", {
   /** Un objectif par parent — le rawValue du parent est la clé, comme côté Swift (`muscleGroupRaw`). */
   muscleParent: text("muscle_parent").primaryKey(),
   weeklyGoalSets: doublePrecision("weekly_goal_sets").notNull(),
+  updatedAt: updatedAt(),
 });
 
 // ---------------------------------------------------------------------------
@@ -324,6 +336,7 @@ export const workoutTemplates = pgTable("workout_templates", {
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  updatedAt: updatedAt(),
 });
 
 export const workoutTemplatesRelations = relations(workoutTemplates, ({ many }) => ({
@@ -381,6 +394,7 @@ export const userSettings = pgTable(
     trainingPhaseStartedAt: timestamp("training_phase_started_at", { mode: "date", withTimezone: true }),
     /** Objectif cardio hebdomadaire, en minutes. `null` = valeur par défaut du moteur (150). */
     weeklyCardioMinutesGoal: integer("weekly_cardio_minutes_goal"),
+    updatedAt: updatedAt(),
   },
   (table) => [
     check(
@@ -408,6 +422,7 @@ export const recoveryCheckins = pgTable(
     proteinTargetMet: boolean("protein_target_met"),
     sleepHours: doublePrecision("sleep_hours"),
     hadAlcohol: boolean("had_alcohol"),
+    updatedAt: updatedAt(),
   },
   (table) => [
     uniqueIndex("recovery_checkins_date_unique").on(table.date),
@@ -438,6 +453,7 @@ export const bodyWeights = pgTable(
     id: text("id").primaryKey(),
     measuredOn: timestamp("measured_on", { mode: "date", withTimezone: true }).notNull(),
     weightKg: doublePrecision("weight_kg").notNull(),
+    updatedAt: updatedAt(),
   },
   (table) => [
     uniqueIndex("body_weights_measured_on_unique").on(table.measuredOn),
@@ -521,6 +537,34 @@ export type NewBodyWeightRow = InferInsertModel<typeof bodyWeights>;
 
 export type PushSubscriptionRow = InferSelectModel<typeof pushSubscriptions>;
 export type NewPushSubscriptionRow = InferInsertModel<typeof pushSubscriptions>;
+
+// ---------------------------------------------------------------------------
+// row_history
+// ---------------------------------------------------------------------------
+
+/**
+ * Journal des lignes modifiées ou supprimées (DATA_SAFETY.md). Rempli UNIQUEMENT par un trigger
+ * de la base (`jeera_keep_row_history`, migration 0016), jamais par le code : quelle que soit la
+ * PR déployée, l'ancienne version d'une ligne écrasée ou supprimée reste ici 30 jours. Une
+ * réécriture à l'identique (séance réenregistrée) n'y laisse rien. Sert aussi de pierre tombale :
+ * une écriture rejouée ne ressuscite pas une ligne supprimée après elle.
+ */
+export const rowHistory = pgTable(
+  "row_history",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tableName: text("table_name").notNull(),
+    rowKey: text("row_key").notNull(),
+    op: text("op").notNull(),
+    oldRow: jsonb("old_row").notNull(),
+    changedAt: timestamp("changed_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("row_history_row_idx").on(table.tableName, table.rowKey, table.changedAt),
+    index("row_history_changed_at_idx").on(table.changedAt),
+    check("row_history_op_check", sql`${table.op} IN ('UPDATE', 'DELETE')`),
+  ]
+);
 
 export type ExerciseRow = InferSelectModel<typeof exercises>;
 export type NewExerciseRow = InferInsertModel<typeof exercises>;

@@ -8,7 +8,7 @@ import type {
   WorkoutTemplate,
 } from "@/lib/models/types";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
-import { isSyncFailure, type SyncFailure, type SyncOutcome } from "@/lib/sync/outcome";
+import { isSyncFailure, STALE_WRITE_CODE, type SyncFailure, type SyncOutcome } from "@/lib/sync/outcome";
 
 /**
  * File de synchronisation OFFLINE-FIRST (persistée en localStorage).
@@ -60,6 +60,13 @@ interface OutboxEntry {
   entryId?: string;
   op: OutboxOp;
   enqueuedAt: number;
+  /**
+   * Heure où l'écriture a été décidée sur cet appareil, envoyée au serveur avec elle : si la cible
+   * a changé sur le serveur après cette heure, l'écriture est mise de côté au lieu d'écraser
+   * (`lib/db/sync-actions.ts`). Absente = `enqueuedAt`. Une séance récupérée depuis l'historique
+   * local porte l'heure de sa fin, pas celle de la récupération.
+   */
+  intentAt?: number;
   /** Tentatives de rejeu déjà effectuées (transitoires comprises). */
   attempts?: number;
   /** Dernier rejet, pour l'affichage : jamais une raison d'abandonner seul. */
@@ -224,14 +231,20 @@ function write(entries: OutboxEntry[]): void {
 }
 
 /** Met une opération en file (remplace toute entrée en attente visant la même cible). */
-export function enqueue(op: OutboxOp): void {
+export function enqueue(op: OutboxOp, options: { intentAt?: number } = {}): void {
   const key = dedupeKeyOf(op);
   const entries = read();
   const existingIndex = entries.findIndex((entry) => entry.dedupeKey === key);
   const entryId = typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const replacement: OutboxEntry = { dedupeKey: key, entryId, op, enqueuedAt: Date.now() };
+  const replacement: OutboxEntry = {
+    dedupeKey: key,
+    entryId,
+    op,
+    enqueuedAt: Date.now(),
+    ...(options.intentAt !== undefined ? { intentAt: options.intentAt } : {}),
+  };
   if (existingIndex >= 0) {
     // Conserve la position causale initiale. Exemple : créer E hors-ligne,
     // enregistrer une séance qui référence E, puis rééditer E doit rester
@@ -261,7 +274,8 @@ export function pendingCount(): number {
 }
 
 /**
- * Une fonction de sauvegarde par kind d'opération, fournie par l'appelant.
+ * Une fonction de sauvegarde par kind d'opération, fournie par l'appelant. Chacune reçoit aussi
+ * `intentAt`, l'heure où l'écriture a été décidée sur l'appareil (voir `OutboxEntry.intentAt`).
  * Un handler renvoie soit rien (succès), soit un `SyncOutcome`. Une exception
  * levée est traitée comme un échec TRANSITOIRE (réseau, serveur muet) : seul
  * un résultat `{ ok: false, kind: "permanent" }` explicite peut sortir une
@@ -270,40 +284,40 @@ export function pendingCount(): number {
 type HandlerResult = Promise<SyncOutcome | void>;
 
 export interface OutboxHandlers {
-  session: (session: WorkoutSession) => HandlerResult;
-  sessionDelete: (sessionId: string) => HandlerResult;
-  settings: (settings: UserSettings) => HandlerResult;
-  goals: (goals: MuscleGoal[]) => HandlerResult;
-  recoveryCheckin: (checkin: RecoveryCheckinInput) => HandlerResult;
-  exerciseUpsert: (exercise: Exercise) => HandlerResult;
-  exerciseDelete: (exerciseId: string) => HandlerResult;
-  templateUpsert: (template: WorkoutTemplate) => HandlerResult;
-  templateDelete: (templateId: string) => HandlerResult;
-  bodyWeight: (entry: BodyWeightEntry) => HandlerResult;
+  session: (session: WorkoutSession, intentAt: number) => HandlerResult;
+  sessionDelete: (sessionId: string, intentAt: number) => HandlerResult;
+  settings: (settings: UserSettings, intentAt: number) => HandlerResult;
+  goals: (goals: MuscleGoal[], intentAt: number) => HandlerResult;
+  recoveryCheckin: (checkin: RecoveryCheckinInput, intentAt: number) => HandlerResult;
+  exerciseUpsert: (exercise: Exercise, intentAt: number) => HandlerResult;
+  exerciseDelete: (exerciseId: string, intentAt: number) => HandlerResult;
+  templateUpsert: (template: WorkoutTemplate, intentAt: number) => HandlerResult;
+  templateDelete: (templateId: string, intentAt: number) => HandlerResult;
+  bodyWeight: (entry: BodyWeightEntry, intentAt: number) => HandlerResult;
 }
 
-async function applyOp(op: OutboxOp, handlers: OutboxHandlers): HandlerResult {
+async function applyOp(op: OutboxOp, handlers: OutboxHandlers, intentAt: number): HandlerResult {
   switch (op.kind) {
     case "session":
-      return handlers.session(op.session);
+      return handlers.session(op.session, intentAt);
     case "session_delete":
-      return handlers.sessionDelete(op.sessionId);
+      return handlers.sessionDelete(op.sessionId, intentAt);
     case "settings":
-      return handlers.settings(op.settings);
+      return handlers.settings(op.settings, intentAt);
     case "goals":
-      return handlers.goals(op.goals);
+      return handlers.goals(op.goals, intentAt);
     case "recovery_checkin":
-      return handlers.recoveryCheckin(op.checkin);
+      return handlers.recoveryCheckin(op.checkin, intentAt);
     case "exercise_upsert":
-      return handlers.exerciseUpsert(op.exercise);
+      return handlers.exerciseUpsert(op.exercise, intentAt);
     case "exercise_delete":
-      return handlers.exerciseDelete(op.exerciseId);
+      return handlers.exerciseDelete(op.exerciseId, intentAt);
     case "template_upsert":
-      return handlers.templateUpsert(op.template);
+      return handlers.templateUpsert(op.template, intentAt);
     case "template_delete":
-      return handlers.templateDelete(op.templateId);
+      return handlers.templateDelete(op.templateId, intentAt);
     case "body_weight":
-      return handlers.bodyWeight(op.entry);
+      return handlers.bodyWeight(op.entry, intentAt);
   }
 }
 
@@ -371,6 +385,18 @@ export function discardDeadLetter(entryId: string): boolean {
   return true;
 }
 
+/**
+ * Abandon EXPLICITE, en une fois, des écritures mises de côté parce que le serveur avait une
+ * version plus récente (`stale_write`). Les vrais refus restent, un par un.
+ */
+export function discardStaleDeadLetters(): number {
+  const letters = readDeadLetters();
+  const kept = letters.filter((letter) => letter.error.code !== STALE_WRITE_CODE);
+  if (kept.length === letters.length) return 0;
+  writeDeadLetters(kept);
+  return letters.length - kept.length;
+}
+
 function tokenOf(entry: OutboxEntry): string {
   return entry.entryId ?? `${entry.dedupeKey}:${entry.enqueuedAt}`; // compat file v1 existant
 }
@@ -413,7 +439,7 @@ async function flushOnce(handlers: OutboxHandlers): Promise<number> {
     const entry = entries[index];
     let outcome: SyncOutcome;
     try {
-      const result = await applyOp(entry.op, handlers);
+      const result = await applyOp(entry.op, handlers, entry.intentAt ?? entry.enqueuedAt);
       outcome = isSyncFailure(result) ? result : { ok: true };
     } catch (error) {
       outcome = { ok: false, kind: "transient", code: null, message: error instanceof Error ? error.message : String(error) };

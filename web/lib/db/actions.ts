@@ -331,7 +331,8 @@ export async function saveTemplate(template: WorkoutTemplate): Promise<void> {
     db
       .insert(workoutTemplates)
       .values(row)
-      .onConflictDoUpdate({ target: workoutTemplates.id, set: row }),
+      // Ses exercices vivent dans une autre table : la version du modèle avance à chaque écriture.
+      .onConflictDoUpdate({ target: workoutTemplates.id, set: { ...row, updatedAt: sql`now()` } }),
     db.delete(templateExercises).where(eq(templateExercises.templateId, template.id)),
   ];
   const exerciseRows = templateToExerciseRows(template);
