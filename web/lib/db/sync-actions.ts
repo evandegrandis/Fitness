@@ -33,7 +33,9 @@ import {
 import { missingExerciseOperations, sessionWriteOperations } from "./session-writes";
 import { requireAuthenticatedSession } from "@/lib/auth";
 import { after } from "next/server";
-import { notifyBarbisExercisesNeedProfile } from "@/lib/integrations/barbis";
+import { notifyBarbisExercisesNeedProfile, notifyBarbisSessionFinished, sessionJustFinished } from "@/lib/integrations/barbis";
+import { sessionCalories } from "@/lib/engines/calories";
+import { getBodyWeights, getExercises, getSettings } from "./queries";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { classifySyncError, type SyncOutcome } from "@/lib/sync/outcome";
 import type { OutboxOp } from "@/lib/sync/outbox";
@@ -72,6 +74,17 @@ export async function syncSession(payload: { session: WorkoutSession; exercises:
     if (missing.needsProfile.length > 0) {
       const ids = missing.needsProfile;
       after(() => notifyBarbisExercisesNeedProfile(ids));
+    }
+    // Séance tout juste validée : Barbis fait le bilan du jour et dit quoi manger ensuite.
+    if (sessionJustFinished(payload.session)) {
+      const session = payload.session;
+      after(async () => {
+        const estimate = await Promise.all([getExercises(), getBodyWeights(), getSettings()])
+          .then(([catalog, bodyWeights, settings]) => sessionCalories(session, catalog, bodyWeights, settings.bodyWeightKg))
+          .then((calories) => ({ activeKcal: calories.activeKcal, low: calories.low, high: calories.high }))
+          .catch(() => null);
+        await notifyBarbisSessionFinished(session, estimate);
+      });
     }
     revalidatePath("/", "layout");
     return { ok: true };

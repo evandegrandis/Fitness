@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { adoptServerProfile, exercisesAwaitingBarbis, needsBarbisProfile, type ServerProfile } from "@/lib/integrations/barbis";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { adoptServerProfile, exercisesAwaitingBarbis, needsBarbisProfile, notifyBarbisSessionFinished, sessionJustFinished, type ServerProfile } from "@/lib/integrations/barbis";
 import { parseBarbisProfile } from "@/lib/integrations/barbis-profile-input";
 import { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
@@ -111,3 +111,44 @@ describe("contrat POST /api/barbis/exercise-profile", () => {
     expect(() => parseBarbisProfile({ ...valid, ...patch })).toThrow();
   });
 });
+
+describe("séance validée : Barbis fait le bilan du jour", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+  it("seulement pour une séance terminée il y a moins de 3 h, jamais pour une séance en cours ou corrigée plus tard", () => {
+    const now = new Date("2026-09-25T18:40:00Z");
+    expect(sessionJustFinished({ isActive: false, endTime: new Date("2026-09-25T18:28:00Z") }, now)).toBe(true);
+    expect(sessionJustFinished({ isActive: true, endTime: null }, now)).toBe(false);
+    expect(sessionJustFinished({ isActive: false, endTime: new Date("2026-09-23T18:28:00Z") }, now)).toBe(false);
+  });
+
+  it("envoie l'id, les heures et la dépense estimée à l'adresse de signal existante", async () => {
+    vi.stubEnv("BARBIS_JEERA_WEBHOOK_URL", "https://barbis.test/jeera/exercise-created");
+    vi.stubEnv("JEERA_BARBIS_TOKEN", "jeton");
+    const fetchMock = vi.fn(async () => new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await notifyBarbisSessionFinished(
+      { id: "s1", startTime: new Date("2026-09-25T15:54:00Z"), endTime: new Date("2026-09-25T18:28:00Z") },
+      { activeKcal: 300, low: 410, high: 570 }
+    );
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://barbis.test/jeera/exercise-created");
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer jeton");
+    expect(JSON.parse(String(init.body))).toEqual({
+      event: "session_finished", sessionId: "s1", startTime: "2026-09-25T15:54:00.000Z", endTime: "2026-09-25T18:28:00.000Z",
+      activeKcal: 300, kcalLow: 410, kcalHigh: 570, source: "jeera",
+    });
+  });
+
+  it("ne bloque jamais la synchro : sans configuration rien ne part, une panne est seulement journalisée", async () => {
+    const fetchMock = vi.fn(async () => { throw new Error("réseau"); });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("BARBIS_JEERA_WEBHOOK_URL", "");
+    await notifyBarbisSessionFinished({ id: "s1", startTime: new Date(), endTime: new Date() }, null);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.stubEnv("BARBIS_JEERA_WEBHOOK_URL", "https://barbis.test/jeera/exercise-created");
+    vi.stubEnv("JEERA_BARBIS_TOKEN", "jeton");
+    await expect(notifyBarbisSessionFinished({ id: "s1", startTime: new Date(), endTime: new Date() }, null)).resolves.toBeUndefined();
+  });
+});
+

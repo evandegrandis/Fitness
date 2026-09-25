@@ -93,3 +93,49 @@ export async function notifyBarbisExercisesNeedProfile(exerciseIds: readonly str
     }));
   }
 }
+
+/**
+ * Séance validée : Barbis fait le bilan de ce qu'Evan a mangé et propose la suite de la journée
+ * (Evan, 26/09/2026). Même adresse et même jeton que le signal des machines. La séance arrive par
+ * la file de synchronisation, parfois plusieurs fois : Barbis ne fait qu'un bilan par séance, et
+ * rien pour une séance finie depuis plus de 3 h (une correction dans l'historique).
+ */
+export const SESSION_SIGNAL_MAX_AGE_MS = 3 * 3_600_000;
+
+export function sessionJustFinished(session: Pick<WorkoutSession, "isActive" | "endTime">, now = new Date()): boolean {
+  if (session.isActive || !session.endTime) return false;
+  const age = now.getTime() - session.endTime.getTime();
+  return age <= SESSION_SIGNAL_MAX_AGE_MS && age >= -10 * 60_000;
+}
+
+export async function notifyBarbisSessionFinished(
+  session: Pick<WorkoutSession, "id" | "startTime" | "endTime">,
+  estimate: { activeKcal: number; low: number; high: number } | null
+): Promise<void> {
+  const url = process.env.BARBIS_JEERA_WEBHOOK_URL;
+  const token = process.env.JEERA_BARBIS_TOKEN;
+  if (!url || !token || !session.endTime) return;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        event: "session_finished",
+        sessionId: session.id,
+        startTime: session.startTime.toISOString(),
+        endTime: session.endTime.toISOString(),
+        ...(estimate ? { activeKcal: estimate.activeKcal, kcalLow: estimate.low, kcalHigh: estimate.high } : {}),
+        source: "jeera",
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    console.log(JSON.stringify({ event: "barbis_session_signal", status: response.status, session: session.id }));
+  } catch (error) {
+    console.log(JSON.stringify({
+      event: "barbis_session_signal_failed",
+      session: session.id,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+  }
+}
+
