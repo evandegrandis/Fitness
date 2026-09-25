@@ -167,6 +167,13 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 
 ## HANDOFF
 
+### 2026-09-25 · Claude — Menu d'exercice en séance refait
+
+- Bouton ⋯ sur chaque carte (et appui long sur le nom) → `components/workout/ExerciseActionsSheet.tsx` : Remplacer / Dupliquer / Démo en un tap, réglages utiles à la prochaine série (réglage machine, reps min/max, plus petit saut, charge max, repos), « Tous les réglages » vers l'éditeur complet, « Retirer de la séance » (confirmation si des séries existent). L'appui long ouvrait avant le formulaire complet du catalogue.
+- Réglages rapides fusionnés sur la version À JOUR du catalogue (`exercise-quick-settings.ts`) : un profil posé par Barbis pendant que la feuille est ouverte n'est plus écrasé.
+- `replaceExercise` pousse un « Annuler » quand l'exercice remplacé portait des séries (elles étaient perdues sans filet).
+- Reste à faire : `ExerciseEditorSheet` écrase encore le catalogue avec la copie lue à l'ouverture (même risque Barbis) ; ses 4 steppers en `grid-cols-3` débordent sur mobile.
+
 ### 2026-09-17 · Claude — Synchro web réparée structurellement (voir `web/SYNC.md`)
 
 - Incident : outbox bloquée depuis le 20/08 (séance → exercice absent de Neon, FK), un mois de données sur le téléphone seulement. Récupéré via export JSON (`web/scripts/recover-from-backup-2026-09-17.ts`) : +16 séances, +9 exercices, +29 check-ins, +1 pesée.

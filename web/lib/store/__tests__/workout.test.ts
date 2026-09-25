@@ -501,6 +501,33 @@ describe("useWorkoutStore", () => {
     expect(useWorkoutStore.getState().warmupSuggestion(loggedExerciseId)).toBeNull();
   });
 
+  it("remplacer un exercice qui porte des séries se rattrape par « Annuler », pas un exercice vide", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH, CURL, DIPS], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    store.addExercise(DIPS.id);
+    const logged = useWorkoutStore.getState().active!.exercises;
+    const bench = logged.find((e) => e.exerciseId === BENCH.id)!;
+    const dips = logged.find((e) => e.exerciseId === DIPS.id)!;
+    store.logSet(bench.id, { weight: 80, reps: 8 });
+
+    // Machine prise avant la première série : rien à annuler, pas de toast parasite.
+    store.replaceExercise(dips.id, CURL.id);
+    expect(useWorkoutStore.getState().undo).toBeNull();
+
+    store.replaceExercise(bench.id, DIPS.id);
+    const replaced = useWorkoutStore.getState().active!.exercises.find((e) => e.id === bench.id)!;
+    expect(replaced.exerciseId).toBe(DIPS.id);
+    expect(replaced.sets).toHaveLength(0);
+    expect(useWorkoutStore.getState().undo?.message).toBe("Développé couché remplacé");
+
+    useWorkoutStore.getState().undoLastAction();
+    const restored = useWorkoutStore.getState().active!.exercises.find((e) => e.id === bench.id)!;
+    expect(restored.exerciseId).toBe(BENCH.id);
+    expect(restored.sets.map((set) => [set.weight, set.reps])).toEqual([[80, 8]]);
+  });
+
   it("discard() efface la séance active sans la déplacer vers history", () => {
     const store = useWorkoutStore.getState();
     store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
