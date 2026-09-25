@@ -14,6 +14,7 @@ import { useWorkoutStore } from "@/lib/store/workout";
 import { SessionDetailHeader } from "@/components/history/SessionDetailHeader";
 import { SessionExerciseBlock, SessionSupersetBlock } from "@/components/history/SessionExerciseBlock";
 import { SessionCardioBlock } from "@/components/history/SessionCardioBlock";
+import { SessionCaloriesCard } from "@/components/history/SessionCalories";
 
 export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
@@ -99,6 +100,8 @@ export default function SessionDetailPage() {
 
       <div className="mt-3 flex flex-col gap-3">
         <SessionDetailHeader session={session} exercises={catalog} />
+
+        <SessionCaloriesCard session={session} exercises={catalog} />
 
         {blocks.map((block) =>
           block.kind === "solo" ? (

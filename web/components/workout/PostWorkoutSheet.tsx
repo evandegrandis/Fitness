@@ -17,6 +17,7 @@ import { BilanHero } from "./bilan/BilanHero";
 import { BilanPerformance } from "./bilan/BilanPerformance";
 import { BilanPlateaus } from "./bilan/BilanPlateaus";
 import { BilanCoverage } from "./bilan/BilanCoverage";
+import { SessionCaloriesCard } from "@/components/history/SessionCalories";
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -90,6 +91,7 @@ function PostWorkoutContent({
   // `useMemo` lui-même ne recalculerait jamais sans une dépendance qui change réellement à la
   // capture — `history` (nouvelle référence à chaque mutation immuable du store) joue ce rôle.
   const history = useWorkoutStore((s) => s.history);
+  const catalog = useWorkoutStore((s) => s.catalog);
   const referenceDate = session.endTime ?? session.date;
 
   const d1Date = useMemo(() => addDays(referenceDate, -1), [referenceDate]);
@@ -174,6 +176,8 @@ function PostWorkoutContent({
           <StatTile value={snapshot.setCount} label="Séries" />
           <StatTile value={snapshot.exerciseCount} label="Exos" />
         </div>
+
+        <SessionCaloriesCard session={session} exercises={catalog} />
 
         <BilanHero review={review} />
 

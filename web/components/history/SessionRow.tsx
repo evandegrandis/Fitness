@@ -9,6 +9,7 @@ import { SwipeRow } from "@/components/ui/SwipeRow";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
+import { useSessionCalories } from "./SessionCalories";
 import { formatDecimal } from "@/lib/format";
 
 function relativeDay(date: Date): string {
@@ -57,6 +58,7 @@ export function SessionRow({
     ) * 10
   ) / 10;
   const duration = sessionDurationLabel(session, exercises);
+  const calories = useSessionCalories(session, exercises);
   const supersetCount = session.supersetGroups.length;
   const names = ordered.map((e) => e.exerciseName);
   const shown = names.slice(0, 2);
@@ -87,6 +89,7 @@ export function SessionRow({
               {formatDecimal(totalSets)} séries · {duration} · {ordered.length} exos
               {supersetCount > 0 ? ` · ${supersetCount} superset${supersetCount > 1 ? "s" : ""}` : ""}
               {(session.cardioEntries?.length ?? 0) > 0 ? " · cardio" : ""}
+              {calories.kcal > 0 ? ` · ~${calories.kcal} kcal` : ""}
             </p>
             <p className="mt-1 truncate text-xs text-(--color-fg-faint)">
               {shown.join(", ")}
