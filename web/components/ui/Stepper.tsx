@@ -14,6 +14,10 @@ const SCRUB_PX_PER_STEP = 18; // px de glissement par cran
  *  - **scrub vertical sur le chiffre** = glisser haut/bas pour ajuster vite (le geste principal à
  *    la salle). Zone morte de 12 px pour ne pas voler le scroll de page ;
  *  - tap sur le chevron du dessus ou du dessous = un pas, pour la précision.
+ *
+ * `variant="tile"` (saisie d'une série) : une tuile pleine largeur, libellé et valeur à gauche,
+ * chevrons empilés à droite. Deux tuiles côte à côte tiennent sur ~66 px de haut au lieu de ~100,
+ * sans laisser les deux réglages serrés au milieu de la carte (Evan, 26/09/2026).
  */
 export function Stepper({
   value,
@@ -24,6 +28,7 @@ export function Stepper({
   suffix,
   label,
   className,
+  variant = "stack",
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -33,6 +38,7 @@ export function Stepper({
   suffix?: string;
   label?: string;
   className?: string;
+  variant?: "stack" | "tile";
 }) {
   // -- Scrub vertical sur le chiffre --
   const scrubStartY = useRef<number | null>(null);
@@ -80,7 +86,7 @@ export function Stepper({
   };
 
   // Les chevrons sont la seule affordance visible : cible de 44 px de large, un pas par tap.
-  const renderChevron = (dir: 1 | -1) => {
+  const renderChevron = (dir: 1 | -1, className = "h-7 w-11") => {
     const Icon = dir === 1 ? ChevronUp : ChevronDown;
     const disabled = dir === 1 ? max != null && value >= max : min != null && value <= min;
     return (
@@ -92,31 +98,59 @@ export function Stepper({
           e.stopPropagation();
           onChange(clamp(value + dir * step));
         }}
-        className="grid h-7 w-11 place-items-center text-(--color-fg-muted) transition active:scale-90 disabled:opacity-20"
+        className={cn("grid place-items-center text-(--color-fg-muted) transition active:scale-90 disabled:opacity-20", className)}
       >
         <Icon size={16} aria-hidden />
       </button>
     );
   };
 
+  const scrubProps = {
+    role: "slider",
+    "aria-valuenow": value,
+    "aria-valuemin": min,
+    "aria-valuemax": max,
+    "aria-label": label ?? "Valeur",
+    tabIndex: 0,
+    onPointerDown: onScrubDown,
+    onPointerMove: onScrubMove,
+    onPointerUp: onScrubEnd,
+    onPointerCancel: onScrubEnd,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowUp") onChange(clamp(value + step));
+      if (e.key === "ArrowDown") onChange(clamp(value - step));
+    },
+  } as const;
+
+  if (variant === "tile") {
+    return (
+      <div
+        className={cn(
+          "flex min-w-0 items-stretch overflow-hidden rounded-2xl border bg-white/[0.03] transition-colors",
+          scrubbing ? "border-[color:var(--accent)]/45" : "border-white/[0.07]",
+          className
+        )}
+      >
+        <span {...scrubProps} className="flex min-w-0 flex-1 touch-pan-x cursor-ns-resize select-none flex-col justify-center px-3.5 py-2.5">
+          {label && <span className="eyebrow !text-[0.58rem]">{label}</span>}
+          <span className={cn("tnum mt-1 truncate text-[1.65rem] font-bold leading-none tabular-nums transition-transform", scrubbing && "scale-105")}>
+            {formatDecimal(value, 2)}
+            {suffix && <span className="ml-1 text-sm font-medium text-(--color-fg-muted)">{suffix}</span>}
+          </span>
+        </span>
+        <div className="flex w-11 shrink-0 flex-col border-l border-white/[0.06]">
+          {renderChevron(1, "w-full flex-1 border-b border-white/[0.06]")}
+          {renderChevron(-1, "w-full flex-1")}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("flex flex-col items-center gap-1", className)}>
       {label && <span className="text-xs text-(--color-fg-muted)">{label}</span>}
       <span
-        role="slider"
-        aria-valuenow={value}
-        aria-valuemin={min}
-        aria-valuemax={max}
-        aria-label={label ?? "Valeur"}
-        tabIndex={0}
-        onPointerDown={onScrubDown}
-        onPointerMove={onScrubMove}
-        onPointerUp={onScrubEnd}
-        onPointerCancel={onScrubEnd}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowUp") onChange(clamp(value + step));
-          if (e.key === "ArrowDown") onChange(clamp(value - step));
-        }}
+        {...scrubProps}
         className={cn(
           "relative flex touch-pan-x cursor-ns-resize select-none flex-col items-center",
           scrubbing && "scale-105"

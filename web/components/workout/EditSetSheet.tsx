@@ -58,9 +58,9 @@ function EditSetForm({
   return (
     <div className="flex flex-col gap-4">
       <h2 className="font-display text-base font-bold text-(--color-fg)">Modifier la série</h2>
-      <div className="flex items-center justify-center gap-6">
-        <Stepper label="Poids" value={weight} onChange={setWeight} step={increment} min={0} suffix="kg" />
-        <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={1} />
+      <div className="grid grid-cols-2 gap-2">
+        <Stepper variant="tile" label="Poids" value={weight} onChange={setWeight} step={increment} min={0} suffix="kg" />
+        <Stepper variant="tile" label="Reps" value={reps} onChange={setReps} step={1} min={1} />
       </div>
 
       {/* RIR + raison d'arrêt — non pertinents pour un échauffement. */}

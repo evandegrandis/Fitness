@@ -293,10 +293,11 @@ export function SetEntry({
         </p>
       )}
 
-      {/* Passe à la ligne plutôt que déborder : dans une carte de superset, plus étroite, les deux
-          sélecteurs côte à côte coupaient les boutons − et + au bord. */}
-      <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
+      {/* Deux tuiles pleine largeur : plus basses que les réglages empilés, et plus serrées au
+          milieu de la carte. Elles tiennent aussi dans une carte de superset, plus étroite. */}
+      <div className="grid grid-cols-2 gap-2">
         <Stepper
+          variant="tile"
           label="Poids"
           value={weight}
           onChange={(nextWeight) => {
@@ -309,15 +310,15 @@ export function SetEntry({
           min={0}
           suffix="kg"
         />
-        <Stepper label="Reps" value={reps} onChange={setReps} step={1} min={1} />
+        <Stepper variant="tile" label="Reps" value={reps} onChange={setReps} step={1} min={1} />
       </div>
 
       {/* RIR (reps en réserve) — oui.rtf #1 : facultatif, 1 tap, aucune présélection, jamais en
           échauffement. Tap sur la valeur déjà choisie = désélection. Valider sans choisir loggue
           `reportedRir=null` (zéro friction). Éditable ensuite via la ligne du set. */}
       {!useWarmup && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-(--color-fg-muted)">RIR</span>
+        <div className="flex items-center gap-1.5">
+          <span className="w-7 shrink-0 text-xs text-(--color-fg-muted)">RIR</span>
           {REPORTED_RIR_OPTIONS.map((option) => {
             const selected = rir === option;
             return (
@@ -327,7 +328,7 @@ export function SetEntry({
                 onClick={() => setRir((current) => (current === option ? null : option))}
                 aria-pressed={selected}
                 aria-label={`Reps en réserve ${reportedRirLabel(option)}${option === 0 ? " (échec)" : ""}`}
-                className={cn("pill min-h-11 min-w-11 justify-center", selected && "ring-1 ring-[color:var(--accent)]/70")}
+                className={cn("pill min-h-11 min-w-0 flex-1 justify-center", selected && "ring-1 ring-[color:var(--accent)]/70")}
                 style={
                   selected
                     ? { color: "var(--accent)", background: "rgba(255,138,61,0.14)" }
