@@ -34,7 +34,8 @@ export function HistoryOverviewCard({
       ),
     0
   );
-  const displayedTotalSets = Math.round(totalSets * 10) / 10;
+  // Un total de plusieurs centaines n'a que faire de la décimale ; elle reste en dessous de 100.
+  const displayedTotalSets = totalSets >= 100 ? Math.round(totalSets) : Math.round(totalSets * 10) / 10;
   const totalPRs = sessions.reduce((acc, s) => acc + (prCountBySessionId.get(s.id) ?? 0), 0);
   const totalHours = sessions.reduce(
     (acc, session) => acc + sessionDurationMinutes(session, exercises).minutes / 60,
@@ -47,7 +48,7 @@ export function HistoryOverviewCard({
         <StatTile value={sessions.length} label="Séances" />
         <StatTile value={displayedTotalSets} label="Séries" />
         <StatTile value={totalPRs} label="PR" accent={totalPRs > 0} />
-        <StatTile value={formatDecimal(totalHours)} label="Heures" />
+        <StatTile value={formatDecimal(totalHours, totalHours >= 10 ? 0 : 1)} label="Heures" />
       </div>
     </div>
   );
