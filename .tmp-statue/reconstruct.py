@@ -1,259 +1,309 @@
-from gradio_client import Client, handle_file
 from pathlib import Path
-import base64, itertools, json, math, shutil, traceback
+import base64, json, math, traceback
 import numpy as np
 from PIL import Image
+import torch
+import torch.nn.functional as F
+from transformers import AutoImageProcessor, AutoModelForDepthEstimation
+from scipy import ndimage
+from skimage import measure, filters, morphology
 import trimesh
 
-ROOT = Path(__file__).resolve().parent
-OUT = ROOT / "output"
-OUT.mkdir(parents=True, exist_ok=True)
+ROOT=Path(__file__).resolve().parent
+OUT=ROOT/"output"; OUT.mkdir(parents=True,exist_ok=True)
+NAMES=("front","back","left","right")
 
-# ---------------- References ----------------
-for name in ("front", "back", "left", "right"):
-    b64_path = ROOT / f"{name}.b64"
-    img_path = ROOT / f"{name}.jpg"
-    if b64_path.exists():
-        img_path.write_bytes(base64.b64decode(b64_path.read_text().strip()))
-    if not img_path.exists():
-        raise FileNotFoundError(img_path)
+# Decode bundled references and validate them.
+for n in NAMES:
+    p=ROOT/f"{n}.jpg"
+    p.write_bytes(base64.b64decode((ROOT/f"{n}.b64").read_text().strip(), validate=True))
+    im=Image.open(p); im.verify()
+    im=Image.open(p).convert("RGB")
+    if min(im.size)<100: raise RuntimeError(f"{n}: invalid image size {im.size}")
 
-# ---------------- Depth Anything V2 (official Space, ViT-L) ----------------
-depths = {}
-try:
-    dclient = Client("depth-anything/Depth-Anything-V2")
-    try:
-        (OUT / "depth_api.json").write_text(json.dumps(dclient.view_api(return_format="dict"), indent=2, default=str))
-    except Exception:
-        pass
-    for name in ("front", "back", "left", "right"):
-        res = None
-        for api_name in ("/on_submit", "/predict", None):
-            try:
-                kwargs = {"api_name": api_name} if api_name else {}
-                res = dclient.predict(handle_file(str(ROOT / f"{name}.jpg")), **kwargs)
-                break
-            except Exception:
-                traceback.print_exc()
-        if res is None:
-            raise RuntimeError(f"Depth Anything failed for {name}")
-        # on_submit returns slider, gray file, raw 16-bit disparity file.
-        raw_ref = res[2] if isinstance(res, (tuple, list)) and len(res) >= 3 else res[-1]
-        raw_path = raw_ref.get("path") if isinstance(raw_ref, dict) else getattr(raw_ref, "path", str(raw_ref))
-        raw_path = Path(raw_path)
-        dst = OUT / f"depth_{name}_raw.png"
-        shutil.copy2(raw_path, dst)
-        depths[name] = np.array(Image.open(dst)).astype(np.float32)
-except Exception as e:
-    (OUT / "depth_error.txt").write_text(traceback.format_exc())
-    depths = {}
+def photo_crop(im):
+    a=np.asarray(im)
+    # White padding was introduced only to make the multiview refs square.
+    nonwhite=np.any(a<247,axis=2)
+    ys,xs=np.where(nonwhite)
+    if len(xs)<100: return im,(0,0,im.width,im.height)
+    x0,x1=int(xs.min()),int(xs.max())+1
+    y0,y1=int(ys.min()),int(ys.max())+1
+    return im.crop((x0,y0,x1,y1)),(x0,y0,x1,y1)
 
-# ---------------- Hunyuan3D-2mv candidates ----------------
-hclient = Client("tencent/Hunyuan3D-2mv")
-try:
-    (OUT / "hunyuan_api.json").write_text(json.dumps(hclient.view_api(return_format="dict"), indent=2, default=str))
-except Exception:
-    pass
+images={}; crop_boxes={}
+for n in NAMES:
+    images[n],crop_boxes[n]=photo_crop(Image.open(ROOT/f"{n}.jpg").convert("RGB"))
+    images[n].save(OUT/f"crop_{n}.png")
 
-def extract_mesh_path(result):
-    ref = result[0] if isinstance(result, (tuple, list)) else result
-    if isinstance(ref, dict):
-        p = ref.get("path") or ref.get("name")
-    else:
-        p = getattr(ref, "path", str(ref))
-    if not p or not Path(p).exists():
-        raise FileNotFoundError(f"Mesh output missing: {p!r}")
-    return Path(p)
+# Depth Anything V2 Large locally: no ZeroGPU quota and full float depth.
+model_id="depth-anything/Depth-Anything-V2-Large-hf"
+processor=AutoImageProcessor.from_pretrained(model_id)
+model=AutoModelForDepthEstimation.from_pretrained(model_id)
+model.eval()
+torch.set_num_threads(max(2, min(4, torch.get_num_threads())))
 
-def load_mesh(path):
-    obj = trimesh.load(path, force="scene", process=False)
-    if isinstance(obj, trimesh.Scene):
-        geoms = [g.copy() for g in obj.geometry.values() if hasattr(g, "vertices") and len(g.vertices)]
-        if not geoms:
-            raise RuntimeError("No geometry in scene")
-        m = trimesh.util.concatenate(geoms)
-    else:
-        m = obj.copy()
-    m.remove_unreferenced_vertices()
-    try: m.merge_vertices()
-    except Exception: pass
-    try: trimesh.repair.fix_normals(m, multibody=True)
-    except Exception: pass
+depth={}
+with torch.inference_mode():
+    for n in NAMES:
+        inp=processor(images=images[n],return_tensors="pt")
+        pred=model(**inp).predicted_depth
+        pred=F.interpolate(pred.unsqueeze(1),size=(images[n].height,images[n].width),
+                           mode="bicubic",align_corners=False).squeeze().cpu().numpy().astype(np.float32)
+        depth[n]=pred
+        lo,hi=np.percentile(pred,[1,99])
+        vis=np.clip((pred-lo)/(hi-lo+1e-8),0,1)
+        Image.fromarray((vis*65535).astype(np.uint16),mode="I;16").save(OUT/f"depth_{n}_16.png")
+
+# Mask from depth discontinuity relative to the border, reinforced by image foreground cues.
+def make_mask(img,d):
+    rgb=np.asarray(img).astype(np.float32)/255.
+    h,w=d.shape
+    bw=max(3,int(min(h,w)*0.06))
+    border=np.zeros((h,w),bool)
+    border[:bw]=1; border[-bw:]=1; border[:,:bw]=1; border[:,-bw:]=1
+    bg=float(np.median(d[border]))
+    mad=float(np.median(np.abs(d[border]-bg)))+1e-6
+    # DA-V2 is relative/inverse-like: foreground generally differs clearly from the studio backdrop.
+    delta=np.abs(d-bg)
+    t=max(np.percentile(delta[border],99.5)*1.15, 2.8*mad)
+    m=delta>t
+
+    # Color model of smooth gray background; helps keep thin laurel leaves and fingers.
+    yy,xx=np.mgrid[0:h,0:w]
+    B=np.column_stack([np.ones(border.sum()),xx[border],yy[border],
+                       xx[border]*yy[border],xx[border]**2,yy[border]**2])
+    color_res=np.zeros((h,w),np.float32)
+    for c in range(3):
+        coef,*_=np.linalg.lstsq(B,rgb[:,:,c][border],rcond=None)
+        predc=(coef[0]+coef[1]*xx+coef[2]*yy+coef[3]*xx*yy+coef[4]*xx**2+coef[5]*yy**2)
+        color_res+=(rgb[:,:,c]-predc)**2
+    color_res=np.sqrt(color_res)
+    # Conservative union; only pixels very unlike background.
+    m |= color_res>max(0.055,float(np.percentile(color_res[border],99.8))*1.4)
+
+    # Remove frame noise, close tiny gaps, keep meaningful components.
+    m[:2]=0;m[-2:]=0;m[:,:2]=0;m[:,-2:]=0
+    m=morphology.binary_closing(m,morphology.disk(max(1,int(min(h,w)*0.006))))
+    m=morphology.remove_small_objects(m,min_size=max(25,int(h*w*0.0007)))
+    # Keep components that either touch the central human or are sizeable (laurel/base).
+    lab,num=ndimage.label(m)
+    if num:
+        sizes=ndimage.sum(m,lab,range(1,num+1))
+        keep=np.zeros(num+1,bool)
+        order=np.argsort(sizes)[::-1]
+        for idx in order[:6]:
+            if sizes[idx] >= max(35,0.002*h*w): keep[idx+1]=1
+        m=keep[lab]
+    m=ndimage.binary_fill_holes(m)
+    m=ndimage.binary_dilation(m,iterations=max(1,int(min(h,w)*0.004)))
     return m
 
-seeds = [20260926, 314159, 271828]
-candidates = []
-for idx, seed in enumerate(seeds):
-    result = None
-    # Start high-fidelity. If the Zero GPU rejects the expensive decode, fall back once.
-    settings = [(30, 384), (24, 256)]
-    for steps, octree in settings:
-        args = [
-            None, None,
-            handle_file(str(ROOT / "front.jpg")),
-            handle_file(str(ROOT / "back.jpg")),
-            handle_file(str(ROOT / "left.jpg")),
-            handle_file(str(ROOT / "right.jpg")),
-            steps, 7.5, seed, octree, True, 200000, False
-        ]
-        for api_name in ("/shape_generation", "shape_generation"):
-            try:
-                result = hclient.predict(*args, api_name=api_name)
-                break
-            except Exception:
-                traceback.print_exc()
-        if result is not None:
-            break
-    if result is None:
-        continue
-    mp = extract_mesh_path(result)
-    raw = OUT / f"candidate_{idx}_{seed}{mp.suffix.lower()}"
-    shutil.copy2(mp, raw)
-    mesh = load_mesh(mp)
-    candidates.append({"seed": seed, "steps": steps, "octree": octree, "path": raw, "mesh": mesh})
-    # Two successful high-quality candidates are enough to compare; avoid unnecessary Zero quota.
-    if len(candidates) >= 2:
-        break
+masks={n:make_mask(images[n],depth[n]) for n in NAMES}
+for n,m in masks.items():
+    Image.fromarray((m*255).astype(np.uint8)).save(OUT/f"mask_{n}.png")
 
-if not candidates:
-    raise RuntimeError("No Hunyuan3D candidate could be generated")
+# Common orthographic pixel scale. This preserves cross-view proportions instead of
+# independently stretching each silhouette.
+def bbox(mask):
+    ys,xs=np.where(mask)
+    return xs.min(),ys.min(),xs.max(),ys.max()
+bbs={n:bbox(masks[n]) for n in NAMES}
+heights=np.array([b[3]-b[1]+1 for b in bbs.values()],float)
+px_per_unit=float(np.median(heights)) # total visual height == 1 unit
+scale=1.0/px_per_unit
+z_bottoms={n:bbs[n][3] for n in NAMES}
 
-# ---------------- Multi-view depth-consistency scoring ----------------
-# Hunyuan output can use an arbitrary axis convention.  We search all proper axis-aligned
-# rotations and score the visible vertex depth against Depth Anything V2 disparity.
-def proper_rotations():
-    mats = []
-    eye = np.eye(3)
-    for perm in itertools.permutations(range(3)):
-        P = eye[:, perm]
-        for signs in itertools.product((-1, 1), repeat=3):
-            R = P @ np.diag(signs)
-            if np.linalg.det(R) > 0.5:
-                mats.append(R)
-    return mats
+def largest_run_center(mask):
+    h,w=mask.shape
+    y0,y1=bbox(mask)[1],bbox(mask)[3]
+    vals=[]
+    # pelvis/torso band avoids asymmetric raised arm.
+    for y in range(int(y0+.35*(y1-y0)), int(y0+.68*(y1-y0))+1):
+        row=mask[y]
+        lab,num=ndimage.label(row)
+        if not num: continue
+        sizes=ndimage.sum(row,lab,range(1,num+1))
+        k=int(np.argmax(sizes))+1
+        xs=np.where(lab==k)[0]
+        if len(xs): vals.append((xs[0]+xs[-1])/2)
+    return float(np.median(vals)) if vals else (w-1)/2
+centers={n:largest_run_center(masks[n]) for n in NAMES}
 
-ROTS = proper_rotations()
+# Robust normalized relative depth in [0,1] for visible surfaces.
+dn={}
+for n in NAMES:
+    vals=depth[n][masks[n]]
+    lo,hi=np.percentile(vals,[2,98])
+    x=np.clip((depth[n]-lo)/(hi-lo+1e-8),0,1)
+    # Determine polarity from center-vs-border. If foreground is lower, invert.
+    border=np.zeros_like(masks[n]); bw=max(3,int(min(border.shape)*.06))
+    border[:bw]=1;border[-bw:]=1;border[:,:bw]=1;border[:,-bw:]=1
+    fgmed=float(np.median(depth[n][masks[n]])); bgmed=float(np.median(depth[n][border]))
+    if fgmed<bgmed: x=1-x
+    dn[n]=x.astype(np.float32)
 
-def image_roi(arr):
-    # Images include a white square frame. Find the actual photo rectangle.
-    rgb = np.asarray(Image.open(arr).convert("RGB"))
-    nonwhite = np.any(rgb < 245, axis=2)
-    ys, xs = np.where(nonwhite)
-    if len(xs) < 100:
-        return (0, 0, rgb.shape[1]-1, rgb.shape[0]-1)
-    return (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
+# Coordinate helpers: u pixel for canonical x/y and row for z.
+def row_for_z(name,z):
+    return np.rint(z_bottoms[name]-z/scale).astype(np.int32)
+def u_for_x(name,x,mirror=False):
+    s=-1 if mirror else 1
+    return np.rint(centers[name]+s*x/scale).astype(np.int32)
+def u_for_y(name,y,mirror=False):
+    s=-1 if mirror else 1
+    return np.rint(centers[name]+s*y/scale).astype(np.int32)
 
-ROIS = {n: image_roi(ROOT / f"{n}.jpg") for n in ("front","back","left","right")}
+# Determine global object extents from pixel geometry.
+front_half=max((bbs["front"][2]-centers["front"])*scale,(centers["front"]-bbs["front"][0])*scale)
+back_half=max((bbs["back"][2]-centers["back"])*scale,(centers["back"]-bbs["back"][0])*scale)
+xhalf=max(front_half,back_half)*1.03
+left_half=max((bbs["left"][2]-centers["left"])*scale,(centers["left"]-bbs["left"][0])*scale)
+right_half=max((bbs["right"][2]-centers["right"])*scale,(centers["right"]-bbs["right"][0])*scale)
+yhalf=max(left_half,right_half)*1.03
+zmax=max((z_bottoms[n]-bbs[n][1])*scale for n in NAMES)*1.01
 
-def rank_corr(a, b):
-    if len(a) < 50: return -1.0
-    # Fast Spearman approximation via double argsort ranks.
-    ra = np.empty_like(a, dtype=np.float64); rb = np.empty_like(b, dtype=np.float64)
-    ra[np.argsort(a)] = np.arange(len(a))
-    rb[np.argsort(b)] = np.arange(len(b))
-    ra -= ra.mean(); rb -= rb.mean()
-    den = np.linalg.norm(ra) * np.linalg.norm(rb)
-    return float(np.dot(ra, rb) / den) if den > 1e-9 else -1.0
+# Row envelope from the opposite silhouette: used to resolve monocular-depth scale/offset.
+def row_interval(name, z, axis_center, mirror=False):
+    rr=int(round(z_bottoms[name]-z/scale))
+    m=masks[name]
+    if rr<0 or rr>=m.shape[0]: return None
+    xs=np.where(m[rr])[0]
+    if len(xs)==0: return None
+    # Map the full silhouette row; projection masks later prevent impossible bridges.
+    a=(xs.min()-centers[name])*scale
+    b=(xs.max()-centers[name])*scale
+    if mirror: a,b=-b,-a
+    return (float(min(a,b)),float(max(a,b)))
 
-def view_coords(v, view):
-    X, Y, Z = v[:,0], v[:,1], v[:,2]  # canonical front-space: X horizontal, Y vertical, Z toward front
-    if view == "front": return X, Y, Z
-    if view == "back":  return -X, Y, -Z
-    if view == "left":  return Z, Y, -X
-    if view == "right": return -Z, Y, X
-    raise ValueError(view)
+# Sample a depth-derived front/back/side surface at a projected pixel.
+def sample_surface(name,u,r,z,kind):
+    m=masks[name]; d=dn[name]
+    if r<0 or r>=m.shape[0] or u<0 or u>=m.shape[1] or not m[r,u]:
+        return None
+    q=float(d[r,u])
+    if kind in ("front","back"):
+        # y-range comes from the two side silhouettes.
+        ints=[row_interval("left",z,centers["left"],False),row_interval("right",z,centers["right"],True)]
+        ints=[v for v in ints if v is not None]
+        if not ints: return None
+        ymin=np.median([v[0] for v in ints]); ymax=np.median([v[1] for v in ints])
+        if kind=="front": raw=ymin+q*(ymax-ymin)
+        else: raw=ymax-q*(ymax-ymin)
+        # Blend toward the expected outer side to damp depth hallucinations.
+        outer=ymax if kind=="front" else ymin
+        return .72*raw+.28*outer
+    else:
+        ints=[row_interval("front",z,centers["front"],False),row_interval("back",z,centers["back"],True)]
+        ints=[v for v in ints if v is not None]
+        if not ints: return None
+        xmin=np.median([v[0] for v in ints]); xmax=np.median([v[1] for v in ints])
+        if kind=="left": raw=xmax-q*(xmax-xmin); outer=xmin
+        else: raw=xmin+q*(xmax-xmin); outer=xmax
+        return .72*raw+.28*outer
 
-def score_orientation(mesh, R):
-    if not depths:
-        return 0.0
-    V = np.asarray(mesh.vertices)
-    if len(V) > 80000:
-        V = V[np.linspace(0, len(V)-1, 80000).astype(int)]
-    V = V @ R
-    scores = []
-    for name in ("front","back","left","right"):
-        D = depths.get(name)
-        if D is None: continue
-        sx, sy, sd = view_coords(V, name)
-        x0,y0,x1,y1 = ROIS[name]
-        # Fit projection to the actual photo rectangle.
-        eps = 1e-9
-        px = x0 + (sx - sx.min()) / (sx.max()-sx.min()+eps) * max(1, x1-x0)
-        py = y1 - (sy - sy.min()) / (sy.max()-sy.min()+eps) * max(1, y1-y0)
-        px = np.clip(np.rint(px).astype(int), 0, D.shape[1]-1)
-        py = np.clip(np.rint(py).astype(int), 0, D.shape[0]-1)
-        # Approximate a z-buffer: retain the closest vertex per coarse image cell.
-        cell = 3
-        key = (py//cell) * ((D.shape[1]+cell-1)//cell) + (px//cell)
-        order = np.argsort(sd)[::-1]  # larger canonical depth = closer to camera
-        _, first = np.unique(key[order], return_index=True)
-        ids = order[first]
-        if len(ids) > 12000:
-            ids = ids[np.linspace(0, len(ids)-1, 12000).astype(int)]
-        pred = D[py[ids], px[ids]].astype(np.float64)
-        geom = sd[ids].astype(np.float64)
-        # Depth Anything raw output is disparity-like: larger should generally mean nearer.
-        scores.append(rank_corr(geom, pred))
-    return float(np.mean(scores)) if scores else 0.0
+# Depth-informed volumetric carving.
+GRID=320
+xs=np.linspace(-xhalf,xhalf,GRID,dtype=np.float32)
+ys=np.linspace(-yhalf,yhalf,GRID,dtype=np.float32)
+zs=np.linspace(0,zmax,GRID,dtype=np.float32)
+occ=np.zeros((GRID,GRID,GRID),dtype=np.uint8) # axes z,y,x
+X,Y=np.meshgrid(xs,ys,indexing="xy") # shape y,x
+tol=max(xhalf,yhalf,zmax)/GRID*2.0
 
-best = None
-score_rows = []
-for c in candidates:
-    local_best = (-999.0, None)
-    for R in ROTS:
-        s = score_orientation(c["mesh"], R)
-        if s > local_best[0]:
-            local_best = (s, R)
-    row = {"seed": c["seed"], "steps": c["steps"], "octree": c["octree"], "depth_score": local_best[0]}
-    score_rows.append(row)
-    c["score"], c["R"] = local_best
-    if best is None or c["score"] > best["score"]:
-        best = c
+for iz,z in enumerate(zs):
+    rf=int(round(z_bottoms["front"]-z/scale)); rb=int(round(z_bottoms["back"]-z/scale))
+    rl=int(round(z_bottoms["left"]-z/scale)); rr=int(round(z_bottoms["right"]-z/scale))
+    if min(rf,rb,rl,rr)<0: continue
+    if rf>=masks["front"].shape[0] or rb>=masks["back"].shape[0] or rl>=masks["left"].shape[0] or rr>=masks["right"].shape[0]: continue
 
-mesh = best["mesh"].copy()
-R = best["R"] if best["R"] is not None else np.eye(3)
-# Canonical Blender coordinates: X horizontal, Y depth, Z vertical.
-Vf = np.asarray(mesh.vertices) @ R
-mesh.vertices = np.column_stack([Vf[:,0], Vf[:,2], Vf[:,1]])
+    uf=np.clip(np.rint(centers["front"]+xs/scale).astype(int),0,masks["front"].shape[1]-1)
+    ub=np.clip(np.rint(centers["back"]-xs/scale).astype(int),0,masks["back"].shape[1]-1)
+    ul=np.clip(np.rint(centers["left"]+ys/scale).astype(int),0,masks["left"].shape[1]-1)
+    ur=np.clip(np.rint(centers["right"]-ys/scale).astype(int),0,masks["right"].shape[1]-1)
 
-# Clean without aggressive decimation; details and thin laurel leaves matter.
+    mf=masks["front"][rf,uf]   # x
+    mb=masks["back"][rb,ub]
+    ml=masks["left"][rl,ul]    # y
+    mr=masks["right"][rr,ur]
+    proj=(ml[:,None]&mr[:,None]&mf[None,:]&mb[None,:])
+    if not proj.any(): continue
+
+    # Vectorized surface arrays at this z.
+    li=[row_interval("left",float(z),centers["left"],False),row_interval("right",float(z),centers["right"],True)]
+    li=[v for v in li if v is not None]
+    xi=[row_interval("front",float(z),centers["front"],False),row_interval("back",float(z),centers["back"],True)]
+    xi=[v for v in xi if v is not None]
+    if not li or not xi: continue
+    ymin=np.median([v[0] for v in li]); ymax=np.median([v[1] for v in li])
+    xmin=np.median([v[0] for v in xi]); xmax=np.median([v[1] for v in xi])
+
+    qf=dn["front"][rf,uf]; qb=dn["back"][rb,ub]
+    ql=dn["left"][rl,ul]; qr=dn["right"][rr,ur]
+    yf=.72*(ymin+qf*(ymax-ymin))+.28*ymax
+    yb=.72*(ymax-qb*(ymax-ymin))+.28*ymin
+    xl=.72*(xmax-ql*(xmax-xmin))+.28*xmin
+    xr=.72*(xmin+qr*(xmax-xmin))+.28*xmax
+
+    geom=(Y <= yf[None,:]+tol) & (Y >= yb[None,:]-tol) & (X >= xl[:,None]-tol) & (X <= xr[:,None]+tol)
+    occ[iz]=(proj&geom).astype(np.uint8)
+
+# Repair only tiny voxel cracks; preserve fingers, hair curls and laurel gaps.
+occ=ndimage.binary_closing(occ,structure=ndimage.generate_binary_structure(3,1),iterations=1)
+occ=ndimage.binary_fill_holes(occ)
+
+if occ.sum()<10000:
+    raise RuntimeError(f"Carving failed: only {int(occ.sum())} occupied voxels")
+
+# Marching cubes in physical coordinates (z,y,x -> Blender x,y,z).
+spacing=(zs[1]-zs[0],ys[1]-ys[0],xs[1]-xs[0])
+verts,faces,normals,values=measure.marching_cubes(occ.astype(np.float32),level=.5,spacing=spacing)
+verts[:,0]+=zs[0]; verts[:,1]+=ys[0]; verts[:,2]+=xs[0]
+V=np.column_stack([verts[:,2],verts[:,1],verts[:,0]])
+mesh=trimesh.Trimesh(vertices=V,faces=faces,process=True)
 mesh.remove_unreferenced_vertices()
-try: trimesh.repair.fix_normals(mesh, multibody=True)
+try: trimesh.repair.fix_normals(mesh,multibody=True)
 except Exception: pass
 
-# Center horizontally and put feet/base on Z=0.
-b = mesh.bounds
-center_xy = (b[0,:2] + b[1,:2]) / 2.0
-mesh.apply_translation([-center_xy[0], -center_xy[1], -b[0,2]])
-
-# White stone PBR material for immediate Blender usability.
+# Light Taubin smoothing removes voxel stair-stepping without shrinking likeness.
 try:
-    mat = trimesh.visual.material.PBRMaterial(
-        name="Carrara_Marble",
-        baseColorFactor=[235, 233, 228, 255],
-        metallicFactor=0.0,
-        roughnessFactor=0.34
-    )
-    mesh.visual = trimesh.visual.TextureVisuals(material=mat)
-except Exception:
-    pass
+    trimesh.smoothing.filter_taubin(mesh,lamb=.42,nu=.43,iterations=5)
+except Exception: pass
 
-final_glb = OUT / "STATUE_FINAL_ULTRAFIDEL.glb"
-mesh.export(final_glb)
+# Marble PBR.
+try:
+    mat=trimesh.visual.material.PBRMaterial(name="Carrara_Marble",baseColorFactor=[238,237,233,255],
+                                            metallicFactor=0.,roughnessFactor=.32)
+    mesh.visual=trimesh.visual.TextureVisuals(material=mat)
+except Exception: pass
 
-meta = {
-    "vertices": int(len(mesh.vertices)),
-    "faces": int(len(mesh.faces)),
-    "watertight": bool(mesh.is_watertight),
-    "bounds": mesh.bounds.tolist(),
-    "source": "Tencent Hunyuan3D-2mv + Depth Anything V2 Large multiview selection",
-    "selected_seed": int(best["seed"]),
-    "selected_steps": int(best["steps"]),
-    "selected_octree": int(best["octree"]),
-    "selected_depth_score": float(best["score"]),
-    "candidate_scores": score_rows,
-    "depth_maps_available": bool(depths),
+final=OUT/"STATUE_FINAL_ULTRAFIDEL.glb"
+mesh.export(final)
+
+# QA orthographic projections as PNGs (surface points), useful for automatic/visual checks.
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+V=np.asarray(mesh.vertices)
+views={
+ "front":(V[:,0],V[:,2]),
+ "back":(-V[:,0],V[:,2]),
+ "left":(V[:,1],V[:,2]),
+ "right":(-V[:,1],V[:,2]),
 }
-(OUT / "metadata.json").write_text(json.dumps(meta, indent=2))
-print(json.dumps(meta, indent=2), flush=True)
-print(final_glb, flush=True)
+for n,(a,b) in views.items():
+    fig=plt.figure(figsize=(4,6),dpi=160); ax=fig.add_subplot(111)
+    ids=np.linspace(0,len(V)-1,min(len(V),120000)).astype(int)
+    ax.scatter(a[ids],b[ids],s=.08,c="black",alpha=.5)
+    ax.set_aspect("equal");ax.axis("off");fig.tight_layout(pad=0)
+    fig.savefig(OUT/f"qa_{n}.png",bbox_inches="tight",pad_inches=0);plt.close(fig)
+
+meta={
+ "method":"Depth Anything V2 Large + four-view depth-informed volumetric carving",
+ "grid":GRID,"vertices":int(len(mesh.vertices)),"faces":int(len(mesh.faces)),
+ "watertight":bool(mesh.is_watertight),"bounds":mesh.bounds.tolist(),
+ "input_sizes":{n:list(images[n].size) for n in NAMES},
+ "crop_boxes":crop_boxes,"mask_pixels":{n:int(masks[n].sum()) for n in NAMES},
+}
+(OUT/"metadata.json").write_text(json.dumps(meta,indent=2))
+print(json.dumps(meta,indent=2))
+print(final)
