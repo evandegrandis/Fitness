@@ -41,6 +41,7 @@ import {
 } from "@/lib/engines/set-structure";
 import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/finisher";
 import { detectLevelUp, type LevelUp } from "@/lib/engines/level-up";
+import type { SessionBoss } from "@/lib/engines/session-game";
 import { defaultEquivalent, equivalenceKey, familyHistory, startingPointFromEquivalent } from "@/lib/engines/equivalence";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
@@ -175,6 +176,13 @@ export interface WorkoutState extends ReferenceData {
   /** Palier StrengthLevel franchi par la dernière série, `null` sinon. Éphémère, non persisté. */
   levelUp: LevelUp | null;
   dismissLevelUp: () => void;
+  /**
+   * Boss du jour, figé au lancement de la séance (`pickBoss`, session-game.ts) : il ne doit pas
+   * changer à mesure que les suggestions évoluent. `boss: null` = décidé, pas de boss aujourd'hui.
+   * Persisté localement pour survivre à un rechargement en pleine séance.
+   */
+  sessionBoss: { sessionId: string; boss: SessionBoss | null } | null;
+  setSessionBoss: (value: { sessionId: string; boss: SessionBoss | null }) => void;
   /**
    * `loggedExerciseId` pour lesquels Evan a déjà répondu « non » dans cette séance —
    * on ne repose plus la question, pour que la proposition reste rare.
@@ -1377,6 +1385,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       pendingFinisherPrompt: null,
       finisherPromptDeclined: [],
       levelUp: null,
+      sessionBoss: null,
       cardioIntent: false,
       armedSupersetExerciseId: null,
       justHitRecord: {},
@@ -2174,6 +2183,7 @@ export const useWorkoutStore = create<WorkoutState>()(
 
       dismissUndo: () => set({ undo: null }),
       dismissLevelUp: () => set({ levelUp: null }),
+      setSessionBoss: (value) => set({ sessionBoss: value }),
 
       startCardio: () => {
         get().startEmpty("normal");
@@ -2577,6 +2587,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         // Un reload en pleine séance ne doit pas reposer une question déjà refusée.
         // (`pendingFinisherPrompt` reste volontairement éphémère, comme `freshOverrides`.)
         finisherPromptDeclined: state.finisherPromptDeclined,
+        sessionBoss: state.sessionBoss,
         // VARIATION_CYCLING_SPEC §8 — l'acceptation d'une rotation de variation peut précéder de
         // plusieurs jours (et un reload) le début de la séance suivante qui la consommera.
         pendingVariantSwitches: state.pendingVariantSwitches,
