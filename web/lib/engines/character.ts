@@ -1,8 +1,11 @@
 /**
  * Fiche de personnage (Evan, 26/09/2026) : cinq caractéristiques sur 100, lues dans les données.
+ * Chacune dit comment elle se calcule, avec ses chiffres, et le geste qui la ferait monter le plus,
+ * en points : une fiche qui ne dit pas quoi faire ne sert à rien (Evan).
  *
  * - Force : niveau moyen sur les repères fiables (pas les machines, indicatives) des exercices
- *   pratiqués ces 8 dernières semaines, palier et avancée vers le suivant (Élite = 100).
+ *   pratiqués ces 8 dernières semaines, palier et avancée vers le suivant (Novice 40, Intermédiaire
+ *   60, Avancé 80, Élite 100).
  * - Endurance : séries par semaine sur les 4 semaines terminées (100 séries = 100).
  * - Régularité : semaines au bronze ou mieux sur les 12 dernières semaines terminées.
  * - Récupération : bilans des 14 derniers jours (sommeil rapporté à 8 h, soirs sans alcool,
@@ -37,11 +40,18 @@ export interface CharacterStat {
   label: string;
   /** 0..100, `null` sans donnée. */
   value: number | null;
-  detail: string;
+  /** Comment la valeur se calcule, avec les chiffres d'Evan. */
+  how: string;
+  /** Le geste qui la ferait monter le plus, et de combien ; `null` au maximum. */
+  next: string | null;
 }
 
 const LEVEL_NAMES = ["Sous débutant", "Débutant", "Novice", "Intermédiaire", "Avancé", "Élite"];
 const fr1 = (value: number) => value.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+const pts = (value: number) => {
+  const rounded = Math.max(1, Math.round(value));
+  return `+${rounded} pt${rounded > 1 ? "s" : ""}`;
+};
 
 /** Niveau continu 0..5 : palier atteint + avancée vers le suivant, sur la valeur du repère. */
 function continuousLevel(benchmark: ExerciseBenchmark): number | null {
@@ -56,23 +66,41 @@ function continuousLevel(benchmark: ExerciseBenchmark): number | null {
 
 function force(history: readonly WorkoutSession[], catalog: readonly Exercise[], settings: UserSettings, now: Date): CharacterStat {
   const since = now.getTime() - CHARACTER.FORCE_WINDOW_DAYS * DAY_MS;
-  const levels: number[] = [];
+  const entries: { exercise: Exercise; level: number; benchmark: ExerciseBenchmark }[] = [];
   for (const exercise of catalog) {
     const standard = resolveStandard(exercise, settings);
     if (!standard || standard.isMachine) continue;
     const sessions = history.filter((session) => !session.isActive && session.exercises.some((logged) => logged.exerciseId === exercise.id));
     if (!sessions.some((session) => session.date.getTime() >= since)) continue;
     const sets = sessions.flatMap((session) => session.exercises.filter((logged) => logged.exerciseId === exercise.id)).flatMap((logged) => logged.sets.filter((set) => set.completed));
-    const level = continuousLevel(exerciseBenchmarkForSets(exercise, sets, settings));
-    if (level !== null) levels.push(level);
+    const benchmark = exerciseBenchmarkForSets(exercise, sets, settings);
+    const level = continuousLevel(benchmark);
+    if (level !== null) entries.push({ exercise, level, benchmark });
   }
-  if (levels.length === 0) return { key: "force", label: "Force", value: null, detail: "Aucun repère fiable pratiqué" };
-  const mean = levels.reduce((sum, level) => sum + level, 0) / levels.length;
+  if (entries.length === 0) {
+    return { key: "force", label: "Force", value: null, how: "Aucun exercice libre avec repère pratiqué ces 8 semaines.", next: null };
+  }
+  const n = entries.length;
+  const mean = entries.reduce((sum, entry) => sum + entry.level, 0) / n;
+  // Le palier le plus proche : celui qui rapporte des points pour le moins d'effort restant.
+  const remaining = (level: number) => Math.floor(level) + 1 - level;
+  const closest = entries
+    .filter((entry) => entry.benchmark.nextLevel && entry.benchmark.gapToNext !== null)
+    .sort((a, b) => remaining(a.level) - remaining(b.level))[0];
+  let next: string | null = null;
+  if (closest) {
+    const gain = ((remaining(closest.level) / 5) * 100) / n;
+    const gap = closest.benchmark.gapToNext!;
+    const reps = Math.ceil(gap);
+    const unit = closest.benchmark.primaryAxis === "reps" ? `${reps} rep${reps > 1 ? "s" : ""}` : `${fr1(gap)} kg de 1RM estimé`;
+    next = `${closest.exercise.name} ${LEVEL_NAMES[strengthLevelRank(closest.benchmark.nextLevel!)]}, à ${unit} près\u00a0: ${pts(gain)}.`;
+  }
   return {
     key: "force",
     label: "Force",
     value: Math.round((mean / 5) * 100),
-    detail: `${LEVEL_NAMES[Math.floor(mean)]} en moyenne, sur ${levels.length} exercice${levels.length > 1 ? "s" : ""}`,
+    how: `Moyenne de tes niveaux sur ${n} exercice${n > 1 ? "s" : ""} libre${n > 1 ? "s" : ""} (Novice 40, Intermédiaire 60, Avancé 80, Élite 100) : ${LEVEL_NAMES[Math.floor(mean)]} en moyenne.`,
+    next,
   };
 }
 
@@ -99,19 +127,32 @@ export function characterSheet({
 
   const recent = completed.slice(-CHARACTER.ENDURANCE_WEEKS);
   const weeklySets = recent.length > 0 ? recent.reduce((sum, week) => sum + week.sets, 0) / recent.length : null;
+  const enduranceValue = weeklySets === null ? null : Math.round(Math.min(1, weeklySets / CHARACTER.ENDURANCE_FULL_SETS) * 100);
   const endurance: CharacterStat = {
     key: "endurance",
     label: "Endurance",
-    value: weeklySets === null ? null : Math.round(Math.min(1, weeklySets / CHARACTER.ENDURANCE_FULL_SETS) * 100),
-    detail: weeklySets === null ? "Pas encore de semaine terminée" : `${fr1(weeklySets)} séries par semaine`,
+    value: enduranceValue,
+    how:
+      weeklySets === null
+        ? "Pas encore de semaine terminée."
+        : `${fr1(weeklySets)} séries par semaine en moyenne sur tes ${recent.length} dernières semaines ; 100 séries par semaine valent 100.`,
+    next:
+      enduranceValue !== null && enduranceValue < 100
+        ? "chaque série de plus par semaine, en moyenne\u00a0: +1 pt. Des semaines or (~85 séries) te mettraient à 85."
+        : null,
   };
 
   const held = completed.filter((week) => week.tier !== null).length;
+  const regularity = completed.length > 0 ? Math.round((held / completed.length) * 100) : null;
   const regularite: CharacterStat = {
     key: "regularite",
     label: "Régularité",
-    value: completed.length > 0 ? Math.round((held / completed.length) * 100) : null,
-    detail: `${held} semaine${held > 1 ? "s" : ""} sur ${completed.length} au bronze ou mieux`,
+    value: regularity,
+    how: `${held} semaine${held > 1 ? "s" : ""} au bronze ou mieux sur les ${completed.length} dernières.`,
+    next:
+      regularity !== null && regularity < 100
+        ? `chaque semaine au bronze (40 % de tes objectifs) qui remplace une semaine manquée\u00a0: ${pts(100 / completed.length)}.`
+        : null,
   };
 
   const recoverySince = now.getTime() - CHARACTER.RECOVERY_DAYS * DAY_MS;
@@ -121,34 +162,49 @@ export function characterSheet({
   const alcohol = known((checkin) => checkin.hadAlcohol);
   const protein = known((checkin) => checkin.proteinTargetMet);
   const creatine = known((checkin) => checkin.tookCreatine);
-  const parts: number[] = [];
   const sleep = sleeps.length > 0 ? sleeps.reduce((sum, hours) => sum + hours, 0) / sleeps.length : null;
-  if (sleep !== null) parts.push(Math.min(1, sleep / CHARACTER.SLEEP_FULL_HOURS));
-  if (alcohol.length > 0) parts.push(alcohol.filter((value) => !value).length / alcohol.length);
-  if (protein.length > 0) parts.push(protein.filter(Boolean).length / protein.length);
-  if (creatine.length > 0) parts.push(creatine.filter(Boolean).length / creatine.length);
   const drinks = alcohol.filter(Boolean).length;
+  const components: { label: string; value: number; fix: string }[] = [];
+  if (sleep !== null) components.push({ label: `${fr1(sleep)} h de sommeil sur 8`, value: Math.min(1, sleep / CHARACTER.SLEEP_FULL_HOURS), fix: "dormir 8 h en moyenne" });
+  if (alcohol.length > 0) components.push({ label: `${drinks} soir${drinks > 1 ? "s" : ""} d'alcool sur ${alcohol.length}`, value: 1 - drinks / alcohol.length, fix: "aucun soir d'alcool sur 14 jours" });
+  if (protein.length > 0) {
+    const met = protein.filter(Boolean).length;
+    components.push({ label: `protéines ${met}/${protein.length} j`, value: met / protein.length, fix: "tes protéines chaque jour" });
+  }
+  if (creatine.length > 0) {
+    const taken = creatine.filter(Boolean).length;
+    components.push({ label: `créatine ${taken}/${creatine.length} j`, value: taken / creatine.length, fix: "ta créatine chaque jour" });
+  }
+  const recovery = components.length > 0 ? Math.round((components.reduce((sum, part) => sum + part.value, 0) / components.length) * 100) : null;
+  const weakest = components.reduce<(typeof components)[number] | null>((low, part) => (!low || part.value < low.value ? part : low), null);
   const recuperation: CharacterStat = {
     key: "recuperation",
     label: "Récupération",
-    value: parts.length > 0 ? Math.round((parts.reduce((sum, part) => sum + part, 0) / parts.length) * 100) : null,
-    detail:
-      parts.length === 0
-        ? "Aucun bilan ces 14 jours"
-        : [sleep !== null ? `${fr1(sleep)} h de sommeil` : null, alcohol.length > 0 ? `${drinks} soir${drinks > 1 ? "s" : ""} d'alcool` : null]
-            .filter(Boolean)
-            .join(" · ") || "Bilans renseignés",
+    value: recovery,
+    how:
+      components.length === 0
+        ? "Aucun bilan ces 14 jours : remplis-le après tes séances."
+        : `Moyenne de tes bilans des 14 derniers jours : ${components.map((part) => part.label).join(", ")}.`,
+    next: weakest && weakest.value < 1 ? `${weakest.fix}\u00a0: ${pts(((1 - weakest.value) / components.length) * 100)}.` : null,
   };
 
   const disciplineSince = now.getTime() - CHARACTER.DISCIPLINE_DAYS * DAY_MS;
   const recentRanks = ranks.filter((entry) => entry.date.getTime() >= disciplineSince && entry.rank !== null).map((entry) => entry.rank!);
   const rated = recentRanks.reduce((sum, rank) => sum + rank.rated, 0);
   const kept = recentRanks.reduce((sum, rank) => sum + rank.performed + rank.held, 0);
+  const disciplineValue = rated > 0 ? Math.round((kept / rated) * 100) : null;
   const discipline: CharacterStat = {
     key: "discipline",
     label: "Discipline",
-    value: rated > 0 ? Math.round((kept / rated) * 100) : null,
-    detail: rated > 0 ? `${kept} exercices sur ${rated} tenus ou battus` : "Pas encore de séance notée",
+    value: disciplineValue,
+    how:
+      rated > 0
+        ? `Sur 4 semaines, ${kept} exercices sur ${rated} ont tenu ou battu la suggestion : ta meilleure série au moins à la charge proposée, à 3 % de 1RM près.`
+        : "Pas encore de séance notée ces 4 semaines.",
+    next:
+      disciplineValue !== null && disciplineValue < 100
+        ? `chaque exercice tenu de plus\u00a0: ${pts(100 / rated)}. Garde la charge proposée plutôt que de la baisser.`
+        : null,
   };
 
   return [force(history, catalog, settings, now), endurance, regularite, recuperation, discipline];

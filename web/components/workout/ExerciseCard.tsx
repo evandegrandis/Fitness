@@ -447,7 +447,7 @@ export function ExerciseCard({
       <Sheet open={gifOpen} onClose={() => setGifOpen(false)} ariaLabel={`Démonstration : ${exercise.name}`}>
         <h2 className="font-display text-lg font-bold text-(--color-fg)">{exercise.name}</h2>
         <div className="mt-3">
-          <ExerciseGif exerciseName={exercise.name} />
+          <ExerciseGif exerciseName={exercise.name} immediate />
         </div>
       </Sheet>
 

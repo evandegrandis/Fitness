@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { ArrowUpRight } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { characterSheet, type CharacterKey, type CharacterStat } from "@/lib/engines/character";
@@ -20,8 +21,9 @@ function vertex(index: number, ratio: number): { x: number; y: number } {
 const polygon = (ratios: readonly number[]) => ratios.map((ratio, index) => vertex(index, ratio)).map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
 
 /**
- * Fiche de personnage : cinq caractéristiques sur un pentagone. Par défaut, la plus faible est
- * détaillée (ce qui fera monter la fiche) ; un tap sur une autre la détaille à son tour.
+ * Fiche de personnage : cinq caractéristiques sur un pentagone. Sous le pentagone, une
+ * caractéristique est détaillée : comment elle se calcule, et le geste qui la ferait monter, en
+ * points. Par défaut la plus faible (là où il y a le plus à gagner) ; un tap en détaille une autre.
  */
 export function CharacterCard() {
   const history = useWorkoutStore((s) => s.history);
@@ -110,17 +112,28 @@ export function CharacterCard() {
 
       <AnimatePresence mode="popLayout" initial={false}>
         {shown && (
-          <motion.p
+          <motion.div
             key={shown.key}
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="mt-2 text-[0.72rem] leading-snug text-(--color-fg-muted)"
+            className="mt-2 space-y-1.5 text-[0.72rem] leading-snug"
           >
-            <span className="text-(--color-fg)">{shown.label}</span>
-            {shown === weakest && !selected ? " · à travailler" : ""} · {shown.detail}
-          </motion.p>
+            <p className="text-(--color-fg-muted)">
+              <span className="font-semibold text-(--color-fg)">
+                {shown.label} {shown.value ?? "–"}
+              </span>{" "}
+              · {shown.how}
+            </p>
+            {shown.next && (
+              <p className="flex items-start gap-1.5 text-(--color-fg)">
+                <ArrowUpRight size={13} className="mt-px shrink-0 text-(--accent)" />
+                <span>Pour monter : {shown.next}</span>
+              </p>
+            )}
+            {!selected && <p className="text-[0.66rem] text-(--color-fg-faint)">Touche une caractéristique pour la détailler.</p>}
+          </motion.div>
         )}
       </AnimatePresence>
     </GlassCard>

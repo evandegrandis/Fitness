@@ -15,11 +15,16 @@ import { exerciseGifUrl } from "@/lib/data/exercise-gifs";
  * - Rendu uniquement si une correspondance sûre existe (sinon `null`).
  *
  * Placement : détail/éditeur d'exercice uniquement — jamais dans la liste
- * de séance (pour ne pas alourdir le geste de log).
+ * de séance (pour ne pas alourdir le geste de log). `immediate` : la démo a déjà été demandée
+ * (bouton « Démo » du menu d'exercice), elle se charge sans second tap.
+ *
+ * Les animations sont distribuées en 180×180 seulement (conditions de Gym visual, qui en détient
+ * les droits, avec crédit obligatoire) : affichées à 1,5× au plus pour rester nettes, jamais
+ * agrandies par un autre moyen.
  */
-export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
+export function ExerciseGif({ exerciseName, immediate = false }: { exerciseName: string; immediate?: boolean }) {
   const url = exerciseGifUrl(exerciseName);
-  const [shown, setShown] = useState(false);
+  const [shown, setShown] = useState(immediate);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
 
   if (!url) return null;
@@ -41,7 +46,7 @@ export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
   }
 
   return (
-    <div className="glass overflow-hidden rounded-xl">
+    <div className="glass mx-auto w-full max-w-[270px] overflow-hidden rounded-xl">
       <div className="relative grid aspect-square w-full place-items-center bg-black/20">
         {state === "loading" && (
           <div className="absolute inset-0 grid place-items-center text-(--color-fg-faint)">
@@ -69,7 +74,7 @@ export function ExerciseGif({ exerciseName }: { exerciseName: string }) {
         )}
       </div>
       <p className="px-3 py-1.5 text-[0.65rem] text-(--color-fg-faint)">
-        Démo générique · dataset communautaire (usage personnel)
+        Démo générique · © Gym visual, gymvisual.com
       </p>
     </div>
   );
