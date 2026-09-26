@@ -49,8 +49,9 @@ const history = Array.from({ length: 10 }, (_, i) => session(i, 8 + i, 60 + i * 
 const career = buildCareer({ history, catalog: [LATERAL, PEC], goals: [], bodyWeights: [], settings: SETTINGS, now: new Date(START.getTime() + 25 * DAY) });
 
 describe("parcours recalculé sur le passé", () => {
-  it("donne un rang aux séances passées, sauf la toute première (étalonnage)", () => {
-    expect(career.bySession.get("s0")?.rank).toBeNull();
+  it("donne un rang à chaque séance passée ; la première, en étalonnage, sur son seul volume", () => {
+    // 6 séries sur 22, sans record possible ni RIR saisi.
+    expect(career.bySession.get("s0")?.rank).toMatchObject({ letter: "C", score: Math.round((100 * 6) / 22), rated: 0 });
     expect(career.bySession.get("s5")?.rank?.letter).toMatch(/[SABC]/);
   });
 
