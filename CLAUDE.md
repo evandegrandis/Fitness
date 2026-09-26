@@ -174,6 +174,14 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 
 ## HANDOFF
 
+### 2026-09-26 · Claude — Retours d'Evan en séance (rang, fiche, démo, accueil)
+
+- Rang : le RIR 3+ est déjà pondéré dans le compte des séries, donc seulement séries (60) et records (40), seuils S 85, A 65, B 45 ; rang en direct dans l'en-tête de séance avec le chemin vers le suivant.
+- Fiche : chaque caractéristique dit comment elle se calcule (avec ses chiffres) et le geste qui la ferait monter, en points.
+- Démo : ouverte directement depuis « Démo » (plus de second tap), affichée à 270 px au plus. Les GIF Gym visual sont limités à 180×180 par leurs conditions, crédit obligatoire : pour de la HD, il faut une autre source (à décider avec Evan).
+- Accueil : l'en-tête de semaine (`WeekSummary`) remplace « Objectifs de la semaine », dont seul le cardio reste (`WeeklyCardio`). Progrès › Semaine : 12 semaines, Saison, Jalons, Muscles, Secrets.
+- Statue : Evan ne veut pas du Doryphore (tronc, pose, nu) ; il propose des photos de lui en boxer. Piste : photogrammétrie locale (Object Capture de RealityKit, Mac M3 Max, macOS 26.4) sur une série de photos autour de lui, rien envoyé en ligne.
+
 ### 2026-09-26 · Claude — Gamification, lot 3c (fiche de personnage)
 
 - Progrès › Corps : pentagone Force, Endurance, Régularité, Récupération, Discipline (73 de moyenne au 26/09) ; la plus faible est détaillée par défaut (« à travailler »), un tap détaille les autres.

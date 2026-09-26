@@ -8,7 +8,8 @@ import { useWorkoutStore } from "@/lib/store/workout";
 import { weeklyProgress } from "@/lib/engines/effective-sets";
 import { recentAchievements } from "@/lib/engines/achievements";
 import { recommendTemplateId } from "@/lib/engines/template-recommendation";
-import { WeeklyPriority } from "./WeeklyPriority";
+import { WeekSummary } from "@/components/progress/WeekLayer";
+import { WeeklyCardio } from "./WeeklyCardio";
 import { QuickActions } from "./QuickActions";
 import { RecentAchievements } from "./RecentAchievements";
 
@@ -24,9 +25,8 @@ export function QuickStart() {
   const startEmpty = useWorkoutStore((s) => s.startEmpty);
   const startCardio = useWorkoutStore((s) => s.startCardio);
 
-  // Miroir du filtre de `weeklyPriorities` (effective-sets.ts) — on garde ici
-  // l'objet `ParentMuscleProgress` complet (coverage %, goalSets) pour l'affichage
-  // en relevé, plutôt que le tuple [parent, remaining] appauvri.
+  // Miroir du filtre de `weeklyPriorities` (effective-sets.ts) : les muscles en retard orientent
+  // la séance recommandée.
   const priorities = useMemo(
     () =>
       weeklyProgress(history, catalog, goals)
@@ -65,7 +65,8 @@ export function QuickStart() {
         </Link>
       </header>
 
-      <WeeklyPriority priorities={priorities} cardio={cardio} />
+      <WeekSummary />
+      <WeeklyCardio cardio={cardio} />
 
       <QuickActions
         lastSession={history[0]}

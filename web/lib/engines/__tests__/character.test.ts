@@ -46,7 +46,8 @@ function sheet(checkins: RecoveryCheckin[] = [], ranks: { date: Date; rank: Sess
 describe("fiche de personnage", () => {
   it("la force ne lit que les repères fiables : le Pec deck à 200 kg (machine) ne compte pas", () => {
     const force = sheet().force;
-    expect(force.detail).toContain("1 exercice");
+    expect(force.how).toContain("1 exercice libre");
+    expect(force.next).toMatch(/^Lateral raises .* près\u00a0: \+\d+ pts?\.$/);
     expect(force.value).toBeGreaterThan(0);
     expect(force.value).toBeLessThan(80);
   });
@@ -57,7 +58,9 @@ describe("fiche de personnage", () => {
     });
     const recovery = sheet([night(1, 8, false), night(2, 6, true)]).recuperation;
     expect(recovery.value).toBe(Math.round(((7 / 8 + 1 / 2) / 2) * 100));
-    expect(recovery.detail).toBe("7 h de sommeil · 1 soir d'alcool");
+    expect(recovery.how).toBe("Moyenne de tes bilans des 14 derniers jours : 7 h de sommeil sur 8, 1 soir d'alcool sur 2.");
+    // Le levier le plus rentable : l'alcool (0,5) avant le sommeil (0,875).
+    expect(recovery.next).toBe("aucun soir d'alcool sur 14 jours\u00a0: +25 pts.");
   });
 
   it("discipline : exercices tenus ou battus sur les 4 dernières semaines", () => {
@@ -66,7 +69,9 @@ describe("fiche de personnage", () => {
       { date: new Date(NOW.getTime() - 10 * DAY), rank: rank(4, 2, 0) },
       { date: new Date(NOW.getTime() - 40 * DAY), rank: rank(5, 0, 0) },
     ]).discipline;
-    expect(discipline).toMatchObject({ value: 70, detail: "7 exercices sur 10 tenus ou battus" });
+    expect(discipline.value).toBe(70);
+    expect(discipline.how).toContain("7 exercices sur 10");
+    expect(discipline.next).toContain("+10 pts");
   });
 
   it("sans donnée, une caractéristique reste vide plutôt que nulle", () => {

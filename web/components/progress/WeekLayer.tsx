@@ -40,17 +40,65 @@ const dayMonth = (date: Date) => `${date.getDate()} ${MONTHS[date.getMonth()]}`;
 const percent = (value: number) => `${Math.round(value * 100)} %`;
 
 /**
- * Onglet « Semaine » : la vue macro. Où en est la semaine (score, rythme, série de semaines),
- * quels muscles sont en retard sur le rythme, comment les semaines se suivent, puis le parcours
- * au long cours (jalons, secrets trouvés).
+ * Onglet « Semaine » : la vue macro. Comment les semaines se suivent, la saison, le parcours au
+ * long cours (jalons), quels muscles sont en retard sur le rythme, puis les secrets trouvés.
+ * L'en-tête de la semaine (palier, séries, records, série de semaines, quête) vit sur l'accueil
+ * (`WeekSummary`), là où Evan décide de sa séance (26/09/2026).
  */
 export function WeekLayer() {
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
   const goals = useWorkoutStore((s) => s.goals);
   const active = useWorkoutStore((s) => s.active);
-  const checkins = useWorkoutStore((s) => s.recoveryCheckins);
   const career = useCareer();
+  const now = useMemo(() => new Date(), []);
+
+  const events = useMemo(() => recordEvents(history, catalog), [history, catalog]);
+  const weeks = useMemo(
+    () => weekStats(history, catalog, goals, now, PROGRESS_STATS.WEEKS_FOR_STREAK, events),
+    [history, catalog, goals, now, events]
+  );
+  const streak = useMemo(() => weekStreak(weeks), [weeks]);
+  const shown = weeks.slice(-PROGRESS_STATS.WEEKS_SHOWN);
+
+  const rows = useMemo(() => weeklyProgress(history, catalog, goals, now, active), [history, catalog, goals, now, active]);
+  const plan = useMemo(() => weekSessionPlan(history, now), [history, now]);
+  const sessionsDone = plan.sessionsDoneThisWeek + (active ? 1 : 0);
+  const pace = weekPace(sessionsDone, plan.habitualSessionsPerWeek);
+  const goalRows = rows.filter((row) => row.goalSets > 0);
+
+  const untracked = useMemo(() => {
+    const noGoal = rows.filter((row) => row.goalSets <= 0 && row.effectiveSets > 0).map((row) => ({ parent: row.parent, sets: row.effectiveSets }));
+    const tracked = weeklyTrackedVolume(history, catalog, now, active).map((row) => ({ parent: row.parent, sets: row.effectiveSets }));
+    return [...noGoal, ...tracked].sort((a, b) => b.sets - a.sets);
+  }, [rows, history, catalog, now, active]);
+
+  return (
+    <div className="space-y-3">
+      <WeeksHistory weeks={shown} history={history} catalog={catalog} events={events} protectedWeeks={streak.protectedWeeks} />
+      <SeasonCard />
+      <MilestonesCard milestones={career.milestones} />
+      <MuscleBoard
+        rows={goalRows}
+        pace={pace}
+        untracked={untracked}
+        history={history}
+        catalog={catalog}
+        active={active}
+        now={now}
+      />
+      <SecretsCard secrets={career.secrets} />
+    </div>
+  );
+}
+
+/** En-tête de la semaine, autonome : posé sur l'accueil (séance), au-dessus du bouton de départ. */
+export function WeekSummary() {
+  const history = useWorkoutStore((s) => s.history);
+  const catalog = useWorkoutStore((s) => s.catalog);
+  const goals = useWorkoutStore((s) => s.goals);
+  const active = useWorkoutStore((s) => s.active);
+  const checkins = useWorkoutStore((s) => s.recoveryCheckins);
   const now = useMemo(() => new Date(), []);
 
   const events = useMemo(() => recordEvents(history, catalog), [history, catalog]);
@@ -63,52 +111,24 @@ export function WeekLayer() {
     () => weeklyQuest({ history, catalog, goals, checkins, active, now }),
     [history, catalog, goals, checkins, active, now]
   );
-  const shown = weeks.slice(-PROGRESS_STATS.WEEKS_SHOWN);
+  const current = weeks.at(-1);
   const best = weeks.find((week) => week.best) ?? null;
-
   const rows = useMemo(() => weeklyProgress(history, catalog, goals, now, active), [history, catalog, goals, now, active]);
-  const plan = useMemo(() => weekSessionPlan(history, now), [history, now]);
-  const sessionsDone = plan.sessionsDoneThisWeek + (active ? 1 : 0);
-  const pace = weekPace(sessionsDone, plan.habitualSessionsPerWeek);
-
   const goalRows = rows.filter((row) => row.goalSets > 0);
   const goalTotal = goalRows.reduce((sum, row) => sum + row.goalSets, 0);
   const score = goalTotal > 0 ? goalRows.reduce((sum, row) => sum + Math.min(row.effectiveSets, row.goalSets), 0) / goalTotal : 0;
-  const recordsThisWeek = shown.at(-1)?.records ?? 0;
-  const setsThisWeek = shown.at(-1)?.sets ?? 0;
-
-  const untracked = useMemo(() => {
-    const noGoal = rows.filter((row) => row.goalSets <= 0 && row.effectiveSets > 0).map((row) => ({ parent: row.parent, sets: row.effectiveSets }));
-    const tracked = weeklyTrackedVolume(history, catalog, now, active).map((row) => ({ parent: row.parent, sets: row.effectiveSets }));
-    return [...noGoal, ...tracked].sort((a, b) => b.sets - a.sets);
-  }, [rows, history, catalog, now, active]);
 
   return (
-    <div className="space-y-3">
-      <WeekHero
-        score={score}
-        goalTotal={goalTotal}
-        sets={setsThisWeek}
-        records={recordsThisWeek}
-        streak={streak}
-        quest={quest}
-        best={best}
-        weekStart={currentWeekWindow(now).start}
-      />
-      <MuscleBoard
-        rows={goalRows}
-        pace={pace}
-        untracked={untracked}
-        history={history}
-        catalog={catalog}
-        active={active}
-        now={now}
-      />
-      <WeeksHistory weeks={shown} history={history} catalog={catalog} events={events} protectedWeeks={streak.protectedWeeks} />
-      <SeasonCard />
-      <MilestonesCard milestones={career.milestones} />
-      <SecretsCard secrets={career.secrets} />
-    </div>
+    <WeekHero
+      score={score}
+      goalTotal={goalTotal}
+      sets={current?.sets ?? 0}
+      records={current?.records ?? 0}
+      streak={streak}
+      quest={quest}
+      best={best}
+      weekStart={currentWeekWindow(now).start}
+    />
   );
 }
 
