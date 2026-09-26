@@ -9,6 +9,7 @@
 
 import { setVersusSuggestion } from "@/lib/engines/bilan";
 import { estimated1RM } from "@/lib/engines/e1rm";
+import { currentWeekWindow } from "@/lib/engines/effective-sets";
 import { buildRecords } from "@/lib/engines/records";
 import type { SetSuggestion } from "@/lib/engines/progression";
 import { SetPatternMode, SetType } from "@/lib/models/enums";
@@ -31,6 +32,8 @@ export const SESSION_GAME = {
   /** Maître du jeu : pas de boss après une nuit courte ou de l'alcool (check-in de moins de 36 h). */
   TIRED_SLEEP_HOURS: 6,
   CHECKIN_WINDOW_HOURS: 36,
+  /** Deux boss au plus par semaine civile : un boss doit rester un événement. */
+  MAX_BOSSES_PER_WEEK: 2,
 } as const;
 
 const isRated = (set: LoggedSet) => set.completed && RATED_SET_TYPES.has(set.setType);
@@ -161,6 +164,22 @@ export function pickBoss(
     if (!best || rank > best.rank || (rank === best.rank && gain > best.gain + 1e-9)) best = { boss, rank, gain };
   }
   return best?.boss ?? null;
+}
+
+export interface BossAnnouncement {
+  sessionId: string;
+  /** ISO */
+  date: string;
+}
+
+/** Il reste un boss à annoncer cette semaine civile (hors la séance elle-même, déjà comptée). */
+export function bossAvailable(announcements: readonly BossAnnouncement[], sessionId: string, now: Date): boolean {
+  const { start, end } = currentWeekWindow(now);
+  const thisWeek = announcements.filter((entry) => {
+    const date = new Date(entry.date);
+    return entry.sessionId !== sessionId && date >= start && date < end;
+  });
+  return thisWeek.length < SESSION_GAME.MAX_BOSSES_PER_WEEK;
 }
 
 /** Vaincu dès qu'une série de l'exercice du boss décroche une étoile de record ou le palier visé. */

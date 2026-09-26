@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronRight, Flame, Star, Trophy } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
+import { MilestonesCard, SecretsCard } from "@/components/progress/CareerCards";
+import { useCareer } from "@/lib/hooks/use-career";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { currentWeekWindow, parentSets, weeklyProgress, weeklyTrackedVolume } from "@/lib/engines/effective-sets";
 import { weekSessionPlan } from "@/lib/engines/session-focus";
@@ -37,13 +39,15 @@ const percent = (value: number) => `${Math.round(value * 100)} %`;
 
 /**
  * Onglet « Semaine » : la vue macro. Où en est la semaine (score, rythme, série de semaines),
- * quels muscles sont en retard sur le rythme, et comment les semaines se suivent.
+ * quels muscles sont en retard sur le rythme, comment les semaines se suivent, puis le parcours
+ * au long cours (jalons, secrets trouvés).
  */
 export function WeekLayer() {
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
   const goals = useWorkoutStore((s) => s.goals);
   const active = useWorkoutStore((s) => s.active);
+  const career = useCareer();
   const now = useMemo(() => new Date(), []);
 
   const events = useMemo(() => recordEvents(history, catalog), [history, catalog]);
@@ -93,6 +97,8 @@ export function WeekLayer() {
         now={now}
       />
       <WeeksHistory weeks={shown} history={history} catalog={catalog} events={events} />
+      <MilestonesCard milestones={career.milestones} />
+      <SecretsCard secrets={career.secrets} />
     </div>
   );
 }

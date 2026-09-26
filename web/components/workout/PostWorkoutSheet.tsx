@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { StatTile } from "@/components/ui/StatTile";
 import { useWorkoutStore } from "@/lib/store/workout";
@@ -18,6 +18,8 @@ import { BilanPerformance } from "./bilan/BilanPerformance";
 import { BilanPlateaus } from "./bilan/BilanPlateaus";
 import { BilanCoverage } from "./bilan/BilanCoverage";
 import { SessionCaloriesCard } from "@/components/history/SessionCalories";
+import { useCareer } from "@/lib/hooks/use-career";
+import type { SessionReview } from "@/lib/engines/bilan";
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -92,6 +94,13 @@ function PostWorkoutContent({
   // capture — `history` (nouvelle référence à chaque mutation immuable du store) joue ce rôle.
   const history = useWorkoutStore((s) => s.history);
   const catalog = useWorkoutStore((s) => s.catalog);
+  // Le parcours se recalcule sur tout l'historique (quelques centaines de ms) : on le lance une fois
+  // la feuille ouverte, pour ne pas saccader son animation.
+  const [careerReady, setCareerReady] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setCareerReady(true), 380);
+    return () => clearTimeout(id);
+  }, []);
   const referenceDate = session.endTime ?? session.date;
 
   const d1Date = useMemo(() => addDays(referenceDate, -1), [referenceDate]);
@@ -171,6 +180,8 @@ function PostWorkoutContent({
           <h2 className="font-display text-2xl font-bold text-accent-gradient">Séance terminée</h2>
         </header>
 
+        {careerReady ? <SessionRankHero review={review} sessionId={session.id} /> : <div aria-hidden className="h-[108px]" />}
+
         <div className="grid grid-cols-3 gap-2">
           <StatTile value={snapshot.duration} label="Durée" />
           <StatTile value={snapshot.setCount} label="Séries" />
@@ -178,8 +189,6 @@ function PostWorkoutContent({
         </div>
 
         <SessionCaloriesCard session={session} exercises={catalog} />
-
-        <BilanHero review={review} />
 
         <BilanPerformance exercises={review.exercises} />
 
@@ -209,4 +218,10 @@ function PostWorkoutContent({
         </button>
       </div>
   );
+}
+
+/** Rang et déblocages de la séance, lus dans le parcours. */
+function SessionRankHero({ review, sessionId }: { review: SessionReview; sessionId: string }) {
+  const careerSession = useCareer().bySession.get(sessionId);
+  return <BilanHero review={review} rank={careerSession?.rank ?? null} unlocks={careerSession?.unlocks ?? []} />;
 }

@@ -384,7 +384,8 @@
       "slSlug": "reverse-fly",
       "unit": "load",
       "convention": "per_arm",
-      "isMachine": false,
+      "isMachine": true,
+      "caveat": "machine : repère de l'oiseau aux haltères (par bras), comparaison indicative",
       "load": [
         3,
         9,

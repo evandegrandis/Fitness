@@ -11,6 +11,8 @@ import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { sessionDurationLabel } from "./historyHelpers";
 import { useSessionCalories } from "./SessionCalories";
 import { formatDecimal } from "@/lib/format";
+import { useCareer } from "@/lib/hooks/use-career";
+import { RANK_COLORS } from "@/lib/theme/tiers";
 
 function relativeDay(date: Date): string {
   if (isToday(date)) return "Aujourd'hui";
@@ -20,7 +22,7 @@ function relativeDay(date: Date): string {
 
 /**
  * Ligne de séance cliquable (→ détail) : jour relatif + heure, badge ⭐ PR,
- * méta (N sets · durée · N exos · N supersets), 2 premiers exos + "+N".
+ * méta (N sets · durée · N exos · N supersets), 2 premiers exos + "+N", rang S/A/B/C à droite.
  *
  * Suppression UNIFORMISÉE avec la séance active : swipe DROITE = suppression
  * directe (fond rouge "Supprimer"), sans bouton de confirmation superposé.
@@ -59,6 +61,7 @@ export function SessionRow({
   ) / 10;
   const duration = sessionDurationLabel(session, exercises);
   const calories = useSessionCalories(session, exercises);
+  const rank = useCareer().bySession.get(session.id)?.rank ?? null;
   const supersetCount = session.supersetGroups.length;
   const names = ordered.map((e) => e.exerciseName);
   const shown = names.slice(0, 2);
@@ -97,6 +100,15 @@ export function SessionRow({
             </p>
           </div>
 
+          {rank && (
+            <span
+              className="w-5 shrink-0 text-center font-display text-lg font-bold leading-none"
+              style={{ color: RANK_COLORS[rank.letter] }}
+              aria-label={`Rang ${rank.letter}`}
+            >
+              {rank.letter}
+            </span>
+          )}
           <ChevronRight size={16} className="shrink-0 text-(--color-fg-faint)" />
         </Link>
       </SwipeRow>

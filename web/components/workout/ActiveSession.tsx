@@ -10,7 +10,7 @@ import { useSyncStatus } from "@/lib/sync/status";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 import { SessionHeader } from "./SessionHeader";
-import { pickBoss } from "@/lib/engines/session-game";
+import { bossAvailable, pickBoss } from "@/lib/engines/session-game";
 import { ExerciseList } from "./ExerciseList";
 import { RestTimer } from "./RestTimer";
 import { UndoToast } from "./UndoToast";
@@ -71,14 +71,18 @@ export function ActiveSession({
   useEffect(() => {
     if (bossSessionId === session.id || catalog.length === 0) return;
     const state = useWorkoutStore.getState();
-    const boss = pickBoss(
-      session,
-      state.catalog,
-      state.history,
-      (loggedExerciseId) => useWorkoutStore.getState().suggestion(loggedExerciseId),
-      state.recoveryCheckins,
-      new Date()
-    );
+    const now = new Date();
+    // Deux boss au plus par semaine : au-delà, la séance se joue sans annonce.
+    const boss = bossAvailable(state.bossAnnouncements, session.id, now)
+      ? pickBoss(
+          session,
+          state.catalog,
+          state.history,
+          (loggedExerciseId) => useWorkoutStore.getState().suggestion(loggedExerciseId),
+          state.recoveryCheckins,
+          now
+        )
+      : null;
     setSessionBoss({ sessionId: session.id, boss });
   }, [bossSessionId, session, catalog.length, setSessionBoss]);
 

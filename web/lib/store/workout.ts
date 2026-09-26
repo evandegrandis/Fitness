@@ -41,7 +41,7 @@ import {
 } from "@/lib/engines/set-structure";
 import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/finisher";
 import { detectLevelUp, type LevelUp } from "@/lib/engines/level-up";
-import type { SessionBoss } from "@/lib/engines/session-game";
+import type { BossAnnouncement, SessionBoss } from "@/lib/engines/session-game";
 import { defaultEquivalent, equivalenceKey, familyHistory, startingPointFromEquivalent } from "@/lib/engines/equivalence";
 import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
@@ -182,6 +182,8 @@ export interface WorkoutState extends ReferenceData {
    * Persisté localement pour survivre à un rechargement en pleine séance.
    */
   sessionBoss: { sessionId: string; boss: SessionBoss | null } | null;
+  /** Boss annoncés (séance, date ISO), pour n'en annoncer que deux par semaine. Persisté. */
+  bossAnnouncements: BossAnnouncement[];
   setSessionBoss: (value: { sessionId: string; boss: SessionBoss | null }) => void;
   /**
    * `loggedExerciseId` pour lesquels Evan a déjà répondu « non » dans cette séance —
@@ -1386,6 +1388,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       finisherPromptDeclined: [],
       levelUp: null,
       sessionBoss: null,
+      bossAnnouncements: [],
       cardioIntent: false,
       armedSupersetExerciseId: null,
       justHitRecord: {},
@@ -2183,7 +2186,13 @@ export const useWorkoutStore = create<WorkoutState>()(
 
       dismissUndo: () => set({ undo: null }),
       dismissLevelUp: () => set({ levelUp: null }),
-      setSessionBoss: (value) => set({ sessionBoss: value }),
+      setSessionBoss: (value) =>
+        set((state) => ({
+          sessionBoss: value,
+          bossAnnouncements: value.boss
+            ? [...state.bossAnnouncements.filter((entry) => entry.sessionId !== value.sessionId), { sessionId: value.sessionId, date: new Date().toISOString() }].slice(-12)
+            : state.bossAnnouncements,
+        })),
 
       startCardio: () => {
         get().startEmpty("normal");
@@ -2588,6 +2597,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         // (`pendingFinisherPrompt` reste volontairement éphémère, comme `freshOverrides`.)
         finisherPromptDeclined: state.finisherPromptDeclined,
         sessionBoss: state.sessionBoss,
+        bossAnnouncements: state.bossAnnouncements,
         // VARIATION_CYCLING_SPEC §8 — l'acceptation d'une rotation de variation peut précéder de
         // plusieurs jours (et un reload) le début de la séance suivante qui la consommera.
         pendingVariantSwitches: state.pendingVariantSwitches,
