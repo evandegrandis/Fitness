@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { ExerciseReview, SessionReview } from "@/lib/engines/bilan";
-import { cutAt, heldReference, rankLetter, rankSession, SESSION_RANK } from "@/lib/engines/session-rank";
-import type { Exercise, UserSettings } from "@/lib/models/types";
+import { cutAt, heldReference, rankLetter, rankSession } from "@/lib/engines/session-rank";
+import type { Exercise, LoggedSet, UserSettings } from "@/lib/models/types";
 
 function exerciseReview(overrides: Partial<ExerciseReview>): ExerciseReview {
   return {
@@ -24,37 +24,47 @@ function review(exercises: ExerciseReview[]): SessionReview {
 
 const catalog = new Map<string, Exercise>();
 const above = (id: string) => exerciseReview({ exerciseId: id, performed: true, achievedReps: 11 });
-const heldEx = (id: string) => exerciseReview({ exerciseId: id, achievedReps: 10 });
-const below = (id: string) => exerciseReview({ exerciseId: id, achievedWeight: 70, achievedReps: 8 });
+const calibrating = (id: string) => exerciseReview({ exerciseId: id, calibrating: true });
+const rir = (values: (number | null)[]): LoggedSet[] =>
+  values.map((reportedRir, index) => ({
+    id: `s${index}`, weight: 20, reps: 10, setType: "work", timestamp: new Date(2026, 8, 26, 18, index), setSlotIndex: index,
+    completed: true, supersetRoundIndex: null, reportedRir,
+  }));
+const allHard = (count: number) => rir(Array.from({ length: count }, () => 1));
 
-describe("rang de fin de séance", () => {
-  it("S à 85, A à 70, B à 55, C en dessous", () => {
-    expect([90, 85, 84, 70, 69, 55, 54, 0].map(rankLetter)).toEqual(["S", "S", "A", "A", "B", "B", "C", "C"]);
+describe("rang de fin de séance : séries, records, intensité", () => {
+  it("S à 85, A à 70, B à 50, C en dessous", () => {
+    expect([90, 85, 84, 70, 69, 50, 49, 0].map(rankLetter)).toEqual(["S", "S", "A", "A", "B", "B", "C", "C"]);
   });
 
-  it("tout au-dessus, trois records, volume habituel : 100, rang S", () => {
-    const rank = rankSession({ review: review([above("a"), above("b"), above("c")]), catalog, records: 3, effectiveSets: 16, habitSets: 16, cut: false });
-    expect(rank).toMatchObject({ letter: "S", score: 100, performed: 3, rated: 3 });
+  it("22 séries, 4 records, tout à RIR 2 ou moins : 100", () => {
+    const rank = rankSession({ review: review([above("a")]), catalog, sets: 22, records: 4, workSets: allHard(22), cut: false });
+    expect(rank).toMatchObject({ letter: "S", score: 100, hardSets: 22, rirSets: 22 });
   });
 
-  it("une charge tenue vaut une demi-réussite, et une réussite entière en sèche", () => {
-    const exercises = [above("a"), heldEx("b"), below("c"), heldEx("d")];
-    const normal = rankSession({ review: review(exercises), catalog, records: 0, effectiveSets: 16, habitSets: 16, cut: false })!;
-    const cut = rankSession({ review: review(exercises), catalog, records: 0, effectiveSets: 16, habitSets: 16, cut: true })!;
-    expect(normal.held).toBe(2);
-    expect(normal.score).toBe(Math.round(100 * (0.55 * (1 + 2 * 0.5) / 4 + 0.2)));
-    expect(cut.score).toBe(Math.round(100 * (0.55 * 3 / 4 + 0.2)));
+  it("à records et intensité égaux, plus de séries fait un meilleur rang", () => {
+    const at = (sets: number) => rankSession({ review: review([above("a")]), catalog, sets, records: 2, workSets: allHard(sets), cut: false })!;
+    expect(at(14).score).toBeLessThan(at(17).score);
+    expect(at(17).score).toBeLessThan(at(30).score);
+    expect(at(30).score).toBe(Math.round(100 * (0.45 + 0.3 * 0.5 + 0.25)));
   });
 
-  it("une séance courte plafonne au rang B, même parfaite", () => {
-    const rank = rankSession({ review: review([above("a"), above("b")]), catalog, records: 3, effectiveSets: 6, habitSets: 16, cut: false })!;
-    expect(rank.letter).toBe("B");
-    expect(rank.score).toBe(SESSION_RANK.THRESHOLDS.A - 1);
+  it("les séries à RIR 3 ou plus coûtent : 50 % de séries dures ne vaut plus rien", () => {
+    const soft = rankSession({ review: review([above("a")]), catalog, sets: 20, records: 0, workSets: rir([1, 1, 3, 4]), cut: false })!;
+    expect(soft.hardSets).toBe(2);
+    expect(soft.score).toBe(Math.round(100 * (0.45 * 20 / 22)));
   });
 
-  it("pas de rang pour une séance d'étalonnage", () => {
-    const calibration = [exerciseReview({ calibrating: true }), exerciseReview({ calibrating: true }), above("a")];
-    expect(rankSession({ review: review(calibration), catalog, records: 0, effectiveSets: 10, habitSets: 10, cut: false })).toBeNull();
+  it("en sèche, deux records valent la note pleine", () => {
+    const base = { review: review([above("a")]), catalog, sets: 22, records: 2, workSets: allHard(22) };
+    expect(rankSession({ ...base, cut: true })!.score).toBe(100);
+    expect(rankSession({ ...base, cut: false })!.score).toBe(Math.round(100 * (0.45 + 0.15 + 0.25)));
+  });
+
+  it("sans RIR saisi ni exercice pouvant battre un record, seul le volume compte", () => {
+    const rank = rankSession({ review: review([calibrating("a"), calibrating("b")]), catalog, sets: 11, records: 0, workSets: rir([null, null]), cut: false })!;
+    expect(rank.score).toBe(50);
+    expect(rankSession({ review: review([]), catalog, sets: 0, records: 0, workSets: [], cut: false })).toBeNull();
   });
 
   it("au poids du corps, tenir c'est à une rep près ; un exercice assisté n'est jamais « tenu »", () => {

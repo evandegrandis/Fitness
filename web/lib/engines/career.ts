@@ -12,14 +12,15 @@ import { exerciseBenchmarkForSets, strengthLevelRank } from "@/lib/engines/bench
 import { buildWeightTrend, WEIGHT_MILESTONES_PCT } from "@/lib/engines/body-weight";
 import { SECRETS, type SecretContext } from "@/lib/engines/career-secrets";
 import { currentWeekWindow } from "@/lib/engines/effective-sets";
-import { median } from "@/lib/engines/patterns";
 import { recordEvents, weekStats, weekStreak } from "@/lib/engines/progress-stats";
 import { ghostDelta, ghostFor } from "@/lib/engines/session-game";
-import { cutAt, rankSession, SESSION_RANK, type SessionRank } from "@/lib/engines/session-rank";
-import { effectiveSetUnits, physiologicalSetUnits } from "@/lib/engines/set-structure";
+import { cutAt, rankSession, type SessionRank } from "@/lib/engines/session-rank";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
+import { SetType } from "@/lib/models/enums";
 import type { BodyWeightEntry, Exercise, LoggedSet, MuscleGoal, UserSettings, WorkoutSession } from "@/lib/models/types";
 
 const DAY_MS = 86_400_000;
+const WORK_SET_TYPES: ReadonlySet<string> = new Set([SetType.work, SetType.topSet, SetType.backoff]);
 
 // ---------------------------------------------------------------------------
 // Jalons
@@ -172,7 +173,6 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
     }
   };
 
-  const effectiveHistory: number[] = [];
   const ranks: (SessionRank | null)[] = [];
   const setsByExercise = new Map<string, LoggedSet[]>();
   const levelByExercise = new Map<string, number>();
@@ -191,18 +191,16 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
     const review = buildSessionReview(session, previous, [...catalog], [...goals], { trainingPhase: settings.trainingPhase });
     const starred = starredBySession.get(session.id);
 
-    const effectiveSets = session.exercises.reduce(
-      (sum, logged) => sum + effectiveSetUnits(logged.sets, { increment: byId.get(logged.exerciseId)?.smallestIncrement }),
+    const sessionSets = session.exercises.reduce(
+      (sum, logged) => sum + physiologicalSetUnits(logged.sets, { increment: byId.get(logged.exerciseId)?.smallestIncrement }),
       0
     );
-    const habit = effectiveHistory.length > 0 ? median(effectiveHistory.slice(-SESSION_RANK.HABIT_SESSIONS)) : null;
-    effectiveHistory.push(effectiveSets);
     const rank = rankSession({
       review,
       catalog: byId,
-      records: starred?.exercises.size ?? 0,
-      effectiveSets,
-      habitSets: habit,
+      sets: sessionSets,
+      records: starred?.sets ?? 0,
+      workSets: session.exercises.flatMap((logged) => logged.sets.filter((set) => set.completed && WORK_SET_TYPES.has(set.setType))),
       cut: cutAt(session.date, bodyWeights, settings),
     });
 
@@ -231,10 +229,6 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
     }
 
     // Cumuls.
-    const sessionSets = session.exercises.reduce(
-      (sum, logged) => sum + physiologicalSetUnits(logged.sets, { increment: byId.get(logged.exerciseId)?.smallestIncrement }),
-      0
-    );
     const weekIndex = weekIndexOf(session.date);
     sessionsPerWeek.set(weekIndex, (sessionsPerWeek.get(weekIndex) ?? 0) + 1);
     setsPerWeek.set(weekIndex, (setsPerWeek.get(weekIndex) ?? 0) + sessionSets);

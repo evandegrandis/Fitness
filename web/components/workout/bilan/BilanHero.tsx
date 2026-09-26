@@ -91,14 +91,12 @@ export function BilanHero({
   );
 }
 
+/** Les trois objectifs du rang, dans l'ordre de leur poids : séries, records, intensité. */
 function rankReason(rank: SessionRank): string {
-  const parts = [`${rank.performed}/${rank.rated} au-dessus`];
-  if (rank.held > 0) parts.push(`${rank.held} tenu${rank.held > 1 ? "s" : ""}`);
-  if (rank.records > 0) parts.push(`${rank.records} record${rank.records > 1 ? "s" : ""}`);
-  if (rank.habitSets) {
-    const volume = rank.effectiveSets / rank.habitSets;
-    parts.push(volume >= 0.95 ? "volume habituel" : `volume ${Math.round(volume * 100)} %`);
-  }
+  const sets = Math.round(rank.sets * 10) / 10;
+  const parts = [`${sets.toLocaleString("fr-FR")} série${sets > 1 ? "s" : ""}`];
+  parts.push(rank.records > 0 ? `${rank.records} record${rank.records > 1 ? "s" : ""}` : "aucun record");
+  if (rank.rirSets > 0) parts.push(`${rank.hardSets}/${rank.rirSets} à RIR 2 ou moins`);
   if (rank.cut) parts.push("en sèche");
   return parts.join(" · ");
 }
