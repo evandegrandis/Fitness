@@ -100,6 +100,16 @@ describe("semaines", () => {
     expect(weekStreak([week("or"), week("argent"), week(null, true)])).toMatchObject({ weeks: 2, capped: true });
   });
 
+  it("jokers : une semaine or en rapporte un, une semaine sous le bronze le dépense sans casser la série", () => {
+    const week = (tier: WeekStat["tier"], day: number, inProgress = false) => ({ tier, inProgress, start: new Date(2026, 8, day) }) as WeekStat;
+    const kept = weekStreak([week("bronze", 1), week("or", 8), week(null, 15), week("argent", 22), week(null, 29, true)]);
+    expect(kept).toMatchObject({ weeks: 3, jokers: 0, currentCounted: false });
+    expect(kept.protectedWeeks).toEqual([new Date(2026, 8, 15)]);
+    // Sans joker en réserve, la série casse ; et un joker ne se dépense pas sans série à protéger.
+    expect(weekStreak([week("or", 1), week(null, 8), week(null, 15), week("bronze", 22)])).toMatchObject({ weeks: 1, jokers: 0 });
+    expect(weekStreak([week(null, 1), week("or", 8), week("or", 15), week("or", 22), week("or", 29)])).toMatchObject({ weeks: 4, jokers: 3 });
+  });
+
   it("rythme : 2 séances sur 4 habituelles, un muscle à 4 séries sur 10 est en retard", () => {
     const pace = weekPace(2, 4);
     expect(pace).toBe(0.5);

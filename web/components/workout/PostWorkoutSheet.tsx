@@ -20,6 +20,7 @@ import { BilanCoverage } from "./bilan/BilanCoverage";
 import { SessionCaloriesCard } from "@/components/history/SessionCalories";
 import { useCareer } from "@/lib/hooks/use-career";
 import type { SessionReview } from "@/lib/engines/bilan";
+import { weeklyQuest } from "@/lib/engines/weekly-quest";
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -180,7 +181,7 @@ function PostWorkoutContent({
           <h2 className="font-display text-2xl font-bold text-accent-gradient">Séance terminée</h2>
         </header>
 
-        {careerReady ? <SessionRankHero review={review} sessionId={session.id} /> : <div aria-hidden className="h-[108px]" />}
+        {careerReady ? <SessionRankHero review={review} session={session} /> : <div aria-hidden className="h-[108px]" />}
 
         <div className="grid grid-cols-3 gap-2">
           <StatTile value={snapshot.duration} label="Durée" />
@@ -220,8 +221,21 @@ function PostWorkoutContent({
   );
 }
 
-/** Rang et déblocages de la séance, lus dans le parcours. */
-function SessionRankHero({ review, sessionId }: { review: SessionReview; sessionId: string }) {
-  const careerSession = useCareer().bySession.get(sessionId);
-  return <BilanHero review={review} rank={careerSession?.rank ?? null} unlocks={careerSession?.unlocks ?? []} />;
+/** Rang et déblocages de la séance, lus dans le parcours, plus la quête si la séance l'a bouclée. */
+function SessionRankHero({ review, session }: { review: SessionReview; session: WorkoutSession }) {
+  const careerSession = useCareer().bySession.get(session.id);
+  const history = useWorkoutStore((s) => s.history);
+  const catalog = useWorkoutStore((s) => s.catalog);
+  const goals = useWorkoutStore((s) => s.goals);
+  const checkins = useWorkoutStore((s) => s.recoveryCheckins);
+  const unlocks = useMemo(() => {
+    const quest = weeklyQuest({ history, catalog, goals, checkins, now: session.date });
+    const before = weeklyQuest({ history: history.filter((past) => past.id !== session.id), catalog, goals, checkins, now: session.date });
+    const questDone = quest?.completed && before && !before.completed && before.parent === quest.parent;
+    return [
+      ...(questDone ? [{ kind: "quest" as const, label: `${quest.label}, ${quest.target} séries` }] : []),
+      ...(careerSession?.unlocks ?? []),
+    ];
+  }, [careerSession, history, catalog, goals, checkins, session]);
+  return <BilanHero review={review} rank={careerSession?.rank ?? null} unlocks={unlocks} />;
 }

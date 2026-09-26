@@ -13,7 +13,7 @@ import { buildWeightTrend, WEIGHT_MILESTONES_PCT } from "@/lib/engines/body-weig
 import { SECRETS, type SecretContext } from "@/lib/engines/career-secrets";
 import { currentWeekWindow } from "@/lib/engines/effective-sets";
 import { median } from "@/lib/engines/patterns";
-import { recordEvents, weekStats } from "@/lib/engines/progress-stats";
+import { recordEvents, weekStats, weekStreak } from "@/lib/engines/progress-stats";
 import { ghostDelta, ghostFor } from "@/lib/engines/session-game";
 import { cutAt, rankSession, SESSION_RANK, type SessionRank } from "@/lib/engines/session-rank";
 import { effectiveSetUnits, physiologicalSetUnits } from "@/lib/engines/set-structure";
@@ -90,7 +90,9 @@ export interface MilestoneProgress {
 
 export type CareerUnlock =
   | { kind: "milestone"; family: MilestoneFamily; tier: number; label: string }
-  | { kind: "secret"; id: string; title: string; description: string };
+  | { kind: "secret"; id: string; title: string; description: string }
+  /** Quête de la semaine bouclée par la séance (ajoutée par le bilan, weekly-quest.ts). */
+  | { kind: "quest"; label: string };
 
 export interface CareerSession {
   sessionId: string;
@@ -180,7 +182,6 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
   const ranksPerWeek = new Map<number, (SessionRank | null)[]>();
   const recordSetsPerWeek = new Map<number, number>();
   const weekdays = new Set<number>();
-  let streak = 0;
   let goldInARow = 0;
   let lastCountedWeek = -1;
 
@@ -252,11 +253,11 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
     // Série de semaines au bronze ou mieux, comptée à la dernière séance de chaque semaine.
     if (lastSessionOfWeek.get(weekIndex) === session.id && weekIndex > lastCountedWeek) {
       for (let k = lastCountedWeek + 1; k <= weekIndex; k += 1) {
-        streak = weeks[k]?.tier ? streak + 1 : 0;
         goldInARow = weeks[k]?.tier === "or" ? goldInARow + 1 : 0;
       }
       lastCountedWeek = weekIndex;
-      values.streak = Math.max(values.streak, streak);
+      // Même série que l'en-tête de semaine, jokers compris.
+      values.streak = Math.max(values.streak, weekStreak(weeks.slice(0, weekIndex + 1)).weeks);
     }
 
     unlock("sessions", values.sessions, session.date, session.id, unlocks);
