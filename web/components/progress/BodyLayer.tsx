@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 
 import { GlassCard } from "@/components/ui/GlassCard";
+import { CharacterCard } from "@/components/progress/CharacterCard";
 import { WeightTrendCard } from "@/components/progress/WeightTrendCard";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { CARDIO_GOAL, cardioNudge, cardioProgress } from "@/lib/engines/cardio";
@@ -18,13 +19,15 @@ function cardioMinutes(session: WorkoutSession): number {
 }
 
 /**
- * Onglet « Corps » : ce qui se mesure hors de la salle de muscu. Le poids (balance connectée),
- * le cardio de la semaine contre l'objectif, et la récupération de la semaine quand le bilan a
- * été rempli. Aucune corrélation affichée sans assez de données pour en tirer quoi que ce soit.
+ * Onglet « Corps » : la fiche de personnage, puis ce qui se mesure hors de la salle de muscu. Le
+ * poids (balance connectée), le cardio de la semaine contre l'objectif, et la récupération de la
+ * semaine quand le bilan a été rempli. Aucune corrélation affichée sans assez de données pour en
+ * tirer quoi que ce soit.
  */
 export function BodyLayer() {
   return (
     <div className="space-y-3">
+      <CharacterCard />
       <WeightTrendCard />
       <CardioCard />
       <RecoveryCard />
