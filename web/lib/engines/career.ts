@@ -16,11 +16,9 @@ import { recordEvents, weekStats, weekStreak } from "@/lib/engines/progress-stat
 import { ghostDelta, ghostFor } from "@/lib/engines/session-game";
 import { cutAt, rankSession, type SessionRank } from "@/lib/engines/session-rank";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
-import { SetType } from "@/lib/models/enums";
 import type { BodyWeightEntry, Exercise, LoggedSet, MuscleGoal, UserSettings, WorkoutSession } from "@/lib/models/types";
 
 const DAY_MS = 86_400_000;
-const WORK_SET_TYPES: ReadonlySet<string> = new Set([SetType.work, SetType.topSet, SetType.backoff]);
 
 // ---------------------------------------------------------------------------
 // Jalons
@@ -200,7 +198,6 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
       catalog: byId,
       sets: sessionSets,
       records: starred?.sets ?? 0,
-      workSets: session.exercises.flatMap((logged) => logged.sets.filter((set) => set.completed && WORK_SET_TYPES.has(set.setType))),
       cut: cutAt(session.date, bodyWeights, settings),
     });
 
