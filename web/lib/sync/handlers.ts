@@ -15,17 +15,18 @@ import type { OutboxHandlers } from "@/lib/sync/outbox";
  * exercice → séance pour passer.
  */
 export const defaultOutboxHandlers: OutboxHandlers = {
-  session: (session) => syncSession({
+  session: (session, intentAt) => syncSession({
     session,
     exercises: exercisesReferencedBySession(session, useWorkoutStore.getState().catalog),
+    intentAt,
   }),
-  sessionDelete: (sessionId) => syncOp({ kind: "session_delete", sessionId }),
-  settings: (settings) => syncOp({ kind: "settings", settings }),
-  goals: (goals) => syncOp({ kind: "goals", goals }),
-  recoveryCheckin: (checkin) => syncOp({ kind: "recovery_checkin", checkin }),
-  exerciseUpsert: (exercise) => syncOp({ kind: "exercise_upsert", exercise }),
-  exerciseDelete: (exerciseId) => syncOp({ kind: "exercise_delete", exerciseId }),
-  templateUpsert: (template) => syncOp({ kind: "template_upsert", template }),
-  templateDelete: (templateId) => syncOp({ kind: "template_delete", templateId }),
-  bodyWeight: (entry) => syncOp({ kind: "body_weight", entry }),
+  sessionDelete: (sessionId, intentAt) => syncOp({ kind: "session_delete", sessionId }, intentAt),
+  settings: (settings, intentAt) => syncOp({ kind: "settings", settings }, intentAt),
+  goals: (goals, intentAt) => syncOp({ kind: "goals", goals }, intentAt),
+  recoveryCheckin: (checkin, intentAt) => syncOp({ kind: "recovery_checkin", checkin }, intentAt),
+  exerciseUpsert: (exercise, intentAt) => syncOp({ kind: "exercise_upsert", exercise }, intentAt),
+  exerciseDelete: (exerciseId, intentAt) => syncOp({ kind: "exercise_delete", exerciseId }, intentAt),
+  templateUpsert: (template, intentAt) => syncOp({ kind: "template_upsert", template }, intentAt),
+  templateDelete: (templateId, intentAt) => syncOp({ kind: "template_delete", templateId }, intentAt),
+  bodyWeight: (entry, intentAt) => syncOp({ kind: "body_weight", entry }, intentAt),
 };

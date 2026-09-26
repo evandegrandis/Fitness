@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  deadLetters, discardDeadLetter, enqueue, flush, OutboxPersistenceError, pendingCount, retryDeadLetter, snapshot,
+  deadLetters, discardDeadLetter, discardStaleDeadLetters, enqueue, flush, OutboxPersistenceError, pendingCount, retryDeadLetter, snapshot,
   type OutboxHandlers,
 } from "../outbox";
 import type { Exercise, RecoveryCheckinInput, UserSettings, WorkoutSession } from "@/lib/models/types";
@@ -347,7 +347,7 @@ describe("offline outbox persistence", () => {
     await flush(noopHandlers({ session: save, sessionDelete: remove }));
 
     expect(save).not.toHaveBeenCalled();
-    expect(remove).toHaveBeenCalledWith(session.id);
+    expect(remove).toHaveBeenCalledWith(session.id, expect.any(Number));
     expect(pendingCount()).toBe(0);
   });
 
@@ -513,5 +513,40 @@ describe("refus permanents : isolés, visibles, jamais bloquants (17/09/2026)", 
     expect(remaining).toBe(0);
     expect(deadLetters().map((letter) => letter.op.kind).sort()).toEqual(["exercise_upsert", "session"]);
     expect(handlers.settings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("garde-fou des écritures périmées (26/09/2026)", () => {
+  it("chaque écriture part avec l'heure où elle a été décidée", async () => {
+    install(new MemoryStorage());
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-26T10:00:00.000Z"));
+    enqueue({ kind: "settings", settings });
+    vi.setSystemTime(new Date("2026-09-26T10:05:00.000Z"));
+    // Une séance récupérée depuis l'historique local garde l'heure de sa fin.
+    enqueue({ kind: "session", session }, { intentAt: session.endTime!.getTime() });
+    vi.useRealTimers();
+
+    const handlers = noopHandlers();
+    await flush(handlers);
+    expect(handlers.settings).toHaveBeenCalledWith(settings, Date.parse("2026-09-26T10:00:00.000Z"));
+    expect(handlers.session).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }), session.endTime!.getTime());
+  });
+
+  it("une écriture mise de côté ne bloque pas la suite, et s'abandonne en bloc sans toucher aux vrais refus", async () => {
+    install(new MemoryStorage());
+    const stale = { ok: false as const, kind: "permanent" as const, code: "stale_write", message: "Le serveur a une version plus récente" };
+    const refused = { ok: false as const, kind: "permanent" as const, code: "23503", message: "violates foreign key constraint" };
+    enqueue({ kind: "settings", settings });
+    enqueue({ kind: "session", session });
+    enqueue({ kind: "exercise_upsert", exercise });
+
+    const handlers = noopHandlers({ settings: vi.fn(async () => stale), session: vi.fn(async () => refused) });
+    expect(await flush(handlers)).toBe(0);
+    expect(handlers.exerciseUpsert).toHaveBeenCalledTimes(1);
+    expect(deadLetters().map((letter) => letter.error.code).sort()).toEqual(["23503", "stale_write"]);
+
+    expect(discardStaleDeadLetters()).toBe(1);
+    expect(deadLetters().map((letter) => letter.error.code)).toEqual(["23503"]);
   });
 });

@@ -39,6 +39,12 @@ En amont, Barbis (le second cerveau) lit Neon et alerte sur Telegram si plus
 rien n'y arrive pendant 7 jours : la panne ne peut plus durer un mois sans que
 quelqu'un le remarque.
 
+4. **Une écriture rejouée n'écrase jamais une version plus récente du serveur**
+   (26/09/2026). Chaque entrée porte l'heure de sa décision (`intentAt`) ; si la
+   cible a changé ou a été supprimée sur le serveur depuis, l'entrée devient une
+   lettre morte `stale_write` « mise de côté ». Voir `DATA_SAFETY.md`, qui décrit
+   aussi la seconde copie sur Cloudflare R2 et le journal `row_history`.
+
 ## Poids : balance connectée → Jeera sans saisie
 
 `POST /api/body-weight` (jeton `BODY_WEIGHT_INGEST_TOKEN`, variable Vercel ;

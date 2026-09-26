@@ -31,6 +31,7 @@ import {
   upsertExercise,
 } from "./actions";
 import { missingExerciseOperations, sessionWriteOperations } from "./session-writes";
+import { staleWriteFailure } from "./stale-writes";
 import { requireAuthenticatedSession } from "@/lib/auth";
 import { after } from "next/server";
 import { notifyBarbisExercisesNeedProfile, notifyBarbisSessionFinished, sessionJustFinished } from "@/lib/integrations/barbis";
@@ -57,11 +58,18 @@ function logOutcome(kind: string, target: string, outcome: SyncOutcome): void {
  * Écrit une séance ET les exercices qu'elle référence dans un seul lot
  * atomique. `exercises` contient les fiches du catalogue local pour les
  * exercices de la séance ; seuls ceux que le serveur ignore sont créés.
+ * `intentAt` : heure de la décision sur l'appareil ; une séance modifiée sur le
+ * serveur depuis n'est pas écrasée (`stale-writes.ts`).
  */
-export async function syncSession(payload: { session: WorkoutSession; exercises: Exercise[] }): Promise<SyncOutcome> {
+export async function syncSession(payload: { session: WorkoutSession; exercises: Exercise[]; intentAt?: number }): Promise<SyncOutcome> {
   const target = payload.session.id;
   try {
     await requireAuthenticatedSession();
+    const stale = await staleWriteFailure({ kind: "session", session: payload.session }, payload.intentAt);
+    if (stale) {
+      logOutcome("session", target, stale);
+      return stale;
+    }
     const referenced = new Set(payload.session.exercises.map((logged) => logged.exerciseId));
     const carried = payload.exercises.filter((exercise) => referenced.has(exercise.id));
     const missing = await missingExerciseOperations(carried);
@@ -95,8 +103,8 @@ export async function syncSession(payload: { session: WorkoutSession; exercises:
   }
 }
 
-/** Toutes les autres opérations de l'outbox, avec le même contrat de résultat. */
-export async function syncOp(op: Exclude<OutboxOp, { kind: "session" }>): Promise<SyncOutcome> {
+/** Toutes les autres opérations de l'outbox, avec le même contrat de résultat et le même garde-fou. */
+export async function syncOp(op: Exclude<OutboxOp, { kind: "session" }>, intentAt?: number): Promise<SyncOutcome> {
   const target = "sessionId" in op ? op.sessionId
     : "exerciseId" in op ? op.exerciseId
     : "templateId" in op ? op.templateId
@@ -106,6 +114,12 @@ export async function syncOp(op: Exclude<OutboxOp, { kind: "session" }>): Promis
     : "entry" in op ? op.entry.id
     : op.kind;
   try {
+    await requireAuthenticatedSession();
+    const stale = await staleWriteFailure(op, intentAt);
+    if (stale) {
+      logOutcome(op.kind, target, stale);
+      return stale;
+    }
     switch (op.kind) {
       case "session_delete":
         await deleteSession(op.sessionId);
