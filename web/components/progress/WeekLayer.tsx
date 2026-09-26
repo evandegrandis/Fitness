@@ -11,13 +11,18 @@ import { currentWeekWindow, parentSets, weeklyProgress, weeklyTrackedVolume } fr
 import { weekSessionPlan } from "@/lib/engines/session-focus";
 import {
   isBehindPace,
+  nextWeekTier,
   PROGRESS_STATS,
   recordEvents,
-  sessionStreak,
+  weekStreak,
+  setsToNextTier,
+  WEEK_TIERS,
   weekPace,
   weekStats,
+  weekTier,
   type WeekStat,
 } from "@/lib/engines/progress-stats";
+import { NO_TIER_COLOR, TIER_COLORS, TIER_LABELS } from "@/lib/theme/tiers";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { parentDisplayName, parentShortName, type MuscleParent } from "@/lib/models/muscles";
 import { sessionsNewestFirst, type Exercise, type WorkoutSession } from "@/lib/models/types";
@@ -46,7 +51,7 @@ export function WeekLayer() {
     () => weekStats(history, catalog, goals, now, PROGRESS_STATS.WEEKS_FOR_STREAK, events),
     [history, catalog, goals, now, events]
   );
-  const streak = useMemo(() => sessionStreak(weeks), [weeks]);
+  const streak = useMemo(() => weekStreak(weeks), [weeks]);
   const shown = weeks.slice(-PROGRESS_STATS.WEEKS_SHOWN);
   const best = weeks.find((week) => week.best) ?? null;
 
@@ -59,6 +64,7 @@ export function WeekLayer() {
   const goalTotal = goalRows.reduce((sum, row) => sum + row.goalSets, 0);
   const score = goalTotal > 0 ? goalRows.reduce((sum, row) => sum + Math.min(row.effectiveSets, row.goalSets), 0) / goalTotal : 0;
   const recordsThisWeek = shown.at(-1)?.records ?? 0;
+  const setsThisWeek = shown.at(-1)?.sets ?? 0;
 
   const untracked = useMemo(() => {
     const noGoal = rows.filter((row) => row.goalSets <= 0 && row.effectiveSets > 0).map((row) => ({ parent: row.parent, sets: row.effectiveSets }));
@@ -70,9 +76,8 @@ export function WeekLayer() {
     <div className="space-y-3">
       <WeekHero
         score={score}
-        pace={pace}
-        sessionsDone={sessionsDone}
-        habitual={plan.habitualSessionsPerWeek}
+        goalTotal={goalTotal}
+        sets={setsThisWeek}
         records={recordsThisWeek}
         streak={streak}
         best={best}
@@ -98,41 +103,32 @@ export function WeekLayer() {
 
 function WeekHero({
   score,
-  pace,
-  sessionsDone,
-  habitual,
+  goalTotal,
+  sets,
   records,
   streak,
   best,
   weekStart,
 }: {
   score: number;
-  pace: number;
-  sessionsDone: number;
-  habitual: number;
+  goalTotal: number;
+  sets: number;
   records: number;
-  streak: ReturnType<typeof sessionStreak>;
+  streak: ReturnType<typeof weekStreak>;
   best: WeekStat | null;
   weekStart: Date;
 }) {
   const radius = 34;
   const circumference = 2 * Math.PI * radius;
-  const ahead = score + 1e-9 >= pace;
-  const paceAngle = pace * 2 * Math.PI - Math.PI / 2;
-  const missing = Math.max(0, streak.target - streak.currentSessions);
+  const tier = weekTier(score);
+  const next = nextWeekTier(score);
+  const missingSets = setsToNextTier(score, goalTotal);
+  const ringColor = tier ? TIER_COLORS[tier] : "var(--accent)";
   const newBest = best !== null && score > best.score;
 
   return (
     <GlassCard strong>
-      <div className="flex items-center justify-between">
-        <p className="eyebrow">Semaine du {dayMonth(weekStart)}</p>
-        {streak.weeks > 0 && (
-          <span className="pill" style={{ color: "var(--accent)" }} title="Semaines d'affilée à 3 séances ou plus">
-            <Flame size={12} />
-            {streak.capped ? `${streak.weeks}+` : streak.weeks} sem.
-          </span>
-        )}
-      </div>
+      <p className="eyebrow">Semaine du {dayMonth(weekStart)}</p>
 
       <div className="mt-3 flex items-center gap-4">
         <div className="relative grid h-[84px] w-[84px] shrink-0 place-items-center">
@@ -143,26 +139,30 @@ function WeekHero({
               cy="42"
               r={radius}
               fill="none"
-              stroke={newBest ? GOLD : "var(--accent)"}
+              stroke={ringColor}
               strokeWidth="7"
               strokeLinecap="round"
               strokeDasharray={circumference}
               transform="rotate(-90 42 42)"
               initial={{ strokeDashoffset: circumference }}
-              animate={{ strokeDashoffset: circumference * (1 - Math.min(1, score)) }}
-              transition={{ duration: 0.7, ease: "easeOut" }}
+              animate={{ strokeDashoffset: circumference * (1 - Math.min(1, score)), stroke: ringColor }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             />
-            {pace > 0 && pace < 1 && (
-              <line
-                x1={42 + (radius - 7) * Math.cos(paceAngle)}
-                y1={42 + (radius - 7) * Math.sin(paceAngle)}
-                x2={42 + (radius + 7) * Math.cos(paceAngle)}
-                y2={42 + (radius + 7) * Math.sin(paceAngle)}
-                stroke="var(--color-fg)"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            )}
+            {/* Les seuils des paliers : une fine entaille dans l'anneau, sans légende. */}
+            {WEEK_TIERS.map((entry) => {
+              const angle = entry.min * 2 * Math.PI - Math.PI / 2;
+              return (
+                <line
+                  key={entry.tier}
+                  x1={42 + (radius - 4.5) * Math.cos(angle)}
+                  y1={42 + (radius - 4.5) * Math.sin(angle)}
+                  x2={42 + (radius + 4.5) * Math.cos(angle)}
+                  y2={42 + (radius + 4.5) * Math.sin(angle)}
+                  stroke="rgba(11,11,12,0.92)"
+                  strokeWidth="1.6"
+                />
+              );
+            })}
           </svg>
           <span className="tnum absolute text-lg font-bold text-(--color-fg)">
             {Math.round(score * 100)}
@@ -170,29 +170,41 @@ function WeekHero({
           </span>
         </div>
 
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="text-sm text-(--color-fg)">
-            {score >= 1 ? "Objectifs de la semaine atteints" : ahead ? "En avance sur le rythme" : "En retard sur le rythme"}
-          </p>
-          <p className="text-[0.72rem] leading-snug text-(--color-fg-muted)">
-            Le trait : le rythme attendu après {sessionsDone} séance{sessionsDone > 1 ? "s" : ""} sur {habitual}.
+        <div className="min-w-0 flex-1">
+          {/* Un fondu à chaque changement de palier, sans attendre la sortie de l'ancien titre :
+              une sortie suspendue (app en arrière-plan) ne doit jamais laisser le titre vide. */}
+          <motion.p
+            key={tier ?? "aucun"}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="font-display text-lg font-semibold leading-tight"
+            style={{ color: tier ? TIER_COLORS[tier] : "var(--color-fg)" }}
+          >
+            {tier ? `Semaine ${TIER_LABELS[tier]}` : "Vers le bronze"}
+          </motion.p>
+          <p className="tnum mt-1 text-[0.72rem] leading-snug text-(--color-fg-muted)">
+            {next && missingSets !== null
+              ? `${next.label} à ${Math.round(next.min * 100)} % · encore ${missingSets} série${missingSets > 1 ? "s" : ""}`
+              : "Le plus haut palier de la semaine"}
           </p>
         </div>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-3">
-        <HeroStat label="Séances" value={`${sessionsDone}/${habitual}`} />
+        <HeroStat label="Séries" value={formatDecimal(sets)} />
         <HeroStat label="Records" value={String(records)} icon={records > 0 ? <Star size={11} style={{ color: GOLD }} fill={GOLD} /> : null} />
         <HeroStat
-          label="Série"
-          value={streak.currentCounted ? "tenue" : `+${missing} séance${missing > 1 ? "s" : ""}`}
+          label="D'affilée"
+          value={`${streak.capped ? `${streak.weeks}+` : streak.weeks} sem.`}
+          icon={streak.weeks > 0 ? <Flame size={11} style={{ color: streak.currentCounted ? "var(--accent)" : "var(--color-fg-faint)" }} /> : null}
           muted={!streak.currentCounted}
         />
       </div>
 
       {best && (
         <p className="mt-3 flex items-center gap-1.5 text-[0.7rem] text-(--color-fg-faint)">
-          <Trophy size={12} style={{ color: GOLD }} />
+          <Trophy size={12} style={{ color: best.tier ? TIER_COLORS[best.tier] : GOLD }} />
           {newBest
             ? `Nouvelle meilleure semaine, au-dessus des ${percent(best.score)} du ${dayMonth(best.start)}`
             : `Meilleure semaine : ${percent(best.score)} (${dayMonth(best.start)})`}
@@ -439,7 +451,7 @@ function WeeksHistory({
         )}
         <div className="absolute inset-x-0 top-0 flex items-end gap-[3px]" style={{ height: CHART + 14 }}>
           {weeks.map((w, index) => {
-            const color = w.best ? GOLD : w.inProgress ? "rgba(236,230,216,0.35)" : "var(--accent)";
+            const color = w.tier ? TIER_COLORS[w.tier] : NO_TIER_COLOR;
             return (
               <button
                 key={w.start.toISOString()}
@@ -455,7 +467,7 @@ function WeeksHistory({
                   className="w-full rounded-[3px]"
                   style={{
                     background: color,
-                    opacity: selected === index ? 1 : 0.55,
+                    opacity: selected === index ? 1 : w.inProgress ? 0.45 : 0.7,
                     outline: selected === index ? "1px solid var(--color-fg)" : "none",
                     outlineOffset: 1,
                   }}
@@ -502,12 +514,13 @@ function WeekDetail({
           Semaine du {dayMonth(week.start)}
           {week.inProgress && <span className="text-(--color-fg-faint)"> · en cours</span>}
         </p>
-        <p className="tnum text-sm" style={{ color: week.best ? GOLD : "var(--color-fg)" }}>
+        <p className="tnum text-sm" style={{ color: week.tier ? TIER_COLORS[week.tier] : "var(--color-fg)" }}>
+          {week.tier && <span className="mr-1.5 text-[0.7rem]">{TIER_LABELS[week.tier]}</span>}
           {percent(week.score)}
         </p>
       </div>
       <p className="tnum mt-1 text-[0.7rem] text-(--color-fg-muted)">
-        {week.sessions} séance{week.sessions > 1 ? "s" : ""} · {formatDecimal(week.sets)} séries · {week.records} record{week.records > 1 ? "s" : ""} · {week.goalsMet}/{week.goalsTotal} objectifs
+        {formatDecimal(week.sets)} séries · {week.sessions} séance{week.sessions > 1 ? "s" : ""} · {week.records} record{week.records > 1 ? "s" : ""}
       </p>
       {sessions.length > 0 && (
         <ul className="mt-2 space-y-1">

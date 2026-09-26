@@ -2044,7 +2044,16 @@ export const useWorkoutStore = create<WorkoutState>()(
               .filter((candidate) => candidate.exerciseId === exercise.id)
               .flatMap((candidate) => orderedSets(candidate)),
           ];
-          levelUp = detectLevelUp(exercise, priorSets, newSet, state.settings) ?? levelUp;
+          const crossed = detectLevelUp(exercise, priorSets, newSet, state.settings);
+          if (crossed) {
+            levelUp = crossed;
+            // Le palier est l'événement le plus rare : il prend la place de l'annonce de record de
+            // la même série, au lieu de s'empiler dessus (l'étoile reste sur la série).
+            if (createdAchievement) {
+              achievement = state.achievement;
+              createdAchievement = false;
+            }
+          }
         }
 
         set({

@@ -41,8 +41,6 @@ export const PROGRESS_STATS = {
   WEEKS_SHOWN: 12,
   /** Semaines lues pour la série en cours (au-delà, la série est affichée « 26+ »). */
   WEEKS_FOR_STREAK: 26,
-  /** Une semaine compte dans la série dès 3 séances : le rythme habituel d'Evan (3 à 4). */
-  STREAK_MIN_SESSIONS: 3,
   /** Tendance : meilleure des N dernières séances contre meilleure des N précédentes. */
   TREND_WINDOW: 3,
   /** Gain minimal pour parler de progression (≈ 1 rep sur une série de 10). */
@@ -58,6 +56,43 @@ export const PROGRESS_STATS = {
   /** Records « récents » du résumé des exercices. */
   RECENT_RECORD_DAYS: 30,
 } as const;
+
+/**
+ * Paliers de semaine (Evan, 26/09/2026). Le score est la part des objectifs musculaires atteinte,
+ * chaque muscle plafonné à son objectif. Avec ~150 séries d'objectifs pour ~70 faites en 4
+ * séances, aucune semaine réelle n'était « gagnée » (moyenne 45 %, meilleure 59 %) : l'app disait
+ * « en retard » à chaque séance. Les objectifs restent l'horizon ; les paliers rendent la semaine
+ * gagnable : bronze = une semaine normale, argent = une bonne semaine, or = une semaine d'exception.
+ */
+export type WeekTier = "bronze" | "argent" | "or";
+
+export const WEEK_TIERS: readonly { tier: WeekTier; label: string; min: number }[] = [
+  { tier: "bronze", label: "Bronze", min: 0.4 },
+  { tier: "argent", label: "Argent", min: 0.55 },
+  { tier: "or", label: "Or", min: 0.7 },
+];
+
+/** Palier atteint par un score, `null` sous le bronze. */
+export function weekTier(score: number): WeekTier | null {
+  let reached: WeekTier | null = null;
+  for (const entry of WEEK_TIERS) if (score + 1e-9 >= entry.min) reached = entry.tier;
+  return reached;
+}
+
+/** Prochain palier à viser, `null` une fois l'or atteint. */
+export function nextWeekTier(score: number): (typeof WEEK_TIERS)[number] | null {
+  return WEEK_TIERS.find((entry) => score + 1e-9 < entry.min) ?? null;
+}
+
+/**
+ * Séries qui manquent pour le prochain palier, faites sur des muscles encore sous leur objectif
+ * (une série au-delà d'un objectif atteint ne compte plus dans le score). `null` à l'or.
+ */
+export function setsToNextTier(score: number, goalTotal: number): number | null {
+  const next = nextWeekTier(score);
+  if (!next || goalTotal <= 0) return null;
+  return Math.max(1, Math.ceil((next.min - score) * goalTotal - 1e-9));
+}
 
 // ---------------------------------------------------------------------------
 // Records : les étoiles de l'Historique, séance par séance
@@ -112,6 +147,8 @@ export interface WeekStat {
   end: Date;
   /** Part des objectifs atteinte, chaque muscle plafonné à son objectif (0..1). */
   score: number;
+  /** Palier atteint (bronze, argent, or), `null` en dessous. */
+  tier: WeekTier | null;
   sessions: number;
   /** Séries comptées comme dans l'Historique (compléments fusionnés). */
   sets: number;
@@ -153,10 +190,12 @@ export function weekStats(
     const inWeek = (date: Date) => date >= start && date < end;
     const sessions = finished.filter((session) => inWeek(session.date));
     const totals = parentTotals([...finished], [...catalog], start, end);
+    const score = coverageForWeek([...finished], [...catalog], [...goals], start);
     weeks.push({
       start,
       end,
-      score: coverageForWeek([...finished], [...catalog], [...goals], start),
+      score,
+      tier: weekTier(score),
       sessions: sessions.length,
       sets: Math.round(sessions.reduce((sum, session) => sum + sessionSets(session, byId), 0) * 10) / 10,
       records: records.filter((event) => inWeek(event.date)).length,
@@ -176,34 +215,29 @@ export function weekStats(
   return weeks;
 }
 
-export interface SessionStreak {
-  /** Semaines d'affilée à 3 séances ou plus (la semaine en cours compte dès qu'elle y est). */
+export interface WeekStreak {
+  /**
+   * Semaines d'affilée au bronze ou mieux (Evan, 26/09/2026 : « ce qui compte, c'est le nombre de
+   * séries par semaine, pas le nombre de séances »). La semaine en cours compte dès qu'elle
+   * atteint le bronze, et ne casse pas la série tant qu'elle est en cours.
+   */
   weeks: number;
   /** La série a atteint la limite lue : affichée « 26+ ». */
   capped: boolean;
   /** La semaine en cours est déjà comptée. */
   currentCounted: boolean;
-  currentSessions: number;
-  target: number;
 }
 
-/** `weeks` de la plus ancienne à la courante, comme `weekStats`. */
-export function sessionStreak(weeks: readonly WeekStat[], target: number = PROGRESS_STATS.STREAK_MIN_SESSIONS): SessionStreak {
+export function weekStreak(weeks: readonly WeekStat[]): WeekStreak {
   const current = weeks.at(-1);
-  const currentCounted = !!current && current.inProgress && current.sessions >= target;
+  const currentCounted = !!current && current.inProgress && current.tier !== null;
   let streak = currentCounted ? 1 : 0;
   let index = weeks.length - 2;
   for (; index >= 0; index -= 1) {
-    if (weeks[index].sessions < target) break;
+    if (weeks[index].tier === null) break;
     streak += 1;
   }
-  return {
-    weeks: streak,
-    capped: index < 0 && weeks.length > 0,
-    currentCounted,
-    currentSessions: current?.sessions ?? 0,
-    target,
-  };
+  return { weeks: streak, capped: index < 0 && weeks.length > 0, currentCounted };
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import {
   normalizedDistanceToNext,
   personalProgress,
   resolveStandard,
+  loadScaleFor,
   strengthLevelEstimated1RM,
   strengthLevelRank,
   supportsStrengthLevelBenchmark,
@@ -172,15 +173,32 @@ describe("exerciseBenchmark — chargé depuis le JSON (unit=load)", () => {
     expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, gender: null }).hasBenchmark).toBe(false);
     expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, ageYears: 24 }).hasBenchmark).toBe(false);
     expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: null }).hasBenchmark).toBe(false);
-    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 75.5 }).hasBenchmark).toBe(false);
-    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 79.999 }).hasBenchmark).toBe(false);
-    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 80 + 1e-8 }).hasBenchmark).toBe(true);
+    // Hors de la plage d'ajustement, l'approximation n'est plus défendable : repère masqué.
+    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 59.9 }).hasBenchmark).toBe(false);
+    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 100.1 }).hasBenchmark).toBe(false);
+    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 73.7 }).hasBenchmark).toBe(true);
+    expect(exerciseBenchmark(lateral, { weight: 12, reps: 10 }, { ...PROFILE, bodyWeightKg: 80 }).hasBenchmark).toBe(true);
   });
 
-  it("affiche honnêtement la référence H80 fixe et l'âge du profil, sans prétendre interpoler", () => {
+  it("affiche la référence H80 telle quelle au poids de la référence", () => {
     const lateral = exercise({ name: "Lateral raises", strengthStandardKey: "Lateral raises" });
     const result = exerciseBenchmark(lateral, { weight: 12, reps: 10 }, PROFILE);
     expect(result.profileLabel).toBe("Référence Homme · 80 kg · 25–40 ans · profil 26 ans");
+  });
+
+  it("ramène les seuils de charge au poids réel (force ∝ poids^2/3) et le dit (Evan, 26/09/2026)", () => {
+    const resolved = resolveStandard(exercise({ strengthStandardKey: "Leg extension" }), { ...PROFILE, bodyWeightKg: 73.7 });
+    const scale = Math.pow(73.7 / 80, 2 / 3);
+    expect(loadScaleFor(73.7)).toBeCloseTo(scale, 10);
+    const round = (value: number) => Math.round(value * scale * 10) / 10;
+    expect(resolved?.primaryThresholds).toEqual({ beginner: round(45), novice: round(69), intermediate: round(99), advanced: round(135), elite: round(175) });
+    expect(resolved?.profileLabel).toBe("Référence Homme 80 kg ajustée à 73,7 kg · 25–40 ans · profil 26 ans");
+  });
+
+  it("les seuils en répétitions au poids du corps restent ceux de la référence", () => {
+    const resolved = resolveStandard(exercise({ strengthStandardKey: "Tractions SN" }), { ...PROFILE, bodyWeightKg: 73.7 });
+    expect(resolved?.primaryAxis).toBe("reps");
+    expect(resolved?.primaryThresholds).toEqual({ beginner: 1, novice: 8, intermediate: 14, advanced: 22, elite: 30 });
   });
 
   it("le JSON n'étant sourcé que pour le profil homme, une utilisatrice reste sans jauge (disclosed, pas fabriqué)", () => {

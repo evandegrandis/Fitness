@@ -17,6 +17,7 @@ L'ancienne IA a saisi les benchmarks en étiquetant l'**Intermédiaire** Strengt
 
 ## 2. Moteur `benchmark.ts` (étendre l'existant, garder l'API)
 - Remplacer les 2 tables embarquées par un chargement générique depuis le JSON. Les valeurs actuelles ne couvrent que **H80** : aucune interpolation n'est autorisée ; à un autre poids, masquer l'absolu et garder la progression personnelle. Garde âge 25–40.
+- **Révisé le 26/09/2026 (Evan : « des niveaux à mon poids »)** : les seuils de CHARGE sont ramenés au poids réel par la loi allométrique (force ∝ poids^2/3, base Wilks/IPF), dans une plage de 60 à 100 kg ; les seuils en répétitions restent ceux de la référence ; `profileLabel` affiche « Référence Homme 80 kg ajustée à X kg ». Avant, la jauge, le signal « passage de niveau » et l'animation « Nouveau palier » ne s'allumaient jamais (Evan pèse ~73 kg).
 - Gérer les 3 unités : `load` (kg, avec convention par_bras/total/lesté), `reps` (comparer au meilleur nb de reps), `reps_and_load` (2 jauges).
 - Les finishers sont exclus de tous les repères StrengthLevel et gardent uniquement leur piste de records dédiée.
 - L'UI affiche l'unité de chaque axe (`kg` ou `reps`) et compare les exercices par distance de palier normalisée, jamais par écart brut entre unités.

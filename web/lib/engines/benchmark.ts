@@ -4,6 +4,7 @@ import { workingSetsOf } from "@/lib/engines/lifecycle";
 import { normalRecordSets } from "@/lib/engines/records";
 import { SetType, type BenchmarkUnit } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, UserSettings } from "@/lib/models/types";
+import { formatDecimal } from "@/lib/format";
 
 /**
  * BENCHMARK_LEVEL_SPEC.md — moteur de repères de force StrengthLevel.
@@ -14,9 +15,11 @@ import type { Exercise, LoggedSet, UserSettings } from "@/lib/models/types";
  * dès que le JSON gagne l'entrée correspondante, sans changement de code ici).
  *
  * Chaque entrée du JSON est un point de référence UNIQUE au poids de corps du profil de sourcing
- * (`_meta.profile.bodyWeightKg`, actuellement 80 kg) — PAS une courbe multi-poids. Le moteur
- * n'active donc le repère absolu que pour ce poids exact (avec une tolérance purement flottante),
- * sans interpolation/scaling inventé, et le précise via `profileLabel`. Les deux anciennes tables embarquées (Plate loaded
+ * (`_meta.profile.bodyWeightKg`, actuellement 80 kg) — PAS une courbe multi-poids. Depuis le
+ * 26/09/2026 (décision d'Evan : « des niveaux à mon poids »), les seuils de CHARGE sont ramenés au
+ * poids réel par la loi d'échelle allométrique (force ∝ poids^2/3, base des coefficients Wilks/IPF),
+ * dans une plage bornée autour de la référence ; les seuils en répétitions restent ceux de la
+ * référence. `profileLabel` le dit. Les deux anciennes tables embarquées (Plate loaded
  * lat raise / Lateral raises), qui AVAIENT une courbe complète par poids, ont été migrées dans le
  * JSON en P3.1 en extrayant leur ligne bodyweight=80 exacte (déjà sourcée strengthlevel.com,
  * mêmes valeurs, zéro chiffre inventé) — voir `_meta.engineNote` du JSON.
@@ -134,8 +137,22 @@ const CONVENTION_LABELS: Record<StandardConvention, string> = {
   reps: "répétitions au poids de corps",
 };
 
-/** La table actuelle ne contient qu'une ligne H80 : aucune marge anthropométrique n'est inventée. */
-const SOURCE_WEIGHT_TOLERANCE_KG = 1e-6;
+/**
+ * Ajustement au poids de corps (Evan, 26/09/2026). Les tables sont sourcées pour un homme de 80 kg ;
+ * les seuils de charge suivent la force relative, qui croît comme le poids^2/3 (loi allométrique,
+ * base des coefficients Wilks/IPF). Plage bornée : loin de la référence, l'approximation n'est plus
+ * défendable et le repère absolu reste masqué.
+ */
+const ALLOMETRIC_EXPONENT = 2 / 3;
+export const BODY_WEIGHT_SCALING_RANGE_KG = { min: 60, max: 100 } as const;
+
+/** Facteur appliqué aux seuils de charge de la référence pour un poids de corps donné. */
+export function loadScaleFor(bodyWeightKg: number): number {
+  return Math.pow(bodyWeightKg / META.profile.bodyWeightKg, ALLOMETRIC_EXPONENT);
+}
+
+const scaleThresholds = (values: [number, number, number, number, number], scale: number) =>
+  values.map((value) => Math.round(value * scale * 10) / 10) as [number, number, number, number, number];
 
 /** Formule documentée par StrengthLevel pour convertir un set en 1RM estimé. */
 export function strengthLevelEstimated1RM(weight: number, reps: number): number {
@@ -331,8 +348,8 @@ export interface ResolvedStandard {
 /**
  * Résout la table de seuils pour un exercice + un profil, sans valeur mesurée. `null` si pas de
  * `strengthStandardKey` connu OU profil hors de la plage adulte documentée par StrengthLevel
- * (25–40 ans) OU différent du profil homme/80 kg réellement sourcé. Il n'existe qu'un point H80,
- * donc un autre poids masque la jauge absolue au lieu de prétendre interpoler.
+ * (25–40 ans) OU d'un autre genre que la référence OU d'un poids hors de la plage d'ajustement.
+ * Les seuils de charge sont ramenés au poids du profil (`loadScaleFor`).
  */
 export function resolveStandard(
   exercise: Pick<Exercise, "strengthStandardKey">,
@@ -343,11 +360,11 @@ export function resolveStandard(
 
   const { bodyWeightKg, gender, ageYears } = profile;
   // StrengthLevel indique que 25–40 ans est sa référence adulte ; le JSON n'est sourcé que pour
-  // le genre ET le poids de `_meta.profile`. Hors de ce point H80, on masque le repère plutôt que
-  // d'inventer une interpolation à partir d'une seule ligne.
+  // le genre de `_meta.profile`. Le poids est ajusté dans une plage bornée (`loadScaleFor`).
   const profileSupported =
     bodyWeightKg != null &&
-    Math.abs(bodyWeightKg - META.profile.bodyWeightKg) <= SOURCE_WEIGHT_TOLERANCE_KG &&
+    bodyWeightKg >= BODY_WEIGHT_SCALING_RANGE_KG.min &&
+    bodyWeightKg <= BODY_WEIGHT_SCALING_RANGE_KG.max &&
     gender === META.profile.gender &&
     ageYears != null &&
     ageYears >= 25 &&
@@ -359,7 +376,13 @@ export function resolveStandard(
   if (!hasLoad && !hasReps) return null;
 
   const primaryAxis: "load" | "reps" = hasLoad ? "load" : "reps";
-  const primaryThresholds = arrayToThresholds((hasLoad ? entry.load : entry.reps) as [number, number, number, number, number]);
+  const scale = loadScaleFor(bodyWeightKg);
+  const primaryThresholds = arrayToThresholds(
+    hasLoad
+      ? scaleThresholds(entry.load as [number, number, number, number, number], scale)
+      : (entry.reps as [number, number, number, number, number])
+  );
+  const adjusted = Math.abs(bodyWeightKg - META.profile.bodyWeightKg) > 1e-6;
   const dualAxis = hasLoad && hasReps;
 
   return {
@@ -367,7 +390,9 @@ export function resolveStandard(
     source: sourceFor(entry),
     isMachine: entry.isMachine,
     caveat: entry.caveat ?? null,
-    profileLabel: `Référence ${META.profile.gender === "male" ? "Homme" : "Femme"} · ${META.profile.bodyWeightKg} kg · 25–40 ans · profil ${ageYears} ans`,
+    profileLabel: adjusted
+      ? `Référence ${META.profile.gender === "male" ? "Homme" : "Femme"} ${META.profile.bodyWeightKg} kg ajustée à ${formatDecimal(bodyWeightKg)} kg · 25–40 ans · profil ${ageYears} ans`
+      : `Référence ${META.profile.gender === "male" ? "Homme" : "Femme"} · ${META.profile.bodyWeightKg} kg · 25–40 ans · profil ${ageYears} ans`,
     primaryAxis,
     primaryThresholds,
     secondaryAxis: dualAxis ? "reps" : null,

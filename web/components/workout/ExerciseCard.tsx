@@ -12,7 +12,7 @@ import { hasExerciseGif } from "@/lib/data/exercise-gifs";
 import { SwipeRow } from "@/components/ui/SwipeRow";
 import { allTimeRecordSet, displayedRecordSetIDs, isCalibrating, normalRecordSets, recordCalibration } from "@/lib/engines/records";
 import { headlineSet, lastWorkSession, sameRankSet, staleAgeLabel } from "@/lib/engines/last-session";
-import { machineMaxStatus } from "@/lib/engines/machine-max";
+import { asksForMaxLoad, machineMaxStatus } from "@/lib/engines/machine-max";
 import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
@@ -21,6 +21,7 @@ import { SetEntry } from "./SetEntry";
 import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
 import { ExerciseEditorSheet } from "@/components/exercise/ExerciseEditorSheet";
 import { ExerciseActionsSheet } from "./ExerciseActionsSheet";
+import { MaxLoadPrompt } from "./MaxLoadPrompt";
 import { useLongPress } from "@/lib/hooks/use-long-press";
 import { cn } from "@/lib/utils";
 import { SetType } from "@/lib/models/enums";
@@ -377,6 +378,11 @@ export function ExerciseCard({
                     </div>
                   </div>
                 )}
+                <AnimatePresence initial={false}>
+                  {asksForMaxLoad(exercise) && sets.some((set) => set.completed && set.weight > 0) && (
+                    <MaxLoadPrompt key="max-load" exercise={exercise} />
+                  )}
+                </AnimatePresence>
                 <SetEntry
                   key={sets.length}
                   loggedExerciseId={loggedExercise.id}

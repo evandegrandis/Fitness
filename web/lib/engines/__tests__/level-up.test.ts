@@ -65,9 +65,14 @@ describe("détection du passage de palier", () => {
     expect(detectLevelUp(NO_STANDARD, firstSession(40, 8), set(200, 10, "n"), PROFILE)).toBeNull();
   });
 
-  it("reste muet si le profil ne correspond pas à la table de repères", () => {
-    const autrePoids = { ...PROFILE, bodyWeightKg: 95 };
-    expect(detectLevelUp(PEC_DECK, firstSession(50, 8), set(140, 10, "n"), autrePoids)).toBeNull();
+  it("reste muet si le profil sort de la plage où la table de repères s'ajuste", () => {
+    const horsPlage = { ...PROFILE, bodyWeightKg: 105 };
+    expect(detectLevelUp(PEC_DECK, firstSession(50, 8), set(140, 10, "n"), horsPlage)).toBeNull();
+  });
+
+  it("à un autre poids de la plage, le palier se franchit sur des seuils ramenés à ce poids", () => {
+    const evan = { ...PROFILE, bodyWeightKg: 73.7 };
+    expect(detectLevelUp(PEC_DECK, firstSession(50, 8), set(140, 10, "n"), evan)).not.toBeNull();
   });
 
   it("n'annonce aucun palier pendant la première séance : le niveau se découvre, il ne se franchit pas", () => {

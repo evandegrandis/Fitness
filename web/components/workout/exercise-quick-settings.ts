@@ -46,7 +46,8 @@ export function applyQuickSettings(latest: Exercise, settings: QuickSettings): E
     repTargetMin,
     repTargetMax,
     smallestIncrement: settings.smallestIncrement > 0 ? settings.smallestIncrement : latest.smallestIncrement,
-    maxLoad: settings.maxLoad != null && settings.maxLoad > 0 ? settings.maxLoad : null,
+    // 0 = « pas de max » : une réponse, à garder (machine-max.ts).
+    maxLoad: settings.maxLoad === 0 ? 0 : settings.maxLoad != null && settings.maxLoad > 0 ? settings.maxLoad : null,
     suggestedRestSeconds: settings.suggestedRestSeconds,
   };
 }

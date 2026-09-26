@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { machineMaxStatus, machinesForMaxTracking } from "@/lib/engines/machine-max";
+import { asksForMaxLoad, machineMaxStatus, machinesForMaxTracking, NO_MAX_LOAD } from "@/lib/engines/machine-max";
 import { SetType } from "@/lib/models/enums";
 import { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -56,5 +56,27 @@ describe("machine maxée", () => {
       session("c", 90, old, [set(100, 10, 60)]),
     ];
     expect(machinesForMaxTracking([old, recent, bodyweight], history, NOW).map((m) => m.exercise.id)).toEqual(["abs"]);
+  });
+});
+
+describe("charge max demandée (Evan, 26/09/2026)", () => {
+  it("demandée tant que rien n'est renseigné, sur tout exercice chargé", () => {
+    expect(asksForMaxLoad(exercise({ maxLoad: null }))).toBe(true);
+    expect(asksForMaxLoad(exercise({ maxLoad: undefined }))).toBe(true);
+    expect(asksForMaxLoad(exercise({ maxLoad: 85 }))).toBe(false);
+  });
+
+  it("« pas de max » est une réponse : plus de question, et aucune limite", () => {
+    const free = exercise({ maxLoad: NO_MAX_LOAD });
+    expect(asksForMaxLoad(free)).toBe(false);
+    const status = machineMaxStatus(free, [set(100, 10, 5)]);
+    expect(status.maxLoad).toBeNull();
+    expect(status.maxed).toBe(false);
+  });
+
+  it("jamais pour les tractions, dips ou HSPU, même lestés ou assistés", () => {
+    for (const mode of ["bodyweight", "weighted_bodyweight", "assisted_bodyweight"] as const) {
+      expect(asksForMaxLoad(exercise({ maxLoad: null, setPatternMode: mode }))).toBe(false);
+    }
   });
 });
