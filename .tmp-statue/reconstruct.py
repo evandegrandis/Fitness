@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from transformers import AutoImageProcessor, AutoModelForDepthEstimation
 from scipy import ndimage
 from skimage import measure, filters, morphology
+from rembg import remove, new_session
 import trimesh
 
 ROOT=Path(__file__).resolve().parent
@@ -57,47 +58,32 @@ with torch.inference_mode():
 
 # Mask from depth discontinuity relative to the border, reinforced by image foreground cues.
 def make_mask(img,d):
-    rgb=np.asarray(img).astype(np.float32)/255.
-    h,w=d.shape
-    bw=max(3,int(min(h,w)*0.06))
-    border=np.zeros((h,w),bool)
-    border[:bw]=1; border[-bw:]=1; border[:,:bw]=1; border[:,-bw:]=1
-    bg=float(np.median(d[border]))
-    mad=float(np.median(np.abs(d[border]-bg)))+1e-6
-    # DA-V2 is relative/inverse-like: foreground generally differs clearly from the studio backdrop.
-    delta=np.abs(d-bg)
-    t=max(np.percentile(delta[border],99.5)*1.15, 2.8*mad)
-    m=delta>t
+    # High-quality general foreground matting.  These are clean studio renders, so
+    # IS-Net gives substantially more reliable silhouettes than thresholding depth.
+    mask_img = remove(img, session=SEG_SESSION, only_mask=True, post_process_mask=True)
+    alpha = np.asarray(mask_img).astype(np.float32)
+    if alpha.ndim == 3:
+        alpha = alpha[..., 0]
+    m = alpha > 40.0
 
-    # Color model of smooth gray background; helps keep thin laurel leaves and fingers.
-    yy,xx=np.mgrid[0:h,0:w]
-    B=np.column_stack([np.ones(border.sum()),xx[border],yy[border],
-                       xx[border]*yy[border],xx[border]**2,yy[border]**2])
-    color_res=np.zeros((h,w),np.float32)
-    for c in range(3):
-        coef,*_=np.linalg.lstsq(B,rgb[:,:,c][border],rcond=None)
-        predc=(coef[0]+coef[1]*xx+coef[2]*yy+coef[3]*xx*yy+coef[4]*xx**2+coef[5]*yy**2)
-        color_res+=(rgb[:,:,c]-predc)**2
-    color_res=np.sqrt(color_res)
-    # Conservative union; only pixels very unlike background.
-    m |= color_res>max(0.055,float(np.percentile(color_res[border],99.8))*1.4)
+    # Preserve intentional holes (especially the laurel wreath); only close tiny cracks.
+    rad=max(1,int(min(m.shape)*0.003))
+    m=morphology.binary_closing(m,morphology.disk(rad))
+    m=morphology.remove_small_objects(m,min_size=max(12,int(m.size*0.00015)))
 
-    # Remove frame noise, close tiny gaps, keep meaningful components.
-    m[:2]=0;m[-2:]=0;m[:,:2]=0;m[:,-2:]=0
-    m=morphology.binary_closing(m,morphology.disk(max(1,int(min(h,w)*0.006))))
-    m=morphology.remove_small_objects(m,min_size=max(25,int(h*w*0.0007)))
-    # Keep components that either touch the central human or are sizeable (laurel/base).
+    # Keep several meaningful components because the pedestal or wreath can be detached
+    # by one or two pixels at low resolution.
     lab,num=ndimage.label(m)
     if num:
-        sizes=ndimage.sum(m,lab,range(1,num+1))
+        sizes=np.asarray(ndimage.sum(m,lab,range(1,num+1)))
         keep=np.zeros(num+1,bool)
-        order=np.argsort(sizes)[::-1]
-        for idx in order[:6]:
-            if sizes[idx] >= max(35,0.002*h*w): keep[idx+1]=1
+        for idx in np.argsort(sizes)[::-1][:10]:
+            if sizes[idx] >= max(10,0.0003*m.size):
+                keep[idx+1]=1
         m=keep[lab]
-    m=ndimage.binary_fill_holes(m)
-    m=ndimage.binary_dilation(m,iterations=max(1,int(min(h,w)*0.004)))
     return m
+
+SEG_SESSION = new_session("isnet-general-use")
 
 masks={n:make_mask(images[n],depth[n]) for n in NAMES}
 for n,m in masks.items():
