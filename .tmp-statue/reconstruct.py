@@ -187,72 +187,147 @@ def sample_surface(name,u,r,z,kind):
         else: raw=xmin+q*(xmax-xmin); outer=xmax
         return .72*raw+.28*outer
 
-# Depth-informed volumetric carving.
+# Robust soft visual hull first.  The four AI-generated views are not perfectly
+# geometrically consistent, so requiring all four silhouettes erases real parts
+# (notably the raised arm).  A 3-of-4 consensus preserves them while still being
+# strongly constrained by the references.
 GRID=320
 xs=np.linspace(-xhalf,xhalf,GRID,dtype=np.float32)
 ys=np.linspace(-yhalf,yhalf,GRID,dtype=np.float32)
 zs=np.linspace(0,zmax,GRID,dtype=np.float32)
-occ=np.zeros((GRID,GRID,GRID),dtype=np.uint8) # axes z,y,x
-X,Y=np.meshgrid(xs,ys,indexing="xy") # shape y,x
-tol=max(xhalf,yhalf,zmax)/GRID*2.0
+occ=np.zeros((GRID,GRID,GRID),dtype=np.uint8)  # z,y,x
 
 for iz,z in enumerate(zs):
     rf=int(round(z_bottoms["front"]-z/scale)); rb=int(round(z_bottoms["back"]-z/scale))
     rl=int(round(z_bottoms["left"]-z/scale)); rr=int(round(z_bottoms["right"]-z/scale))
     if min(rf,rb,rl,rr)<0: continue
     if rf>=masks["front"].shape[0] or rb>=masks["back"].shape[0] or rl>=masks["left"].shape[0] or rr>=masks["right"].shape[0]: continue
-
     uf=np.clip(np.rint(centers["front"]+xs/scale).astype(int),0,masks["front"].shape[1]-1)
     ub=np.clip(np.rint(centers["back"]-xs/scale).astype(int),0,masks["back"].shape[1]-1)
     ul=np.clip(np.rint(centers["left"]+ys/scale).astype(int),0,masks["left"].shape[1]-1)
     ur=np.clip(np.rint(centers["right"]-ys/scale).astype(int),0,masks["right"].shape[1]-1)
+    mf=masks["front"][rf,uf].astype(np.uint8)
+    mb=masks["back"][rb,ub].astype(np.uint8)
+    ml=masks["left"][rl,ul].astype(np.uint8)
+    mr=masks["right"][rr,ur].astype(np.uint8)
+    votes=mf[None,:]+mb[None,:]+ml[:,None]+mr[:,None]
+    occ[iz]=(votes>=3)
 
-    mf=masks["front"][rf,uf]   # x
-    mb=masks["back"][rb,ub]
-    ml=masks["left"][rl,ul]    # y
-    mr=masks["right"][rr,ur]
-    proj=(ml[:,None]&mr[:,None]&mf[None,:]&mb[None,:])
-    if not proj.any(): continue
-
-    # Vectorized surface arrays at this z.
-    li=[row_interval("left",float(z),centers["left"],False),row_interval("right",float(z),centers["right"],True)]
-    li=[v for v in li if v is not None]
-    xi=[row_interval("front",float(z),centers["front"],False),row_interval("back",float(z),centers["back"],True)]
-    xi=[v for v in xi if v is not None]
-    if not li or not xi: continue
-    ymin=np.median([v[0] for v in li]); ymax=np.median([v[1] for v in li])
-    xmin=np.median([v[0] for v in xi]); xmax=np.median([v[1] for v in xi])
-
-    qf=dn["front"][rf,uf]; qb=dn["back"][rb,ub]
-    ql=dn["left"][rl,ul]; qr=dn["right"][rr,ur]
-    yf=.72*(ymin+qf*(ymax-ymin))+.28*ymax
-    yb=.72*(ymax-qb*(ymax-ymin))+.28*ymin
-    xl=.72*(xmax-ql*(xmax-xmin))+.28*xmin
-    xr=.72*(xmin+qr*(xmax-xmin))+.28*xmax
-
-    geom=(Y <= yf[None,:]+tol) & (Y >= yb[None,:]-tol) & (X >= xl[:,None]-tol) & (X <= xr[:,None]+tol)
-    occ[iz]=(proj&geom).astype(np.uint8)
-
-# Repair only tiny voxel cracks; preserve fingers, hair curls and laurel gaps.
+# Close sub-voxel cracks but do not globally fill cavities: the laurel center
+# must remain open.
 occ=ndimage.binary_closing(occ,structure=ndimage.generate_binary_structure(3,1),iterations=1)
-occ=ndimage.binary_fill_holes(occ)
-
 if occ.sum()<10000:
-    raise RuntimeError(f"Carving failed: only {int(occ.sum())} occupied voxels")
+    raise RuntimeError(f"Visual hull failed: only {int(occ.sum())} occupied voxels")
 
-# Marching cubes in physical coordinates (z,y,x -> Blender x,y,z).
 spacing=(zs[1]-zs[0],ys[1]-ys[0],xs[1]-xs[0])
 verts,faces,normals,values=measure.marching_cubes(occ.astype(np.float32),level=.5,spacing=spacing)
 verts[:,0]+=zs[0]; verts[:,1]+=ys[0]; verts[:,2]+=xs[0]
-V=np.column_stack([verts[:,2],verts[:,1],verts[:,0]])
+V=np.column_stack([verts[:,2],verts[:,1],verts[:,0]])  # Blender x,y,z
 mesh=trimesh.Trimesh(vertices=V,faces=faces,process=True)
 mesh.remove_unreferenced_vertices()
 try: trimesh.repair.fix_normals(mesh,multibody=True)
 except Exception: pass
 
-# Light Taubin smoothing removes voxel stair-stepping without shrinking likeness.
+# ---- Depth Anything relief refinement --------------------------------------
+# DA-V2 is relative depth, not metric depth.  We therefore never use it as an
+# absolute coordinate.  For every horizontal slice we normalize depth within
+# the visible foreground, then use it only to indent the visual-hull surface
+# from the silhouette-defined outer envelope.  This preserves exact contours
+# while recovering face, chest, abs, back and limb relief.
+def row_q(name, rr, uu):
+    m=masks[name]; d=dn[name]
+    rr=np.asarray(rr,dtype=np.int32); uu=np.asarray(uu,dtype=np.int32)
+    out=np.ones(len(rr),dtype=np.float32)
+    valid=(rr>=0)&(rr<m.shape[0])&(uu>=0)&(uu<m.shape[1])
+    if not valid.any(): return out
+    # Cache robust row ranges.
+    cache={}
+    for r in np.unique(rr[valid]):
+        vals=d[r,m[r]]
+        if len(vals)>=4:
+            lo,hi=np.percentile(vals,[8,96])
+        else:
+            lo,hi=0.,1.
+        cache[int(r)]=(float(lo),float(hi))
+    ids=np.where(valid)[0]
+    for i in ids:
+        lo,hi=cache[int(rr[i])]
+        out[i]=np.clip((d[rr[i],uu[i]]-lo)/(hi-lo+1e-6),0,1)
+    return out
+
+def env_side(zvals):
+    ymin=np.empty(len(zvals),np.float32); ymax=np.empty(len(zvals),np.float32)
+    for i,z in enumerate(zvals):
+        ints=[row_interval("left",float(z),centers["left"],False),
+              row_interval("right",float(z),centers["right"],True)]
+        ints=[v for v in ints if v is not None]
+        if ints:
+            ymin[i]=np.median([v[0] for v in ints]); ymax[i]=np.median([v[1] for v in ints])
+        else:
+            ymin[i]=-yhalf; ymax[i]=yhalf
+    return ymin,ymax
+
+def env_fb(zvals):
+    xmin=np.empty(len(zvals),np.float32); xmax=np.empty(len(zvals),np.float32)
+    for i,z in enumerate(zvals):
+        ints=[row_interval("front",float(z),centers["front"],False),
+              row_interval("back",float(z),centers["back"],True)]
+        ints=[v for v in ints if v is not None]
+        if ints:
+            xmin[i]=np.median([v[0] for v in ints]); xmax[i]=np.median([v[1] for v in ints])
+        else:
+            xmin[i]=-xhalf; xmax[i]=xhalf
+    return xmin,xmax
+
+RELIEF=0.34
+BLEND=0.62
+for _pass in range(2):
+    V=np.asarray(mesh.vertices).copy()
+    N=np.asarray(mesh.vertex_normals)
+    z=V[:,2]
+    ymin,ymax=env_side(z); xmin,xmax=env_fb(z)
+    thick_y=np.maximum(ymax-ymin,1e-4); thick_x=np.maximum(xmax-xmin,1e-4)
+
+    # Front camera at +Y.
+    rr=np.rint(z_bottoms["front"]-z/scale).astype(int)
+    uu=np.rint(centers["front"]+V[:,0]/scale).astype(int)
+    q=row_q("front",rr,uu)
+    tgt=ymax-RELIEF*(1-q)*thick_y
+    vis=N[:,1]>0.18
+    V[vis,1]=(1-BLEND)*V[vis,1]+BLEND*tgt[vis]
+
+    # Back camera at -Y.
+    rr=np.rint(z_bottoms["back"]-z/scale).astype(int)
+    uu=np.rint(centers["back"]-V[:,0]/scale).astype(int)
+    q=row_q("back",rr,uu)
+    tgt=ymin+RELIEF*(1-q)*thick_y
+    vis=N[:,1]<-0.18
+    V[vis,1]=(1-BLEND)*V[vis,1]+BLEND*tgt[vis]
+
+    # Left-side reference: camera at -X, image-right corresponds +Y.
+    rr=np.rint(z_bottoms["left"]-z/scale).astype(int)
+    uu=np.rint(centers["left"]+V[:,1]/scale).astype(int)
+    q=row_q("left",rr,uu)
+    tgt=xmin+RELIEF*(1-q)*thick_x
+    vis=N[:,0]<-0.18
+    V[vis,0]=(1-BLEND)*V[vis,0]+BLEND*tgt[vis]
+
+    # Right-side reference: camera at +X, image-right corresponds -Y.
+    rr=np.rint(z_bottoms["right"]-z/scale).astype(int)
+    uu=np.rint(centers["right"]-V[:,1]/scale).astype(int)
+    q=row_q("right",rr,uu)
+    tgt=xmax-RELIEF*(1-q)*thick_x
+    vis=N[:,0]>0.18
+    V[vis,0]=(1-BLEND)*V[vis,0]+BLEND*tgt[vis]
+
+    mesh.vertices=V
+    try: trimesh.repair.fix_normals(mesh,multibody=True)
+    except Exception: pass
+
+# Very light Taubin smoothing: enough to remove voxel stair steps, deliberately
+# too weak to erase facial or muscular relief.
 try:
-    trimesh.smoothing.filter_taubin(mesh,lamb=.42,nu=.43,iterations=5)
+    trimesh.smoothing.filter_taubin(mesh,lamb=.36,nu=.37,iterations=3)
 except Exception: pass
 
 # Marble PBR.
