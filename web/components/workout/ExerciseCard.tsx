@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
-import { Copy, Flame, GripVertical, Link2, MoreHorizontal, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
+import { Copy, Flame, Ghost as GhostIcon, GripVertical, Link2, MoreHorizontal, Repeat, TrendingDown, Trophy, Unlink } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Sheet } from "@/components/ui/Sheet";
 import { ExerciseGif } from "@/components/exercise/ExerciseGif";
@@ -13,6 +13,7 @@ import { SwipeRow } from "@/components/ui/SwipeRow";
 import { allTimeRecordSet, displayedRecordSetIDs, isCalibrating, normalRecordSets, recordCalibration } from "@/lib/engines/records";
 import { headlineSet, lastWorkSession, sameRankSet, staleAgeLabel } from "@/lib/engines/last-session";
 import { asksForMaxLoad, machineMaxStatus } from "@/lib/engines/machine-max";
+import { ghostDelta, ghostFor, type Ghost } from "@/lib/engines/session-game";
 import { compositeSetBlocks, physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { orderedSets, type Exercise, type LoggedExercise, type LoggedSet, type WorkoutSession } from "@/lib/models/types";
@@ -162,6 +163,9 @@ export function ExerciseCard({
     () => (exercise && exercise.maxLoad ? machineMaxStatus(exercise, allRecordSets) : null),
     [exercise, allRecordSets]
   );
+  // Fantôme : toi sur cet exercice il y a 4 semaines, l'écart se lit en direct dès la 1re série.
+  const ghost = useMemo(() => (exercise ? ghostFor(exercise, history, session.date) : null), [exercise, history, session.date]);
+  const ghostGap = ghost ? ghostDelta(ghost, sets) : null;
   const displayedRecordIds = useMemo(
     () => (exercise ? displayedRecordSetIDs(loggedExercise, allRecordSets, exercise) : new Set<string>()),
     [exercise, loggedExercise, allRecordSets]
@@ -378,6 +382,7 @@ export function ExerciseCard({
                     </div>
                   </div>
                 )}
+                {ghost && ghostGap !== null && <GhostLine ghost={ghost} gap={ghostGap} />}
                 <AnimatePresence initial={false}>
                   {asksForMaxLoad(exercise) && sets.some((set) => set.completed && set.weight > 0) && (
                     <MaxLoadPrompt key="max-load" exercise={exercise} />
@@ -485,5 +490,30 @@ export function ExerciseCard({
         allowDelete={false}
       />
     </div>
+  );
+}
+
+const GHOST_MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+
+/** Une ligne, en retrait : le fantôme et l'écart du jour, jamais une consigne. */
+function GhostLine({ ghost, gap }: { ghost: Ghost; gap: number }) {
+  const reps = Math.round(gap * ghost.value);
+  const percent = Math.round(gap * 100);
+  const value = ghost.byReps ? reps : percent;
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  const label = ghost.byReps
+    ? `${sign}${Math.abs(reps)} rep${Math.abs(reps) > 1 ? "s" : ""}`
+    : `${sign}${Math.abs(percent)} %`;
+  const color = value > 0 ? "var(--color-success)" : value < 0 ? "var(--color-fg-muted)" : "var(--color-fg-faint)";
+  return (
+    <p className="flex items-center gap-1.5 px-1 text-[0.72rem] text-(--color-fg-faint)">
+      <GhostIcon size={12} className="shrink-0" />
+      <span className="min-w-0 truncate">
+        Fantôme · {ghost.date.getDate()} {GHOST_MONTHS[ghost.date.getMonth()]} : {formatLoad(ghost.weight)} × {ghost.reps}
+      </span>
+      <span className="ml-auto shrink-0 font-semibold tabular-nums" style={{ color }}>
+        {label}
+      </span>
+    </p>
   );
 }

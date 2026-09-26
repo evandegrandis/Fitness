@@ -10,6 +10,7 @@ import { useSyncStatus } from "@/lib/sync/status";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 import { SessionHeader } from "./SessionHeader";
+import { pickBoss } from "@/lib/engines/session-game";
 import { ExerciseList } from "./ExerciseList";
 import { RestTimer } from "./RestTimer";
 import { UndoToast } from "./UndoToast";
@@ -62,6 +63,24 @@ export function ActiveSession({
     cardioProgress(history, settings.weeklyCardioMinutesGoal ?? undefined, new Date(), session)
   );
   const upsertExerciseInCatalog = useWorkoutStore((s) => s.upsertExerciseInCatalog);
+  const bossSessionId = useWorkoutStore((s) => s.sessionBoss?.sessionId ?? null);
+  const setSessionBoss = useWorkoutStore((s) => s.setSessionBoss);
+
+  // Boss du jour : décidé UNE fois au lancement, sur les suggestions du moteur (lues, jamais
+  // modifiées), puis figé pour toute la séance. Attend que le catalogue soit chargé.
+  useEffect(() => {
+    if (bossSessionId === session.id || catalog.length === 0) return;
+    const state = useWorkoutStore.getState();
+    const boss = pickBoss(
+      session,
+      state.catalog,
+      state.history,
+      (loggedExerciseId) => useWorkoutStore.getState().suggestion(loggedExerciseId),
+      state.recoveryCheckins,
+      new Date()
+    );
+    setSessionBoss({ sessionId: session.id, boss });
+  }, [bossSessionId, session, catalog.length, setSessionBoss]);
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [replaceTarget, setReplaceTarget] = useState<string | null>(null);
