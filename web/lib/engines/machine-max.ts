@@ -8,6 +8,7 @@
  */
 
 import { normalRecordSets } from "@/lib/engines/records";
+import { SetPatternMode } from "@/lib/models/enums";
 import {
   orderedSets,
   sessionsNewestFirst,
@@ -15,6 +16,24 @@ import {
   type LoggedSet,
   type WorkoutSession,
 } from "@/lib/models/types";
+
+/**
+ * `Exercise.maxLoad` a trois états (Evan, 26/09/2026) : `null` = jamais renseigné (l'app pose la
+ * question), `0` = « pas de max », une réponse donnée qui ne se repose pas (barre libre, haltères
+ * sans limite utile), > 0 = bout de pile. Tout le code traite déjà 0 comme « aucune limite ».
+ */
+export const NO_MAX_LOAD = 0;
+
+const BODYWEIGHT_PATTERNS: ReadonlySet<string> = new Set([
+  SetPatternMode.bodyweight,
+  SetPatternMode.weightedBodyweight,
+  SetPatternMode.assistedBodyweight,
+]);
+
+/** L'app doit-elle demander la charge max ? Jamais pour un exercice au poids du corps (tractions, dips, HSPU). */
+export function asksForMaxLoad(exercise: Pick<Exercise, "maxLoad" | "setPatternMode">): boolean {
+  return (exercise.maxLoad === null || exercise.maxLoad === undefined) && !BODYWEIGHT_PATTERNS.has(exercise.setPatternMode);
+}
 
 export interface MachineMaxStatus {
   exercise: Exercise;

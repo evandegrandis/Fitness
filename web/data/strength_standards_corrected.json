@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "purpose": "Benchmarks StrengthLevel sourcés pour un point de référence fixe: homme, 80 kg, tranche adulte 25–40 ans. Aucun autre poids ne doit être interpolé à partir de ce fichier.",
+    "purpose": "Benchmarks StrengthLevel sourcés pour un point de référence fixe: homme, 80 kg, tranche adulte 25–40 ans. Depuis le 26/09/2026, lib/engines/benchmark.ts ramène les seuils de charge au poids réel (force ∝ poids^2/3, plage 60–100 kg) ; les valeurs de ce fichier restent celles de la référence.",
     "profile": {
       "gender": "male",
       "bodyWeightKg": 80,
@@ -15,7 +15,7 @@
       "advanced",
       "elite"
     ],
-    "engineNote": "Chaque entrée est un point de référence UNIQUE à 80 kg (pas une courbe multi-poids). lib/engines/benchmark.ts masque le repère absolu pour tout autre poids. Les conversions propres aux logs Jeera sont portées explicitement par loggedLoadMultiplier et loadNote. Les entrées marquées `estimated: true` sont des ordres de grandeur ajoutés le 2026-08-18 pour couvrir les machines courantes, PAS des relevés StrengthLevel : à corriger à l'usage."
+    "engineNote": "Chaque entrée est un point de référence UNIQUE à 80 kg (pas une courbe multi-poids). lib/engines/benchmark.ts ajuste les seuils de charge au poids réel (loadScaleFor) et masque le repère hors de la plage 60–100 kg. Les conversions propres aux logs Jeera sont portées explicitement par loggedLoadMultiplier et loadNote. Les entrées marquées `estimated: true` sont des ordres de grandeur ajoutés le 2026-08-18 pour couvrir les machines courantes, PAS des relevés StrengthLevel : à corriger à l'usage."
   },
   "standards": {
     "Lateral raises": {

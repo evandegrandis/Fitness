@@ -90,7 +90,7 @@ const exerciseSchema = z.object({
   progressionPolicy: z.string().nullish(),
   voluntaryRepCap: finiteNumber.int().nonnegative().nullish(),
   // Champ web-only, absent des exports antérieurs.
-  maxLoad: finiteNumber.positive().nullish(),
+  maxLoad: finiteNumber.nonnegative().nullish(), // 0 = « pas de max »
   profileSource: z.enum(["legacy", "known_profile", "donor", "barbis", "user"]).nullish(),
   equivalenceKey: z.string().max(200).nullish(),
   muscleMappings: z.array(muscleMappingSchema),

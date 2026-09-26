@@ -5,10 +5,10 @@ import {
   isBehindPace,
   PROGRESS_STATS,
   recordEvents,
-  sessionStreak,
+  weekStreak,
   weekPace,
   weekStats,
-  type WeekStat,
+  type WeekStat, weekTier, nextWeekTier, setsToNextTier
 } from "@/lib/engines/progress-stats";
 import { SetType } from "@/lib/models/enums";
 import { MuscleGroup, MuscleParent } from "@/lib/models/muscles";
@@ -93,11 +93,11 @@ describe("semaines", () => {
     expect(thisWeek.goalsTotal).toBe(1);
   });
 
-  it("la série compte les semaines d'affilée à 3 séances, la semaine en cours dès qu'elle y est", () => {
-    const week = (sessions: number, inProgress = false) => ({ sessions, inProgress }) as WeekStat;
-    expect(sessionStreak([week(2), week(3), week(4), week(2, true)])).toMatchObject({ weeks: 2, currentCounted: false, currentSessions: 2 });
-    expect(sessionStreak([week(2), week(3), week(4), week(3, true)])).toMatchObject({ weeks: 3, currentCounted: true });
-    expect(sessionStreak([week(4), week(3), week(0, true)])).toMatchObject({ weeks: 2, capped: true });
+  it("la série compte les semaines d'affilée au bronze ou mieux, la semaine en cours dès qu'elle y est", () => {
+    const week = (tier: WeekStat["tier"], inProgress = false) => ({ tier, inProgress }) as WeekStat;
+    expect(weekStreak([week(null), week("bronze"), week("or"), week(null, true)])).toMatchObject({ weeks: 2, currentCounted: false });
+    expect(weekStreak([week(null), week("argent"), week("bronze"), week("bronze", true)])).toMatchObject({ weeks: 3, currentCounted: true });
+    expect(weekStreak([week("or"), week("argent"), week(null, true)])).toMatchObject({ weeks: 2, capped: true });
   });
 
   it("rythme : 2 séances sur 4 habituelles, un muscle à 4 séries sur 10 est en retard", () => {
@@ -181,5 +181,28 @@ describe("exercices", () => {
   it("les constantes restent celles documentées", () => {
     expect(PROGRESS_STATS.TREND_WINDOW).toBe(3);
     expect(PROGRESS_STATS.DORMANT_DAYS).toBe(28);
+  });
+});
+
+describe("paliers de semaine (Evan, 26/09/2026)", () => {
+  it("bronze à 40 %, argent à 55 %, or à 70 %, rien en dessous", () => {
+    expect(weekTier(0.39)).toBeNull();
+    expect(weekTier(0.4)).toBe("bronze");
+    expect(weekTier(0.57)).toBe("argent");
+    expect(weekTier(0.7)).toBe("or");
+    expect(weekTier(1)).toBe("or");
+  });
+
+  it("dit le prochain palier et les séries qui manquent, rien une fois l'or atteint", () => {
+    // Semaine du 21/09 : 57 % d'environ 150 séries d'objectifs.
+    expect(nextWeekTier(0.57)?.tier).toBe("or");
+    expect(setsToNextTier(0.57, 150)).toBe(Math.ceil((0.7 - 0.57) * 150));
+    expect(setsToNextTier(0.1, 150)).toBe(45);
+    expect(nextWeekTier(0.72)).toBeNull();
+    expect(setsToNextTier(0.72, 150)).toBeNull();
+  });
+
+  it("au bord du seuil, il manque au moins une série, jamais zéro", () => {
+    expect(setsToNextTier(0.3999, 150)).toBe(1);
   });
 });

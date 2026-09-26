@@ -47,12 +47,12 @@ describe("réglages rapides de l'exercice en séance", () => {
     expect(saved.profileSource).toBe("barbis");
   });
 
-  it("garde une fourchette cohérente et une charge max vide comme « aucune »", () => {
+  it("garde une fourchette cohérente, une charge max vide comme vide et « pas de max » (0) comme réponse", () => {
     const saved = applyQuickSettings(LOW_ROW, {
       ...quickSettingsOf(LOW_ROW),
       repTargetMin: 14,
       repTargetMax: 10,
-      maxLoad: 0,
+      maxLoad: null,
       machineSetting: "  siège 4  ",
     });
 
@@ -60,6 +60,8 @@ describe("réglages rapides de l'exercice en séance", () => {
     expect(saved.repTargetMax).toBe(14);
     expect(saved.maxLoad).toBeNull();
     expect(saved.machineSetting).toBe("siège 4");
+    expect(applyQuickSettings(LOW_ROW, { ...quickSettingsOf(LOW_ROW), maxLoad: 0 }).maxLoad).toBe(0);
+    expect(applyQuickSettings(LOW_ROW, { ...quickSettingsOf(LOW_ROW), maxLoad: -3 }).maxLoad).toBeNull();
   });
 
   it("ne propose d'enregistrer que si un réglage a vraiment changé", () => {

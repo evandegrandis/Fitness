@@ -1231,6 +1231,24 @@ describe("records — un seul par type et par exercice dans la séance", () => {
     expect(useWorkoutStore.getState().levelUp).toBeNull();
   });
 
+  it("un palier franchi prend la place de l'annonce de record de la même série, l'étoile reste", () => {
+    const PEC = { ...BENCH, id: "ex-pec", name: "Pec deck", strengthStandardKey: "Pec deck" };
+    const EVAN = { ...SETTINGS, gender: "male" as const, ageYears: 26, bodyWeightKg: 73.7 };
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [PEC], history: [baselineHistory(PEC, "ref", 7, 50, 8)], goals: [], settings: EVAN, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(PEC.id);
+    const le = useWorkoutStore.getState().active!.exercises[0];
+
+    store.logSet(le.id, { weight: 80, reps: 8 });
+
+    const state = useWorkoutStore.getState();
+    const newSet = state.active!.exercises[0].sets[0];
+    expect(state.levelUp).not.toBeNull();
+    expect(state.achievement?.setId).not.toBe(newSet.id);
+    expect(state.justHitRecord[newSet.id]).toBeDefined();
+  });
+
   it("compare aussi avec une autre occurrence du même exercice dans la séance active", () => {
     const store = useWorkoutStore.getState();
     const history = [baselineHistory(BENCH, "ref", 7, 10, 8)];
