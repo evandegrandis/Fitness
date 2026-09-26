@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Statue (modèle 3D, logo) : fichiers versionnés par leur nom, jamais modifiés en place.
+        source: "/statue/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
         // OFFLINE_PWA_SPEC §1 (C1) — le SCRIPT du service worker ne doit jamais être servi périmé
         // depuis le cache HTTP du navigateur : sinon `navigator.serviceWorker.register()`
         // pourrait continuer à installer une ANCIENNE version après un déploiement, ce qui
