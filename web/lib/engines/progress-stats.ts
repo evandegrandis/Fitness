@@ -226,18 +226,42 @@ export interface WeekStreak {
   capped: boolean;
   /** La semaine en cours est déjà comptée. */
   currentCounted: boolean;
+  /** Jokers en réserve (gagnés sur les semaines or). */
+  jokers: number;
+  /** Débuts des semaines sous le bronze couvertes par un joker. */
+  protectedWeeks: Date[];
 }
 
+/**
+ * Jokers (Evan, 26/09/2026) : une semaine or terminée en rapporte un (trois au plus) ; une semaine
+ * terminée sous le bronze (maladie, voyage) en consomme un tout seul, et la série ne casse pas,
+ * sans grandir pour autant. Rien à déclarer : tout se lit dans les séries.
+ */
+export const JOKERS = { MAX: 3 } as const;
+
 export function weekStreak(weeks: readonly WeekStat[]): WeekStreak {
+  let streak = 0;
+  let jokers = 0;
+  let unbroken = true;
+  const protectedWeeks: Date[] = [];
+  for (const week of weeks) {
+    if (week.inProgress) continue;
+    if (week.tier) {
+      streak += 1;
+      if (week.tier === "or") jokers = Math.min(JOKERS.MAX, jokers + 1);
+    } else if (streak > 0 && jokers > 0) {
+      jokers -= 1;
+      protectedWeeks.push(week.start);
+    } else {
+      streak = 0;
+      unbroken = false;
+    }
+  }
   const current = weeks.at(-1);
   const currentCounted = !!current && current.inProgress && current.tier !== null;
-  let streak = currentCounted ? 1 : 0;
-  let index = weeks.length - 2;
-  for (; index >= 0; index -= 1) {
-    if (weeks[index].tier === null) break;
-    streak += 1;
-  }
-  return { weeks: streak, capped: index < 0 && weeks.length > 0, currentCounted };
+  if (currentCounted) streak += 1;
+  const completed = weeks.some((week) => !week.inProgress);
+  return { weeks: streak, capped: unbroken && completed, currentCounted, jokers, protectedWeeks };
 }
 
 // ---------------------------------------------------------------------------

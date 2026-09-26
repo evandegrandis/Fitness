@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { Flag, Sparkles } from "lucide-react";
+import { Flag, Sparkles, Target } from "lucide-react";
 import type { PerformanceLabel, SessionReview } from "@/lib/engines/bilan";
 import type { CareerUnlock } from "@/lib/engines/career";
 import type { SessionRank } from "@/lib/engines/session-rank";
@@ -63,7 +63,7 @@ export function BilanHero({
         <div className="mt-3 space-y-2 border-t border-white/[0.06] pt-3">
           {unlocks.map((unlock, index) => (
             <motion.div
-              key={unlock.kind === "milestone" ? `${unlock.family}-${unlock.tier}` : unlock.id}
+              key={unlock.kind === "milestone" ? `${unlock.family}-${unlock.tier}` : unlock.kind === "secret" ? unlock.id : "quete"}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.9 + index * 0.12, duration: 0.3 }}
@@ -71,12 +71,16 @@ export function BilanHero({
             >
               {unlock.kind === "milestone" ? (
                 <Flag size={13} className="mt-px shrink-0 text-(--accent)" />
+              ) : unlock.kind === "quest" ? (
+                <Target size={13} className="mt-px shrink-0" style={{ color: GOLD }} />
               ) : (
                 <Sparkles size={13} className="mt-px shrink-0" style={{ color: GOLD }} />
               )}
               <p className="min-w-0 leading-snug">
-                <span className="text-(--color-fg)">{unlock.kind === "milestone" ? unlock.label : unlock.title}</span>
-                <span className="text-(--color-fg-faint)">{unlock.kind === "milestone" ? " · jalon" : " · secret découvert"}</span>
+                <span className="text-(--color-fg)">{unlock.kind === "secret" ? unlock.title : unlock.label}</span>
+                <span className="text-(--color-fg-faint)">
+                  {unlock.kind === "milestone" ? " · jalon" : unlock.kind === "quest" ? " · quête accomplie" : " · secret découvert"}
+                </span>
                 {unlock.kind === "secret" && <span className="block text-(--color-fg-faint)">{unlock.description}</span>}
               </p>
             </motion.div>

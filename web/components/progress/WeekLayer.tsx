@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronRight, Flame, Star, Trophy } from "lucide-react";
+import { Check, ChevronRight, Flame, Shield, Star, Target, Trophy } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { MilestonesCard, SecretsCard } from "@/components/progress/CareerCards";
+import { SeasonCard } from "@/components/progress/SeasonCard";
+import { weeklyQuest, type WeeklyQuest } from "@/lib/engines/weekly-quest";
 import { useCareer } from "@/lib/hooks/use-career";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { currentWeekWindow, parentSets, weeklyProgress, weeklyTrackedVolume } from "@/lib/engines/effective-sets";
@@ -47,6 +49,7 @@ export function WeekLayer() {
   const catalog = useWorkoutStore((s) => s.catalog);
   const goals = useWorkoutStore((s) => s.goals);
   const active = useWorkoutStore((s) => s.active);
+  const checkins = useWorkoutStore((s) => s.recoveryCheckins);
   const career = useCareer();
   const now = useMemo(() => new Date(), []);
 
@@ -56,6 +59,10 @@ export function WeekLayer() {
     [history, catalog, goals, now, events]
   );
   const streak = useMemo(() => weekStreak(weeks), [weeks]);
+  const quest = useMemo(
+    () => weeklyQuest({ history, catalog, goals, checkins, active, now }),
+    [history, catalog, goals, checkins, active, now]
+  );
   const shown = weeks.slice(-PROGRESS_STATS.WEEKS_SHOWN);
   const best = weeks.find((week) => week.best) ?? null;
 
@@ -84,6 +91,7 @@ export function WeekLayer() {
         sets={setsThisWeek}
         records={recordsThisWeek}
         streak={streak}
+        quest={quest}
         best={best}
         weekStart={currentWeekWindow(now).start}
       />
@@ -96,7 +104,8 @@ export function WeekLayer() {
         active={active}
         now={now}
       />
-      <WeeksHistory weeks={shown} history={history} catalog={catalog} events={events} />
+      <WeeksHistory weeks={shown} history={history} catalog={catalog} events={events} protectedWeeks={streak.protectedWeeks} />
+      <SeasonCard />
       <MilestonesCard milestones={career.milestones} />
       <SecretsCard secrets={career.secrets} />
     </div>
@@ -113,6 +122,7 @@ function WeekHero({
   sets,
   records,
   streak,
+  quest,
   best,
   weekStart,
 }: {
@@ -121,6 +131,7 @@ function WeekHero({
   sets: number;
   records: number;
   streak: ReturnType<typeof weekStreak>;
+  quest: WeeklyQuest | null;
   best: WeekStat | null;
   weekStart: Date;
 }) {
@@ -205,8 +216,43 @@ function WeekHero({
           value={`${streak.capped ? `${streak.weeks}+` : streak.weeks} sem.`}
           icon={streak.weeks > 0 ? <Flame size={11} style={{ color: streak.currentCounted ? "var(--accent)" : "var(--color-fg-faint)" }} /> : null}
           muted={!streak.currentCounted}
+          extra={
+            streak.jokers > 0 ? (
+              <span className="inline-flex items-center gap-0.5 text-(--color-fg-faint)" aria-label={`${streak.jokers} joker${streak.jokers > 1 ? "s" : ""}`}>
+                <Shield size={10} />
+                {streak.jokers}
+              </span>
+            ) : null
+          }
         />
       </div>
+
+      {quest && (
+        <div className="mt-3 flex items-center gap-2 text-[0.72rem]">
+          <Target size={12} className="shrink-0" style={{ color: quest.completed ? GOLD : "var(--accent)" }} />
+          <p className="min-w-0 truncate">
+            <span className="text-(--color-fg)">Quête</span>
+            <span className="text-(--color-fg-muted)"> · {quest.label}, {quest.target} séries</span>
+          </p>
+          <motion.span
+            key={quest.completed ? "accomplie" : "en-cours"}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 24 }}
+            className="tnum ml-auto shrink-0"
+            style={{ color: quest.completed ? GOLD : "var(--color-fg-muted)" }}
+          >
+            {quest.completed ? "accomplie" : `${formatDecimal(quest.done)}/${quest.target}`}
+          </motion.span>
+        </div>
+      )}
+
+      {streak.jokers > 0 && (
+        <p className="mt-3 flex items-center gap-1.5 text-[0.7rem] text-(--color-fg-faint)">
+          <Shield size={12} />
+          {streak.jokers === 1 ? "Un joker" : `${streak.jokers} jokers`} : une semaine sous le bronze ne cassera pas ta série.
+        </p>
+      )}
 
       {best && (
         <p className="mt-3 flex items-center gap-1.5 text-[0.7rem] text-(--color-fg-faint)">
@@ -220,13 +266,26 @@ function WeekHero({
   );
 }
 
-function HeroStat({ label, value, icon, muted }: { label: string; value: string; icon?: React.ReactNode; muted?: boolean }) {
+function HeroStat({
+  label,
+  value,
+  icon,
+  muted,
+  extra,
+}: {
+  label: string;
+  value: string;
+  icon?: React.ReactNode;
+  muted?: boolean;
+  extra?: React.ReactNode;
+}) {
   return (
     <div className="min-w-0">
       <p className="eyebrow !text-[0.58rem]">{label}</p>
       <p className={`tnum mt-0.5 flex items-center gap-1 truncate text-sm ${muted ? "text-(--color-fg-muted)" : "text-(--color-fg)"}`}>
         {icon}
         {value}
+        {extra && <span className="ml-1 text-[0.68rem]">{extra}</span>}
       </p>
     </div>
   );
@@ -428,12 +487,16 @@ function WeeksHistory({
   history,
   catalog,
   events,
+  protectedWeeks,
 }: {
   weeks: WeekStat[];
   history: WorkoutSession[];
   catalog: Exercise[];
   events: ReturnType<typeof recordEvents>;
+  /** Semaines sous le bronze couvertes par un joker. */
+  protectedWeeks: readonly Date[];
 }) {
+  const isProtected = (week: WeekStat) => protectedWeeks.some((start) => start.getTime() === week.start.getTime());
   const [selected, setSelected] = useState(weeks.length - 1);
   const week = weeks[selected];
   const completed = weeks.filter((w) => !w.inProgress && w.sessions > 0);
@@ -466,8 +529,14 @@ function WeeksHistory({
                 className="flex h-full flex-1 flex-col items-center justify-end"
                 aria-label={`Semaine du ${dayMonth(w.start)} : ${percent(w.score)}`}
               >
-                <span className="tnum mb-0.5 h-3 text-[0.55rem]" style={{ color: GOLD }}>
-                  {w.records > 0 ? `★${w.records}` : ""}
+                <span className="tnum mb-0.5 flex h-3 items-end text-[0.55rem]" style={{ color: GOLD }}>
+                  {isProtected(w) ? (
+                    <Shield size={8} className="text-(--color-fg-faint)" aria-label="Semaine protégée par un joker" />
+                  ) : w.records > 0 ? (
+                    `★${w.records}`
+                  ) : (
+                    ""
+                  )}
                 </span>
                 <motion.span
                   className="w-full rounded-[3px]"
@@ -494,7 +563,7 @@ function WeeksHistory({
         </div>
       </div>
 
-      {week && <WeekDetail week={week} history={history} catalog={catalog} events={events} />}
+      {week && <WeekDetail week={week} history={history} catalog={catalog} events={events} protectedByJoker={isProtected(week)} />}
     </GlassCard>
   );
 }
@@ -504,11 +573,13 @@ function WeekDetail({
   history,
   catalog,
   events,
+  protectedByJoker,
 }: {
   week: WeekStat;
   history: WorkoutSession[];
   catalog: Exercise[];
   events: ReturnType<typeof recordEvents>;
+  protectedByJoker: boolean;
 }) {
   const byId = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   const sessions = sessionsNewestFirst(history.filter((s) => !s.isActive && s.date >= week.start && s.date < week.end)).reverse();
@@ -519,6 +590,7 @@ function WeekDetail({
         <p className="text-sm text-(--color-fg)">
           Semaine du {dayMonth(week.start)}
           {week.inProgress && <span className="text-(--color-fg-faint)"> · en cours</span>}
+          {protectedByJoker && <span className="text-(--color-fg-faint)"> · joker</span>}
         </p>
         <p className="tnum text-sm" style={{ color: week.tier ? TIER_COLORS[week.tier] : "var(--color-fg)" }}>
           {week.tier && <span className="mr-1.5 text-[0.7rem]">{TIER_LABELS[week.tier]}</span>}
