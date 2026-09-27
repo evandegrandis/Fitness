@@ -1,43 +1,42 @@
-# Jeera — Fitness Tracking App (iOS SwiftUI)
+# Jeera — Fitness Tracking App (web, Next.js)
 
 ## What this is
 Personal gym workout logger. Core value: smart weight/rep suggestions that learn from history and adapt to fatigue. Built by Claude, extended by Codex, maintained in turns. **When you start a new session, read the HANDOFF section first.**
 
+The first version was an iOS SwiftUI app; Evan uses the web app (installed as a PWA) and the iOS code was removed from the repository on 27/09/2026 (still in the git history before that date). The web engines were ported from it, which is why some comments name a Swift file.
+
 ---
 
 ## Stack
-- iOS 17+ · SwiftUI + SwiftData + ActivityKit
-- Architecture: MVVM — Models / Engines (pure functions) / WorkoutViewModel (orchestration) / Views
-- Charts: Apple Charts framework
-- Tests: Swift Testing (`@Test`)
-- Branches: `claude/gym-workout-logger-app-RvaJP` (main), feature branches per agent
+- Next.js 16 (App Router) + React 19, in `web/` (read `web/AGENTS.md`: this Next.js differs from older versions)
+- State: zustand store (`lib/store/workout.ts`), offline-first with an outbox synced to Neon Postgres (drizzle), see `web/SYNC.md`
+- UI: Tailwind v4, framer-motion, recharts, lucide; three.js for the statue (loaded on demand)
+- Tests: vitest (`npm test`); CI `.github/workflows/web-checks.yml` (lint, tsc, tests)
+- Branch: `web/nextjs-app` (default). Deploy is manual: `npx vercel --prod --yes` from `web/`, with `.vercel` linked to the Vercel project `jeera` (alias https://jeera-gamma.vercel.app)
 
 ---
 
 ## Non-Negotiables (never change these)
-1. **Progression algorithm stays** — do not replace ProgressionEngine with a generic approach.
+1. **Progression algorithm stays** — do not replace the progression engine with a generic approach.
 2. **Workout-time UX = minimum taps** — every new interaction must justify itself.
 3. **Charts = interactive, modern, beautiful** — no static charts without interaction.
 4. **UI language = French** — all labels, badges, messages in French.
-5. **No external dependencies** — no third-party packages, Apple frameworks only.
 
 ---
 
-## Architecture Map (key files)
+## Architecture Map (key files, under `web/`)
 
-| File | Lines | Role |
-|------|-------|------|
-| `Jeera/ViewModels/WorkoutViewModel.swift` | ~1656 | Session lifecycle, set logging, superset, rest timer, Live Activity |
-| `Jeera/Engines/ProgressionEngine.swift` | ~752 | Weight+reps suggestion, promotion, plateau detection |
-| `Jeera/Engines/EffectiveSetsEngine.swift` | ~339 | Muscle coverage (leaf+parent), 7-day rolling window |
-| `Jeera/Engines/RecordsEngine.swift` | ~237 | PR classification (4 types), display filtering |
-| `Jeera/Engines/AchievementsEngine.swift` | ~112 | Recent PRs, deduplication, ranking |
-| `Jeera/Models/` | — | SwiftData models: WorkoutSession, LoggedExercise, LoggedSet, Exercise, SupersetGroup |
-| `Jeera/Views/Workout/ExerciseCard.swift` | ~300 | Active exercise UI, set logging, suggestion display, swipe actions |
-| `Jeera/Views/Workout/ActiveWorkoutView.swift` | ~200 | Workout canvas, reorder, finish |
-| `Jeera/Views/Progress/` | — | 3-layer progress: Muscles / Exercise charts / Global |
-| `Jeera/Views/History/` | — | Session history, weekly groups |
-| `JeeraWidgets/` | — | Lock-screen Live Activity (ActivityKit) |
+| File | Role |
+|------|------|
+| `lib/store/workout.ts` | Session lifecycle, set logging, supersets, rest timer, persistence |
+| `lib/engines/progression.ts` | Weight+reps suggestion, promotion, plateau detection |
+| `lib/engines/effective-sets.ts` | Muscle coverage (leaf+parent), calendar week |
+| `lib/engines/records.ts` | PR classification (4 types), calibration of a new machine |
+| `lib/engines/progress-stats.ts` | Progrès: week tiers, capacity, trends, records per week |
+| `lib/engines/session-rank.ts`, `career.ts`, `character.ts`, `statue.ts` | Gamification (rank, milestones, character sheet, statue) |
+| `lib/sync/outbox.ts`, `lib/db/sync-actions.ts`, `lib/db/schema.ts` | Offline outbox, server sync, database schema |
+| `app/(app)/` | Pages: séance (`page.tsx`), `progres`, `historique`, `reglages` |
+| `components/` | UI by area: workout, progress, history, exercise, settings, sync, ui |
 
 ---
 
@@ -101,32 +100,6 @@ Calendar week (Monday to today) for guidance AND history display
 
 ---
 
-## What is DONE ✅ (verified in code, 2026-04-26)
-- Full session lifecycle (start / live timer / finish / discard / undo)
-- Multi-mode exercises (straight, ramping, topSet+backoff, BW, weightedBW, assistedBW)
-- Superset system (manual + auto-detect, round tracking, rest-aware)
-- Live Activity: 7 intents (Validate, Skip, Next, +Kg, -Kg, +Rep, -Rep) — `WorkoutLiveActivityIntents.swift`
-- Records (4 types, caching, set-level star badges, achievement overlay)
-- Effective sets + calendar-week muscle coverage (priority chips during workout)
-- Beast Mode: weight bias +1 increment on set 2+, conditional session extension — `WorkoutViewModel.swift:1165-1321`
-- Monk Mode: deficit-aware seeding, fatigue-aware reordering after each set — `WorkoutViewModel.swift:1228-1264`
-- Exercise progress charts (weight + reps, drag-to-scrub interaction)
-- Rep benchmark bands hardcoded for 3 exercises (Tractions SN 14→33, Crunch décliné 29→76, Relevé jambe chaise roumaine 18→46) — `ExerciseProgressView.swift:164-175`
-- Global weekly chart: sets/week + creatine% + protein% + sleep score + correlation board — `ProgressTabView.swift:85-492`
-- Post-workout full-screen summary sheet (hero stats + muscles + PRs) — `WorkoutTabView.swift:71-436`
-- Recovery checkin UI in post-workout sheet (D-1/D-2 toggles + sleep slider, prefilled) — `WorkoutTabView.swift`
-- History view (weekly groups, session detail)
-- Data export/import (JSON), backup/restore
-
-## What is PENDING ⚠️ (based on actual code gaps, 2026-04-26)
-1. **Rolling window inconsistency** — chart uses 4 sessions (`ExerciseProgressView.swift:72`), ProgressionEngine state uses 5 (`ProgressionEngine.swift:508`), velocity uses 10. Needs alignment on what 4-session rule should apply where.
-2. **Rep benchmark bands are hardcoded** — switch statement for 3 named exercises in `ExerciseProgressView.swift:164`. Not generalized to `Exercise.benchmarkLow/High` fields that exist on the model.
-3. **Pinch-zoom on charts absent** — drag scrub exists, but no MagnificationGesture for range zoom.
-4. **Exercise picker not deficit-aware** — `ExercisePickerView.swift` sorts by favourites/recency only; deficit ordering only used inside Monk Mode seed, not exposed in picker UI.
-5. **No warmup auto-generation** — no automatic warmup set suggestions (e.g. 40%→60%→80% of targetLoad) before working sets.
-
----
-
 ## Key Decisions Log (WHY matters for future changes)
 
 | Decision | Why | Date |
@@ -174,6 +147,10 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 ---
 
 ## HANDOFF
+
+### 2026-09-27 · Claude — Dépôt web seulement
+
+- À la demande d'Evan, l'app iOS (Jeera, Jeera.xcodeproj, JeeraShared, JeeraTests, JeeraWidgets) est retirée du dépôt ; elle reste dans l'historique git. En-tête de ce fichier réécrit pour la web app ; l'ancienne passation iOS du 26/04 (fichiers Swift, Xcode) est retirée avec le code. Aucun fichier de `web/` ne dépendait des dossiers iOS.
 
 ### 2026-09-27 · Claude — Statue de la semaine (retours d'Evan)
 
@@ -249,32 +226,3 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 - Nouveaux profils musculaires (machines LifeFitness, Upper back, Calf Extension, Isolateral incline press) + `scripts/apply-known-muscle-profiles.ts` (pérenne).
 - `POST /api/body-weight` (jeton `BODY_WEIGHT_INGEST_TOKEN`) : pesée depuis Barbis ou un Raccourci iOS (VitaFit → Santé).
 - Déployé sur Vercel le 17/09 (`npx vercel --prod --yes` depuis `web/`).
-
-
-### 2026-04-26 · Claude — Warmup auto-génération + éditeur mappings muscles
-
-**Done (session 2):**
-- **Warmup auto** : `WorkoutViewModel.suggestion()` propose maintenant un set d'échauffement (W) avant le premier set de travail pour les exercices `.straight` / `.topSetBackoff` avec un poids cible ≥ 40kg. Poids = 60% du set de travail arrondi à l'incrément (min 20kg), reps = 10. Condition : aucun warmup complété ET aucun work set complété. L'ExerciseCard affiche un badge "W" jaune dans le chip suggestion.
-- **Muscle mappings éditeur** : `ExerciseDetailView` — chaque mapping a un Picker (MuscleGroup) + Stepper (coefficient 0.1–1.0) + swipe-to-delete. "Ajouter un muscle" choisit automatiquement le premier groupe non encore mappé.
-
-**Done (session 1, 2026-04-26) :**
-- Audit complet de tous les fichiers Swift (A–Z, rien sauté)
-- **ProgressionEngine** : implémenté la logique de promotion manquante (dead code `currentSetIndex` ignoré — `doneToday.isEmpty` est le vrai signal). `checkPromotionGate` + `firstWorkSetReps` ajoutés. DerivedExerciseState enrichi avec `promotionGatePassed` + `anchorFirstSetReps`. Bodyweight-at-max génère un message "lester". Tous les tests ProgressionEngine passent maintenant.
-- **Benchmark chart** : `ExerciseProgressView.repBenchmarkRange` utilise maintenant `exercise.benchmarkLow/High` au lieu du switch hardcodé par nom.
-- **WeeklyPrioritySection** : utilise `rollingPriorities` (filtre remaining ≥ 0.5) au lieu de `rolling7DayProgress` → plus de muscles à 0 parasites. Ajout header "Objectifs 7 jours" + message "Tous couverts ✓" quand vide.
-- **Goals** : éditables via stepper dans SettingsView. `syncCanonicalGoals` n'écrase plus les valeurs existantes (insert-only).
-- **Body weight** : `BodyWeightRow` ajouté dans SettingsView (AppStorage "user_body_weight_kg").
-- **FatigueClass** : Picker éditable dans ExerciseDetailView.
-- **Strings FR** : "Save & close", "Undo", "Last session:", 4× messages d'erreur anglais, "Unknown" → français.
-- **Sleep doublon** : supprimé l'affichage redondant dans `dayCard()`.
-
-**Current branch:** `codex/refactor-algorithm-for-weight-and-set-suggestions-3rj1rt`
-**Base branch:** `claude/gym-workout-logger-app-RvaJP`
-
-**Gotchas for next agent:**
-- `WorkoutViewModel` est ~1660 lignes — chercher la méthode spécifique, ne pas lire tout le fichier
-- Tests ProgressionEngine passent mais nécessitent une équipe de dev pour signer — vérifier via Xcode directement
-- `currentSetIndex` dans `ProgressionEngine.suggest()` est toujours **dead code** — utilisé par le VM mais ignoré dans l'engine (le branchement se fait sur `doneToday.isEmpty`). Ne pas l'utiliser pour la logique.
-- Live Activity: les attribute types sont dans `JeeraShared/`, le rendering dans `JeeraWidgets/` — tout changement de shape nécessite les deux targets
-- Global progress tab : Evan a dit "c'est le pire onglet" — redesign demandé mais non traité
-- Long press bug dans ActiveWorkoutView : "reste appuyé, ça bug un petit peu" — non investigué
