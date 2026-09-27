@@ -185,7 +185,7 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 - Carte « Statue » en tête de Corps : la statue d'Evan (boxer Calvin Klein, logo lisible devant et derrière, couronne de laurier levée) tourne lentement, un glissé horizontal la fait pivoter. Chaque zone musculaire est en pierre brute, marbre taillé, poli ou veiné d'or selon sa couverture sur 8 semaines (paliers de la semaine) ; légende par état, « Acquis pour lundi » et « Pour monter » (séries encore à faire cette semaine).
 - Au 27/09 : or = pectoraux, triceps ; poli = épaules, biceps, dos ; taillé = abdos ; brut = jambes (Evan ne les entraîne presque pas, la statue le montre).
 - Modèle : `web/public/statue/statue-v1.glb` (1 Mo, meshopt) + `logo-v1.png` ; rendu `web/lib/statue/statue-view.ts`. Chaîne de fabrication hors dépôt (images d'Evan) : `~/.local/share/barbis-dev/jeera-statue/pipeline/`.
-- Hors de ce travail : deux commits « Temporary workflow » (`.github/workflows/statue-reconstruct.yml`) ont été poussés sur `web/nextjs-app` le 27/09 vers minuit par une autre session ; ils ne se déclenchent que sur une branche `tmp-statue-*` ou à la main. À retirer si Evan confirme qu'ils ne servent plus.
+- Le workflow temporaire `.github/workflows/statue-reconstruct.yml`, poussé sur `web/nextjs-app` par une autre session le 27/09, est retiré (accord d'Evan). La branche `tmp-statue-reconstruction-20260926` (images en base64, script) reste sur GitHub.
 
 ### 2026-09-26 · Claude — Retours d'Evan en séance (rang, fiche, démo, accueil)
 
