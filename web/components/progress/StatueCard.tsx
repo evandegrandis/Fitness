@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Wind } from "lucide-react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { STATUE_STATES, statue, type StatueState } from "@/lib/engines/statue";
 import type { StatueView, StatueZoneLook } from "@/lib/statue/statue-view";
 import { useWorkoutStore } from "@/lib/store/workout";
 
-const MODEL_URL = "/statue/statue-v2.glb";
+const MODEL_URL = "/statue/statue-v3.glb";
 const LOGO_URL = "/statue/logo-v1.png";
 
 const SWATCH: Record<StatueState, string> = { 0: "#9a6a42", 1: "#ece8e0", 2: "#c3c9d1", 3: "#e3ac45" };
@@ -17,16 +17,25 @@ const REACHED: Record<string, string> = { Marbre: "en marbre", Argent: "en argen
 /**
  * La statue d'Evan suit sa semaine : chaque muscle passe du bronze au marbre, à l'argent puis à
  * l'or avec ses séries de la semaine (`lib/engines/statue.ts`) ; le but est une statue tout en or
- * le dimanche. three.js et le modèle ne sont chargés qu'à l'affichage de la carte ; le rendu
- * s'arrête hors écran.
+ * le dimanche. Les muscles travaillés depuis moins de 22 h fument. three.js et le modèle ne sont
+ * chargés qu'à l'affichage de la carte ; le rendu s'arrête hors écran. Le calcul se refait chaque
+ * minute : la fumée s'éteint et la semaine repart le lundi sans rien d'autre qu'une app ouverte.
  */
 export function StatueCard() {
   const history = useWorkoutStore((s) => s.history);
   const active = useWorkoutStore((s) => s.active);
   const catalog = useWorkoutStore((s) => s.catalog);
   const goals = useWorkoutStore((s) => s.goals);
-  const result = useMemo(() => statue({ history, catalog, goals, active, now: new Date() }), [history, catalog, goals, active]);
-  const looks: StatueZoneLook[] = useMemo(() => result.zones.map((zone) => ({ state: zone.state, veins: zone.veins })), [result]);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const result = useMemo(() => statue({ history, catalog, goals, active, now }), [history, catalog, goals, active, now]);
+  const looks: StatueZoneLook[] = useMemo(
+    () => result.zones.map((zone) => ({ state: zone.state, veins: zone.veins, smoke: zone.smoke })),
+    [result]
+  );
 
   const container = useRef<HTMLDivElement>(null);
   const view = useRef<StatueView | null>(null);
@@ -53,7 +62,7 @@ export function StatueCard() {
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     import("@/lib/statue/statue-view")
-      .then(({ mountStatue }) => mountStatue(element, { url: MODEL_URL, logoUrl: LOGO_URL, looks: latest.current, autorotate: still ? 0 : 0.18 }))
+      .then(({ mountStatue }) => mountStatue(element, { url: MODEL_URL, logoUrl: LOGO_URL, looks: latest.current, autorotate: still ? 0 : 0.18, smoke: !still }))
       .then((mounted) => {
         if (cancelled) return mounted.dispose();
         view.current = mounted;
@@ -75,6 +84,7 @@ export function StatueCard() {
 
   const rated = result.zones.filter((zone) => zone.coverage !== null);
   const next = result.next[0];
+  const smoking = result.zones.filter((zone) => zone.key !== "neutre" && zone.smoke > 0.02);
 
   return (
     <GlassCard>
@@ -118,10 +128,16 @@ export function StatueCard() {
           </span>
         </p>
       )}
+      {smoking.length > 0 && (
+        <p className="mt-2 flex items-start gap-1.5 text-[0.72rem] leading-snug text-(--color-fg)">
+          <Wind size={13} className="mt-px shrink-0 text-(--color-fg-muted)" />
+          <span>Fument encore : {smoking.map((zone) => zone.label).join(", ")}.</span>
+        </p>
+      )}
       <p className="mt-1.5 text-[0.66rem] leading-snug text-(--color-fg-faint)">
         Chaque muscle passe en marbre au tiers de son objectif de séries de la semaine, en argent aux deux tiers, en or à l&apos;objectif ;
-        à mi-chemin, les veines du palier suivant apparaissent. La tête et le socle suivent ton muscle le plus faible. Tout repart du bronze
-        lundi. Glisse pour la tourner.
+        à mi-chemin, les veines du palier suivant apparaissent. La tête et le socle suivent ton muscle le plus faible. Un muscle travaillé
+        fume pendant 22 h. Tout repart du bronze lundi. Glisse pour la tourner.
       </p>
     </GlassCard>
   );

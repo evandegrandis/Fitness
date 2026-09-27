@@ -63,14 +63,17 @@ describe("statue de la semaine", () => {
     expect(biceps([session(1, { curl: 12 })]).veins).toBe(0);
   });
 
-  it("zone à plusieurs groupes : chaque groupe plafonné à son objectif", () => {
+  it("chaque faisceau d'épaule est sa propre zone ; un faisceau sans objectif suit sa voisine", () => {
     const goals: MuscleGoal[] = [
+      { parent: MuscleParent.pectoraux, weeklyGoalSets: 12 },
       { parent: MuscleParent.deltLateral, weeklyGoalSets: 16 },
       { parent: MuscleParent.deltPosterieur, weeklyGoalSets: 10 },
     ];
-    const epaules = zone(statue({ history: [session(1, { lateral: 30 })], catalog: CATALOG, goals, now: NOW }), "epaules");
-    expect(epaules.coverage).toBeCloseTo(16 / 26);
-    expect(epaules.state).toBe(1);
+    const result = statue({ history: [session(1, { lateral: 16 })], catalog: CATALOG, goals, now: NOW });
+    expect(zone(result, "delt_lateral").state).toBe(3);
+    expect(zone(result, "delt_posterieur").state).toBe(0);
+    expect(zone(result, "delt_anterieur").coverage).toBeNull();
+    expect(zone(result, "delt_anterieur").state).toBe(zone(result, "pectoraux").state);
   });
 
   it("avant-bras sur le plus faible des bras, reste de la statue sur le muscle le plus faible", () => {
@@ -82,6 +85,25 @@ describe("statue de la semaine", () => {
     expect(gold.zones.every((entry) => entry.state === 3)).toBe(true);
     expect(gold.toGold).toBe(0);
     expect(gold.next).toEqual([]);
+  });
+
+  it("fumée : les muscles travaillés fument 22 h après leur dernière série, de moins en moins", () => {
+    const at = (hoursAgo: number, sets: number) => {
+      const done = session(0, { curl: sets });
+      const shift = NOW.getTime() - hoursAgo * 3_600_000 - done.date.getTime();
+      done.exercises[0].sets.forEach((set, k) => (set.timestamp = new Date(done.date.getTime() + shift - (sets - 1 - k) * 180_000)));
+      return biceps([done]).smoke;
+    };
+    expect(at(0, 4)).toBeCloseTo(1);
+    expect(at(11, 4)).toBeCloseTo(0.5);
+    expect(at(0, 2)).toBeCloseTo(0.5);
+    expect(at(22, 4)).toBe(0);
+    // Séance en cours : fumée tout de suite ; les muscles non travaillés ne fument pas.
+    const live = session(5, { curl: 4 }, true);
+    live.exercises[0].sets.forEach((set) => (set.timestamp = NOW));
+    const result = statue({ history: [], catalog: CATALOG, goals: ARMS, now: NOW, active: live });
+    expect(zone(result, "biceps").smoke).toBeCloseTo(1);
+    expect(zone(result, "triceps").smoke).toBe(0);
   });
 
   it("prochain palier : les séries qui manquent, la moins chère d'abord ; séries pour tout en or", () => {

@@ -8,7 +8,11 @@
  * zone en or passe directement de l'un à l'autre, sans bandes intermédiaires. Le logo de la
  * ceinture est relevé sur les images de face et de dos (`logo-v1.png`, R = face, G = dos) et
  * reprojeté avec le calage de chaque image. La statue tourne sur le centre de son socle ; un glissé
- * horizontal prend la main, avec de l'inertie.
+ * horizontal prend la main, avec de l'inertie. Les muscles travaillés depuis moins de 22 h fument :
+ * des volutes naissent à leur surface et montent, sans tourner avec la statue.
+ *
+ * Le maillage est une coque double (surface visible et couche intérieure retournée) : le bit 7 de
+ * `_ZONE` marque la couche intérieure, d'où la fumée ne part jamais.
  */
 
 import * as THREE from "three";
@@ -46,11 +50,15 @@ float fbm(vec3 p){float a=0.5,s=0.0;for(int i=0;i<5;i++){s+=a*snoise(p);p*=2.02;
 /** Calage des images d'origine (1675 × 2000) : pixels = (±x·s + tx, −y·s + ty), dos en miroir. */
 const LOGO = { box: [640, 900, 420, 130], front: [1827.68, 789.85, 1061.63], back: [1840.96, 913.14, 1070.63] } as const;
 
-/** État d'une zone pour le rendu : matériau 0..3 (bronze, marbre, argent, or) et densité des veines. */
+/** État d'une zone pour le rendu : matériau 0..3 (bronze, marbre, argent, or), densité des veines, fumée 0..1. */
 export interface StatueZoneLook {
   state: number;
   veins: number;
+  smoke: number;
 }
+
+const ZONE_MASK = 0x7f;
+const INNER = 0x80;
 
 type Adjacency = { start: Uint32Array; nbr: Uint32Array };
 
@@ -101,7 +109,7 @@ function applyLooks(geometry: THREE.BufferGeometry, looks: readonly StatueZoneLo
   const look = new Float32Array(count * 4);
   const veins = new Float32Array(count * 4);
   for (let i = 0; i < count; i += 1) {
-    const entry = looks[zone.getX(i)] ?? { state: 1, veins: 0 };
+    const entry = looks[zone.getX(i) & ZONE_MASK] ?? { state: 1, veins: 0 };
     const state = Math.max(0, Math.min(3, Math.round(entry.state)));
     look[i * 4 + state] = 1;
     if (state < 3) veins[i * 4 + state + 1] = entry.veins;
@@ -239,6 +247,174 @@ vec4 materialOf(int k, vec3 marble, float patina) {
   return material;
 }
 
+/** Volute de fumée : taches floues superposées, dessinées une fois sur un canevas. */
+function puffTexture(): THREE.CanvasTexture {
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let k = 0; k < 6; k += 1) {
+    const x = size / 2 + (random() - 0.5) * size * 0.22;
+    const y = size / 2 + (random() - 0.5) * size * 0.22;
+    const r = size * (0.3 + random() * 0.14);
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+    gradient.addColorStop(0, "rgba(255,255,255,0.26)");
+    gradient.addColorStop(0.5, "rgba(255,255,255,0.1)");
+    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
+/**
+ * Fumée des muscles travaillés : chaque zone émet selon sa fumée (0..1) depuis des sommets de la
+ * surface visible ; les volutes vivent 2,5 à 4 s dans le repère de la scène, s'éloignent à peine de
+ * la peau, montent lentement en ondulant, s'élargissent et s'effacent.
+ */
+function createSmoke(statue: THREE.Mesh, camera: THREE.PerspectiveCamera) {
+  const geometry = statue.geometry;
+  const zone = geometry.getAttribute("_zone");
+  const buckets: number[][] = [];
+  for (let i = 0; i < zone.count; i += 1) {
+    const value = zone.getX(i);
+    if (value & INNER) continue;
+    const key = value & ZONE_MASK;
+    if (key === 0) continue;
+    (buckets[key] ??= []).push(i);
+  }
+  const sources = buckets.map((list) => (list ? Uint32Array.from(list) : new Uint32Array(0)));
+  const MAX = 720;
+  const position = new Float32Array(MAX * 3);
+  const velocity = new Float32Array(MAX * 3);
+  const alpha = new Float32Array(MAX);
+  const size = new Float32Array(MAX);
+  const rotation = new Float32Array(MAX);
+  const age = new Float32Array(MAX);
+  const life = new Float32Array(MAX);
+  const base = new Float32Array(MAX);
+  const grow = new Float32Array(MAX);
+  const spin = new Float32Array(MAX);
+  const strength = new Float32Array(MAX);
+  const points = new THREE.BufferGeometry();
+  points.setAttribute("position", new THREE.BufferAttribute(position, 3).setUsage(THREE.DynamicDrawUsage));
+  points.setAttribute("aAlpha", new THREE.BufferAttribute(alpha, 1).setUsage(THREE.DynamicDrawUsage));
+  points.setAttribute("aSize", new THREE.BufferAttribute(size, 1).setUsage(THREE.DynamicDrawUsage));
+  points.setAttribute("aRot", new THREE.BufferAttribute(rotation, 1).setUsage(THREE.DynamicDrawUsage));
+  const texture = puffTexture();
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: { uPuff: { value: texture }, uScale: { value: 800 }, uColor: { value: new THREE.Color(0.78, 0.78, 0.77) } },
+    vertexShader: /* glsl */ `
+      attribute float aAlpha; attribute float aSize; attribute float aRot;
+      uniform float uScale;
+      varying float vAlpha; varying float vRot;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = aAlpha > 0.0 ? aSize * uScale / -mv.z : 0.0;
+        vAlpha = aAlpha; vRot = aRot;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D uPuff; uniform vec3 uColor;
+      varying float vAlpha; varying float vRot;
+      void main() {
+        vec2 p = gl_PointCoord - 0.5;
+        float c = cos(vRot), s = sin(vRot);
+        p = mat2(c, -s, s, c) * p + 0.5;
+        float a = texture2D(uPuff, p).a * vAlpha;
+        if (a < 0.004) discard;
+        gl_FragColor = vec4(uColor, a);
+      }`,
+  });
+  const cloud = new THREE.Points(points, material);
+  cloud.frustumCulled = false;
+
+  const budget = new Float32Array(sources.length);
+  const normalMatrix = new THREE.Matrix3();
+  const p = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
+  const positions = geometry.getAttribute("position");
+  const normals = geometry.getAttribute("normal");
+  let next = 0;
+  let levels: readonly number[] = [];
+
+  const spawn = (vertex: number, level: number) => {
+    const i = next;
+    next = (next + 1) % MAX;
+    p.fromBufferAttribute(positions, vertex).applyMatrix4(statue.matrixWorld);
+    nrm.fromBufferAttribute(normals, vertex).applyMatrix3(normalMatrix).normalize();
+    const r = Math.random;
+    position.set([p.x + nrm.x * 0.006, p.y + nrm.y * 0.006, p.z + nrm.z * 0.006], i * 3);
+    const out = 0.008 + 0.01 * r();
+    velocity.set([nrm.x * out + (r() - 0.5) * 0.006, nrm.y * out + 0.018 + 0.016 * r(), nrm.z * out + (r() - 0.5) * 0.006], i * 3);
+    age[i] = 0;
+    life[i] = 2.5 + 1.5 * r();
+    base[i] = 0.03 + 0.015 * r();
+    grow[i] = 0.06 + 0.035 * r();
+    rotation[i] = r() * Math.PI * 2;
+    spin[i] = (r() - 0.5) * 0.8;
+    strength[i] = 0.5 + 0.5 * level;
+  };
+
+  return {
+    object: cloud,
+    setLevels: (next: readonly number[]) => {
+      levels = next;
+    },
+    resize: (drawingHeight: number) => {
+      material.uniforms.uScale.value = drawingHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+    },
+    update: (dt: number) => {
+      normalMatrix.getNormalMatrix(statue.matrixWorld);
+      for (let key = 1; key < sources.length; key += 1) {
+        const level = levels[key] ?? 0;
+        const list = sources[key];
+        if (level <= 0.01 || list.length === 0) {
+          budget[key] = 0;
+          continue;
+        }
+        budget[key] += level * Math.min(30, Math.max(10, list.length / 110)) * dt;
+        while (budget[key] >= 1) {
+          budget[key] -= 1;
+          spawn(list[Math.floor(Math.random() * list.length)], level);
+        }
+      }
+      for (let i = 0; i < MAX; i += 1) {
+        if (age[i] >= life[i]) {
+          alpha[i] = 0;
+          continue;
+        }
+        age[i] += dt;
+        const k = i * 3;
+        velocity[k + 1] += 0.008 * dt;
+        velocity[k] *= 1 - 0.9 * dt;
+        velocity[k + 2] *= 1 - 0.9 * dt;
+        velocity[k] += Math.sin(age[i] * 1.7 + i * 0.37) * 0.012 * dt;
+        velocity[k + 2] += Math.cos(age[i] * 1.3 + i * 0.61) * 0.012 * dt;
+        position[k] += velocity[k] * dt;
+        position[k + 1] += velocity[k + 1] * dt;
+        position[k + 2] += velocity[k + 2] * dt;
+        const a = Math.min(1, age[i] / life[i]);
+        const fadeIn = Math.min(1, a / 0.1);
+        const fadeOut = a < 0.35 ? 1 : 1 - (a - 0.35) / 0.65;
+        alpha[i] = strength[i] * 0.2 * fadeIn * fadeOut * fadeOut;
+        size[i] = base[i] + grow[i] * a;
+        rotation[i] += spin[i] * dt;
+      }
+      for (const name of ["position", "aAlpha", "aSize", "aRot"]) points.getAttribute(name).needsUpdate = true;
+    },
+    dispose: () => {
+      points.dispose();
+      material.dispose();
+      texture.dispose();
+    },
+  };
+}
+
 export interface StatueView {
   setLooks: (looks: readonly StatueZoneLook[]) => void;
   /** Oriente la statue (radians), pour une vue fixe. */
@@ -263,7 +439,13 @@ function pedestalCenter(mesh: THREE.Mesh, box: THREE.Box3): THREE.Vector2 {
 
 export async function mountStatue(
   container: HTMLElement,
-  { url, logoUrl, looks, autorotate = 0.18 }: { url: string; logoUrl: string; looks: readonly StatueZoneLook[]; autorotate?: number }
+  {
+    url,
+    logoUrl,
+    looks,
+    autorotate = 0.18,
+    smoke = true,
+  }: { url: string; logoUrl: string; looks: readonly StatueZoneLook[]; autorotate?: number; smoke?: boolean }
 ): Promise<StatueView> {
   const [gltf, logo] = await Promise.all([
     new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url),
@@ -317,6 +499,12 @@ export async function mountStatue(
   const distance = (size.y * 0.56) / Math.tan(THREE.MathUtils.degToRad(12));
   camera.position.set(0, size.y * 0.04, distance);
   camera.lookAt(0, 0, 0);
+  const fumes = smoke ? createSmoke(statue, camera) : null;
+  if (fumes) {
+    scene.add(fumes.object);
+    fumes.setLevels(looks.map((look) => look.smoke));
+  }
+  let shown = looks;
 
   const canvas = renderer.domElement;
   canvas.style.display = "block";
@@ -332,6 +520,7 @@ export async function mountStatue(
     // Portrait étroit : on recule pour garder la couronne dans le cadre.
     camera.position.z = distance * Math.max(1, 0.62 / camera.aspect);
     camera.updateProjectionMatrix();
+    fumes?.resize(height * renderer.getPixelRatio());
   };
   resize();
   const observer = new ResizeObserver(resize);
@@ -376,6 +565,10 @@ export async function mountStatue(
       angle += (velocity + autorotate * resume) * dt;
     }
     pivot.rotation.y = angle;
+    if (fumes) {
+      pivot.updateMatrixWorld(true);
+      fumes.update(dt);
+    }
     renderer.render(scene, camera);
     frame = requestAnimationFrame(tick);
   };
@@ -393,6 +586,11 @@ export async function mountStatue(
 
   return {
     setLooks: (next) => {
+      // Les matériaux ne se recalculent que s'ils changent ; la fumée bouge chaque minute.
+      const same = next.length === shown.length && next.every((look, i) => look.state === shown[i].state && look.veins === shown[i].veins);
+      shown = next;
+      fumes?.setLevels(next.map((look) => look.smoke));
+      if (same) return;
       applyLooks(geometry, next);
       if (!running) renderer.render(scene, camera);
     },
@@ -410,6 +608,7 @@ export async function mountStatue(
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
       canvas.removeEventListener("pointercancel", onUp);
+      fumes?.dispose();
       geometry.dispose();
       material.dispose();
       logo.dispose();
