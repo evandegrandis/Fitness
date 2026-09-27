@@ -8,32 +8,43 @@
  * mi-chemin du palier suivant, les veines du matériau suivant apparaissent et se densifient jusqu'au
  * palier (Evan : des biceps en argent à mi-chemin de l'or se veinent d'or).
  *
- * Une zone à plusieurs groupes (épaules, dos, quadriceps avec adducteurs) additionne les séries de
- * ses groupes à objectif, chacun plafonné au sien. Les zones sans objectif suivent leur voisine la
- * plus faible (avant-bras : biceps ou triceps ; obliques : abdos). Tête, boxer, mains, pieds et
- * socle prennent l'état du muscle le plus faible : ils passent en or quand tout le corps est en or.
+ * Une zone par groupe musculaire (les trois faisceaux d'épaule, haut du dos et grand dorsal,
+ * quadriceps et adducteurs séparés). Une zone sans objectif suit sa voisine la plus faible
+ * (deltoïde antérieur : pectoraux ; avant-bras : biceps ou triceps ; haut du dos : grand dorsal).
+ * Tête, cou, boxer, mains, pieds et socle prennent l'état du muscle le plus faible : ils passent en
+ * or quand tout le corps est en or.
+ *
+ * Fumée (Evan, 27/09/2026) : un muscle travaillé fume pendant les 22 h qui suivent sa dernière
+ * série, de plus en plus faiblement ; plus il a reçu de séries, plus il fume (plein à 4 séries).
  */
 
-import { currentWeekWindow, parentTotals } from "@/lib/engines/effective-sets";
+import { currentWeekWindow, parentSets, parentTotals } from "@/lib/engines/effective-sets";
 import { MuscleParent } from "@/lib/models/muscles";
 import type { Exercise, MuscleGoal, WorkoutSession } from "@/lib/models/types";
 
-/** Ordre des zones = valeur de l'attribut `_ZONE` du modèle 3D (`public/statue/statue-v2.glb`). */
+/**
+ * Ordre des zones = valeur de l'attribut `_ZONE` du modèle 3D (`public/statue/statue-v3.glb`), une
+ * zone par groupe musculaire de l'app, découpées sur le squelette de la statue. Les obliques n'ont
+ * pas de zone : le flanc appartient aux abdos. `follows` sert quand la zone n'a pas d'objectif.
+ */
 export const STATUE_ZONES = [
   { key: "neutre", label: "Reste", parents: [], follows: [] },
   { key: "pectoraux", label: "Pectoraux", parents: [MuscleParent.pectoraux], follows: [] },
-  { key: "epaules", label: "Épaules", parents: [MuscleParent.deltAnterieur, MuscleParent.deltLateral, MuscleParent.deltPosterieur], follows: [] },
-  { key: "biceps", label: "Biceps", parents: [MuscleParent.biceps], follows: [] },
-  { key: "triceps", label: "Triceps", parents: [MuscleParent.triceps], follows: [] },
-  { key: "avant_bras", label: "Avant-bras", parents: [], follows: ["biceps", "triceps"] },
-  { key: "abdos", label: "Abdos", parents: [MuscleParent.abs], follows: [] },
-  { key: "obliques", label: "Obliques", parents: [], follows: ["abdos"] },
-  { key: "dos", label: "Dos", parents: [MuscleParent.grandDorsal, MuscleParent.dosHaut], follows: [] },
-  { key: "fessiers", label: "Fessiers", parents: [MuscleParent.glutes], follows: [] },
-  { key: "quadriceps", label: "Quadriceps", parents: [MuscleParent.quads, MuscleParent.adductors], follows: [] },
-  { key: "ischios", label: "Ischios", parents: [MuscleParent.hamstrings], follows: [] },
+  { key: "delt_anterieur", label: "Deltoïdes antérieurs", parents: [MuscleParent.deltAnterieur], follows: ["pectoraux"] },
+  { key: "delt_lateral", label: "Deltoïdes latéraux", parents: [MuscleParent.deltLateral], follows: ["delt_posterieur"] },
+  { key: "delt_posterieur", label: "Deltoïdes postérieurs", parents: [MuscleParent.deltPosterieur], follows: ["delt_lateral"] },
+  { key: "biceps", label: "Biceps", parents: [MuscleParent.biceps], follows: ["triceps"] },
+  { key: "triceps", label: "Triceps", parents: [MuscleParent.triceps], follows: ["biceps"] },
+  { key: "avant_bras", label: "Avant-bras", parents: [MuscleParent.forearms], follows: ["biceps", "triceps"] },
+  { key: "abdos", label: "Abdos", parents: [MuscleParent.abs], follows: [], worked: [MuscleParent.abs, MuscleParent.obliques] },
+  { key: "dos_haut", label: "Haut du dos", parents: [MuscleParent.dosHaut], follows: ["grand_dorsal"] },
+  { key: "grand_dorsal", label: "Grand dorsal", parents: [MuscleParent.grandDorsal], follows: ["dos_haut"] },
+  { key: "fessiers", label: "Fessiers", parents: [MuscleParent.glutes], follows: ["ischios"] },
+  { key: "quadriceps", label: "Quadriceps", parents: [MuscleParent.quads], follows: ["ischios"] },
+  { key: "adducteurs", label: "Adducteurs", parents: [MuscleParent.adductors], follows: ["quadriceps"] },
+  { key: "ischios", label: "Ischios", parents: [MuscleParent.hamstrings], follows: ["quadriceps"] },
   { key: "mollets", label: "Mollets", parents: [MuscleParent.calves], follows: [] },
-] as const satisfies readonly { key: string; label: string; parents: readonly MuscleParent[]; follows: readonly string[] }[];
+] as const satisfies readonly { key: string; label: string; parents: readonly MuscleParent[]; follows: readonly string[]; worked?: readonly MuscleParent[] }[];
 
 export type StatueZoneKey = (typeof STATUE_ZONES)[number]["key"];
 
@@ -50,6 +61,9 @@ export const STATUE_STATES: readonly { state: StatueState; label: string; min: n
 /** Les veines du matériau suivant apparaissent à mi-chemin du palier suivant, à cette densité. */
 export const STATUE_VEINS = { FROM: 0.5, FIRST: 0.2 } as const;
 
+/** Fumée des muscles travaillés : durée après la dernière série, séries pour une fumée pleine. */
+export const STATUE_SMOKE = { HOURS: 22, FULL_SETS: 4 } as const;
+
 export interface StatueZone {
   key: StatueZoneKey;
   label: string;
@@ -63,6 +77,8 @@ export interface StatueZone {
   /** Séries comptées vers l'objectif (chaque groupe plafonné au sien) et objectif, en séries. */
   sets: number;
   goalSets: number;
+  /** Fumée (0..1) : muscle travaillé il y a moins de 22 h. */
+  smoke: number;
 }
 
 export interface StatueNext {
@@ -79,6 +95,43 @@ export interface Statue {
   next: StatueNext[];
   /** Séries encore à faire cette semaine pour une statue entièrement en or. */
   toGold: number;
+}
+
+/**
+ * Fumée par groupe : pour chaque séance, ses séries par groupe (tous exercices confondus) et l'heure
+ * de la dernière série de ce groupe ; fumée = séries (pleine à 4) × fraîcheur (1 juste après, 0 à
+ * 22 h). Sur plusieurs séances, la plus forte l'emporte.
+ */
+function smokeByParent(
+  history: readonly WorkoutSession[],
+  catalog: readonly Exercise[],
+  active: WorkoutSession | null,
+  now: Date
+): Map<MuscleParent, number> {
+  const byId = new Map(catalog.map((exercise) => [exercise.id, exercise]));
+  const window = STATUE_SMOKE.HOURS * 3_600_000;
+  const smoke = new Map<MuscleParent, number>();
+  const sessions = [...history.filter((session) => !session.isActive), ...(active ? [active] : [])];
+  for (const session of sessions) {
+    const worked = new Map<MuscleParent, { sets: number; last: number }>();
+    for (const logged of session.exercises) {
+      const done = logged.sets.filter((set) => set.completed);
+      if (done.length === 0) continue;
+      const last = Math.max(...done.map((set) => set.timestamp.getTime()));
+      if (now.getTime() - last >= window) continue;
+      for (const [parent, sets] of parentSets(logged, byId.get(logged.exerciseId))) {
+        const entry = worked.get(parent) ?? { sets: 0, last: 0 };
+        worked.set(parent, { sets: entry.sets + sets, last: Math.max(entry.last, last) });
+      }
+    }
+    for (const [parent, { sets, last }] of worked) {
+      const age = now.getTime() - last;
+      if (age < 0 || age >= window) continue;
+      const value = Math.min(1, sets / STATUE_SMOKE.FULL_SETS) * (1 - age / window);
+      smoke.set(parent, Math.max(smoke.get(parent) ?? 0, value));
+    }
+  }
+  return smoke;
 }
 
 function stateOf(coverage: number): StatueState {
@@ -116,6 +169,9 @@ export function statue({
   const { start, end } = currentWeekWindow(now);
   const totals = parentTotals([...history], [...catalog], start, end, active);
 
+  const smoke = smokeByParent(history, catalog, active, now);
+  const smokeOf = (parents: readonly MuscleParent[]) => Math.max(0, ...parents.map((parent) => smoke.get(parent) ?? 0));
+
   const rated = new Map<StatueZoneKey, StatueZone>();
   for (const zone of STATUE_ZONES) {
     const parents = new Set<MuscleParent>(zone.parents);
@@ -126,7 +182,8 @@ export function statue({
     const coverage = sets / goalSets;
     const state = stateOf(coverage);
     const progress = progressOf(coverage, state);
-    rated.set(zone.key, { key: zone.key, label: zone.label, coverage, state, progress, veins: veinsOf(state, progress), sets, goalSets });
+    const worked = "worked" in zone ? zone.worked : zone.parents;
+    rated.set(zone.key, { key: zone.key, label: zone.label, coverage, state, progress, veins: veinsOf(state, progress), sets, goalSets, smoke: smokeOf(worked) });
   }
 
   // Zones suiveuses : l'état et les veines de la zone la plus faible qu'elles suivent.
@@ -146,6 +203,7 @@ export function statue({
       veins: model?.veins ?? 0,
       sets: 0,
       goalSets: 0,
+      smoke: smokeOf("worked" in zone ? zone.worked : zone.parents),
     };
   });
 
