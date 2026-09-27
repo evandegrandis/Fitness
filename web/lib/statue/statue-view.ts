@@ -1,12 +1,14 @@
 /**
- * Rendu de la statue de marbre (three.js), chargé à la demande par `StatueCard`.
+ * Rendu de la statue (three.js), chargé à la demande par `StatueCard`.
  *
- * Le modèle (`public/statue/statue-v1.glb`) porte la zone musculaire de chaque sommet (attribut
- * `_ZONE`, ordre de `STATUE_ZONES`). Chaque zone a un état 0..3 : pierre brute, marbre taillé,
- * marbre poli, veines d'or ; l'état est lissé sur quelques anneaux de voisins pour que le passage
- * d'une zone à l'autre soit progressif. Le logo de la ceinture est relevé sur les images de face et
- * de dos (`logo-v1.png`, R = face, G = dos) et reprojeté avec le calage de chaque image.
- * Rotation lente continue ; un glissé horizontal prend la main, avec de l'inertie.
+ * Le modèle (`public/statue/statue-v2.glb`) porte la zone musculaire de chaque sommet (attribut
+ * `_ZONE`, ordre de `STATUE_ZONES`). Chaque zone a un matériau (bronze, marbre, argent, or) et des
+ * veines du matériau suivant, plus ou moins denses selon l'avancée vers le palier. Les parts de
+ * chaque matériau sont lissées sur quelques anneaux de voisins : une zone en bronze voisine d'une
+ * zone en or passe directement de l'un à l'autre, sans bandes intermédiaires. Le logo de la
+ * ceinture est relevé sur les images de face et de dos (`logo-v1.png`, R = face, G = dos) et
+ * reprojeté avec le calage de chaque image. La statue tourne sur le centre de son socle ; un glissé
+ * horizontal prend la main, avec de l'inertie.
  */
 
 import * as THREE from "three";
@@ -44,42 +46,69 @@ float fbm(vec3 p){float a=0.5,s=0.0;for(int i=0;i<5;i++){s+=a*snoise(p);p*=2.02;
 /** Calage des images d'origine (1675 × 2000) : pixels = (±x·s + tx, −y·s + ty), dos en miroir. */
 const LOGO = { box: [640, 900, 420, 130], front: [1827.68, 789.85, 1061.63], back: [1840.96, 913.14, 1070.63] } as const;
 
-/** Niveau par sommet : état de sa zone, lissé sur quelques anneaux de voisins. */
-function vertexLevels(geometry: THREE.BufferGeometry, levels: readonly number[], rings = 5): Float32Array {
-  const zone = geometry.getAttribute("_zone"); // entrelacé (pas de 4 octets) : lu par getX
-  const count = zone.count;
-  let value = new Float32Array(count);
-  for (let i = 0; i < count; i += 1) value[i] = levels[zone.getX(i)] ?? 2;
-  let adjacency = geometry.userData.adjacency as { start: Uint32Array; nbr: Uint32Array } | undefined;
-  if (!adjacency) {
-    const index = geometry.index!.array;
-    const degree = new Uint32Array(count);
-    for (let i = 0; i < index.length; i += 1) degree[index[i]] += 2;
-    const start = new Uint32Array(count + 1);
-    for (let i = 0; i < count; i += 1) start[i + 1] = start[i] + degree[i];
-    const fill = start.slice(0, count);
-    const nbr = new Uint32Array(start[count]);
-    for (let t = 0; t < index.length; t += 3) {
-      const a = index[t], b = index[t + 1], c = index[t + 2];
-      nbr[fill[a]++] = b; nbr[fill[a]++] = c;
-      nbr[fill[b]++] = a; nbr[fill[b]++] = c;
-      nbr[fill[c]++] = a; nbr[fill[c]++] = b;
-    }
-    adjacency = { start, nbr };
-    geometry.userData.adjacency = adjacency;
+/** État d'une zone pour le rendu : matériau 0..3 (bronze, marbre, argent, or) et densité des veines. */
+export interface StatueZoneLook {
+  state: number;
+  veins: number;
+}
+
+type Adjacency = { start: Uint32Array; nbr: Uint32Array };
+
+function adjacencyOf(geometry: THREE.BufferGeometry): Adjacency {
+  const cached = geometry.userData.adjacency as Adjacency | undefined;
+  if (cached) return cached;
+  const count = geometry.getAttribute("position").count;
+  const index = geometry.index!.array;
+  const degree = new Uint32Array(count);
+  for (let i = 0; i < index.length; i += 1) degree[index[i]] += 2;
+  const start = new Uint32Array(count + 1);
+  for (let i = 0; i < count; i += 1) start[i + 1] = start[i] + degree[i];
+  const fill = start.slice(0, count);
+  const nbr = new Uint32Array(start[count]);
+  for (let t = 0; t < index.length; t += 3) {
+    const a = index[t], b = index[t + 1], c = index[t + 2];
+    nbr[fill[a]++] = b; nbr[fill[a]++] = c;
+    nbr[fill[b]++] = a; nbr[fill[b]++] = c;
+    nbr[fill[c]++] = a; nbr[fill[c]++] = b;
   }
-  const { start, nbr } = adjacency;
+  geometry.userData.adjacency = { start, nbr };
+  return geometry.userData.adjacency as Adjacency;
+}
+
+/** Lisse un attribut à 4 composantes sur `rings` anneaux de voisins. */
+function smooth4(values: Float32Array, { start, nbr }: Adjacency, rings: number): Float32Array {
+  let value = values;
+  const count = start.length - 1;
   for (let r = 0; r < rings; r += 1) {
-    const next = new Float32Array(count);
+    const next = new Float32Array(value.length);
     for (let i = 0; i < count; i += 1) {
-      let sum = 0;
-      for (let k = start[i]; k < start[i + 1]; k += 1) sum += value[nbr[k]];
       const n = start[i + 1] - start[i];
-      next[i] = n ? 0.5 * value[i] + 0.5 * (sum / n) : value[i];
+      for (let c = 0; c < 4; c += 1) {
+        let sum = 0;
+        for (let k = start[i]; k < start[i + 1]; k += 1) sum += value[nbr[k] * 4 + c];
+        next[i * 4 + c] = n ? 0.5 * value[i * 4 + c] + 0.5 * (sum / n) : value[i * 4 + c];
+      }
     }
     value = next;
   }
   return value;
+}
+
+/** Parts des quatre matériaux (`look`) et des veines du matériau suivant (`veins`), par sommet. */
+function applyLooks(geometry: THREE.BufferGeometry, looks: readonly StatueZoneLook[]) {
+  const zone = geometry.getAttribute("_zone"); // entrelacé (pas de 4 octets) : lu par getX
+  const count = zone.count;
+  const look = new Float32Array(count * 4);
+  const veins = new Float32Array(count * 4);
+  for (let i = 0; i < count; i += 1) {
+    const entry = looks[zone.getX(i)] ?? { state: 1, veins: 0 };
+    const state = Math.max(0, Math.min(3, Math.round(entry.state)));
+    look[i * 4 + state] = 1;
+    if (state < 3) veins[i * 4 + state + 1] = entry.veins;
+  }
+  const adjacency = adjacencyOf(geometry);
+  geometry.setAttribute("look", new THREE.BufferAttribute(smooth4(look, adjacency, 4), 4));
+  geometry.setAttribute("veins", new THREE.BufferAttribute(smooth4(veins, adjacency, 4), 4));
 }
 
 function statueMaterial(logo: THREE.Texture, toOriginal: THREE.Matrix4): THREE.MeshPhysicalMaterial {
@@ -95,17 +124,18 @@ function statueMaterial(logo: THREE.Texture, toOriginal: THREE.Matrix4): THREE.M
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nattribute float level;\nuniform mat4 uToOriginal;\nvarying float vLevel;\nvarying vec3 vObj;\nvarying vec3 vOrig;\nvarying vec3 vOrigN;"
+        "#include <common>\nattribute vec4 look;\nattribute vec4 veins;\nuniform mat4 uToOriginal;\nvarying vec4 vLook;\nvarying vec4 vVeins;\nvarying vec3 vObj;\nvarying vec3 vOrig;\nvarying vec3 vOrigN;"
       )
       .replace(
         "#include <begin_vertex>",
-        "#include <begin_vertex>\nvLevel = level;\nvObj = position;\nvOrig = (uToOriginal * vec4(position, 1.0)).xyz;\nvOrigN = normalize(mat3(uToOriginal) * objectNormal);"
+        "#include <begin_vertex>\nvLook = look;\nvVeins = veins;\nvObj = position;\nvOrig = (uToOriginal * vec4(position, 1.0)).xyz;\nvOrigN = normalize(mat3(uToOriginal) * objectNormal);"
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
         "#include <common>",
         `#include <common>
-varying float vLevel;
+varying vec4 vLook;
+varying vec4 vVeins;
 varying vec3 vObj;
 varying vec3 vOrig;
 varying vec3 vOrigN;
@@ -114,7 +144,7 @@ uniform vec4 uLogoBox;
 uniform vec3 uCalFront;
 uniform vec3 uCalBack;
 ${NOISE}
-float gLevel; float gVein; float gGrain; float gLogo;
+float gRough; float gMetal; float gMarble; float gLogo;
 float logoAt(vec3 cal, float mirror, float channel) {
   vec2 px = vec2(mirror * vOrig.x * cal.x + cal.y, -vOrig.y * cal.x + cal.z);
   vec2 uv = (px - uLogoBox.xy) / uLogoBox.zw;
@@ -126,71 +156,83 @@ vec3 bumpNormal(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) 
   vec3 vSigmaX = normalize(dFdx(surf_pos)); vec3 vSigmaY = normalize(dFdy(surf_pos)); vec3 vN = surf_norm;
   vec3 R1 = cross(vSigmaY, vN); vec3 R2 = cross(vN, vSigmaX); float fDet = dot(vSigmaX, R1) * faceDirection;
   vec3 vGrad = sign(fDet) * (dHdxy.x * R1 + dHdxy.y * R2); return normalize(abs(fDet) * surf_norm - vGrad);
+}
+// Couleur (x) et rugosité (w) des quatre matériaux : bronze, marbre, argent, or.
+vec4 materialOf(int k, vec3 marble, float patina) {
+  if (k == 0) return vec4(vec3(0.25, 0.14, 0.075) * (0.7 + 0.45 * patina), 0.42 + 0.16 * patina);
+  if (k == 1) return vec4(marble, 0.3);
+  if (k == 2) return vec4(0.80, 0.82, 0.85, 0.13);
+  return vec4(1.0, 0.66, 0.2, 0.19);
 }`
       )
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-        gLevel = vLevel;
-        // Veines : lignes de niveau zéro d'un bruit déformé (longues courbes continues, comme le vrai
-        // marbre), épaisseur tenue à l'écran par fwidth, avec un halo diffus ; leur intensité varie
-        // le long du tracé pour qu'elles apparaissent et s'effacent au lieu de quadriller la surface.
+        // Marbre : veines grises, lignes de niveau zéro d'un bruit déformé, épaisseur tenue à l'écran.
         float n1 = fbm(vObj * 3.0 + vec3(fbm(vObj * 1.6), fbm(vObj * 1.6 + 5.2), fbm(vObj * 1.6 + 9.7)) * 1.2);
-        float gold3 = smoothstep(2.5, 3.0, gLevel);
-        float core = 1.0 - smoothstep(0.006 + 0.008 * gold3, 0.006 + 0.008 * gold3 + fwidth(n1) * 1.5, abs(n1));
+        float core = 1.0 - smoothstep(0.006, 0.006 + fwidth(n1) * 1.5, abs(n1));
         float halo = 1.0 - smoothstep(0.0, 0.07, abs(n1));
         float along = smoothstep(-0.25, 0.35, fbm(vObj * 1.2 + 20.0));
-        float v1 = core * mix(0.35, 1.0, along);
         float n2 = fbm(vObj * 9.0 + 7.3 + n1 * 1.4);
-        float v2 = (1.0 - smoothstep(0.004, 0.004 + fwidth(n2) * 1.5, abs(n2))) * smoothstep(0.1, 0.5, fbm(vObj * 2.0 + 40.0));
-        gVein = core * mix(0.5, 1.0, along);
-        float cloud = fbm(vObj * 2.6 + 11.0);
-        gGrain = fbm(vObj * 140.0);
-        float grime = fbm(vObj * 7.0 + 3.0);
-        vec3 stone = vec3(0.29, 0.275, 0.25) * (0.78 + 0.22 * gGrain) * (0.9 + 0.12 * grime);
-        vec3 honed = vec3(0.62, 0.605, 0.58) * (0.96 + 0.05 * cloud);
-        vec3 polished = vec3(0.90, 0.89, 0.87) * (0.965 + 0.04 * cloud);
-        vec3 grey = vec3(0.40, 0.40, 0.41);
-        vec3 gold = vec3(0.95, 0.70, 0.28);
-        float veins = max(max(v1, v2 * 0.45), halo * along * 0.22);
-        vec3 c = stone;
-        c = mix(c, mix(honed, grey, veins * 0.3), smoothstep(0.5, 1.5, gLevel));
-        c = mix(c, mix(polished, grey, veins * 0.85), smoothstep(1.5, 2.5, gLevel));
-        c = mix(c, mix(mix(polished * vec3(1.0, 0.975, 0.93), grey, v2 * 0.35), gold, max(v1, v2 * 0.6)), gold3);   // ivoire chaud, veines d'or
+        float fine = (1.0 - smoothstep(0.004, 0.004 + fwidth(n2) * 1.5, abs(n2))) * smoothstep(0.1, 0.5, fbm(vObj * 2.0 + 40.0));
+        float greyVeins = max(max(core * mix(0.35, 1.0, along), fine * 0.45), halo * along * 0.22);
+        vec3 marble = mix(vec3(0.90, 0.89, 0.87) * (0.965 + 0.04 * fbm(vObj * 2.6 + 11.0)), vec3(0.40, 0.40, 0.41), greyVeins * 0.85);
+        float patina = fbm(vObj * 4.0 + 2.0) * 0.5 + 0.5;
+
+        // Matériau de la zone : parts lissées, resserrées pour une frontière nette mais douce.
+        vec4 w = vLook * vLook * vLook;
+        w /= max(1e-4, w.x + w.y + w.z + w.w);
+        vec4 m0 = materialOf(0, marble, patina), m1 = materialOf(1, marble, patina);
+        vec4 m2 = materialOf(2, marble, patina), m3 = materialOf(3, marble, patina);
+        vec4 base = w.x * m0 + w.y * m1 + w.z * m2 + w.w * m3;
+        float baseMetal = w.x + w.z + w.w;
+
+        // Veines du palier suivant : un réseau qui se dévoile avec l'avancée (0 : rien, 1 : partout).
+        float amount = vVeins.x + vVeins.y + vVeins.z + vVeins.w;
+        vec4 vw = vVeins / max(1e-4, amount);
+        float n3 = fbm(vObj * 3.6 + 13.0 + vec3(fbm(vObj * 1.4 + 3.0)) * 1.3);
+        float line = 1.0 - smoothstep(0.010, 0.010 + fwidth(n3) * 1.5, abs(n3));
+        float reveal = fbm(vObj * 1.3 + 31.0) * 0.6 + 0.5;
+        float mask = line * smoothstep(reveal - 0.06, reveal + 0.06, amount * 1.08);
+        vec4 veinMat = vw.x * m0 + vw.y * m1 + vw.z * m2 + vw.w * m3;
+        float veinMetal = vw.x + vw.z + vw.w;
+
+        vec4 mixed = mix(base, veinMat, mask);
+        gRough = mixed.w;
+        gMetal = mix(baseMetal, veinMetal, mask);
+        gMarble = mix(w.y, vw.y, mask);
         gLogo = max(logoAt(uCalFront, 1.0, 0.0), logoAt(uCalBack, -1.0, 1.0));
-        c *= 1.0 - 0.45 * gLogo;
-        diffuseColor.rgb = c;`
+        diffuseColor.rgb = mixed.rgb * (1.0 - 0.45 * gLogo);`
       )
       .replace(
         "#include <roughnessmap_fragment>",
         `#include <roughnessmap_fragment>
-        roughnessFactor = mix(0.95 - 0.08 * gGrain, 0.7, smoothstep(0.5, 1.5, gLevel));
-        roughnessFactor = mix(roughnessFactor, 0.3, smoothstep(1.5, 2.5, gLevel));
-        roughnessFactor = mix(roughnessFactor, mix(0.24, 0.28, gVein), gold3);`
-      )
-      .replace(
-        "#include <normal_fragment_maps>",
-        `#include <normal_fragment_maps>
-        float rough = 1.0 - smoothstep(0.3, 1.6, gLevel);
-        float hgt = (fbm(vObj * 220.0) * 0.6 + fbm(vObj * 60.0) * 0.4) * 0.0009 * rough - gLogo * 0.0011;
-        normal = bumpNormal(-vViewPosition, normal, vec2(dFdx(hgt), dFdy(hgt)), faceDirection);`
+        roughnessFactor = gRough;`
       )
       .replace(
         "#include <metalnessmap_fragment>",
         `#include <metalnessmap_fragment>
-        metalnessFactor = gVein * gold3;`
+        metalnessFactor = gMetal;`
       )
       .replace(
-        "#include <emissivemap_fragment>",
-        `#include <emissivemap_fragment>
-        totalEmissiveRadiance += vec3(0.55, 0.36, 0.1) * 0.35 * gVein * smoothstep(2.5, 3.0, gLevel);`
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+        float hgt = -gLogo * 0.0011;
+        normal = bumpNormal(-vViewPosition, normal, vec2(dFdx(hgt), dFdy(hgt)), faceDirection);`
       )
-      // Vernis seulement sur le marbre poli : la pierre brute et le marbre taillé restent mats.
+      // Vernis seulement sur le marbre ; les métaux reflètent davantage la pièce autour d'eux.
       .replace(
         "#include <lights_physical_fragment>",
         `#include <lights_physical_fragment>
         #ifdef USE_CLEARCOAT
-          material.clearcoat *= smoothstep(1.5, 2.5, gLevel);
+          material.clearcoat *= gMarble;
+        #endif`
+      )
+      .replace(
+        "#include <lights_fragment_maps>",
+        `#include <lights_fragment_maps>
+        #if defined( RE_IndirectSpecular )
+          radiance *= mix(1.0, 2.6, gMetal);
         #endif`
       );
   };
@@ -198,15 +240,30 @@ vec3 bumpNormal(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection) 
 }
 
 export interface StatueView {
-  setLevels: (levels: readonly number[]) => void;
+  setLooks: (looks: readonly StatueZoneLook[]) => void;
+  /** Oriente la statue (radians), pour une vue fixe. */
+  setAngle: (angle: number) => void;
   /** Suspend le rendu hors écran ou onglet caché. */
   setActive: (active: boolean) => void;
   dispose: () => void;
 }
 
+/** Centre du socle (x, z) : milieu des sommets du bas de la statue, dans le repère de la scène. */
+function pedestalCenter(mesh: THREE.Mesh, box: THREE.Box3): THREE.Vector2 {
+  const position = mesh.geometry.getAttribute("position");
+  const point = new THREE.Vector3();
+  const limit = box.min.y + (box.max.y - box.min.y) * 0.03;
+  const low = new THREE.Box3();
+  for (let i = 0; i < position.count; i += 1) {
+    point.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
+    if (point.y <= limit) low.expandByPoint(point);
+  }
+  return low.isEmpty() ? new THREE.Vector2(0, 0) : new THREE.Vector2((low.min.x + low.max.x) / 2, (low.min.z + low.max.z) / 2);
+}
+
 export async function mountStatue(
   container: HTMLElement,
-  { url, logoUrl, levels, autorotate = 0.18 }: { url: string; logoUrl: string; levels: readonly number[]; autorotate?: number }
+  { url, logoUrl, looks, autorotate = 0.18 }: { url: string; logoUrl: string; looks: readonly StatueZoneLook[]; autorotate?: number }
 ): Promise<StatueView> {
   const [gltf, logo] = await Promise.all([
     new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url),
@@ -245,12 +302,13 @@ export async function mountStatue(
   gltf.scene.updateMatrixWorld(true); // avant recentrage : repère des images
   const material = statueMaterial(logo, statue.matrixWorld.clone());
   statue.material = material;
-  const applyLevels = (next: readonly number[]) => geometry.setAttribute("level", new THREE.BufferAttribute(vertexLevels(geometry, next), 1));
-  applyLevels(levels);
+  applyLooks(geometry, looks);
 
+  // Pivot au centre du socle (et non de la boîte englobante, que la couronne levée décale).
   const box = new THREE.Box3().setFromObject(gltf.scene);
   const size = box.getSize(new THREE.Vector3());
-  gltf.scene.position.sub(box.getCenter(new THREE.Vector3()));
+  const base = pedestalCenter(statue, box);
+  gltf.scene.position.set(-base.x, -(box.min.y + box.max.y) / 2, -base.y);
   const pivot = new THREE.Group();
   pivot.add(gltf.scene);
   scene.add(pivot);
@@ -334,11 +392,17 @@ export async function mountStatue(
   setActive(true);
 
   return {
-    setLevels: (next) => {
-      applyLevels(next);
+    setLooks: (next) => {
+      applyLooks(geometry, next);
       if (!running) renderer.render(scene, camera);
     },
     setActive,
+    setAngle: (next) => {
+      angle = next;
+      velocity = 0;
+      pivot.rotation.y = angle;
+      renderer.render(scene, camera);
+    },
     dispose: () => {
       setActive(false);
       observer.disconnect();
