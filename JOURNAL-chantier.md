@@ -9,8 +9,9 @@ cd ~/.local/share/barbis-dev/jeera-anim
 git fetch -q origin && git status -s && git log --oneline -5
 cat JOURNAL-chantier.md            # lire « Reste à faire »
 cd web && npm ci                    # si node_modules manque
-# Aperçu des animations (aucune base de données) :
-PORT=3102 DATABASE_URL= npx next dev -p 3102   # puis http://localhost:3102/dev/celebrations
+# Aperçu des animations (aucune base de données) : config « jeera-anim » de ~/.claude/launch.json
+# (DATABASE_URL vide, port 3102), puis http://localhost:3102/dev/celebrations
+./captures/j3.sh                    # captures du rang en séance (FORCE=1 pour refaire)
 ```
 Captures : `captures/celebrations/` (rang, série S, encouragements ; versionnées).
 Captures des secrets : HORS dépôt, `~/.local/share/barbis-dev/jeera-anim-secrets/` (règle d'Evan : rien qui les montre dans la PR).
@@ -24,11 +25,14 @@ Captures des secrets : HORS dépôt, `~/.local/share/barbis-dev/jeera-anim-secre
 
 ## Fait
 - Étape 1 : `sStreak` dans `career.ts` (par séance + courant/record), test `career-s-streak.test.ts` vert.
+- Étape 2 (socle) : `store.ts`, `registry.tsx`, `CelebrationHost.tsx` (monté dans `app/(app)/layout.tsx`, attend la fin des écrans de record/niveau), `kit.tsx`, aperçu `/dev/celebrations` (`?play=…`, `?secrets=1`).
+- Étape 3 (J3) : `session-cues.ts` (+ test), `LiveRankRow.tsx` (jauge d'approche à crans, sortie de `SessionHeader`, branchée par `useSessionCelebrations`), scènes `rank/RankUpB|A|S`, bandeaux `NearRankToast`, `BeatenToast` (lueur du haut d'écran).
+- Captures : `captures/shoot.mjs` (Chrome sans interface, temps virtuel, WAAPI retiré pour que framer-motion suive l'horloge virtuelle ; MP4 30 i/s + planche), `captures/j3.sh` (reprenable). Résultats dans `captures/celebrations/`.
 
 ## Reste à faire
 1. ~~Moteur~~ fait.
-2. Socle : store, registre, hôte, kit, route d'aperçu `/dev/celebrations`.
-3. J3 : rang en séance (approche, passage B/A/S, encouragements), branché dans `SessionHeader`.
+2. ~~Socle~~ fait.
+3. ~~J3~~ fait (à recapturer à la fin : bandeaux après `mode="wait"`).
 4. J1 : scènes de série S + affichage bilan et Progrès.
 5. J2 : 24 scènes de secrets.
 6. Captures iPhone (CDP), relecture visuelle, corrections.

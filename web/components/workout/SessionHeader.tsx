@@ -2,20 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronDown, Cloud, CloudOff, Loader2, Swords, WifiOff } from "lucide-react";
+import { Check, Cloud, CloudOff, Loader2, Swords, WifiOff } from "lucide-react";
 import type { WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { bossDefeated, sessionGame } from "@/lib/engines/session-game";
-import {
-  cutAt,
-  nextRankPlan,
-  rankLetter,
-  rankParts,
-  rankScore,
-  SESSION_RANK,
-  type RankInput,
-} from "@/lib/engines/session-rank";
-import { RANK_COLORS } from "@/lib/theme/tiers";
+import { cutAt, type RankInput } from "@/lib/engines/session-rank";
+import { LiveRankRow, useSessionCelebrations } from "@/components/celebrations/LiveRankRow";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { useSyncStatus } from "@/lib/sync/status";
 import { SessionFocusButton } from "./SessionFocusSheet";
@@ -63,107 +55,6 @@ function formatElapsed(startTime: Date, nowMs: number): string {
 }
 
 const GOLD = "var(--color-warning)";
-const PART_LABELS = { sets: "Séries", records: "Records" } as const;
-
-/**
- * Rang de la séance en cours, et le chemin le plus court vers le suivant : des séries de plus, ou
- * des records. Un tap déplie les deux objectifs du rang.
- */
-function LiveRankRow({ input }: { input: RankInput }) {
-  const [open, setOpen] = useState(false);
-  const score = rankScore(input);
-  const letter = rankLetter(score);
-  const color = RANK_COLORS[letter];
-  const plan = nextRankPlan(input);
-  const paths = plan
-    ? [
-        plan.sets !== null ? `${plan.sets} série${plan.sets > 1 ? "s" : ""} de plus` : null,
-        plan.records !== null ? `${plan.records} record${plan.records > 1 ? "s" : ""}` : null,
-      ].filter(Boolean)
-    : [];
-  const fullRecords = input.cut ? SESSION_RANK.FULL_RECORDS_CUT : SESSION_RANK.FULL_RECORDS;
-  const detail: Record<keyof typeof PART_LABELS, string> = {
-    sets: `${formatDecimal(input.sets)} / ${SESSION_RANK.FULL_SETS}`,
-    records: `${input.records} / ${fullRecords}${input.cut ? " (sèche)" : ""}`,
-  };
-  const radius = 11;
-  const circumference = 2 * Math.PI * radius;
-
-  return (
-    <div className="mt-3 border-t border-white/[0.06] pt-3">
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex w-full items-center gap-2.5 text-left text-xs">
-        <span className="relative grid h-7 w-7 shrink-0 place-items-center">
-          <svg viewBox="0 0 28 28" className="absolute inset-0 -rotate-90">
-            <circle cx="14" cy="14" r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2.5" />
-            <motion.circle
-              cx="14"
-              cy="14"
-              r={radius}
-              fill="none"
-              stroke={color}
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              animate={{ strokeDashoffset: circumference * (1 - score / 100) }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
-            />
-          </svg>
-          <motion.span
-            key={letter}
-            initial={{ scale: 0.6, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 420, damping: 20 }}
-            className="relative font-display text-sm font-bold leading-none"
-            style={{ color }}
-          >
-            {letter}
-          </motion.span>
-        </span>
-        <p className="min-w-0 flex-1 leading-snug">
-          <span className="font-semibold" style={{ color }}>
-            Rang {letter}
-          </span>
-          <span className="text-(--color-fg-muted)">
-            {plan ? ` · pour ${plan.letter} : ${paths.join(" ou ")}` : " · le plus haut rang"}
-          </span>
-        </p>
-        <ChevronDown size={14} className="shrink-0 text-(--color-fg-faint) transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }} />
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            className="overflow-hidden"
-          >
-            <div className="space-y-2.5 pt-3">
-              {rankParts(input).map((part) => (
-                <div key={part.key}>
-                  <div className="flex items-baseline justify-between text-[0.7rem]">
-                    <span className="text-(--color-fg-muted)">
-                      {PART_LABELS[part.key]} <span className="text-(--color-fg-faint)">· {Math.round(part.weight * 100)} pts</span>
-                    </span>
-                    <span className="tabular-nums text-(--color-fg)">{detail[part.key]}</span>
-                  </div>
-                  <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-white/[0.07]">
-                    <motion.div className="h-full rounded-full" style={{ background: color }} animate={{ width: `${Math.round(part.value * 100)}%` }} />
-                  </div>
-                </div>
-              ))}
-              <p className="text-[0.66rem] leading-snug text-(--color-fg-faint)">
-                Score {score} / 100. S dès {SESSION_RANK.THRESHOLDS.S}, A dès {SESSION_RANK.THRESHOLDS.A}, B dès {SESSION_RANK.THRESHOLDS.B}. Une série à
-                RIR 3 compte 0,75, à RIR 4 ou plus 0,5 : les séries de plus s&apos;entendent à RIR 2 ou moins.
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 /**
  * En-tête de séance active : durée live, séries faites, suggestions battues et combo (le jeu de la
  * séance, session-game.ts), boss du jour, bouton Terminer. Rien ici ne touche aux suggestions.
@@ -209,6 +100,8 @@ export function SessionHeader({
       recordsPossible: session.exercises.some((logged) => known.has(logged.exerciseId)),
     };
   }, [session, history, justHitRecord, totalSets, bodyWeights, settings]);
+  // Passage de rang, rang en vue, suggestion battue : joués par-dessus l'écran, sans rien bloquer.
+  useSessionCelebrations(session.id, rankInput, game);
   const boss = sessionBoss?.sessionId === session.id ? sessionBoss.boss : null;
   const defeated = boss ? bossDefeated(boss, session, justHitRecord) : false;
 
