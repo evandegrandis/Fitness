@@ -2,6 +2,8 @@
 
 import { HeartPulse, History, Plus, Sparkles } from "lucide-react";
 import type { WorkoutSession, WorkoutTemplate } from "@/lib/models/types";
+import type { HabitualSessionPlan } from "@/lib/engines/habitual-session";
+import { shortExerciseName } from "@/lib/engines/session-insights";
 
 function formatSessionSummary(session: WorkoutSession): string {
   const names = [...new Set(session.exercises.map((e) => e.exerciseName))];
@@ -22,17 +24,23 @@ export function QuickActions({
   lastSession,
   templates,
   recommendedTemplateId,
+  habitual,
   onRepeatLast,
   onStartTemplate,
+  onStartHabitual,
   onStartEmpty,
   onStartCardio,
   cardioHint,
 }: {
   lastSession: WorkoutSession | undefined;
   templates: WorkoutTemplate[];
+  /** Modèle mis en avant ; `null` quand la « Séance du jour » passe devant. */
   recommendedTemplateId: string | null;
+  /** « Séance du jour » (habitudes récentes + déficits), proposée en premier quand présente. */
+  habitual: { plan: HabitualSessionPlan; summary: string } | null;
   onRepeatLast: (mode: "normal") => void;
   onStartTemplate: (templateId: string, mode: "normal") => void;
+  onStartHabitual: (mode: "normal") => void;
   onStartEmpty: (mode: "normal") => void;
   onStartCardio: () => void;
   /** Rappel de l'objectif hebdo — affiché sur le bouton, pas dans un écran séparé. */
@@ -43,7 +51,35 @@ export function QuickActions({
 
   return (
     <div className="flex flex-col gap-4">
-      {recommended && (
+      {habitual && (
+        <button
+          type="button"
+          onClick={() => onStartHabitual("normal")}
+          className="glass glass-strong glass-card relative flex items-start gap-3.5 rounded-2xl py-5 text-left transition active:scale-[0.98]"
+          style={{
+            boxShadow: "0 0 0 1.5px var(--accent), 0 14px 34px color-mix(in srgb, var(--accent) 28%, transparent)",
+          }}
+        >
+          <div
+            className="mt-0.5 grid h-12 w-12 shrink-0 place-items-center rounded-full"
+            style={{ background: "color-mix(in srgb, var(--accent) 16%, transparent)" }}
+          >
+            <Sparkles size={22} style={{ color: "var(--accent)" }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="pill" style={{ color: "var(--accent)", borderColor: "color-mix(in srgb, var(--accent) 45%, transparent)" }}>
+              Recommandé
+            </span>
+            <p className="mt-1 font-display text-lg font-semibold text-(--color-fg)">Séance du jour</p>
+            <p className="text-xs leading-snug text-(--color-fg-muted)">{habitual.summary}</p>
+            <p className="mt-1.5 line-clamp-2 text-[0.7rem] leading-snug text-(--color-fg-faint)">
+              {habitual.plan.exercises.map((exercise) => shortExerciseName(exercise.exerciseName)).join(" · ")}
+            </p>
+          </div>
+        </button>
+      )}
+
+      {!habitual && recommended && (
         <button
           type="button"
           onClick={() => onStartTemplate(recommended.id, "normal")}
@@ -69,7 +105,7 @@ export function QuickActions({
       )}
 
       <div className="flex flex-col gap-2">
-        {otherTemplates.map((t) => (
+        {(habitual ? templates : otherTemplates).map((t) => (
           <button
             key={t.id}
             type="button"

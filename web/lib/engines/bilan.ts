@@ -87,7 +87,7 @@ function plateauStalledLabel(days: number): string {
  * réellement complétés aujourd'hui — sert de référence de comparaison pour
  * "performed".
  */
-function bestSetOfSession(logged: LoggedExercise, exercise: Exercise): LoggedSet | null {
+export function bestSetOfSession(logged: LoggedExercise, exercise: Exercise): LoggedSet | null {
   const sets = setsForNormalPrediction(completedWorkSets(logged), {
     increment: exercise.smallestIncrement,
   });
@@ -127,7 +127,8 @@ function daysSinceMatchingSession(
   return undefined;
 }
 
-function mergeExerciseOccurrences(session: WorkoutSession): LoggedExercise[] {
+/** Plusieurs occurrences d'un même exercice dans la séance n'en font qu'une (id de la première par ordre). */
+export function mergeExerciseOccurrences(session: WorkoutSession): LoggedExercise[] {
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
   const grouped = new Map<string, LoggedExercise[]>();
   for (const logged of ordered) {
@@ -327,8 +328,12 @@ export interface SessionReviewOptions {
   trainingPhase?: TrainingPhase | null;
   /** Contexte de fatigue réellement présent avant chaque exercice, indexé par LoggedExercise.id. */
   sessionFatigueByLoggedExerciseId?: Record<string, SessionFatigueContext>;
-  /** Suggestion effectivement montrée en live ; prioritaire sur tout recalcul. */
-  referenceSuggestionByLoggedExerciseId?: Record<string, SetSuggestion>;
+  /**
+   * Suggestion effectivement montrée en live (charge et reps de la première série, enregistrées
+   * sur la série depuis le 15/08/2026) ; prioritaire sur tout recalcul. Indexée par l'id de la
+   * première occurrence de l'exercice (`mergeExerciseOccurrences`).
+   */
+  referenceSuggestionByLoggedExerciseId?: Record<string, Pick<SetSuggestion, "weight" | "reps">>;
   /** Extensions avancées du contexte de suggestion calculées par l'intégration. */
   suggestionContextForExercise?: (
     logged: LoggedExercise,

@@ -1419,3 +1419,62 @@ describe("échauffement et fatigue : seulement quand c'est justifié", () => {
     expect(useWorkoutStore.getState().suggestion(press.id).sessionFatigueWarning).toBeNull();
   });
 });
+
+describe("startHabitual (séance du jour)", () => {
+  it("démarre sur ses exercices récents, dans son ordre, avec le superset qu'il enchaîne d'habitude", () => {
+    const past = (daysAgo: number, index: number) => {
+      const start = new Date(Date.now() - daysAgo * 86_400_000);
+      const at = (minute: number) => new Date(start.getTime() + minute * 60_000);
+      const mk = (id: string, exercise: ExerciseType, orderIndex: number, minutes: number[]) => ({
+        id: `${id}-${index}`,
+        orderIndex,
+        notes: "",
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        supersetGroupId: null,
+        plateauWeakPoint: null,
+        sets: minutes.map((minute, slot) => ({
+          id: `${id}-${index}-${slot}`,
+          weight: exercise.id === DIPS.id ? 0 : 40,
+          reps: 10,
+          setType: "work" as const,
+          timestamp: at(minute),
+          setSlotIndex: slot,
+          completed: true,
+          supersetRoundIndex: null,
+        })),
+      });
+      return {
+        id: `habit-${index}`,
+        date: start,
+        startTime: start,
+        endTime: at(40),
+        notes: "",
+        isActive: false,
+        templateName: null,
+        // Dips d'abord, puis développé et curl en alternance (A, B, A, B, A, B).
+        exercises: [mk("dips", DIPS, 0, [0, 3]), mk("bench", BENCH, 1, [6, 10, 14]), mk("curl", CURL, 2, [8, 12, 16])],
+        supersetGroups: [],
+        cardioEntries: [],
+      };
+    };
+    const store = useWorkoutStore.getState();
+    store.hydrate({
+      catalog: [BENCH, CURL, DIPS],
+      history: [past(1, 1), past(3, 2), past(5, 3)],
+      goals: [],
+      settings: SETTINGS,
+      templates: [],
+      recoveryCheckins: [],
+      bodyWeights: [],
+    });
+    useWorkoutStore.getState().startHabitual("normal");
+    const active = useWorkoutStore.getState().active!;
+    const ordered = [...active.exercises].sort((a, b) => a.orderIndex - b.orderIndex).map((logged) => logged.exerciseId);
+    expect(ordered).toEqual([DIPS.id, BENCH.id, CURL.id]);
+    expect(active.supersetGroups).toHaveLength(1);
+    const members = active.supersetGroups[0].memberOrder.map((id) => active.exercises.find((logged) => logged.id === id)!.exerciseId);
+    expect(members).toEqual([BENCH.id, CURL.id]);
+    useWorkoutStore.getState().discard();
+  });
+});
