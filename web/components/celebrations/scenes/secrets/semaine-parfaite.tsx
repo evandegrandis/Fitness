@@ -13,7 +13,7 @@ export default function SemaineParfaite({ title, description }: SecretProps) {
   let order = 0;
   return (
     <SecretStage tint={SILVER} accent={SILVER} title={title} description={description} captionDelay={1.5}>
-      <div className="absolute inset-x-[22px] top-[60px] grid grid-cols-7 gap-1.5">
+      <div className="absolute inset-x-[22px] top-[34px] grid grid-cols-7 gap-1.5">
         {DAYS.map((day, index) => {
           const medal = MEDALS[index];
           const at = medal ? 0.35 + order++ * 0.18 : 0;
@@ -22,10 +22,10 @@ export default function SemaineParfaite({ title, description }: SecretProps) {
               <motion.span className="font-mono text-[0.62rem] tracking-[0.15em] text-(--color-fg-muted)" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: index * 0.04 }}>
                 {day}
               </motion.span>
-              <motion.div className="relative h-[110px] w-full rounded-[4px]" style={{ background: "rgba(236,230,216,0.04)", border: "1px solid rgba(236,230,216,0.12)", transformOrigin: "bottom" }} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: index * 0.04, duration: 0.3 }}>
+              <motion.div className="relative h-[156px] w-full rounded-[4px]" style={{ background: "rgba(236,230,216,0.04)", border: "1px solid rgba(236,230,216,0.12)", transformOrigin: "bottom" }} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: index * 0.04, duration: 0.3 }}>
                 {medal && (
                   <motion.span
-                    className="absolute inset-x-0 bottom-2 mx-auto grid h-8 w-8 place-items-center rounded-full font-display text-base font-bold"
+                    className="absolute inset-x-0 bottom-2 mx-auto grid h-[34px] w-[34px] place-items-center rounded-full font-display text-lg font-bold"
                     style={{ color: "#0b0b0c", background: medal === "S" ? GOLD : SILVER }}
                     initial={{ y: -150, opacity: 0 }}
                     animate={{ y: [-150, 4, 0], opacity: 1 }}
@@ -40,7 +40,7 @@ export default function SemaineParfaite({ title, description }: SecretProps) {
         })}
       </div>
       <svg aria-hidden viewBox="0 0 300 300" className="absolute inset-0 overflow-visible">
-        <motion.path d="M24 214 Q24 226 36 226 L138 226 Q150 226 150 238 Q150 226 162 226 L264 226 Q276 226 276 214" fill="none" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 1.15, duration: 0.5 }} />
+        <motion.path d="M24 234 Q24 246 36 246 L138 246 Q150 246 150 258 Q150 246 162 246 L264 246 Q276 246 276 234" fill="none" stroke={GOLD} strokeWidth="1.6" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 1.15, duration: 0.5 }} />
       </svg>
     </SecretStage>
   );

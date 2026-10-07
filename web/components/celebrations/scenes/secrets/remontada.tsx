@@ -22,7 +22,7 @@ export default function Remontada({ title, description }: SecretProps) {
         {[80, 140, 200].map((y) => (
           <line key={y} x1="24" y1={y} x2="276" y2={y} stroke="rgba(236,230,216,0.08)" strokeDasharray="3 5" />
         ))}
-        <motion.path d={CURVE} fill="none" stroke="url(#remontee)" strokeWidth="4.5" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.15, duration: 1.1, ease: [0.45, 0, 0.3, 1] }} />
+        <motion.path d={CURVE} fill="none" stroke="url(#remontee)" strokeWidth="4.5" strokeLinecap="round" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ delay: 0.15, duration: 1.1, ease: [0.45, 0, 0.3, 1] }} />
         <motion.g initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.55, duration: 0.3 }}>
           <circle cx="112" cy="240" r="15" fill="#120d0b" stroke={RED} strokeWidth="1.6" />
           <text x="112" y="246" textAnchor="middle" className="font-display" style={{ fontSize: 17, fontWeight: 700 }} fill={RED}>

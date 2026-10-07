@@ -27,11 +27,11 @@ export default function Marathon({ title, description }: SecretProps) {
         aria-hidden
         className="absolute rounded-full bg-[#ece6d8]"
         style={{ left: 149, top: 62, width: 2, height: 96, transformOrigin: "50% 88px" }}
-        initial={{ rotate: 0 }}
-        animate={{ rotate: 900 }}
-        transition={{ delay: 0.15, duration: 1.25, ease: "linear" }}
+        initial={{ rotate: 0, opacity: 1 }}
+        animate={{ rotate: 900, opacity: [1, 1, 0] }}
+        transition={{ delay: 0.15, duration: 1.25, ease: "linear", opacity: { delay: 0.15, duration: 1.5, times: [0, 0.83, 1] } }}
       />
-      <motion.div className="absolute inset-x-0 grid place-items-center" style={{ top: 168 }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.35, duration: 0.4 }}>
+      <motion.div className="absolute inset-x-0 grid place-items-center" style={{ top: 136 }} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.35, duration: 0.4 }}>
         <span className="font-mono text-[1.35rem] font-bold tracking-tight text-[#eef5e6]">2 h 30</span>
       </motion.div>
       <Shockwave color={SAGE} delay={1.4} size={300} />

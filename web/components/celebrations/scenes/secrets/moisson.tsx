@@ -29,7 +29,7 @@ export default function Moisson({ title, description }: SecretProps) {
             <path d="M150 96 L150 80" stroke="#b49650" strokeWidth="1" />
           </motion.g>
         ))}
-        <motion.path d="M132 214 Q150 222 168 214" fill="none" stroke={WHEAT} strokeWidth="5" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 1.35, duration: 0.35 }} />
+        <motion.path d="M132 214 Q150 222 168 214" fill="none" stroke={WHEAT} strokeWidth="5" strokeLinecap="round" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ delay: 1.35, duration: 0.35 }} />
       </svg>
     </SecretStage>
   );

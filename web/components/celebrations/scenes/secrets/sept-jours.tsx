@@ -24,7 +24,7 @@ export default function SeptJours({ title, description }: SecretProps) {
           return (
             <g key={index}>
               <path d={arc(index)} fill="none" stroke="rgba(236,230,216,0.12)" strokeWidth="14" strokeLinecap="round" />
-              <motion.path d={arc(index)} fill="none" stroke={index === 6 ? GOLD_HI : GOLD} strokeWidth="14" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.2 + index * 0.14, duration: 0.16 }} />
+              <motion.path d={arc(index)} fill="none" stroke={index === 6 ? GOLD_HI : GOLD} strokeWidth="14" strokeLinecap="round" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ delay: 0.2 + index * 0.14, duration: 0.16 }} />
               <motion.text x={Math.cos(mid) * 122} y={Math.sin(mid) * 122 + 5} textAnchor="middle" className="font-mono" style={{ fontSize: 13 }} fill="#ece6d8" initial={{ opacity: 0.25 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 + index * 0.14 }}>
                 {day}
               </motion.text>

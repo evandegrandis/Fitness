@@ -19,6 +19,10 @@ export default function DoublePalier({ title, description }: SecretProps) {
         {STEPS.map((step, index) => (
           <motion.rect key={index} x={step.x} y={step.y} width={step.w} height={260 - step.y} fill="rgba(236,230,216,0.04)" stroke="rgba(236,230,216,0.3)" strokeWidth="1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: index * 0.08 }} />
         ))}
+        {/* Chaque marche atteinte prend la couleur de son niveau. */}
+        {[1, 2].map((level) => (
+          <motion.rect key={`fill-${level}`} x={STEPS[level].x} y={STEPS[level].y} width={STEPS[level].w} height={260 - STEPS[level].y} fill={level === 1 ? "rgba(201,206,214,0.22)" : "rgba(216,178,106,0.3)"} stroke={level === 1 ? SILVER : GOLD} strokeWidth="1.4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: level === 1 ? 0.68 : 1.18, duration: 0.25 }} />
+        ))}
         {[1, 2].map((level) => (
           <motion.path key={level} d={`M${STEPS[level].x + 26} ${STEPS[level].y - 30} L${STEPS[level].x + 40} ${STEPS[level].y - 44} L${STEPS[level].x + 54} ${STEPS[level].y - 30}`} fill="none" stroke={level === 1 ? SILVER : GOLD_HI} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: level === 1 ? 0.75 : 1.25, type: "spring", stiffness: 420, damping: 14 }} />
         ))}

@@ -20,9 +20,9 @@ export default function Lancee({ title, description }: SecretProps) {
       {/* La lance : hampe + fer, pointe vers le centre. */}
       <motion.div className="absolute" style={{ left: 150, top: 150, width: 0, height: 0 }} initial={{ x: -320, y: 200 }} animate={{ x: 0, y: 0 }} transition={{ delay: 0.15, duration: 0.42, ease: [0.5, 0, 1, 1] }}>
         <motion.div style={{ rotate: -32, transformOrigin: "0 0" }} animate={{ rotate: [-32, -32, -26, -36, -29, -34, -31, -32] }} transition={{ delay: 0.57, duration: 0.9 }}>
-          <svg aria-hidden width="230" height="24" viewBox="0 0 230 24" style={{ position: "absolute", left: -226, top: -12, overflow: "visible" }}>
-            <rect x="0" y="10.5" width="196" height="3" rx="1.5" fill="#8a7a62" />
-            <path d="M190 12 L206 4 L230 12 L206 20 Z" fill="url(#fer)" stroke="#f2f4f7" strokeWidth="0.8" />
+          <svg aria-hidden width="240" height="24" viewBox="0 0 240 24" style={{ position: "absolute", left: -236, top: -12, overflow: "visible" }}>
+            <rect x="0" y="10" width="196" height="4" rx="2" fill="#8a7a62" />
+            <path d="M184 12 L208 -1 L240 12 L208 25 Z" fill="url(#fer)" stroke="#f2f4f7" strokeWidth="0.8" />
             <defs>
               <linearGradient id="fer" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0" stopColor="#ffffff" />

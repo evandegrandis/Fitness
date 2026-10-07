@@ -18,15 +18,15 @@ export default function Aube({ title, description }: SecretProps) {
         animate={{ opacity: [0, 0.35, 0.9] }}
         transition={{ duration: 1.6 }}
       />
-      <Rays count={14} color="#ffd9a8" delay={0.9} spin={8} duration={2.6} peak={0.5} inner={60} outer={170} y={40} />
+      <Rays count={14} color="#ffd9a8" delay={0.9} spin={8} duration={2.6} peak={0.5} inner={60} outer={170} y={6} />
       <Glow color={PEACH} size={300} delay={0.6} strength={50} y={40} />
       <div className="absolute inset-x-[18px] top-[18px] overflow-hidden" style={{ height: 172 }}>
         <motion.div
           className="absolute left-1/2 rounded-full"
           style={{ width: 104, height: 104, marginLeft: -52, top: 120, background: "radial-gradient(circle, #fff3d6 0%, #ffcf8a 50%, #f08a5a 100%)" }}
           initial={{ y: 70 }}
-          animate={{ y: 0 }}
-          transition={{ delay: 0.3, duration: 1.4, ease: [0.2, 0.7, 0.3, 1] }}
+          animate={{ y: -34 }}
+          transition={{ delay: 0.3, duration: 1.6, ease: [0.2, 0.7, 0.3, 1] }}
         />
       </div>
       <svg aria-hidden viewBox="0 0 300 300" className="absolute inset-0">

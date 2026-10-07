@@ -116,6 +116,7 @@ export function Shockwave({
   size = 280,
   width = 1.5,
   duration = 1,
+  x = 0,
   y = 0,
 }: {
   color: string;
@@ -123,6 +124,7 @@ export function Shockwave({
   size?: number;
   width?: number;
   duration?: number;
+  x?: number;
   y?: number;
 }) {
   const reduced = useReducedMotion();
@@ -131,7 +133,7 @@ export function Shockwave({
     <motion.div
       aria-hidden
       className="rounded-full"
-      style={{ ...centered(size, size, 0, y), border: `${width}px solid ${color}` }}
+      style={{ ...centered(size, size, x, y), border: `${width}px solid ${color}` }}
       initial={{ scale: 0.12, opacity: 0 }}
       animate={{ scale: 1, opacity: [0, 0.95, 0] }}
       transition={{ delay, duration, ease: EASE_OUT, opacity: { delay, duration, times: [0, 0.12, 1] } }}

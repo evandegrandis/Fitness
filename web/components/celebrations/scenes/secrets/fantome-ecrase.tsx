@@ -23,12 +23,12 @@ export default function FantomeEcrase({ title, description }: SecretProps) {
         {/* Le disque, vu de profil, tombe et rebondit à peine. */}
         <motion.div
           className="absolute left-1/2 rounded-[10px]"
-          style={{ width: 150, height: 34, marginLeft: -75, top: 202, background: "linear-gradient(180deg, #3a3631 0%, #1a1815 60%, #0e0d0b 100%)", border: "1px solid rgba(236,230,216,0.35)" }}
+          style={{ width: 150, height: 34, marginLeft: -75, top: 202, background: "linear-gradient(180deg, #8d8679 0%, #4a453d 45%, #24211c 100%)", border: "1px solid rgba(236,230,216,0.6)", boxShadow: "0 -2px 0 rgba(255,255,255,0.25) inset" }}
           initial={{ y: -330, opacity: 0 }}
           animate={{ y: [-330, -330, 0, -8, 0], opacity: [0, 1, 1, 1, 1] }}
           transition={{ duration: 0.95, times: [0, 0.2, 0.6, 0.72, 0.82], ease: "easeIn" }}
         >
-          <div className="absolute inset-x-6 top-1/2 h-px -translate-y-1/2" style={{ background: "rgba(216,178,106,0.6)" }} />
+          <div className="absolute inset-0 grid place-items-center font-mono text-[0.62rem] font-bold tracking-[0.3em] text-[#f4dca0]">20 KG</div>
         </motion.div>
       </motion.div>
       <Sparks count={18} color={ICE} delay={0.58} distance={[50, 130]} spread={160} direction={-90} size={4} seed={20} y={70} duration={0.9} />

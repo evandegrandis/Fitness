@@ -15,14 +15,14 @@ export default function SansFaute({ title, description }: SecretProps) {
           <g key={index} transform={`translate(${cell.x} ${cell.y})`}>
             <motion.rect x="-24" y="-24" width="48" height="48" rx="6" fill="rgba(236,230,216,0.03)" stroke="rgba(236,230,216,0.4)" strokeWidth="1.2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: index * 0.04 }} />
             <motion.rect x="-24" y="-24" width="48" height="48" rx="6" fill="rgba(157,180,135,0.22)" stroke={SAGE} strokeWidth="1.4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 + index * 0.14, duration: 0.15 }} />
-            <motion.path d="M-12 1 L-3 10 L13 -9" fill="none" stroke="#eef5e6" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.3 + index * 0.14, duration: 0.18 }} />
+            <motion.path d="M-12 1 L-3 10 L13 -9" fill="none" stroke="#eef5e6" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ delay: 0.3 + index * 0.14, duration: 0.18 }} />
           </g>
         ))}
       </svg>
       {/* Tampon : deux anneaux et « 6/6 », qui s'abat de biais. */}
       <motion.div
         className="absolute grid place-items-center rounded-full"
-        style={{ left: 190, top: 172, width: 92, height: 92, border: `2.5px solid ${CREAM}`, boxShadow: `inset 0 0 0 5px rgba(7,7,8,0.9), inset 0 0 0 6.5px ${CREAM}`, background: "rgba(7,7,8,0.85)" }}
+        style={{ left: 200, top: 196, width: 92, height: 92, border: `2.5px solid ${CREAM}`, boxShadow: `inset 0 0 0 5px rgba(7,7,8,0.9), inset 0 0 0 6.5px ${CREAM}`, background: "rgba(7,7,8,0.85)" }}
         initial={{ scale: 2.4, opacity: 0, rotate: 8 }}
         animate={{ scale: 1, opacity: 1, rotate: -12 }}
         transition={{ delay: 1.2, duration: 0.25, ease: "easeIn" }}
