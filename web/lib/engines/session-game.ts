@@ -56,6 +56,9 @@ export interface SessionGame {
   /** Séries jugées (exercice déjà connu, suggestion enregistrée). */
   rated: number;
   beaten: number;
+  /** Séries qui font exactement l'effort demandé. */
+  held: number;
+  below: number;
   /** Suggestions battues d'affilée, en cours. Une série tenue ne le casse pas, une série en dessous oui. */
   combo: number;
   bestCombo: number;
@@ -73,7 +76,7 @@ export function sessionGame(
     .flatMap((logged) => orderedSets(logged).filter(isRated).map((set) => ({ set, exercise: byId.get(logged.exerciseId)! })))
     .sort((a, b) => a.set.timestamp.getTime() - b.set.timestamp.getTime());
 
-  const game: SessionGame = { rated: 0, beaten: 0, combo: 0, bestCombo: 0 };
+  const game: SessionGame = { rated: 0, beaten: 0, held: 0, below: 0, combo: 0, bestCombo: 0 };
   for (const { set, exercise } of sets) {
     const verdict = setVersusSuggestion(exercise, set);
     if (verdict === null) continue;
@@ -83,7 +86,10 @@ export function sessionGame(
       game.combo += 1;
       game.bestCombo = Math.max(game.bestCombo, game.combo);
     } else if (verdict === "below") {
+      game.below += 1;
       game.combo = 0;
+    } else {
+      game.held += 1;
     }
   }
   return game;
