@@ -51,7 +51,7 @@ describe("suggestions battues et combo", () => {
     ], true);
     const game = sessionGame(today, [PEC, CURL], [past]);
     // battue (+1 rep), tenue, battue (plus lourd), en dessous, battue
-    expect(game).toEqual({ rated: 5, beaten: 3, combo: 1, bestCombo: 2 });
+    expect(game).toEqual({ rated: 5, beaten: 3, held: 1, below: 1, combo: 1, bestCombo: 2 });
   });
 
   it("ne juge ni l'échauffement, ni un exercice découvert aujourd'hui, ni une série sans suggestion", () => {
@@ -60,7 +60,7 @@ describe("suggestions battues et combo", () => {
       { ex: PEC, sets: [set(40, 10, 0, [40, 10], SetType.warmup), set(80, 12, 3)] },
       { ex: NEW, sets: [set(50, 12, 6, [45, 10])] },
     ], true);
-    expect(sessionGame(today, [PEC, NEW], [past])).toEqual({ rated: 0, beaten: 0, combo: 0, bestCombo: 0 });
+    expect(sessionGame(today, [PEC, NEW], [past])).toEqual({ rated: 0, beaten: 0, held: 0, below: 0, combo: 0, bestCombo: 0 });
   });
 });
 
