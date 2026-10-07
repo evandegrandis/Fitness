@@ -96,7 +96,19 @@ export type CareerUnlock =
 export interface CareerSession {
   sessionId: string;
   rank: SessionRank | null;
+  /**
+   * Série de rangs S d'affilée qui se termine à cette séance (1 = premier S de la série), 0 si la
+   * séance n'est pas au rang S. Une séance sans rang (aucune série : cardio seule) ne casse ni
+   * n'allonge la série : elle vaut 0 ici, et la suivante reprend le compte.
+   */
+  sStreak: number;
   unlocks: CareerUnlock[];
+}
+
+/** Série de rangs S d'affilée : celle en cours (après la dernière séance) et la plus longue. */
+export interface SStreak {
+  current: number;
+  best: number;
 }
 
 export interface SecretFound {
@@ -111,6 +123,7 @@ export interface Career {
   bySession: ReadonlyMap<string, CareerSession>;
   milestones: MilestoneProgress[];
   secrets: SecretFound[];
+  sStreak: SStreak;
 }
 
 export interface CareerInput {
@@ -143,7 +156,8 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
   const reached = new Map<MilestoneFamily, MilestoneReached[]>(MILESTONE_FAMILIES.map((family) => [family, []]));
   const secrets: SecretFound[] = [];
   const found = new Set<string>();
-  if (sessions.length === 0) return { bySession, milestones: progressOf(reached, emptyValues()), secrets };
+  const sStreak: SStreak = { current: 0, best: 0 };
+  if (sessions.length === 0) return { bySession, milestones: progressOf(reached, emptyValues()), secrets, sStreak };
 
   // Records (étoiles de l'Historique) et paliers de semaine, en un passage chacun.
   const events = recordEvents(sessions, catalog);
@@ -285,8 +299,12 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
       unlocks.push({ kind: "secret", id: secret.id, title: secret.title, description: secret.description });
     }
 
+    if (rank) {
+      sStreak.current = rank.letter === "S" ? sStreak.current + 1 : 0;
+      sStreak.best = Math.max(sStreak.best, sStreak.current);
+    }
     ranks.push(rank);
-    bySession.set(session.id, { sessionId: session.id, rank, unlocks });
+    bySession.set(session.id, { sessionId: session.id, rank, sStreak: rank?.letter === "S" ? sStreak.current : 0, unlocks });
   }
 
   // Poids : jalons de perte depuis le début de la phase (même lecture que la carte Poids).
@@ -300,7 +318,7 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
     unlock("weight", values.weight, entry.measuredOn, null, null);
   }
 
-  return { bySession, milestones: progressOf(reached, values), secrets };
+  return { bySession, milestones: progressOf(reached, values), secrets, sStreak };
 }
 
 type CareerValues = Record<MilestoneFamily, number> & { levelFraction: number };
