@@ -21,6 +21,7 @@ import { SessionCaloriesCard } from "@/components/history/SessionCalories";
 import { useCareer } from "@/lib/hooks/use-career";
 import type { SessionReview } from "@/lib/engines/bilan";
 import { weeklyQuest } from "@/lib/engines/weekly-quest";
+import { BilanCelebrations } from "@/components/celebrations/BilanCelebrations";
 
 function startOfDay(date: Date): Date {
   const d = new Date(date);
@@ -185,6 +186,7 @@ function PostWorkoutContent({
         </header>
 
         {careerReady ? <SessionRankHero review={review} session={session} /> : <div aria-hidden className="h-[108px]" />}
+        {careerReady && <BilanCelebrations session={session} />}
 
         <div className="grid grid-cols-3 gap-2">
           <StatTile value={snapshot.duration} label="Durée" />

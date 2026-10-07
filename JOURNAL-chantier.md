@@ -27,13 +27,14 @@ Captures des secrets : HORS dépôt, `~/.local/share/barbis-dev/jeera-anim-secre
 - Étape 1 : `sStreak` dans `career.ts` (par séance + courant/record), test `career-s-streak.test.ts` vert.
 - Étape 2 (socle) : `store.ts`, `registry.tsx`, `CelebrationHost.tsx` (monté dans `app/(app)/layout.tsx`, attend la fin des écrans de record/niveau), `kit.tsx`, aperçu `/dev/celebrations` (`?play=…`, `?secrets=1`).
 - Étape 3 (J3) : `session-cues.ts` (+ test), `LiveRankRow.tsx` (jauge d'approche à crans, sortie de `SessionHeader`, branchée par `useSessionCelebrations`), scènes `rank/RankUpB|A|S`, bandeaux `NearRankToast`, `BeatenToast` (lueur du haut d'écran).
+- Étape 4 (J1) : scènes `scenes/streak/` (2 doublé, 3 piliers, 4 forge, 5 laurier, 7 Grande Ourse, 10 Olympe, 15 éclipse, 20 foudre, 25 nova, maillon entre paliers, légende au-delà de 25), `BilanCelebrations.tsx` (bandeau de série + déclenchement série/secrets, branché en UNE ligne dans `PostWorkoutSheet.tsx`), `StreakSCard.tsx` (Progrès › Semaine, après Jalons), « Revoir » dans la carte Secrets. Captures `captures/j1.sh`.
 - Captures : `captures/shoot.mjs` (Chrome sans interface, temps virtuel, WAAPI retiré pour que framer-motion suive l'horloge virtuelle ; MP4 30 i/s + planche), `captures/j3.sh` (reprenable). Résultats dans `captures/celebrations/`.
 
 ## Reste à faire
 1. ~~Moteur~~ fait.
 2. ~~Socle~~ fait.
 3. ~~J3~~ fait (à recapturer à la fin : bandeaux après `mode="wait"`).
-4. J1 : scènes de série S + affichage bilan et Progrès.
+4. ~~J1~~ fait (recapturer serie-4 après la correction du marteau).
 5. J2 : 24 scènes de secrets.
 6. Captures iPhone (CDP), relecture visuelle, corrections.
 7. CLAUDE.md (Key Decisions + HANDOFF), lint/tsc/tests, rebase, PR.

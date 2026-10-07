@@ -8,6 +8,7 @@ import { Check, ChevronRight, Flame, Shield, Star, Target, Trophy } from "lucide
 import { GlassCard } from "@/components/ui/GlassCard";
 import { MilestonesCard, SecretsCard } from "@/components/progress/CareerCards";
 import { SeasonCard } from "@/components/progress/SeasonCard";
+import { StreakSCard } from "@/components/celebrations/StreakSCard";
 import { weeklyQuest, type WeeklyQuest } from "@/lib/engines/weekly-quest";
 import { useCareer } from "@/lib/hooks/use-career";
 import { useWorkoutStore } from "@/lib/store/workout";
@@ -78,6 +79,7 @@ export function WeekLayer() {
       <WeeksHistory weeks={shown} history={history} catalog={catalog} events={events} protectedWeeks={streak.protectedWeeks} />
       <SeasonCard />
       <MilestonesCard milestones={career.milestones} />
+      <StreakSCard career={career} />
       <MuscleBoard
         rows={goalRows}
         pace={pace}

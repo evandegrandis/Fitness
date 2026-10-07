@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { SECRETS } from "@/lib/engines/career-secrets";
 import type { RankInput } from "@/lib/engines/session-rank";
+import type { Career, CareerSession } from "@/lib/engines/career";
+import { StreakStrip } from "../BilanCelebrations";
 import { CelebrationHost } from "../CelebrationHost";
+import { StreakSCard } from "../StreakSCard";
 import { LiveRankRow, useSessionCelebrations } from "../LiveRankRow";
 import { celebrate, type CelebrationEvent } from "../store";
 
@@ -23,6 +26,18 @@ export function parsePlay(play: string): CelebrationEvent | null {
   }
   return null;
 }
+
+/** Un parcours factice pour la carte de Progrès : 14 séances, les 3 dernières au rang S. */
+const FAKE_CAREER: Career = (() => {
+  const letters = "BACSSSABASBASSS".split("") as Array<"S" | "A" | "B" | "C">;
+  const bySession = new Map<string, CareerSession>();
+  let run = 0;
+  letters.forEach((letter, index) => {
+    run = letter === "S" ? run + 1 : 0;
+    bySession.set(`s${index}`, { sessionId: `s${index}`, rank: { letter, score: 0, sets: 0, records: 0, cut: false, rated: 0, performed: 0, held: 0 }, sStreak: run, unlocks: [] });
+  });
+  return { bySession, milestones: [], secrets: [], sStreak: { current: 3, best: 3 } };
+})();
 
 const STREAKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 20, 25, 30, 35, 40];
 
@@ -55,6 +70,13 @@ export function CelebrationsPreview({ play, showSecrets }: { play: string | null
         <p className="mt-1 text-sm text-(--color-fg-muted)">Chaque scène d&apos;un tap. Rien n&apos;est enregistré.</p>
       </header>
       <SessionSimulator />
+      <section className="space-y-3" id="bilan-progres">
+        <p className="eyebrow">Bilan : bandeau de série</p>
+        <StreakStrip count={3} broken={0} best={4} />
+        <StreakStrip count={0} broken={4} best={4} />
+        <p className="eyebrow pt-2">Progrès › Semaine</p>
+        <StreakSCard career={FAKE_CAREER} />
+      </section>
       <Group title="Passage de rang (en séance)">
         {(["B", "A", "S"] as const).map((letter) => (
           <Play key={letter} event={{ kind: "rank-up", letter }}>

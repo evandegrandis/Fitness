@@ -7,6 +7,8 @@ import { Sparkles } from "lucide-react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { levelName, MILESTONES, type MilestoneFamily, type MilestoneProgress, type SecretFound } from "@/lib/engines/career";
 import { formatDecimal } from "@/lib/format";
+import { celebrate } from "@/components/celebrations/store";
+import { SECRET_SCENES } from "@/components/celebrations/scenes/secrets";
 
 const GOLD = "var(--color-warning)";
 const MONTHS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
@@ -125,6 +127,15 @@ export function SecretsCard({ secrets }: { secrets: readonly SecretFound[] }) {
             <span className="block pt-3">
               {open.description} <span className="text-(--color-fg-faint)">· {dayMonth(open.date)}</span>
             </span>
+            {SECRET_SCENES[open.id] && (
+              <button
+                type="button"
+                onClick={() => celebrate({ kind: "secret", id: open.id, title: open.title, description: open.description })}
+                className="pill mt-2.5 !text-(--color-fg) active:scale-95"
+              >
+                Revoir
+              </button>
+            )}
           </motion.p>
         )}
       </AnimatePresence>
