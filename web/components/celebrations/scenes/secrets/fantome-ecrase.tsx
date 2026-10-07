@@ -13,7 +13,7 @@ export default function FantomeEcrase({ title, description }: SecretProps) {
         <svg aria-hidden viewBox="0 0 300 300" className="absolute inset-0 overflow-visible">
           <line x1="40" y1="236" x2="260" y2="236" stroke="rgba(236,230,216,0.3)" />
           <g transform="translate(150 199)">
-            <motion.g style={{ originY: 1 }} initial={{ opacity: 0, scaleY: 1 }} animate={{ opacity: [0, 1, 1, 0], scaleY: [1, 1, 0.25, 0.1] }} transition={{ duration: 1, times: [0, 0.2, 0.6, 0.85] }}>
+            <motion.g style={{ originY: 1 }} initial={{ opacity: 0, scaleY: 1 }} animate={{ opacity: [0, 1, 1, 1, 0], scaleY: [1, 1, 1, 0.25, 0.1] }} transition={{ duration: 1, times: [0, 0.2, 0.56, 0.62, 0.85] }}>
               <path d={GHOST_PATH} fill="rgba(188,214,234,0.4)" stroke={ICE} strokeWidth="1.2" />
               <ellipse cx="-10" cy="-10" rx="3.5" ry="5" fill="#0b0b0c" />
               <ellipse cx="10" cy="-10" rx="3.5" ry="5" fill="#0b0b0c" />
