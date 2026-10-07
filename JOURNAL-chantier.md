@@ -37,6 +37,10 @@ Captures des secrets : HORS dépôt, `~/.local/share/barbis-dev/jeera-anim-secre
 2. ~~Socle~~ fait.
 3. ~~J3~~ fait (à recapturer à la fin : bandeaux après `mode="wait"`).
 4. ~~J1~~ fait (recapturer serie-4 après la correction du marteau).
-5. ~~J2~~ code fait ; relecture des captures de secrets en cours.
-6. Captures iPhone (CDP), relecture visuelle, corrections.
-7. CLAUDE.md (Key Decisions + HANDOFF), lint/tsc/tests, rebase, PR.
+5. ~~J2~~ fait, captures relues (24), retouches faites et recapturées.
+6. ~~Captures~~ faites : `captures/celebrations/` (rang, bandeaux, simulateur, série, bilan, Progrès) ; secrets hors dépôt.
+7. ~~CLAUDE.md, lint/tsc/tests, rebase sur origin/web/nextjs-app (#28, #29 ; conflit CLAUDE.md résolu en gardant les deux)~~ fait ; PR ouverte.
+
+## Reste possible (hors périmètre ou à voir avec Evan)
+- Vérifier sur l'iPhone d'Evan après déploiement (fluidité réelle, lisibilité en salle).
+- Retirer `captures/` et ce journal avant fusion si on ne veut pas les garder dans le dépôt.
