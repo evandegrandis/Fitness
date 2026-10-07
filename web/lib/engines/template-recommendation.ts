@@ -74,3 +74,29 @@ export function recommendTemplateId(
 
   return best?.id ?? templates[0]?.id ?? null;
 }
+
+/** Séances récentes où un modèle doit avoir servi pour rester la proposition par défaut. */
+export const TEMPLATE_IN_USE_MIN_SESSIONS = 2;
+
+/**
+ * Ce que l'accueil propose en premier. Un modèle ne passe devant la « Séance du jour » (bâtie sur
+ * les habitudes récentes, `habitual-session.ts`) que s'il sert vraiment en ce moment : au moins 2
+ * des 6 dernières séances démarrées depuis lui. Sinon c'est un vestige (le « Full Body » de
+ * l'ancienne salle, plus utilisé depuis le 21/09/2026). Sans habitude lisible (moins de 3
+ * séances récentes), le modèle recommandé reste la proposition, comme avant.
+ */
+export function defaultStartChoice(
+  templates: WorkoutTemplate[],
+  recommendedTemplateId: string | null,
+  hasHabitualPlan: boolean,
+  history: WorkoutSession[]
+): { kind: "template"; templateId: string } | { kind: "habitual" } | null {
+  const recommended = templates.find((template) => template.id === recommendedTemplateId) ?? null;
+  if (!hasHabitualPlan) return recommended ? { kind: "template", templateId: recommended.id } : null;
+  if (!recommended) return { kind: "habitual" };
+  const recentUses = sessionsNewestFirst(history)
+    .filter((session) => !session.isActive)
+    .slice(0, RECENT_SESSION_LIMIT)
+    .filter((session) => session.templateName === recommended.name).length;
+  return recentUses >= TEMPLATE_IN_USE_MIN_SESSIONS ? { kind: "template", templateId: recommended.id } : { kind: "habitual" };
+}

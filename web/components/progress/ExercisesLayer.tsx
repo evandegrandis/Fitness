@@ -21,6 +21,9 @@ import { cn } from "@/lib/utils";
 import { ExerciseLineChart, type ExercisePoint } from "@/components/progress/ExerciseLineChart";
 import { BenchmarkGauge } from "@/components/progress/BenchmarkGauge";
 import { MissingMusclesNotice } from "@/components/exercise/MissingMusclesNotice";
+import { ExerciseRecords } from "@/components/progress/ExerciseRecords";
+import { exerciseRecordSheet } from "@/lib/engines/exercise-records";
+import type { RecordEvent } from "@/lib/engines/progress-stats";
 
 const GOLD = "var(--color-warning)";
 const DAY_MS = 86_400_000;
@@ -140,6 +143,7 @@ export function ExercisesLayer() {
           now={now}
           history={history}
           settings={settings}
+          events={events}
           expanded={expanded === stat.exercise.id}
           onToggle={() => setExpanded((cur) => (cur === stat.exercise.id ? null : stat.exercise.id))}
         />
@@ -164,6 +168,7 @@ export function ExercisesLayer() {
                 now={now}
                 history={history}
                 settings={settings}
+                events={events}
                 expanded={expanded === stat.exercise.id}
                 onToggle={() => setExpanded((cur) => (cur === stat.exercise.id ? null : stat.exercise.id))}
               />
@@ -226,6 +231,7 @@ function ExerciseRow({
   now,
   history,
   settings,
+  events,
   expanded,
   onToggle,
 }: {
@@ -233,6 +239,7 @@ function ExerciseRow({
   now: Date;
   history: WorkoutSession[];
   settings: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
+  events: readonly RecordEvent[];
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -276,7 +283,7 @@ function ExerciseRow({
             transition={{ duration: 0.25, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <ExerciseDetail stat={stat} now={now} history={history} settings={settings} />
+            <ExerciseDetail stat={stat} now={now} history={history} settings={settings} events={events} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -300,11 +307,13 @@ function ExerciseDetail({
   now,
   history,
   settings,
+  events,
 }: {
   stat: ExerciseStat;
   now: Date;
   history: WorkoutSession[];
   settings: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
+  events: readonly RecordEvent[];
 }) {
   const { exercise } = stat;
   const ownSets = useMemo(
@@ -312,6 +321,7 @@ function ExerciseDetail({
     [history, exercise.id]
   );
   const benchmark = useMemo(() => exerciseBenchmarkForSets(exercise, ownSets, settings), [exercise, ownSets, settings]);
+  const records = useMemo(() => exerciseRecordSheet(exercise, history, events), [exercise, history, events]);
   const chartPoints: ExercisePoint[] = stat.points.map((point) => ({
     date: point.date,
     weight: point.weight,
@@ -332,6 +342,7 @@ function ExerciseDetail({
           Points creux : {stat.conversions.map((c) => `${c.exercise.name} × ${c.ratio.toFixed(2).replace(".", ",")}`).join(", ")}, convertis dans les charges de cette machine. Records propres à chaque machine.
         </p>
       )}
+      <ExerciseRecords sheet={records} />
       {max && max.maxLoad !== null && (
         <div>
           <div className="flex justify-between text-[0.7rem] text-(--color-fg-muted)">

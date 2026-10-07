@@ -25,6 +25,7 @@ import {
 } from "@/lib/engines/records";
 import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
+import { buildFatigueBaselines } from "@/lib/engines/session-fatigue-baselines";
 import {
   effectiveLoad,
   stepLoad,
@@ -43,9 +44,11 @@ import { finisherPromptReason, type FinisherPromptReason } from "@/lib/engines/f
 import { detectLevelUp, type LevelUp } from "@/lib/engines/level-up";
 import type { BossAnnouncement, SessionBoss } from "@/lib/engines/session-game";
 import { defaultEquivalent, equivalenceKey, familyHistory, startingPointFromEquivalent } from "@/lib/engines/equivalence";
-import { buildSessionReview, type SessionReview } from "@/lib/engines/bilan";
+import type { SessionReview } from "@/lib/engines/bilan";
+import { debriefSession, type SessionDebrief } from "@/lib/engines/session-insights";
+import { habitualSessionPlan } from "@/lib/engines/habitual-session";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
-import { FATIGUE_CLASS_PROPERTIES, SetType } from "@/lib/models/enums";
+import { SetType } from "@/lib/models/enums";
 import type { PlateauWeakPoint, StopReason } from "@/lib/models/enums";
 import type { MuscleParent } from "@/lib/models/muscles";
 import {
@@ -70,6 +73,7 @@ import {
   applyReorderAfterValidate,
   autoDetectSupersetIfNeeded,
   cloneSupersetTopology,
+  reorderSupersetGroupContiguously,
   detachFromSupersetGroup as detachFromSupersetGroupPure,
   handleSupersetLink as handleSupersetLinkPure,
   isSupersetRoundComplete,
@@ -235,6 +239,8 @@ export interface WorkoutState extends ReferenceData {
   // -- Lifecycle -------------------------------------------------------------
   startEmpty: (mode?: WorkoutMode) => void;
   startFromTemplate: (templateId: string, mode?: WorkoutMode) => void;
+  /** « Séance du jour » : habitudes récentes + déficits de la semaine (`habitual-session.ts`). */
+  startHabitual: (mode?: WorkoutMode) => void;
   repeatLast: (mode?: WorkoutMode) => void;
   finish: () => { session: WorkoutSession; snapshot: FinishedWorkoutSnapshot } | null;
   discard: () => void;
@@ -250,6 +256,12 @@ export interface WorkoutState extends ReferenceData {
    * redevenir suggérable, cf. décision tracée dans la note P1.6).
    */
   sessionReview: (session: WorkoutSession) => SessionReview;
+  /**
+   * Bilan complet d'une séance terminée (`debriefSession`) : le bilan ci-dessus (même masquage
+   * des cartes de variante déjà traitées) et les enseignements, recalculés sur l'historique
+   * d'AVANT la séance, fatigue de la séance comprise.
+   */
+  sessionDebrief: (session: WorkoutSession) => SessionDebrief;
 
   /**
    * VARIATION_CYCLING_SPEC §8 — rotation de variation proposée dans le bilan : `oldExerciseId ->
@@ -720,114 +732,6 @@ function buildSessionFatigueContext(
   }
 
   return new SessionFatigueContext(priorLoads, baselines);
-}
-
-/**
- * ALGO_V2 §6.1 — baselines de fatigue "habituelle" pour cet exercice : médiane du coût
- * systémique / des sets sur le même parent, mesurés AVANT cet exercice, sur ses 5 dernières
- * occurrences historiques. Sert à ne pénaliser que l'EXCÈS de fatigue (le profil empirique de
- * `predictReps` intègre déjà la fatigue habituelle). Le contexte est reconstruit par chronologie
- * réelle : seuls les sets des autres exercices terminés avant le dernier set de la cible comptent.
- */
-function buildFatigueBaselines(
-  history: WorkoutSession[],
-  catalog: Exercise[],
-  exerciseId: string
-): { baselineSystemicCost: number; baselineSameParentSets: number } | undefined {
-  const targetExercise = findExercise(catalog, exerciseId);
-  const parent = targetExercise ? primaryParent(targetExercise) : null;
-  const samples: { systemicCost: number; sameParentSets: number }[] = [];
-
-  for (const session of sessionsNewestFirst(history)) {
-    const sample = fatigueBeforeOccurrence(session, catalog, parent, (logged) => logged.exerciseId === exerciseId);
-    if (!sample) continue;
-    samples.push(sample);
-    if (samples.length >= 5) break;
-  }
-  if (samples.length > 0) return medianBaselines(samples);
-
-  // Exercice jamais fait : sans habitude propre, la fatigue du moment était comparée à ZÉRO et
-  // tout exercice découvert en milieu de séance déclenchait « fatigue systémique ». À défaut,
-  // l'habitude se lit sur les exercices du même muscle principal (5 dernières séances).
-  // Les exercices du même muscle ET du même type de mouvement occupent la même place dans les
-  // séances (un développé suit le pec deck) : ce sont eux qui disent l'habitude. À défaut, le
-  // même muscle seulement.
-  if (!parent) return undefined;
-  const recent = sessionsNewestFirst(history).slice(0, 5);
-  const collect = (matches: (exercise: Exercise) => boolean) => {
-    const found: { systemicCost: number; sameParentSets: number }[] = [];
-    for (const session of recent) {
-      for (const logged of session.exercises) {
-        const exercise = findExercise(catalog, logged.exerciseId);
-        if (!exercise || exercise.id === exerciseId || primaryParent(exercise) !== parent || !matches(exercise)) continue;
-        const sample = fatigueBeforeOccurrence(session, catalog, parent, (candidate) => candidate.id === logged.id);
-        if (sample) found.push(sample);
-      }
-    }
-    return found;
-  };
-  const pattern = targetExercise?.movementPattern ?? null;
-  const samePattern = pattern ? collect((exercise) => exercise.movementPattern === pattern) : [];
-  const fallback = samePattern.length > 0 ? samePattern : collect(() => true);
-  return fallback.length > 0 ? medianBaselines(fallback) : undefined;
-}
-
-/**
- * Coût systémique et séries sur le même muscle faits AVANT une occurrence (chronologie réelle :
- * seuls les sets des autres exercices terminés avant le dernier set de la cible comptent).
- * `null` si l'occurrence n'a aucun set de travail complété.
- */
-function fatigueBeforeOccurrence(
-  session: WorkoutSession,
-  catalog: Exercise[],
-  parent: MuscleParent | null,
-  isTarget: (logged: LoggedExercise) => boolean
-): { systemicCost: number; sameParentSets: number } | null {
-  const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);
-  const targets = ordered.filter(isTarget);
-  const targetSets = targets.flatMap((logged) =>
-    logged.sets.filter(
-      (set) =>
-        set.completed &&
-        (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff)
-    )
-  );
-  if (targetSets.length === 0) return null;
-
-  let systemicCost = 0;
-  let sameParentSets = 0;
-  const cutoff = targetSets.reduce(
-    (latest, set) => (set.timestamp > latest ? set.timestamp : latest),
-    targetSets[0].timestamp
-  );
-  const targetIds = new Set(targets.map((target) => target.id));
-  for (const prior of ordered) {
-    if (targetIds.has(prior.id)) continue;
-    const exercise = findExercise(catalog, prior.exerciseId);
-    if (!exercise) continue;
-    const workSetsCompleted = physiologicalSetUnits(
-      prior.sets.filter((set) => set.timestamp <= cutoff),
-      { increment: exercise.smallestIncrement }
-    );
-    if (workSetsCompleted <= 0) continue;
-    systemicCost += workSetsCompleted * FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
-    if (parent && primaryParent(exercise) === parent) sameParentSets += workSetsCompleted;
-  }
-  return { systemicCost, sameParentSets };
-}
-
-function medianBaselines(
-  samples: { systemicCost: number; sameParentSets: number }[]
-): { baselineSystemicCost: number; baselineSameParentSets: number } {
-  const medianOf = (values: number[]): number => {
-    const sorted = [...values].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-  };
-  return {
-    baselineSystemicCost: medianOf(samples.map((sample) => sample.systemicCost)),
-    baselineSameParentSets: medianOf(samples.map((sample) => sample.sameParentSets)),
-  };
 }
 
 /** ALGO_V2 §5.1 — poids de corps utilisateur, même clé localStorage que `SettingsBodySection`. */
@@ -1479,6 +1383,52 @@ export const useWorkoutStore = create<WorkoutState>()(
         });
       },
 
+      startHabitual: (mode) => {
+        const state = get();
+        const plan = habitualSessionPlan(state.history, state.catalog, state.goals, new Date());
+        if (!plan) {
+          get().startEmpty(mode);
+          return;
+        }
+        const resolvedMode = mode ?? state.selectedStartMode;
+        const exercises = plan.exercises
+          .map((entry) => findExercise(state.catalog, entry.exerciseId))
+          .filter((e): e is Exercise => e !== undefined);
+        let session = seedExercisesInto(makeEmptySession(null), exercises);
+        // Les paires qu'il enchaîne d'habitude partent liées (une seule fois chacune).
+        for (const [firstId, secondId] of plan.supersetPairs) {
+          const first = session.exercises.find((logged) => logged.exerciseId === firstId);
+          const second = session.exercises.find((logged) => logged.exerciseId === secondId);
+          if (!first || !second || first.supersetGroupId || second.supersetGroupId) continue;
+          const groupId = newId();
+          session = {
+            ...session,
+            exercises: session.exercises.map((logged) =>
+              logged.id === first.id || logged.id === second.id ? { ...logged, supersetGroupId: groupId } : logged
+            ),
+            supersetGroups: [
+              ...session.supersetGroups,
+              { id: groupId, orderIndex: Math.min(first.orderIndex, second.orderIndex), memberOrder: [first.id, second.id] },
+            ],
+          };
+          session = reorderSupersetGroupContiguously(session, groupId);
+        }
+        session = applyModeOverlay(session, resolvedMode, state);
+        session = resolveSessionEquivalents(session, state.catalog, state.history);
+        const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
+        session = switched;
+        set({
+          active: session,
+          activeMode: resolvedMode,
+          recordsCache: {},
+          justHitRecord: {},
+          freshOverrides: new Set(),
+          pendingFinisherPrompt: null,
+          finisherPromptDeclined: [],
+          pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
+        });
+      },
+
       repeatLast: (mode) => {
         const state = get();
         const lastSession = state.history[0];
@@ -1549,7 +1499,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         });
       },
 
-      sessionReview: (session) => {
+      sessionReview: (session) => get().sessionDebrief(session).review,
+
+      sessionDebrief: (session) => {
         const state = get();
         // VARIATION_CYCLING_SPEC §5.3/§8 (P2.1) — relit TOUJOURS la copie la plus fraîche de la
         // séance depuis `history` (par id), pas le paramètre `session` reçu (qui peut être une
@@ -1558,39 +1510,42 @@ export const useWorkoutStore = create<WorkoutState>()(
         // `sessionReview(session)` fait avec l'ancienne référence — même piège de réactivité que
         // `treatedVariantSuggestions` déjà lu en direct via `get()` ci-dessous (note P1.6).
         const liveSession = state.history.find((s) => s.id === session.id) ?? session;
-        // `history` ne doit jamais contenir `session` elle-même (voir doc `buildSessionReview`) :
-        // filtre défensif au cas où l'appelant passe la séance juste finie (déjà en tête de `history`
-        // après `finish()`).
-        const history = state.history.filter((s) => s.id !== liveSession.id);
-        const review = buildSessionReview(liveSession, history, state.catalog, state.goals, {
+        // `debriefSession` ne lit que les séances d'AVANT celle-ci (jamais elle-même ni une
+        // postérieure) et reconstruit la fatigue présente au début de chaque exercice.
+        const debrief = debriefSession(liveSession, state.history, state.catalog, state.goals, {
           // La phase déclarée conditionne la LECTURE du bilan, pas les suggestions.
           trainingPhase: state.settings.trainingPhase,
+          bodyweightKg: readBodyweightKg(state.settings),
         });
+        const review = debrief.review;
         const now = new Date();
         // VARIATION_CYCLING_SPEC §8 — masque la carte de suggestion pour tout exercice déjà
         // accepté/refusé POUR CETTE séance (§8 "disparaît une fois traitée"). `buildSessionReview`
         // reste pur et la recalcule à chaque appel ; ce filtre est le SEUL endroit qui sait ce qui a
         // déjà été décidé (bookkeeping store, pas moteur).
         return {
-          ...review,
-          exercises: review.exercises.map((exerciseReview) => {
-            const treated =
-              exerciseReview.plateau.suggestedVariant !== null &&
-              state.treatedVariantSuggestions[`${session.id}:${exerciseReview.exerciseId}`];
-            // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : cet exercice EST la variante adoptée
-            // par une rotation récemment acceptée -> gèle la carte (ET la capture 1-tap, qui n'a
-            // plus lieu d'être proposée si on ne va pas re-proposer de rotation dans l'immédiat).
-            const cooling = isRotationCooldownActive(exerciseReview.exerciseId, state.rotationAcceptedAt, now);
-            if (!treated && !cooling) return exerciseReview;
-            return {
-              ...exerciseReview,
-              plateau: {
-                ...exerciseReview.plateau,
-                suggestedVariant: null,
-                needsWeakPointCapture: cooling ? false : exerciseReview.plateau.needsWeakPointCapture,
-              },
-            };
-          }),
+          ...debrief,
+          review: {
+            ...review,
+            exercises: review.exercises.map((exerciseReview) => {
+              const treated =
+                exerciseReview.plateau.suggestedVariant !== null &&
+                state.treatedVariantSuggestions[`${session.id}:${exerciseReview.exerciseId}`];
+              // VARIATION_CYCLING_SPEC §8 (P2.3) — anti-thrash : cet exercice EST la variante adoptée
+              // par une rotation récemment acceptée -> gèle la carte (ET la capture 1-tap, qui n'a
+              // plus lieu d'être proposée si on ne va pas re-proposer de rotation dans l'immédiat).
+              const cooling = isRotationCooldownActive(exerciseReview.exerciseId, state.rotationAcceptedAt, now);
+              if (!treated && !cooling) return exerciseReview;
+              return {
+                ...exerciseReview,
+                plateau: {
+                  ...exerciseReview.plateau,
+                  suggestedVariant: null,
+                  needsWeakPointCapture: cooling ? false : exerciseReview.plateau.needsWeakPointCapture,
+                },
+              };
+            }),
+          },
         };
       },
 

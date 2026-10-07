@@ -14,7 +14,7 @@ import {
   type RecoveryDraft,
 } from "./RecoveryCheckinRow";
 import { BilanHero } from "./bilan/BilanHero";
-import { BilanPerformance } from "./bilan/BilanPerformance";
+import { BilanInsights } from "./bilan/BilanInsights";
 import { BilanPlateaus } from "./bilan/BilanPlateaus";
 import { BilanCoverage } from "./bilan/BilanCoverage";
 import { SessionCaloriesCard } from "@/components/history/SessionCalories";
@@ -81,7 +81,7 @@ function PostWorkoutContent({
   onClose: () => void;
 }) {
   const recoveryCheckins = useWorkoutStore((s) => s.recoveryCheckins);
-  const sessionReview = useWorkoutStore((s) => s.sessionReview);
+  const sessionDebrief = useWorkoutStore((s) => s.sessionDebrief);
   // VARIATION_CYCLING_SPEC §8 — `sessionReview()` masque `plateau.suggestedVariant` selon
   // `treatedVariantSuggestions` (lu en direct dans le store à l'appel, pas capturé par closure) :
   // sans cette dépendance, accepter/refuser dans `BilanPlateaus` ne referait pas recalculer `review`
@@ -112,13 +112,16 @@ function PostWorkoutContent({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const review = useMemo(() => {
-    // Ces deux valeurs sont des déclencheurs de recalcul : `sessionReview`
+  // Bilan + enseignements (`debriefSession`). `debrief.insights.celebrations` est le point
+  // d'entrée des animations de célébration : les lire, ne rien recalculer.
+  const debrief = useMemo(() => {
+    // Ces deux valeurs sont des déclencheurs de recalcul : `sessionDebrief`
     // relit leur état frais dans le store même si sa propre référence reste stable.
     void treatedVariantSuggestions;
     void history;
-    return sessionReview(session);
-  }, [session, sessionReview, treatedVariantSuggestions, history]);
+    return sessionDebrief(session);
+  }, [session, sessionDebrief, treatedVariantSuggestions, history]);
+  const review = debrief.review;
 
   const handleSave = async () => {
     setSaving(true);
@@ -189,9 +192,9 @@ function PostWorkoutContent({
           <StatTile value={snapshot.exerciseCount} label="Exos" />
         </div>
 
-        <SessionCaloriesCard session={session} exercises={catalog} />
+        <BilanInsights insights={debrief.insights} exercises={review.exercises} />
 
-        <BilanPerformance exercises={review.exercises} />
+        <SessionCaloriesCard session={session} exercises={catalog} />
 
         <BilanPlateaus review={review} sessionId={session.id} />
 
