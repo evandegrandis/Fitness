@@ -1,6 +1,6 @@
 # Journal du chantier BILAN (branche web/bilan-intelligent)
 
-Worktree : `~/.local/share/barbis-dev/jeera-bilan` · PR : (pas encore ouverte)
+Worktree : `~/.local/share/barbis-dev/jeera-bilan` · PR : https://github.com/contacthelmetbrown-pixel/Fitness/pull/29
 
 ## Reprise
 ```
@@ -22,7 +22,7 @@ Puis lire ce journal, reprendre à « Reste à faire ».
 - 07/10 : CLAUDE.md (2 décisions + passation), rebase sur origin (PR #28 training-state), lint/tsc/810 tests verts ; captures en JPEG (3,7 Mo), secrets floutés ; historique de la branche réécrit en un commit (les PNG des premiers essais montraient des secrets).
 
 ## Reste à faire
-- Ouvrir la PR, attendre la CI verte.
+- PR #29 ouverte ; vérifier la CI (`gh pr checks 29`).
 
 ## Notes
 - Captures : `node ../jeera-bilan-data/shot.mjs ../jeera-bilan-data/steps-replay.json` (rejeu de la séance du 06/10) et `steps-0710.json` (accueil, Historique, records). Secrets floutés (règle d'Evan).
