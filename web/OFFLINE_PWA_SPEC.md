@@ -11,6 +11,10 @@
 > PWA / metadata) AVANT tout code. DB : lecture seule ici (pas de migration) ; host-gardé si jamais.
 
 ## 1. Service worker (C1 au centre)
+> **Révision du 08/10/2026** (CLAUDE.md, « The app opens and changes tabs without waiting for the network ») : la coquille ne
+> porte plus de données, elle est donc servie DU CACHE (versionné par build), plus en network-first ; C1 tient par la mise à
+> jour du worker (nouveau `sw.js` à chaque build, activé aussitôt, rechargement dès qu'aucune saisie n'est en cours). Les
+> segments d'onglets préchargés par le routeur sont gardés avec la coquille. Source : `lib/pwa/service-worker-source.ts`.
 - Fichier SW servi à la racine (scope `/`). Enregistré côté client (petit composant `"use client"` monté dans le layout).
 - **Stratégies de fetch** :
   - **Navigations HTML + assets JS/CSS (le CODE)** : **network-first**. En ligne → toujours le réseau (⇒ code frais, C1). Hors-ligne → repli sur le shell/asset caché.
