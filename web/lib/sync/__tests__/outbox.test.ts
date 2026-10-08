@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  deadLetters, discardDeadLetter, discardStaleDeadLetters, enqueue, flush, OutboxPersistenceError, pendingCount, retryDeadLetter, snapshot,
+  deadLetters, discardDeadLetter, discardStaleDeadLetters, enqueue, flush, OP_TIMEOUT_MS, OutboxPersistenceError, pendingCount, retryDeadLetter, snapshot,
   type OutboxHandlers,
 } from "../outbox";
 import type { Exercise, RecoveryCheckinInput, UserSettings, WorkoutSession } from "@/lib/models/types";
@@ -548,5 +548,29 @@ describe("garde-fou des écritures périmées (26/09/2026)", () => {
 
     expect(discardStaleDeadLetters()).toBe(1);
     expect(deadLetters().map((letter) => letter.error.code)).toEqual(["23503"]);
+  });
+});
+
+describe("réseau capté mais muet (08/10/2026)", () => {
+  it("ne laisse jamais un rejeu pendant : délai dépassé = échec transitoire, l'opération reste en tête", async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = new MemoryStorage();
+      install(storage);
+      enqueue({ kind: "session", session });
+
+      const pendingFlush = flush(noopHandlers({ session: vi.fn(() => new Promise<undefined>(() => undefined)) }));
+      await vi.advanceTimersByTimeAsync(OP_TIMEOUT_MS + 1);
+      const remaining = await pendingFlush;
+
+      expect(remaining).toBe(1);
+      expect(snapshot().lastError).toMatchObject({ kind: "transient" });
+      // Le verrou est relâché : un nouveau rejeu repart vraiment.
+      const second = vi.fn(async () => undefined);
+      expect(await flush(noopHandlers({ session: second }))).toBe(0);
+      expect(second).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -29,7 +29,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-const { PermanentMutationError, writeThrough } = await import("../write-through");
+const { DIRECT_WRITE_BUDGET_MS, PermanentMutationError, writeThrough } = await import("../write-through");
 const { pendingCount } = await import("../outbox");
 const { useSyncStatus } = await import("../status");
 type UserSettingsType = import("@/lib/models/types").UserSettings;
@@ -135,5 +135,22 @@ describe("writeThrough (OFFLINE_PWA_SPEC §4, P4.4)", () => {
 
     expect(direct).not.toHaveBeenCalled();
     expect(pendingCount()).toBe(1);
+  });
+
+  it("réseau muet : l'écran n'attend pas plus que le budget, l'écriture part dans la file", async () => {
+    vi.useFakeTimers();
+    try {
+      const direct = vi.fn(() => new Promise<void>(() => undefined));
+      let settled = false;
+      const pending = writeThrough({ kind: "settings", settings: SETTINGS }, direct).then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(DIRECT_WRITE_BUDGET_MS + 1);
+      await pending;
+      expect(settled).toBe(true);
+      expect(pendingCount()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

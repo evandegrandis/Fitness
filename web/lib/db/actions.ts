@@ -8,7 +8,6 @@
  * validées ou annulées ensemble, sans connexion websocket persistante.
  */
 
-import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { and, desc, eq, notExists, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
@@ -62,9 +61,13 @@ import type {
   WorkoutTemplate,
 } from "@/lib/models/types";
 
-function revalidateWorkoutData(): void {
-  revalidatePath("/", "layout");
-}
+/**
+ * Plus rien à revalider côté serveur depuis le 08/10/2026 : les pages ne portent plus de données
+ * (le téléphone relit `GET /api/data` en arrière-plan). Un `revalidatePath` dans une Server Action
+ * vidait en plus le cache du routeur côté client : chaque synchro (une par série) faisait perdre
+ * les onglets préchargés, et le changement d'onglet suivant repartait sur le réseau.
+ */
+function revalidateWorkoutData(): void {}
 
 // ---------------------------------------------------------------------------
 // saveSession — upsert complet d'une séance (logged_exercises, logged_sets,

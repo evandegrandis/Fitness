@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useWorkoutStore } from "@/lib/store/workout";
-import { saveSession, deleteSession, upsertExercise } from "@/lib/db/actions";
+import { deleteSession } from "@/lib/db/actions";
 import { enqueue, flush, pendingCount } from "@/lib/sync/outbox";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
-import { writeThrough } from "@/lib/sync/write-through";
+import { queueWrite, writeThrough } from "@/lib/sync/write-through";
 import { useSyncStatus } from "@/lib/sync/status";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
 import type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
@@ -149,20 +149,13 @@ export function ActiveSession({
         .then(async () => {
           if (finishing.current) return;
           try {
-            // Une active a la même garantie que la séance finale : hors-ligne ou si Neon échoue,
-            // son dernier snapshot rejoint l'outbox (dédoublonnée par session.id) au lieu de vivre
-            // uniquement dans localStorage jusqu'au bouton Terminer.
-            await writeThrough(
-              { kind: "session", session: snapshot },
-              () => saveSession(snapshot, false)
-            );
-            const pending = pendingCount();
-            setPending(pending);
-            if (!finishing.current) {
-              setSyncStatus(pending === 0 ? "saved" : isOffline() ? "offline" : "error");
-            }
+            // Une active a la même garantie que la séance finale : son dernier snapshot rejoint
+            // l'outbox (dédoublonnée par session.id), rejouée en arrière-plan. Aucune attente
+            // réseau ici : `SyncProvider` passe le badge à « enregistré » une fois Neon à jour.
+            queueWrite({ kind: "session", session: snapshot });
+            if (!finishing.current) setSyncStatus(isOffline() ? "offline" : "saving");
           } catch {
-            if (!finishing.current) setSyncStatus(isOffline() ? "offline" : "error");
+            if (!finishing.current) setSyncStatus("error");
           }
         });
       saveInFlight.current = task;
@@ -247,7 +240,7 @@ export function ActiveSession({
    * réglages fins (muscles, incrément, plage de reps) se font après coup dans l'éditeur — sans
    * cette porte de sortie, un exercice absent du catalogue lui faisait perdre le travail fait.
    */
-  const handleCreateExercise = async (name: string): Promise<string | null> => {
+  const handleCreateExercise = (name: string): string | null => {
     const exercise: Exercise = {
       id: crypto.randomUUID(),
       name: name.trim(),
@@ -285,9 +278,11 @@ export function ActiveSession({
     upsertExerciseInCatalog(exercise);
     handlePickExercise(exercise.id);
     try {
-      await writeThrough({ kind: "exercise_upsert", exercise }, () => upsertExercise(exercise));
+      // Local d'abord, réseau ensuite : la création ne dépend jamais de la 3G de la salle.
+      queueWrite({ kind: "exercise_upsert", exercise });
     } catch {
-      // Hors-ligne : l'exercice vit déjà dans le store, l'outbox le rejouera.
+      // Stockage local plein : l'exercice vit dans le store et la séance (qui emporte ses
+      // exercices à la synchro, `syncSession`) le fera exister sur le serveur.
     }
     return exercise.id;
   };

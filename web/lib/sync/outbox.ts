@@ -428,6 +428,23 @@ export function snapshot(): OutboxSnapshot {
  *
  * Retourne le nombre encore en attente après la tentative.
  */
+/**
+ * Délai d'une opération de rejeu. Un réseau capté mais muet (salle en 3G, 08/10/2026) laisse une
+ * requête pendante plus d'une minute : sans borne, `flush` restait « en cours » et plus rien ne se
+ * synchronisait jusqu'à la fermeture de l'app. Au-delà, l'essai compte comme un échec transitoire
+ * (l'opération reste en tête de file, rejouée plus tard ; les écritures serveur sont idempotentes
+ * et la garde `stale_write` protège d'une réponse tardive).
+ */
+export const OP_TIMEOUT_MS = 45_000;
+
+function withTimeout<T>(task: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Délai dépassé : réseau trop lent, nouvel essai plus tard.")), ms);
+  });
+  return Promise.race([task, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function flushOnce(handlers: OutboxHandlers): Promise<number> {
   const entries = read();
   if (entries.length === 0) return 0;
@@ -439,7 +456,7 @@ async function flushOnce(handlers: OutboxHandlers): Promise<number> {
     const entry = entries[index];
     let outcome: SyncOutcome;
     try {
-      const result = await applyOp(entry.op, handlers, entry.intentAt ?? entry.enqueuedAt);
+      const result = await withTimeout(applyOp(entry.op, handlers, entry.intentAt ?? entry.enqueuedAt), OP_TIMEOUT_MS);
       outcome = isSyncFailure(result) ? result : { ok: true };
     } catch (error) {
       outcome = { ok: false, kind: "transient", code: null, message: error instanceof Error ? error.message : String(error) };

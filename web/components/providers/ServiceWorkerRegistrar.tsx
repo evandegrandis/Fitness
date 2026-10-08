@@ -17,6 +17,13 @@ import { useEffect } from "react";
  * support, contexte non sécurisé en dev sans HTTPS, etc.) — best-effort, l'app reste utilisable
  * sans SW, juste sans le repli hors-ligne du shell.
  */
+/** Une saisie en cours (champ actif ou feuille ouverte) ne doit pas être coupée par une mise à jour. */
+function userIsBusy(): boolean {
+  const active = document.activeElement;
+  const typing = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement;
+  return typing || document.querySelector('[role="dialog"]') !== null;
+}
+
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
@@ -26,15 +33,26 @@ export function ServiceWorkerRegistrar() {
     const hadController = navigator.serviceWorker.controller !== null;
     let refreshing = false;
 
-    const onControllerChange = () => {
-      if (cancelled || !hadController || refreshing) return;
+    let reloadWhenHidden = false;
+    const reload = () => {
+      if (refreshing) return;
       refreshing = true;
-      // `skipWaiting()` active bien le nouveau worker, mais le document déjà chargé garde ses
-      // anciens chunks jusqu'à un reload. Celui-ci garantit qu'une seule action utilisateur suffit
-      // pour passer au code du nouveau déploiement (pas de « deuxième reload » implicite).
       window.location.reload();
     };
+    const onControllerChange = () => {
+      if (cancelled || !hadController || refreshing) return;
+      // `skipWaiting()` active bien le nouveau worker, mais le document déjà chargé garde ses
+      // anciens chunks jusqu'à un reload. La coquille étant servie du cache, ce rechargement prend
+      // moins d'une seconde : il part tout de suite, sauf si Evan est en train de saisir (champ
+      // actif, feuille ouverte) ; il attend alors que l'app passe en arrière-plan.
+      if (document.visibilityState === "hidden" || !userIsBusy()) reload();
+      else reloadWhenHidden = true;
+    };
+    const onHiddenReload = () => {
+      if (reloadWhenHidden && document.visibilityState === "hidden") reload();
+    };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    document.addEventListener("visibilitychange", onHiddenReload);
 
     async function register() {
       try {
@@ -64,6 +82,7 @@ export function ServiceWorkerRegistrar() {
     return () => {
       cancelled = true;
       navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+      document.removeEventListener("visibilitychange", onHiddenReload);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("online", checkForUpdate);
     };

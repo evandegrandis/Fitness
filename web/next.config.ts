@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    // Onglets statiques préchargés par la barre (08/10/2026) : gardés en mémoire une semaine au
+    // lieu de 5 min, sinon un changement d'onglet après 5 min repartait sur le réseau (2 s et plus
+    // en 3G). Ils ne portent aucune donnée, rien ne peut y être périmé ; un nouveau déploiement
+    // recharge de toute façon l'app (service worker).
+    staleTimes: { static: 7 * 24 * 60 * 60 },
+  },
   async headers() {
     return [
       {

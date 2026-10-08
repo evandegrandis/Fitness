@@ -83,6 +83,7 @@ import {
 } from "@/lib/store/superset";
 import { buildFinishedWorkoutSnapshot, type FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
 import { withKnownMuscleProfile } from "@/lib/data/catalog-muscle-profiles";
+import type { AllData } from "@/lib/db/queries";
 import { cleanWeight } from "@/lib/format";
 
 export type { FinishedWorkoutSnapshot } from "@/lib/store/snapshot";
@@ -495,6 +496,26 @@ function reviveBodyWeightDates(entries: BodyWeightEntry[]): BodyWeightEntry[] {
 
 function reviveTemplateDates(templates: WorkoutTemplate[]): WorkoutTemplate[] {
   return templates.map((template) => ({ ...template, createdAt: toDate(template.createdAt) }));
+}
+
+/**
+ * Même revivification que le cache persisté (`merge` ci-dessous), pour le snapshot JSON de
+ * `GET /api/data` : les dates y arrivent en chaînes ISO, comme depuis localStorage.
+ */
+export function reviveServerSnapshotDates(data: AllData): AllData {
+  return {
+    ...data,
+    exercises: reviveCatalogDates(data.exercises),
+    sessions: reviveHistoryDates(data.sessions),
+    activeSession: reviveSessionDates(data.activeSession),
+    templates: reviveTemplateDates(data.templates),
+    recoveryCheckins: reviveRecoveryCheckinDates(data.recoveryCheckins),
+    bodyWeights: reviveBodyWeightDates(data.bodyWeights),
+    settings: {
+      ...data.settings,
+      trainingPhaseStartedAt: data.settings.trainingPhaseStartedAt ? toDate(data.settings.trainingPhaseStartedAt) : null,
+    },
+  };
 }
 
 function findLoggedExercise(session: WorkoutSession | null, loggedExerciseId: string): LoggedExercise | undefined {

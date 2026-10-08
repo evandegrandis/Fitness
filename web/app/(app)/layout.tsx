@@ -1,5 +1,3 @@
-import { getInitialDataResult } from "@/lib/data";
-import { requireAuthenticatedSession } from "@/lib/auth";
 import { StoreHydrator } from "@/components/providers/StoreHydrator";
 import { ModeProvider } from "@/components/providers/ModeProvider";
 import { SyncProvider } from "@/components/providers/SyncProvider";
@@ -8,28 +6,21 @@ import { SyncAlertBanner } from "@/components/sync/SyncAlertBanner";
 import { TabBar } from "@/components/ui/TabBar";
 import { CelebrationHost } from "@/components/celebrations/CelebrationHost";
 
-// Les séances changent hors du cycle de build (autosave, imports, backfills) :
-// toujours hydrater depuis Neon au chargement, jamais depuis un HTML figé.
-export const dynamic = "force-dynamic";
-
 /**
- * Shell applicatif : lit les données initiales côté serveur, hydrate le store
- * client, applique le thème de mode, et pose la barre d'onglets.
+ * Shell applicatif STATIQUE (08/10/2026) : aucune donnée dedans. Il s'affiche depuis le cache du
+ * service worker sans attendre le réseau, l'écran se remplit depuis le stockage local, puis
+ * `StoreHydrator` lit Neon en arrière-plan (`GET /api/data`, qui revérifie la session : la lecture
+ * sensible a quitté ce fichier). Les onglets, statiques eux aussi, sont préchargés par les liens de
+ * la barre et changent sans aller-retour serveur.
  */
-export default async function AppLayout({
+export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Proxy ne constitue qu'un garde optimiste. La session est revérifiée au plus près de la
-  // lecture sensible afin qu'une mauvaise configuration ou un contournement de route ne puisse
-  // jamais exposer le dataset complet.
-  await requireAuthenticatedSession();
-  const initial = await getInitialDataResult();
-
   return (
     <ModeProvider>
-      <StoreHydrator data={initial.data} source={initial.source} fetchedAt={initial.fetchedAt} />
+      <StoreHydrator />
       <SyncProvider>
         <BarbisProfileWatcher />
         <div className="flex-1 flex flex-col min-h-full">

@@ -38,6 +38,27 @@ export class PermanentMutationError extends Error {
   }
 }
 
+/**
+ * Au-delà, l'écriture directe passe dans la file au lieu de faire attendre l'écran (réglages
+ * rapides d'un exercice en séance, charge max) : en 3G muette, l'appel ne revenait jamais et le
+ * bouton restait sur « Enregistrement… » (08/10/2026). L'appel parti continue ; les Server Actions
+ * d'une page passent une par une dans la file du routeur Next, donc le rejeu de la file arrive
+ * toujours APRÈS lui et ne peut pas être écrasé par sa réponse tardive.
+ */
+export const DIRECT_WRITE_BUDGET_MS = 5_000;
+
+async function directWithinBudget(direct: () => Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Réseau trop lent : écriture mise en file.")), DIRECT_WRITE_BUDGET_MS);
+  });
+  try {
+    await Promise.race([direct(), budget]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function performWriteThrough(op: OutboxOp, direct: () => Promise<void>): Promise<void> {
   const offline = typeof navigator !== "undefined" && navigator.onLine === false;
   // Une file non vide matérialise un ordre causal. Ne jamais faire passer la nouvelle écriture
@@ -45,7 +66,7 @@ async function performWriteThrough(op: OutboxOp, direct: () => Promise<void>): P
   const alreadyQueued = pendingCount() > 0;
   if (!offline && !alreadyQueued) {
     try {
-      await direct();
+      await directWithinBudget(direct);
       // L'écriture serveur est déjà confirmée. L'acquittement local est un nettoyage défensif
       // (multi-onglet/race) et ne doit jamais transformer ce succès en faux échec si localStorage
       // devient indisponible entre-temps.
@@ -70,4 +91,18 @@ export function writeThrough(op: OutboxOp, direct: () => Promise<void>): Promise
   const task = writeChain.catch(() => undefined).then(() => performWriteThrough(op, direct));
   writeChain = task;
   return task;
+}
+
+/**
+ * Écriture faite EN SÉANCE (autosave, exercice créé en salle) : jamais d'attente réseau. La copie
+ * locale (store + outbox) est la garantie ; le rejeu part aussitôt en arrière-plan
+ * (`SyncProvider`, événement `jeera:sync-needed`) avec son délai borné. Avant le 08/10/2026, ces
+ * écritures attendaient une Server Action : en 3G, « Création… » tournait sans fin pendant que la
+ * file d'actions du routeur Next restait bloquée derrière la précédente. Lève seulement si la file
+ * locale elle-même n'a pas pu être écrite (`OutboxPersistenceError`).
+ */
+export function queueWrite(op: OutboxOp): void {
+  enqueue(op);
+  useSyncStatus.getState().setPending(pendingCount());
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("jeera:sync-needed"));
 }

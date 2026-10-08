@@ -40,7 +40,6 @@ import { getBodyWeights, getExercises, getSettings } from "./queries";
 import type { Exercise, WorkoutSession } from "@/lib/models/types";
 import { classifySyncError, type SyncOutcome } from "@/lib/sync/outcome";
 import type { OutboxOp } from "@/lib/sync/outbox";
-import { revalidatePath } from "next/cache";
 
 function logOutcome(kind: string, target: string, outcome: SyncOutcome): void {
   if (outcome.ok) return;
@@ -94,7 +93,6 @@ export async function syncSession(payload: { session: WorkoutSession; exercises:
         await notifyBarbisSessionFinished(session, estimate);
       });
     }
-    revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {
     const outcome = classifySyncError(error);

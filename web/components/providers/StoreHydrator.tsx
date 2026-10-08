@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useWorkoutStore } from "@/lib/store/workout";
-import type { AllData } from "@/lib/db/queries";
-import type { InitialDataSource } from "@/lib/data";
+import type { InitialDataResult } from "@/lib/data";
+import { fetchServerSnapshot } from "@/lib/data/server-snapshot";
 import { shouldApplyServerSnapshot } from "@/lib/data/snapshot-freshness";
 import { enqueue, pendingCount } from "@/lib/sync/outbox";
 import {
@@ -31,50 +31,39 @@ function preserveEmergencyLocalBackup(): boolean {
   }
 }
 
-/**
- * Hydrate le store client : réhydrate d'abord le cache offline depuis
- * localStorage (persist skipHydration, P4.1), PUIS injecte les données de
- * référence lues côté serveur — DANS CET ORDRE, attendu explicitement
- * (OFFLINE_PWA_SPEC §3, P4.2). Le snapshot serveur ne remplace ensuite le cache
- * que s'il est strictement plus récent que le watermark local et qu'aucune
- * écriture n'attend dans l'outbox. Cela couvre notamment un vieux HTML/RSC
- * ressorti du service worker alors que `navigator.onLine` vaut encore `true`.
- * Si `data` est vide/absent
- * (Neon injoignable hors-ligne, `getInitialData` § P4.2), on n'appelle PAS
- * `hydrate()` du tout : le cache réhydraté par `persist.rehydrate()` reste
- * la seule source pour cette session (jamais écrasé par un résultat indisponible, C2).
- */
-export function StoreHydrator({
-  data,
-  source,
-  fetchedAt,
-}: {
-  data: AllData;
-  source: InitialDataSource;
-  fetchedAt: string;
-}) {
-  // Conserver la Promise (et pas seulement un booléen) évite une course en React Strict Mode :
-  // le second passage de l'effet doit attendre la réhydratation lancée par le premier avant
-  // d'envisager d'appliquer le snapshot SSR.
-  const rehydration = useRef<Promise<void> | null>(null);
+/** Au plus un rafraîchissement par minute quand l'app revient au premier plan. */
+const FOREGROUND_REFRESH_MIN_INTERVAL_MS = 60_000;
 
+/** Après une synchro réussie (`SyncProvider`) : relire Neon en arrière-plan. */
+export const REFRESH_DATA_EVENT = "jeera:refresh-data";
+
+/**
+ * Hydrate le store client SANS attendre le réseau : réhydrate d'abord le cache offline depuis
+ * localStorage (persist skipHydration, P4.1) et l'écran s'affiche aussitôt ; PUIS lit le snapshot
+ * Neon en arrière-plan (`GET /api/data`, `lib/data/server-snapshot.ts`) et l'applique selon les
+ * mêmes garde-fous qu'avant (OFFLINE_PWA_SPEC §3). Jusqu'au 08/10/2026, ce snapshot voyageait dans
+ * le HTML de chaque page (983 Ko) : en 3G, rien ne s'affichait avant qu'il soit arrivé.
+ *
+ * Le snapshot ne remplace le cache que s'il est strictement plus récent que le watermark local et
+ * qu'aucune écriture n'attend dans l'outbox. Indisponible (hors-ligne, délai dépassé, Neon KO) : on
+ * n'appelle PAS `hydrate()`, le cache réhydraté reste la seule source (jamais écrasé par un
+ * résultat indisponible, C2). Relu au retour du réseau, au retour au premier plan (au plus une fois
+ * par minute) et après chaque synchro réussie.
+ */
+export function StoreHydrator() {
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
+    let lastAttemptAt = 0;
 
-    async function run() {
-      if (!rehydration.current) {
-        rehydration.current = Promise.resolve(useWorkoutStore.persist.rehydrate());
-      }
-      await rehydration.current;
-      if (cancelled) return;
+    async function apply(snapshot: InitialDataResult) {
+      const { data, source, fetchedAt } = snapshot;
       // Avant toute comparaison avec Neon, fige une copie brute de localStorage. Si même cette
       // copie de sécurité échoue (quota/mode privé), on garde intégralement le store en mémoire et
       // on refuse l'hydratation : aucune séance locale ne peut être sacrifiée.
       if (!preserveEmergencyLocalBackup()) return;
-      // `navigator.onLine` n'est qu'un indice. Le watermark bloque aussi le cas plus trompeur où il
-      // vaut `true` alors que le SW vient de servir un vieux HTML/RSC. Une outbox illisible est
-      // traitée comme non vide : mieux vaut garder le cache que risquer d'écraser une intention.
-      if (navigator.onLine === false) return;
+      // Une outbox illisible est traitée comme non vide : mieux vaut garder le cache que risquer
+      // d'écraser une intention.
       let hasPendingOutbox = true;
       try {
         hasPendingOutbox = pendingCount() > 0;
@@ -139,11 +128,52 @@ export function StoreHydrator({
       useWorkoutStore.setState({ active, lastServerSnapshotAt: fetchedAt });
     }
 
-    void run();
+    async function refresh() {
+      if (inFlight || navigator.onLine === false) return;
+      inFlight = true;
+      lastAttemptAt = Date.now();
+      try {
+        const snapshot = await fetchServerSnapshot();
+        if (snapshot && !cancelled) await apply(snapshot);
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    async function start() {
+      await Promise.resolve(useWorkoutStore.persist.rehydrate());
+      if (cancelled) return;
+      const state = useWorkoutStore.getState();
+      // Navigateur vierge (aucun cache) : rien de vrai à montrer avant Neon, le squelette reste
+      // jusqu'à la première réponse (ou son échec), au lieu d'une app vide qui aurait l'air remise
+      // à zéro.
+      const emptyCache = state.lastServerSnapshotAt === null && state.catalog.length === 0 && state.history.length === 0;
+      if (emptyCache) state.setHasHydratedStorage(false);
+      try {
+        await refresh();
+      } finally {
+        if (emptyCache && !cancelled) useWorkoutStore.getState().setHasHydratedStorage(true);
+      }
+    }
+
+    const onOnline = () => void refresh();
+    const onRefreshRequested = () => void refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastAttemptAt > FOREGROUND_REFRESH_MIN_INTERVAL_MS) {
+        void refresh();
+      }
+    };
+    void start();
+    window.addEventListener("online", onOnline);
+    window.addEventListener(REFRESH_DATA_EVENT, onRefreshRequested);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener(REFRESH_DATA_EVENT, onRefreshRequested);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [data, source, fetchedAt]);
+  }, []);
 
   return null;
 }
