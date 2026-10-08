@@ -126,12 +126,30 @@ describe("service worker : une navigation n'échoue jamais", () => {
     await expect(done).rejects.toThrow();
   });
 
-  it("ne touche jamais aux données ni aux payloads RSC", () => {
+  it("garde les segments d'onglets préchargés et les ressert hors ligne", async () => {
+    const worker = loadWorker(async () => new Response("segment progres", { headers: { "Content-Type": "text/x-component" } }));
+    const prefetch = (url: string) => {
+      let response: Promise<Response> | null = null;
+      worker.listeners.fetch({
+        request: new Request(ORIGIN + url, { headers: { RSC: "1", "Next-Router-Segment-Prefetch": "/_tree" } }),
+        respondWith: (p: Promise<Response>) => void (response = p),
+        waitUntil: () => undefined,
+      });
+      return response as Promise<Response> | null;
+    };
+    expect(await (await prefetch("/progres?_rsc=abc")!).text()).toBe("segment progres");
+    worker.fetchSpy.mockImplementation(async () => {
+      throw new TypeError("Load failed");
+    });
+    expect(await (await prefetch("/progres?_rsc=abc")!).text()).toBe("segment progres");
+  });
+
+  it("ne touche jamais aux données ni aux payloads RSC dépendant de l'état du routeur", () => {
     const worker = loadWorker(onlineFetch);
     const respondWith = vi.fn();
-    worker.listeners.fetch({ request: { url: ORIGIN + "/api/data", method: "GET", mode: "cors", destination: "" }, respondWith, waitUntil: () => undefined });
-    worker.listeners.fetch({ request: { url: ORIGIN + "/progres?_rsc=1", method: "GET", mode: "cors", destination: "" }, respondWith, waitUntil: () => undefined });
-    worker.listeners.fetch({ request: { url: ORIGIN + "/", method: "POST", mode: "cors", destination: "" }, respondWith, waitUntil: () => undefined });
+    worker.listeners.fetch({ request: new Request(ORIGIN + "/api/data"), respondWith, waitUntil: () => undefined });
+    worker.listeners.fetch({ request: new Request(ORIGIN + "/progres?_rsc=1", { headers: { RSC: "1" } }), respondWith, waitUntil: () => undefined });
+    worker.listeners.fetch({ request: new Request(ORIGIN + "/", { method: "POST" }), respondWith, waitUntil: () => undefined });
     expect(respondWith).not.toHaveBeenCalled();
   });
 });

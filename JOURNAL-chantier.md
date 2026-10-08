@@ -17,9 +17,9 @@ Retiré du suivi au dernier commit.
 - [x] Code (commit « Ouverture sans réseau ») : coquille statique sans données + GET /api/data en arrière-plan (StoreHydrator), SW refait (lib/pwa/service-worker-source.ts : coquille du cache, repli FR, jamais de rejet), autosave et création d'exercice en file locale (queueWrite), délai 45 s par opération de rejeu, revalidatePath retirés des Server Actions (vidaient le cache du routeur), staleTimes.static 7 j, error.tsx + global-error.tsx en français, garde de création (create-exercise-guard.ts), loading.tsx du détail de séance. Tests : outbox (délai), garde, service worker (6).
 - Causes trouvées : HTML de 983 Ko par page ; Server Actions sérialisées dans la file du routeur Next + revalidatePath qui renvoie tout l'arbre (1 Mo) et vide le cache du routeur ; SW network-first qui attend les en-têtes puis laisse le corps traîner (écran noir) et rejette sans cache (erreur Safari) ; « Création… » attendait la Server Action sans délai.
 
+- [x] Barre d'onglets : filet 1,5 s (chargement depuis le cache du SW si le routeur bloque) ; SW garde les segments préchargés (Next-Router-Segment-Prefetch) ; writeThrough direct borné à 5 s.
+- [x] Mesures (jeera-perf-data) : avant-prod-slow3g.json (prod), avant-local-slow3g.json (base af8d811, next start local, état injecté), apres-local-slow3g.json ; captures-hors-ligne/ (iPhone @3x). Serveurs locaux : base sur 3201, branche sur 3202 (JEERA_PUBLIC_MODE=true, sans base).
+
 ## Reste
-- [ ] Mesures avant (prod, slow3g) : `jeera-perf-data/measure.mjs` → avant-prod-slow3g.json (en cours)
-- [ ] Mesures après : next build + next start local (lecture seule ou état injecté), même script
-- [ ] Création d'exercice et série : mesurer (local)
 - [ ] Vérifs : lint, tsc, test, mesures après, captures hors ligne
 - [ ] CLAUDE.md (Key Decisions + HANDOFF), PR

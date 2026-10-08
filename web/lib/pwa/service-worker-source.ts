@@ -18,8 +18,10 @@
  * 3. Les fichiers versionnés par le build (`/_next/static/`) : cache d'abord. Ils sont gardés d'un
  *    build à l'autre (leur nom change avec leur contenu) pour qu'une page ouverte avant un
  *    déploiement puisse encore charger ses morceaux de code hors ligne.
- * 4. Données, API, actions serveur et payloads RSC : jamais interceptés (le cache des données est
- *    le stockage local, C2).
+ * 4. Les segments que le routeur précharge pour les onglets (`Next-Router-Segment-Prefetch`) sont
+ *    des fichiers statiques du build : gardés avec la coquille de ce build, l'onglet change sans
+ *    réseau. Données, API, actions serveur et autres payloads RSC (qui dépendent de l'état du
+ *    routeur) : jamais interceptés (le cache des données est le stockage local, C2).
  */
 export function serviceWorkerSource(buildId: string): string {
   return `// Généré par scripts/generate-sw.ts depuis lib/pwa/service-worker-source.ts. NE PAS ÉDITER.
@@ -216,10 +218,17 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
   }
+  // Préchargement des onglets par le routeur (segments statiques du build, URL unique par segment
+  // et par build) : gardé avec la coquille de CE build. Les onglets changent alors sans réseau,
+  // y compris juste après l'ouverture en 3G et hors ligne.
+  if (request.headers.get("next-router-segment-prefetch") && isCacheableDocument(url.pathname)) {
+    event.respondWith(cacheFirst(request, SHELL_CACHE));
+    return;
+  }
   if (isPublicAsset(request, url)) {
     event.respondWith(staleWhileRevalidate(event, ASSET_CACHE));
   }
-  // Le reste (API, données, payloads RSC) : réseau pur, jamais servi depuis ce cache.
+  // Le reste (API, données, autres payloads RSC) : réseau pur, jamais servi depuis ce cache.
 });
 
 // --- Notifications de fin de repos -----------------------------------------
