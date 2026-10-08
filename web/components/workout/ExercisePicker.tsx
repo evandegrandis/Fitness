@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Film, Plus, Search, Sparkles, Star } from "lucide-react";
 import { Sheet } from "@/components/ui/Sheet";
 import { hasExerciseGif } from "@/lib/data/exercise-gifs";
@@ -8,6 +8,7 @@ import { matchesSearch } from "@/lib/data/exercise-search";
 import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import { aggregateCoefficient, type Exercise, type MuscleGoal, type WorkoutSession } from "@/lib/models/types";
 import { cn } from "@/lib/utils";
+import { canOfferCreate, createTapDecision } from "@/components/workout/create-exercise-guard";
 
 /**
  * Picker d'exercices — recherche + sections Favoris / Récents / catégories,
@@ -29,8 +30,8 @@ export function ExercisePicker({
   onClose: () => void;
   catalog: Exercise[];
   onPick: (exerciseId: string) => void;
-  /** Crée un exercice minimal depuis le nom tapé, puis le sélectionne. */
-  onCreate?: (name: string) => Promise<string | null>;
+  /** Crée un exercice minimal depuis le nom tapé (localement, sans attendre le réseau), puis le sélectionne. */
+  onCreate?: (name: string) => string | null;
   excludeIds?: string[];
   /** Historique des séances — requis pour activer le tri "Suggéré (déficit)". */
   history?: WorkoutSession[];
@@ -97,26 +98,38 @@ export function ExercisePicker({
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered, deficitSort]);
 
-  const [creating, setCreating] = useState(false);
   const trimmedQuery = query.trim();
   // Proposé dès que la recherche ne tombe sur rien d'exact : c'est précisément le moment où Evan
   // s'est retrouvé bloqué en salle (pullover, tirage vertical à la sellette) et a perdu sa série.
-  const canCreate =
-    onCreate !== undefined &&
-    trimmedQuery.length >= 2 &&
-    !catalog.some((e) => e.name.trim().toLowerCase() === trimmedQuery.toLowerCase());
+  const catalogNames = useMemo(() => catalog.map((e) => e.name), [catalog]);
+  const canCreate = onCreate !== undefined && canOfferCreate(trimmedQuery, catalogNames);
+  const lastKeyAt = useRef<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Texte pour lequel la carte a été armée par un tap pendant la frappe (voir create-exercise-guard).
+  const [armedFor, setArmedFor] = useState<string | null>(null);
+  const armed = armedFor !== null && armedFor === trimmedQuery;
 
-  async function createAndPick() {
-    if (!onCreate || creating) return;
-    setCreating(true);
-    try {
-      const id = await onCreate(trimmedQuery);
-      if (id) {
-        setQuery("");
-        onClose();
-      }
-    } finally {
-      setCreating(false);
+  function changeQuery(value: string) {
+    lastKeyAt.current = Date.now();
+    setArmedFor(null);
+    setQuery(value);
+  }
+
+  function createAndPick() {
+    if (!onCreate) return;
+    const decision = createTapDecision({ query: trimmedQuery, lastKeyAt: lastKeyAt.current, armed, now: Date.now() });
+    if (decision === "ignore") return;
+    if (decision === "arm") {
+      inputRef.current?.blur();
+      setArmedFor(trimmedQuery);
+      return;
+    }
+    // Création locale et immédiate : le réseau suit en arrière-plan (file de synchronisation).
+    const id = onCreate(trimmedQuery);
+    if (id) {
+      setArmedFor(null);
+      setQuery("");
+      onClose();
     }
   }
 
@@ -150,9 +163,10 @@ export function ExercisePicker({
         <div className="glass mt-3 flex items-center gap-2 rounded-full px-4 py-2.5">
           <Search size={16} className="text-(--color-fg-muted)" />
           <input
+            ref={inputRef}
             autoFocus
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
             placeholder="Rechercher un exercice…"
             className="w-full bg-transparent text-sm text-(--color-fg) outline-none placeholder:text-(--color-fg-faint)"
           />
@@ -175,8 +189,10 @@ export function ExercisePicker({
             <button
               type="button"
               onClick={createAndPick}
-              disabled={creating}
-              className="glass mb-4 flex w-full items-center gap-3 rounded-xl border border-dashed border-white/15 px-3.5 py-3 text-left active:scale-[0.98] transition disabled:opacity-50"
+              className={cn(
+                "glass mb-4 flex w-full items-center gap-3 rounded-xl border border-dashed px-3.5 py-3 text-left active:scale-[0.98] transition",
+                armed ? "border-(--accent)" : "border-white/15"
+              )}
             >
               <Plus size={16} style={{ color: "var(--accent)" }} />
               <span className="min-w-0 flex-1">
@@ -184,7 +200,7 @@ export function ExercisePicker({
                   Créer « {trimmedQuery} »
                 </span>
                 <span className="block text-xs text-(--color-fg-muted)">
-                  {creating ? "Création…" : "Utilisable tout de suite, réglable ensuite"}
+                  {armed ? "Touche encore pour créer" : "Utilisable tout de suite, réglable ensuite"}
                 </span>
               </span>
             </button>

@@ -71,3 +71,17 @@ export function writeThrough(op: OutboxOp, direct: () => Promise<void>): Promise
   writeChain = task;
   return task;
 }
+
+/**
+ * Écriture faite EN SÉANCE (autosave, exercice créé en salle) : jamais d'attente réseau. La copie
+ * locale (store + outbox) est la garantie ; le rejeu part aussitôt en arrière-plan
+ * (`SyncProvider`, événement `jeera:sync-needed`) avec son délai borné. Avant le 08/10/2026, ces
+ * écritures attendaient une Server Action : en 3G, « Création… » tournait sans fin pendant que la
+ * file d'actions du routeur Next restait bloquée derrière la précédente. Lève seulement si la file
+ * locale elle-même n'a pas pu être écrite (`OutboxPersistenceError`).
+ */
+export function queueWrite(op: OutboxOp): void {
+  enqueue(op);
+  useSyncStatus.getState().setPending(pendingCount());
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("jeera:sync-needed"));
+}

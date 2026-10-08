@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { flush, pendingCount, snapshot } from "@/lib/sync/outbox";
 import { defaultOutboxHandlers } from "@/lib/sync/handlers";
 import { useSyncStatus } from "@/lib/sync/status";
+import { REFRESH_DATA_EVENT } from "@/components/providers/StoreHydrator";
 
 const SYNC_NEEDED_EVENT = "jeera:sync-needed";
 
@@ -14,7 +14,6 @@ const SYNC_NEEDED_EVENT = "jeera:sync-needed";
  * Ne perd jamais de données — une séance non confirmée reste dans la file.
  */
 export function SyncProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const setStatus = useSyncStatus((s) => s.setStatus);
   const setPending = useSyncStatus((s) => s.setPending);
   const setSnapshot = useSyncStatus((s) => s.setSnapshot);
@@ -41,11 +40,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         try { setSnapshot(snapshot()); } catch { /* idem */ }
         setStatus(remaining === 0 ? "saved" : navigator.onLine === false ? "offline" : "error");
         // StoreHydrator refuse volontairement le snapshot serveur tant qu'une
-        // écriture locale attend. Une fois l'outbox vidée, le snapshot SSR qui
-        // avait été refusé est déjà périmé : relire la route force une requête
-        // Neon fraîche et rend immédiatement les séances synchronisées visibles
-        // sur tous les appareils, sans exiger un second hard refresh manuel.
-        if (remaining === 0) router.refresh();
+        // écriture locale attend. Une fois l'outbox vidée, il relit Neon en
+        // arrière-plan. (Jusqu'au 08/10/2026 : `router.refresh()`, qui rechargeait
+        // tout l'arbre serveur avec le jeu de données entier et passait dans la
+        // file d'actions du routeur, devant les actions suivantes.)
+        if (remaining === 0) window.dispatchEvent(new Event(REFRESH_DATA_EVENT));
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -64,7 +63,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener(SYNC_NEEDED_EVENT, onSyncNeeded);
       clearInterval(interval);
     };
-  }, [router, setStatus, setPending, setSnapshot]);
+  }, [setStatus, setPending, setSnapshot]);
 
   return <>{children}</>;
 }
