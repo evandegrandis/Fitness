@@ -2436,6 +2436,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           // algorithmique, PAS un vrai profil) : ici, `bodyWeightKg` non renseigné => `resolveStandard`
           // dégrade gracieusement (§9), jamais de valeur inventée pour peupler la jauge.
           profile: { bodyWeightKg: state.settings.bodyWeightKg, gender: state.settings.gender, ageYears: state.settings.ageYears },
+          // Ce que l'app affiche est une cible à battre construite sur la prévision (`target.ts`, Evan, 11/10/2026).
+          target: true,
         };
         let result = compositeCompletionSuggestion(loggedExercise, exercise) ?? suggest(params);
 

@@ -72,6 +72,8 @@ import {
   type RepSample,
 } from "@/lib/engines/predict";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
+import { classRepDrop, learnedRepDrop, type RepDropEstimate } from "@/lib/engines/rep-drop";
+import { ambitionMargin, heavyReturnLoad, isHeavySet, targetFromPrediction, usualWorkingLoad } from "@/lib/engines/target";
 import { easierVariantName } from "@/lib/engines/variants";
 import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
 import { cleanWeight } from "@/lib/format";
@@ -94,8 +96,17 @@ export const SuggestionMode = {
 
 export type SuggestionMode = (typeof SuggestionMode)[keyof typeof SuggestionMode];
 
+/** Branches dont les reps partent de la série d'avant moins la perte de reps (`rep-drop.ts`). */
+const REP_DROP_DRIVEN_CODES = new Set([
+  "predicted_drop_same_load",
+  "fallback_down_one_step",
+  "backoff_v2",
+  "overshot_target_raise_load_next_set",
+  "first_set_far_overshoot_raise_now",
+]);
+
 /** Persisted with suggestion/actual snapshots so later model tuning can segment engine eras. */
-export const SUGGESTION_ENGINE_VERSION = "web-v2.2-2026-08-30";
+export const SUGGESTION_ENGINE_VERSION = "web-v2.3-2026-10-11";
 
 // ---------------------------------------------------------------------------
 // SetSuggestion
@@ -167,6 +178,20 @@ export interface SetSuggestion {
   readyForPR?: boolean;
   /** Nom FR du palier StrengthLevel franchi si `readyForLevelUp` (ex. "Avancé") ; `undefined` sinon. */
   nextLevelName?: string;
+  /**
+   * Perte de reps d'une série à la suivante apprise sur l'historique (`rep-drop.ts`), posée sur les
+   * suggestions de série 2+ qui s'en servent. Dérivée, jamais persistée.
+   */
+  repDrop?: RepDropEstimate;
+  /**
+   * Couche cible (`target.ts`, `SuggestParams.target`) : `weight`/`reps` ci-dessus sont alors la CIBLE à
+   * battre, affichée et enregistrée ; `prediction` garde la prévision du moteur (sans biais), qui sert à la
+   * reprojection à une autre charge et à `predictedRepsAtActualWeight`. Absent sans couche cible : la
+   * suggestion EST la prévision.
+   */
+  prediction?: { weight: number; reps: number };
+  /** Marge d'ambition appliquée, reps prévues à la charge de la cible, part récente de cibles battues. */
+  ambition?: { margin: number; predictedReps: number; beatRate: number | null; lowered: number };
 }
 
 function makeSuggestion(
@@ -1014,10 +1039,10 @@ export function reprojectSuggestionAtWeight(
     suggestion.reps - (toEffectiveLoad - fromEffectiveLoad) / kgPerRep
   );
   const standardCap = exercise.repTargetMax;
-  const cap =
-    exercise.setPatternMode === SPM.bodyweight && suggestion.mode === SuggestionMode.plateauBreak
-      ? Math.max(standardCap, suggestion.reps)
-      : standardCap;
+  // Au poids du corps, la suggestion peut dépasser la fourchette (reps démontrées) : la reprojection
+  // ne la ramène pas au haut de la fourchette. Avant, la prévision enregistrée sur la série
+  // (`predictedRepsAtActualWeight`) était plafonnée, et le décalage appris en déduisait un biais.
+  const cap = exercise.setPatternMode === SPM.bodyweight ? Math.max(standardCap, suggestion.reps) : standardCap;
   const reps = clampInt(projected, 1, Math.max(1, cap));
   const modeLabel = MODE_LABEL_FR[suggestion.mode] ?? suggestion.mode.replace(/_/g, " ");
   const loadLabel = weight > 0 ? `${cleanWeight(weight)} kg` : "PDC";
@@ -1303,7 +1328,8 @@ function suggestRamping(
   doneToday: LoggedSet[],
   derived: DerivedExerciseState,
   increment: number,
-  fatigueConfirmed: boolean
+  fatigueConfirmed: boolean,
+  opts?: GenericOptions
 ): SetSuggestion {
   const targetLoad = derived.targetLoad;
   const firstRampLoad = rampStartLoad(targetLoad, increment, exercise);
@@ -1362,19 +1388,29 @@ function suggestRamping(
     return render(holdRamp, 0.78);
   }
 
-  return suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed);
+  return suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed, opts);
 }
 
 // ---------------------------------------------------------------------------
 // suggestGeneric + buildCandidates + scoreCandidate
 // ---------------------------------------------------------------------------
 
+/**
+ * Ce que les séries 2+ du chemin générique lisent en plus de l'historique : la perte de reps apprise
+ * (`rep-drop.ts`) et le poids du corps pour convertir une charge assistée ou lestée.
+ */
+interface GenericOptions {
+  repDrop: number;
+  bodyweightKg?: number;
+}
+
 function suggestGeneric(
   exercise: Exercise,
   doneToday: LoggedSet[],
   derived: DerivedExerciseState,
   increment: number,
-  fatigueConfirmed: boolean
+  fatigueConfirmed: boolean,
+  opts: GenericOptions = { repDrop: classRepDrop(exercise).drop }
 ): SetSuggestion {
   // Bodyweight au repMax : suggère à l'utilisateur d'envisager de se lester
   if (exercise.setPatternMode === SPM.bodyweight && doneToday.length === 0 && derived.recentBestAnchorReps >= exercise.repTargetMax) {
@@ -1389,7 +1425,7 @@ function suggestGeneric(
     });
   }
 
-  const candidates = buildCandidates(exercise, doneToday, derived, increment, fatigueConfirmed);
+  const candidates = buildCandidates(exercise, doneToday, derived, increment, fatigueConfirmed, opts);
 
   if (candidates.length === 0) {
     return makeSuggestion({
@@ -1493,7 +1529,8 @@ function applyMachineMaxLoad(
   result: SetSuggestion,
   exercise: Exercise,
   doneToday: LoggedSet[],
-  historyNewestFirst: LoggedSet[][]
+  historyNewestFirst: LoggedSet[][],
+  repDrop: number
 ): SetSuggestion {
   const maxLoad = exercise.maxLoad;
   if (!maxLoad || !(maxLoad > 0) || !(result.weight > 0) || result.weight < maxLoad - 1e-9) return result;
@@ -1502,8 +1539,7 @@ function applyMachineMaxLoad(
   let reps: number | null = null;
   const lastToday = doneToday[doneToday.length - 1];
   if (lastToday && atMax(lastToday)) {
-    const drop = FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
-    reps = roundHalfAwayFromZero(repsAtSuggestionRir(lastToday) - drop);
+    reps = roundHalfAwayFromZero(repsAtSuggestionRir(lastToday) - repDrop);
   } else if (doneToday.length === 0) {
     // Première série : ce que la série de tête à cette charge a donné récemment (au RIR visé).
     const firstSetsAtMax = historyNewestFirst
@@ -1540,7 +1576,8 @@ function buildCandidates(
   doneToday: LoggedSet[],
   derived: DerivedExerciseState,
   increment: number,
-  fatigueConfirmed: boolean
+  fatigueConfirmed: boolean,
+  opts: GenericOptions
 ): Candidate[] {
   if (doneToday.length === 0) {
     if (exercise.setPatternMode === SPM.bodyweight) {
@@ -1587,7 +1624,9 @@ function buildCandidates(
   const last = doneToday[doneToday.length - 1];
   if (!last) return [];
 
-  const baseDrop = FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
+  // Perte de reps d'une série à la suivante : apprise sur l'historique de l'exercice (`rep-drop.ts`),
+  // la constante de la classe de fatigue sans historique.
+  const baseDrop = opts.repDrop;
   // Les exercices bodyweight plafonnent la chute de reps à 2 : la fatigue accumulée est la
   // seule variable et une chute brutale (ex: 10 → 5) est presque toujours un artefact de
   // scoring, pas une vraie fatigue.
@@ -1677,7 +1716,19 @@ function buildCandidates(
     result.push({ load: last.weight, reps: holdReps, mode: SuggestionMode.recordAttempt, reasonCodes: ["predicted_drop_same_load"] });
   }
   if (!holdFitsRange || fatigueConfirmed) {
-    result.push({ load: easierLoad, reps: backoffReps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"] });
+    // Les reps d'un cran plus léger partent de la série qui vient d'être faite (au RIR visé, moins la
+    // perte de reps), converties à la charge plus légère par la règle du moteur (7,5 % = 1 rep). Le
+    // milieu de fourchette ignorait cette série : audit du 11/10/2026, 3,8 reps de trop en moyenne.
+    const mode = loadModeOf(exercise);
+    const fromEffective = effTotal(last.weight, mode, opts.bodyweightKg);
+    const toEffective = effTotal(easierLoad, mode, opts.bodyweightKg);
+    const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, fromEffective));
+    const anchoredReps = clampInt(
+      roundHalfAwayFromZero(lastAtTargetRir - effectiveDrop + (fromEffective - toEffective) / kgPerRep),
+      1,
+      exercise.repTargetMax
+    );
+    result.push({ load: easierLoad, reps: anchoredReps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["fallback_down_one_step"] });
   }
 
   if (overshot) {
@@ -1761,6 +1812,13 @@ function buildCandidates(
         : derived.recentWorkingFloor - increment;
     return candidate.load >= floor;
   });
+
+  // Une série vient d'être faite : si les planchers ont tout écarté, la garder vaut mieux que le
+  // « Point de départ 20 kg » générique (4 séries de l'audit du 11/10/2026, et un cas de plus avec la
+  // perte de reps apprise, qui fait plus souvent passer la même charge sous la fourchette).
+  if (result.length === 0) {
+    return [{ load: last.weight, reps: holdReps, mode: SuggestionMode.recordAttempt, reasonCodes: ["predicted_drop_same_load"] }];
+  }
 
   return result;
 }
@@ -1933,35 +1991,42 @@ function suggestTopSetBackoffV2(
   // Deux incréments donnent un retrait modéré (100 -> 95 ici), tout en gardant l'amorce comme
   // plancher si le top était un overreach beaucoup plus haut.
   const backoffSteps = topDone.reps < exercise.repTargetMin ? 3 : 2;
-  const backLoad = Math.max(amorceAdj, topDone.weight - backoffSteps * increment);
+  // Une série de retour n'est jamais plus lourde que la série qui vient d'être faite : après 150 × 6
+  // puis 130 × 9, revenir « à 142,5 » remontait la charge (9 des 30 séries de retour de l'audit).
+  const lastDone = doneToday[doneToday.length - 1];
+  const backLoad = Math.min(Math.max(amorceAdj, topDone.weight - backoffSteps * increment), lastDone.weight);
+
+  // Les reps d'une série de retour partent de la DERNIÈRE série faite (au RIR visé, dans les deux sens),
+  // moins la perte de reps apprise, converties à la charge de retour par la règle du moteur (7,5 % =
+  // 1 rep). Partir du top seul ignorait la fatigue des séries faites depuis : audit du 11/10/2026,
+  // 2,4 reps de trop en moyenne sur ces séries.
+  const last = lastDone;
+  // Perte de reps apprise (`rep-drop.ts`, passée dans le contexte de prédiction), la constante de
+  // classe plafonnée à 2 sans historique.
+  const sameSessionDrop =
+    predictCtx.intraExerciseDrop ?? Math.min(FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop, 2);
+  const repsAtLoad = (load: number) => {
+    const fromEffective = effTotal(last.weight, predictCtx.mode, predictCtx.bodyweightKg);
+    const toEffective = effTotal(load, predictCtx.mode, predictCtx.bodyweightKg);
+    const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, fromEffective));
+    return clampInt(
+      roundHalfAwayFromZeroV2(repsAtSuggestionRir(last) - sameSessionDrop + (fromEffective - toEffective) / kgPerRep),
+      1,
+      exercise.repTargetMax
+    );
+  };
 
   if (doneToday.length >= ALGO_V2.MAX_WORK_SETS_SUGGESTED) {
-    const reps = clampInt(roundUp((exercise.repTargetMin + exercise.repTargetMax) / 2), exercise.repTargetMin, exercise.repTargetMax);
+    const load = Math.max(0, amorceAdj - increment);
     return render(
-      { load: Math.max(0, amorceAdj - increment), reps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["backoff_max_sets_reached"] },
+      { load, reps: repsAtLoad(load), mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["backoff_max_sets_reached"] },
       0.5,
       ST.backoff,
       "backoff"
     );
   }
 
-  const loadDropInReps = Math.max(
-    0,
-    (topDone.weight - backLoad) /
-      Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, topDone.weight))
-  );
-  const sameSessionDrop = Math.min(
-    FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop,
-    2
-  );
-  const repsFromActualTop = roundHalfAwayFromZeroV2(
-    repsAtTargetRir(topDone, 1) + loadDropInReps - sameSessionDrop
-  );
-  const reps = clampInt(
-    repsFromActualTop,
-    exercise.repTargetMin,
-    exercise.repTargetMax
-  );
+  const reps = repsAtLoad(backLoad);
   return render(
     { load: backLoad, reps, mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["backoff_v2"] },
     0.86,
@@ -2005,7 +2070,9 @@ function suggestBWRepV2(
       .map((p) => p.workSets[0])
       .filter((set): set is LoggedSet => set !== undefined)
       .map(repsAtSuggestionRir);
-    const target = set1Reps.length > 0 ? median(set1Reps) : exercise.repTargetMin;
+    // La fatigue de séance retire des reps comme sur les autres premières séries (`predictReps`) : sans
+    // elle, des HSPU faites en fin de séance étaient prévues comme fraîches (audit du 11/10/2026).
+    const target = (set1Reps.length > 0 ? median(set1Reps) : exercise.repTargetMin) - (predictCtx.fatiguePenalty ?? 0);
     const reps = clampInt(roundHalfAwayFromZeroV2(target), 1, Math.max(cap, roundHalfAwayFromZeroV2(target)));
     return render({ load: 0, reps, mode: SuggestionMode.recordAttempt, reasonCodes: ["bw_rep_v2_first_set"] }, fatigueConfirmed ? 0.72 : 0.92, ST.work, "bw");
   }
@@ -2134,7 +2201,8 @@ function suggestStraightV2(
   v2: DeriveStateV2Result,
   increment: number,
   fatigueConfirmed: boolean,
-  predictCtxBase: Omit<PredictContext, "samples">
+  predictCtxBase: Omit<PredictContext, "samples">,
+  genericOpts: GenericOptions
 ): SetSuggestion {
   const cap = exercise.repTargetMax;
 
@@ -2163,7 +2231,7 @@ function suggestStraightV2(
   }
 
   const derivedV2: DerivedExerciseState = { ...derived, targetLoad: v2.amorceTarget || derived.targetLoad };
-  const result = suggestGeneric(exercise, doneToday, derivedV2, increment, fatigueConfirmed);
+  const result = suggestGeneric(exercise, doneToday, derivedV2, increment, fatigueConfirmed, genericOpts);
   if (result.reps > cap && result.mode !== SuggestionMode.plateauBreak) {
     const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
     const loadLabel = result.weight > 0 ? `${cleanWeight(result.weight)} kg` : "PDC";
@@ -2244,6 +2312,11 @@ export interface SuggestParams {
    * `readyForPR` n'en dépend PAS, cf. note du champ).
    */
   profile?: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
+  /**
+   * Construit la cible à battre sur la prévision (`target.ts`) : le store l'active pour ce qu'il affiche.
+   * Sans elle, `suggest()` rend la prévision seule (bilan des anciennes séances, tests du moteur).
+   */
+  target?: boolean;
 }
 
 /**
@@ -2277,6 +2350,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
     sessionHistory,
     goals = [],
     profile,
+    target = false,
   } = params;
 
   const increment = smallestIncrement ?? exercise.smallestIncrement;
@@ -2361,6 +2435,10 @@ export function suggest(params: SuggestParams): SetSuggestion {
     effectiveGapLestDays = undefined;
   }
   const derived = deriveState(exercise, history, increment, effectiveGapDays);
+  // Perte de reps d'une série à la suivante, apprise sur tout l'historique (`rep-drop.ts`) ; sans
+  // historique fourni, la constante de la classe de fatigue (comportement d'origine).
+  const repDrop = learnedRepDrop(exercise, sessionHistory, now);
+  const genericOpts: GenericOptions = { repDrop: repDrop.drop, bodyweightKg };
 
   const parent = primaryParent(exercise);
   // Un PR obtenu sur cet exercice est une preuve directe que la fatigue contextuelle n'a pas
@@ -2392,9 +2470,9 @@ export function suggest(params: SuggestParams): SetSuggestion {
     } else if (exercise.setPatternMode === SPM.topSetBackoff) {
       result = suggestTopSetBackoff(exercise, doneToday, derived, increment, fatigueConfirmed);
     } else if (exercise.setPatternMode === SPM.ramping) {
-      result = suggestRamping(exercise, doneToday, derived, increment, fatigueConfirmed);
+      result = suggestRamping(exercise, doneToday, derived, increment, fatigueConfirmed, genericOpts);
     } else {
-      result = suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed);
+      result = suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed, genericOpts);
     }
   } else {
     // ------------------------------------------------------------------
@@ -2439,6 +2517,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
       gapTier: derivedTier as PredictContext["gapTier"],
       fatigueClass: exercise.fatigueClass,
       appliesIntraExerciseDrop: doneToday.length > 0,
+      intraExerciseDrop: repDrop.source === "class" ? undefined : repDrop.drop,
     };
 
     const antiPlateauActive =
@@ -2471,14 +2550,14 @@ export function suggest(params: SuggestParams): SetSuggestion {
       case "ISOLATION_FINISHER": {
         // Amendement §7.2 (1) : targetLoad = straightRef (cluster actif, §4.2), au lieu de
         // max(ancres 5 séances).
-        result = suggestStraightV2(exercise, doneToday, derived, v2, increment, fatigueConfirmed, predictCtxBase);
+        result = suggestStraightV2(exercise, doneToday, derived, v2, increment, fatigueConfirmed, predictCtxBase, genericOpts);
         if (v2.pattern === "ISOLATION_FINISHER" && hasExplicitFinisherProfile) {
           result = { ...result, setType: ST.finisher };
         }
         break;
       }
       default:
-        result = suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed);
+        result = suggestGeneric(exercise, doneToday, derived, increment, fatigueConfirmed, genericOpts);
     }
 
     // VARIATION_CYCLING_SPEC §7.4/§9/§8 — `switchToVariantId` ne doit JAMAIS porter un nom
@@ -2579,7 +2658,11 @@ export function suggest(params: SuggestParams): SetSuggestion {
       exercise.setPatternMode === SPM.bodyweight && !fatigueConfirmed && doneToday.length > 0
         ? Math.min(doneToday.at(-1)!.reps, cap)
         : 1;
-    const calibratedReps = clampInt(result.reps + learnedOffset, currentBwFloor, Math.max(1, cap));
+    // Au poids du corps, la série suit les reps démontrées, au-delà de la fourchette s'il le faut
+    // (décision de septembre 2026) : le décalage appris ne doit pas la ramener sous le haut de la
+    // fourchette (Dips : 15 + 2 devenait 12, HSPU : 15 + 1 devenait 10, audit du 11/10/2026).
+    const upper = exercise.setPatternMode === SPM.bodyweight ? Math.max(cap, result.reps + learnedOffset) : cap;
+    const calibratedReps = clampInt(result.reps + learnedOffset, currentBwFloor, Math.max(1, upper));
     if (calibratedReps !== result.reps) {
       const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
       const loadLabel = result.weight > 0 ? `${cleanWeight(result.weight)} kg` : "PDC";
@@ -2602,7 +2685,59 @@ export function suggest(params: SuggestParams): SetSuggestion {
     };
   }
 
-  result = applyMachineMaxLoad(result, exercise, doneToday, history);
+  result = applyMachineMaxLoad(result, exercise, doneToday, history, repDrop.drop);
+
+  // Séries 2+ dont les reps viennent de la série d'avant moins la perte de reps : la perte apprise est
+  // jointe à la suggestion, et nommée dans la raison quand elle vient de l'exercice lui-même.
+  if (doneToday.length > 0 && result.reasonCodes.some((code) => REP_DROP_DRIVEN_CODES.has(code))) {
+    result = {
+      ...result,
+      repDrop,
+      reasonCodes: repDrop.source === "exercise" ? [...result.reasonCodes, "learned_rep_drop"] : result.reasonCodes,
+    };
+  }
+
+  // Couche cible : ce que l'app affiche et enregistre est une cible à battre construite sur cette
+  // prévision (`target.ts`). Les finishers gardent leurs règles.
+  if (target && result.setType !== ST.finisher) {
+    const lastToday = doneToday[doneToday.length - 1];
+    const mode = loadModeOf(exercise);
+    const push =
+      result.mode === SuggestionMode.plateauBreak ||
+      result.mode === SuggestionMode.transitionMode ||
+      (lastToday !== undefined &&
+        effTotal(result.weight, mode, bodyweightKg) > effTotal(lastToday.weight, mode, bodyweightKg) + 1e-9);
+    const margin = ambitionMargin(sessionHistory, catalog, doneToday.length === 0, now);
+    // Après une série lourde, il redescend : la cible prend la charge de la prévision (retour ou amorce).
+    const heavy =
+      lastToday !== undefined &&
+      effTotal(result.weight, mode, bodyweightKg) < effTotal(lastToday.weight, mode, bodyweightKg) - 1e-9 &&
+      isHeavySet(repsAtSuggestionRir(lastToday), lastToday.weight, usualWorkingLoad(history), exercise, increment, bodyweightKg);
+    const returnLoad = heavy ? heavyReturnLoad(result.weight, lastToday!.weight, exercise, increment) : result.weight;
+    const anchor =
+      lastToday !== undefined && (heavy ? Math.abs(returnLoad - result.weight) > 1e-9 : Math.abs(result.weight - lastToday.weight) > 1e-9)
+        ? { load: lastToday.weight, reps: repsAtSuggestionRir(lastToday) - repDrop.drop }
+        : null;
+    const built = targetFromPrediction(
+      { weight: result.weight, reps: result.reps, push, anchor },
+      exercise,
+      heavy ? returnLoad : lastToday?.weight ?? null,
+      margin.margin,
+      increment,
+      bodyweightKg,
+      !heavy
+    );
+    const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
+    result = {
+      ...result,
+      prediction: { weight: result.weight, reps: result.reps },
+      weight: built.weight,
+      reps: built.reps,
+      explanation: push ? result.explanation : `${modeLabel} · ${built.weight > 0 ? `${cleanWeight(built.weight)} kg` : "PDC"} × ${built.reps}`,
+      reasonCodes: push ? result.reasonCodes : ["target_to_beat", ...result.reasonCodes],
+      ambition: { margin: push ? 0 : margin.margin, predictedReps: built.predictedReps, beatRate: margin.beatRate, lowered: built.lowered },
+    };
+  }
 
   // WS4 — signale le deload d'absence sans changer weight/reps déjà calculés par les branches
   // ci-dessus (elles utilisent déjà `derived.targetLoad` post-deload). Uniquement informatif :

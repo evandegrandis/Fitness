@@ -152,7 +152,10 @@ export function SetEntry({
   };
 
   const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 2.5;
-  const projectedSuggestion = reprojectSuggestionAtWeight(suggestion, exercise, weight, bodyweightKg);
+  // La PRÉVISION du moteur (sans biais) à la charge choisie : c'est elle qui est dite et enregistrée
+  // (`predictedRepsAtActualWeight`), la cible affichée au-dessus étant une cible à battre (`target.ts`).
+  const prediction = suggestion.prediction ? { ...suggestion, ...suggestion.prediction } : suggestion;
+  const projectedSuggestion = reprojectSuggestionAtWeight(prediction, exercise, weight, bodyweightKg);
 
   // Une seule source : les champs partent de la suggestion (remontage par `key`), et la ligne du
   // dessus dit toujours ce que le moteur propose et pourquoi. Quand les champs s'en écartent, elle
