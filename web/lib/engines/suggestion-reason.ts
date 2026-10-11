@@ -14,9 +14,7 @@ const REASONS: Record<string, string> = {
   top_set_to_backoff_transition: "Série allégée après ta série la plus lourde",
   backoff_same_load_prediction: "Série allégée après ta série la plus lourde",
   backoff_max_sets_reached: "Dernière série, plus légère",
-  load_sized_to_range: "Allégé pour rester dans ta fourchette de reps",
-  load_floor_reached: "Allégé jusqu'à ton plancher de charge : la fatigue te laisse sous ta fourchette",
-  fallback_down_one_step: "Un cran plus léger pour rester dans ta fourchette de reps",
+  fallback_down_one_step: "Un cran plus léger : à la même charge, la fatigue t'aurait sorti de ta fourchette",
   fallback: "Un cran plus léger pour rester dans ta fourchette de reps",
   intermediate_fallback: "Un cran plus léger pour rester dans ta fourchette de reps",
   ramp_fallback: "Un cran plus léger pour rester dans ta fourchette de reps",
@@ -65,13 +63,20 @@ const ADDENDA: Record<string, string> = {
  * qui nomme la machine de départ.
  */
 export function suggestionReason(
-  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation"> & Partial<Pick<SetSuggestion, "repDrop">>
+  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation"> & Partial<Pick<SetSuggestion, "repDrop" | "ambition">>
 ): string | null {
   const codes = suggestion.reasonCodes;
   if (codes.includes("equivalent_starting_point") || codes.includes("equivalent_conversion")) return null;
+  const addenda = codes.map((code) => ADDENDA[code]).filter(Boolean);
+  // Cible à battre (`target.ts`) : la raison l'assume, avec ce qu'il fait d'habitude à cette charge
+  // (prévision au RIR visé, et une rep de plus à l'échec).
+  if (codes.includes("target_to_beat") && suggestion.ambition) {
+    const usual = Math.max(1, Math.round(suggestion.ambition.predictedReps));
+    const main = `Cible à battre : tu fais d'habitude ${usual} à ${usual + 1} ici`;
+    return addenda.length > 0 ? `${main} (${addenda.join(", ")})` : main;
+  }
   const main = codes.map((code) => REASONS[code]).find(Boolean);
   if (!main) return null;
-  const addenda = codes.map((code) => ADDENDA[code]).filter(Boolean);
   if (codes.includes("learned_rep_drop") && suggestion.repDrop) addenda.push(learnedDropText(suggestion.repDrop.drop));
   return addenda.length > 0 ? `${main} (${addenda.join(", ")})` : main;
 }

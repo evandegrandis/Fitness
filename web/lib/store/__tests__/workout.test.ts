@@ -604,7 +604,11 @@ describe("useWorkoutStore", () => {
       const next = useWorkoutStore.getState().suggestion(loggedExerciseId);
 
       expect(next.reasonCodes).not.toContain("logical_set_completion");
-      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin);
+      // Cible à battre (`target.ts`, 11/10/2026) : la charge portée est gardée, les reps sont la prévision
+      // à cette charge ; elle ne décroche que nettement sous la fourchette.
+      expect(next.weight).toBe(18);
+      expect(next.prediction).toBeDefined();
+      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin - 1);
     }
   );
 

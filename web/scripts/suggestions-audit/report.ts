@@ -3,7 +3,8 @@
  *
  *   npx tsx scripts/suggestions-audit/report.ts <rejeu.jsonl>                        # un moteur
  *   npx tsx scripts/suggestions-audit/report.ts <ancien.jsonl> <nouveau.jsonl>      # ancien contre nouveau
- *   options : --split 2026-09-21 (période avant/après), --seance 2026-10-11 (série par série, répétable)
+ *   options : --split 2026-09-21 (période avant/après), --seance 2026-10-11 (série par série, répétable),
+ *             --depuis 2026-08-17 (cibles battues : seulement les séances depuis cette date)
  *
  * Mesure (même définition que l'audit du 11/10/2026) : pour chaque série de travail avec RIR, hors
  * étalonnage, compléments de série et repli « 20 kg par défaut », écart = reps faites ramenées au RIR 1
@@ -12,6 +13,8 @@
  * Intervalles : bootstrap par séance (les séries d'une séance ne sont pas indépendantes), 4 000 tirages.
  * Comparaison : différence d'erreur moyenne nouveau − ancien sur les MÊMES séries, p bootstrap bilatéral,
  * correction de Holm sur toutes les cases du rapport. Une case de moins de 20 séries ou 8 séances ne conclut pas.
+ * Cibles battues (définition de l'app, `setVersusSuggestion`) : vécu (cibles enregistrées à l'époque), ancien
+ * et nouveau moteur, par contexte ; erreur et cibles portent sur la PRÉVISION et la CIBLE de chaque moteur.
  */
 import { readFileSync } from "node:fs";
 
@@ -27,7 +30,16 @@ interface Row {
   reps: number;
   rir: number | null;
   continuation: boolean;
-  engine: { weight: number; reps: number; reasons: string[]; pred_at_actual: number; rep_drop: { drop: number; source: string } | null };
+  engine: {
+    weight: number;
+    reps: number;
+    reasons: string[];
+    pred_at_actual: number;
+    rep_drop: { drop: number; source: string } | null;
+    prediction?: { weight: number; reps: number };
+    verdict?: "beat" | "met" | "below" | null;
+  };
+  verdict_stored?: "beat" | "met" | "below" | null;
   ctx: {
     position: number;
     rank: number;
@@ -173,10 +185,12 @@ function main() {
   const args = process.argv.slice(2);
   const files: string[] = [];
   let split: string | null = null;
+  let since = "0000-00-00";
   const seances: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--split") split = args[++i];
     else if (args[i] === "--seance") seances.push(args[++i]);
+    else if (args[i] === "--depuis") since = args[++i];
     else files.push(args[i]);
   }
   if (files.length < 1 || files.length > 2) {
@@ -227,11 +241,41 @@ function main() {
     }
   }
 
+  // Cibles battues, au sens de l'app (compteur, combo, Discipline).
+  const rated = [...old.keys()].filter((id) => {
+    const r = old.get(id)!;
+    return ["work", "top_set", "backoff"].includes(r.set_type) && !r.continuation && !r.ctx.calibrating && r.session_date.slice(0, 10) >= since;
+  });
+  w();
+  w("Cibles battues (définition de l'app) : part des séries jugées dont la cible est battue.");
+  w();
+  w(neu ? "| Contexte | Niveau | Séries | Séances | Vécu | Ancien moteur | Nouveau moteur [IC 95 %] | Nouveau, à la charge de la cible |" : "| Contexte | Niveau | Séries | Séances | Vécu | Moteur [IC 95 %] |");
+  w(neu ? "|---|---|---|---|---|---|---|---|" : "|---|---|---|---|---|---|");
+  const beatUnits = (rows: Map<string, Row>, members: string[], pick: (r: Row) => "beat" | "met" | "below" | null | undefined) =>
+    members
+      .map((id) => ({ r: rows.get(id)!, v: pick(rows.get(id)!) }))
+      .filter((x) => x.v != null)
+      .map((x) => ({ session: x.r.session_id, value: x.v === "beat" ? 1 : 0 }));
+  for (const cell of cells(neu ?? old, rated, split, old).filter((c) => !c.family.startsWith("Intervalle") && !c.family.startsWith("Superset") && !c.family.startsWith("Rang"))) {
+    const lived = clusterMean(beatUnits(old, cell.ids, (r) => r.verdict_stored));
+    const before = clusterMean(beatUnits(old, cell.ids, (r) => r.engine.verdict));
+    const pct = (x: number) => `${Math.round(x * 100)} %`;
+    if (!neu) {
+      w(`| ${cell.family} | ${cell.level} | ${before.n} | ${before.sessions} | ${pct(lived.mean)} | ${pct(before.mean)} [${pct(before.ci[0])} ; ${pct(before.ci[1])}] |`);
+      continue;
+    }
+    const after = clusterMean(beatUnits(neu, cell.ids, (r) => r.engine.verdict));
+    const sameLoad = cell.ids.filter((id) => Math.abs(neu.get(id)!.weight - neu.get(id)!.engine.weight) < 1e-9);
+    const atTarget = clusterMean(beatUnits(neu, sameLoad, (r) => r.engine.verdict));
+    const flag = after.n >= MIN_SETS && after.sessions >= MIN_SESSIONS ? "" : " (insuffisant)";
+    w(`| ${cell.family} | ${cell.level} | ${after.n} | ${after.sessions}${flag} | ${pct(lived.mean)} | ${pct(before.mean)} | ${pct(after.mean)} [${pct(after.ci[0])} ; ${pct(after.ci[1])}] | ${pct(atTarget.mean)} (${atTarget.n}) |`);
+  }
+
   for (const day of seances) {
     w();
     w(`### Séance du ${day}, série par série`);
     w();
-    w(neu ? "| Exercice | Fait (RIR) | Ancien moteur | Nouveau moteur | Prévu à la charge faite, ancien → nouveau | Perte apprise |" : "| Exercice | Fait (RIR) | Moteur | Prévu à la charge faite |");
+    w(neu ? "| Exercice | Fait (RIR) | Ancienne cible (verdict) | Nouvelle cible (verdict) | Prévision du moteur | Prévu à la charge faite, ancien → nouveau |" : "| Exercice | Fait (RIR) | Moteur | Prévu à la charge faite |");
     w(neu ? "|---|---|---|---|---|---|" : "|---|---|---|---|");
     const day_rows = [...old.values()].filter((r) => r.session_date.slice(0, 10) === day && r.set_type !== "warmup").sort((a, b) => a.ts.localeCompare(b.ts));
     for (const r of day_rows) {
@@ -243,10 +287,11 @@ function main() {
       }
       const n = neu.get(r.set_id)!;
       const nn = `${fr(n.engine.weight, 1).replace(",0", "")} × ${n.engine.reps}`;
-      const drop = n.engine.rep_drop ? `${fr(n.engine.rep_drop.drop, 1)} (${n.engine.rep_drop.source})` : "";
-      w(`| ${r.exercise} | ${done} | ${o} | ${nn}${nn !== o ? " ◆" : ""} | ${fr(r.engine.pred_at_actual, 1)} → ${fr(n.engine.pred_at_actual, 1)} | ${drop} |`);
+      const p = n.engine.prediction ?? { weight: n.engine.weight, reps: n.engine.reps };
+      const verdictFr = (v: string | null | undefined) => (v === "beat" ? "battue" : v === "met" ? "tenue" : v === "below" ? "en dessous" : "n.d.");
+      w(`| ${r.exercise} | ${done} | ${o} (${verdictFr(r.engine.verdict)}) | ${nn} (${verdictFr(n.engine.verdict)}) | ${fr(p.weight, 1).replace(",0", "")} × ${p.reps} | ${fr(r.engine.pred_at_actual, 1)} → ${fr(n.engine.pred_at_actual, 1)} |`);
     }
-    if (neu) w("\n◆ = suggestion différente. (RIR) = RIR déclaré.");
+    if (neu) w("\n(RIR) = RIR déclaré. Verdict = ce que l'app aurait compté (battue, tenue, en dessous).");
   }
   console.log(lines.join("\n"));
 }

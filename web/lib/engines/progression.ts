@@ -73,6 +73,7 @@ import {
 } from "@/lib/engines/predict";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { classRepDrop, learnedRepDrop, type RepDropEstimate } from "@/lib/engines/rep-drop";
+import { ambitionMargin, targetFromPrediction } from "@/lib/engines/target";
 import { easierVariantName } from "@/lib/engines/variants";
 import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
 import { cleanWeight } from "@/lib/format";
@@ -182,6 +183,15 @@ export interface SetSuggestion {
    * suggestions de série 2+ qui s'en servent. Dérivée, jamais persistée.
    */
   repDrop?: RepDropEstimate;
+  /**
+   * Couche cible (`target.ts`, `SuggestParams.target`) : `weight`/`reps` ci-dessus sont alors la CIBLE à
+   * battre, affichée et enregistrée ; `prediction` garde la prévision du moteur (sans biais), qui sert à la
+   * reprojection à une autre charge et à `predictedRepsAtActualWeight`. Absent sans couche cible : la
+   * suggestion EST la prévision.
+   */
+  prediction?: { weight: number; reps: number };
+  /** Marge d'ambition appliquée, reps prévues à la charge de la cible, part récente de cibles battues. */
+  ambition?: { margin: number; predictedReps: number; beatRate: number | null; lowered: number };
 }
 
 function makeSuggestion(
@@ -1510,70 +1520,6 @@ function gapRefutedByToday(doneToday: LoggedSet[], lastSession: LoggedSet[]): bo
 }
 
 /**
- * Une suggestion sous la fourchette de reps n'a pas de sens : Evan a fixé ses fourchettes (11/10/2026,
- * « 37,5 × 6 » pour une fourchette 8-12). Quand les reps prévues passent sous `repTargetMin`, la charge
- * descend cran par cran, avec la règle du moteur (7,5 % de charge effective = 1 rep), jusqu'à prévoir au
- * moins `repTargetMin`, sans passer sous la charge effective habituelle moins `ALGO_V2.LOAD_FLOOR_PCT`.
- * Si le plancher ne suffit pas, il est proposé avec ses reps prévues et la raison le dit. Le poids du
- * corps pur (pas de charge à alléger), les finishers et le test de plateau gardent leurs règles.
- */
-export function sizeLoadToRange(
-  result: SetSuggestion,
-  exercise: Exercise,
-  usualLoad: number,
-  increment: number,
-  bodyweightKg: number | undefined
-): SetSuggestion {
-  const mode = loadModeOf(exercise);
-  const loaded = exercise.setPatternMode === SPM.assistedBodyweight || result.weight > 0;
-  if (
-    exercise.setPatternMode === SPM.bodyweight ||
-    !loaded ||
-    result.setType === ST.finisher ||
-    result.mode === SuggestionMode.plateauBreak ||
-    result.reps >= exercise.repTargetMin
-  ) {
-    return result;
-  }
-  const fromEffective = effTotal(result.weight, mode, bodyweightKg);
-  const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, fromEffective));
-  const repsAt = (load: number) => result.reps + (fromEffective - effTotal(load, mode, bodyweightKg)) / kgPerRep;
-  const floorEffective = effTotal(usualLoad, mode, bodyweightKg) * (1 - ALGO_V2.LOAD_FLOOR_PCT);
-  let load = result.weight;
-  let floorReached = false;
-  for (let step = 0; step < 100 && roundHalfAwayFromZero(repsAt(load)) < exercise.repTargetMin; step++) {
-    const next = stepLoad(load, increment, exercise.setPatternMode, false);
-    if (Math.abs(next - load) < 1e-9 || effTotal(next, mode, bodyweightKg) < floorEffective - 1e-9) {
-      floorReached = true;
-      break;
-    }
-    load = next;
-  }
-  const reps = clampInt(roundHalfAwayFromZero(repsAt(load)), 1, exercise.repTargetMax);
-  const codes = floorReached && reps < exercise.repTargetMin ? ["load_floor_reached"] : ["load_sized_to_range"];
-  const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
-  const loadLabel = load > 0 ? `${cleanWeight(load)} kg` : "PDC";
-  return {
-    ...result,
-    weight: load,
-    reps,
-    explanation: `${modeLabel} · ${loadLabel} × ${reps}`,
-    reasonCodes: [...codes, ...result.reasonCodes],
-  };
-}
-
-/** Charge habituelle : médiane des séries de travail des 5 dernières séances (à défaut, la 1re série du jour). */
-function usualWorkingLoad(historyNewestFirst: LoggedSet[][], doneToday: LoggedSet[], fallback: number): number {
-  const loads = historyNewestFirst
-    .slice(0, 5)
-    .flatMap((session) => session)
-    .filter((set) => set.completed && (set.setType === ST.work || set.setType === ST.topSet || set.setType === ST.backoff))
-    .map((set) => set.weight);
-  if (loads.length > 0) return median(loads);
-  return doneToday[0]?.weight ?? fallback;
-}
-
-/**
  * Charge maximale de la machine (bout de pile, saisi par l'utilisateur). Au-delà, la charge
  * n'existe pas : proposer 87,5 kg sur une machine qui s'arrête à 85 ne servait à rien. À ce
  * poids, la progression passe par les reps, au-delà de la fourchette si c'est ce qu'il faut pour
@@ -2366,6 +2312,11 @@ export interface SuggestParams {
    * `readyForPR` n'en dépend PAS, cf. note du champ).
    */
   profile?: Pick<UserSettings, "bodyWeightKg" | "gender" | "ageYears">;
+  /**
+   * Construit la cible à battre sur la prévision (`target.ts`) : le store l'active pour ce qu'il affiche.
+   * Sans elle, `suggest()` rend la prévision seule (bilan des anciennes séances, tests du moteur).
+   */
+  target?: boolean;
 }
 
 /**
@@ -2399,6 +2350,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
     sessionHistory,
     goals = [],
     profile,
+    target = false,
   } = params;
 
   const increment = smallestIncrement ?? exercise.smallestIncrement;
@@ -2734,7 +2686,6 @@ export function suggest(params: SuggestParams): SetSuggestion {
   }
 
   result = applyMachineMaxLoad(result, exercise, doneToday, history, repDrop.drop);
-  result = sizeLoadToRange(result, exercise, usualWorkingLoad(history, doneToday, result.weight), increment, bodyweightKg);
 
   // Séries 2+ dont les reps viennent de la série d'avant moins la perte de reps : la perte apprise est
   // jointe à la suggestion, et nommée dans la raison quand elle vient de l'exercice lui-même.
@@ -2743,6 +2694,41 @@ export function suggest(params: SuggestParams): SetSuggestion {
       ...result,
       repDrop,
       reasonCodes: repDrop.source === "exercise" ? [...result.reasonCodes, "learned_rep_drop"] : result.reasonCodes,
+    };
+  }
+
+  // Couche cible : ce que l'app affiche et enregistre est une cible à battre construite sur cette
+  // prévision (`target.ts`). Les finishers gardent leurs règles.
+  if (target && result.setType !== ST.finisher) {
+    const lastToday = doneToday[doneToday.length - 1];
+    const mode = loadModeOf(exercise);
+    const push =
+      result.mode === SuggestionMode.plateauBreak ||
+      result.mode === SuggestionMode.transitionMode ||
+      (lastToday !== undefined &&
+        effTotal(result.weight, mode, bodyweightKg) > effTotal(lastToday.weight, mode, bodyweightKg) + 1e-9);
+    const margin = ambitionMargin(sessionHistory, catalog, doneToday.length === 0, now);
+    const anchor =
+      lastToday !== undefined && Math.abs(result.weight - lastToday.weight) > 1e-9
+        ? { load: lastToday.weight, reps: repsAtSuggestionRir(lastToday) - repDrop.drop }
+        : null;
+    const built = targetFromPrediction(
+      { weight: result.weight, reps: result.reps, push, anchor },
+      exercise,
+      lastToday?.weight ?? null,
+      margin.margin,
+      increment,
+      bodyweightKg
+    );
+    const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
+    result = {
+      ...result,
+      prediction: { weight: result.weight, reps: result.reps },
+      weight: built.weight,
+      reps: built.reps,
+      explanation: push ? result.explanation : `${modeLabel} · ${built.weight > 0 ? `${cleanWeight(built.weight)} kg` : "PDC"} × ${built.reps}`,
+      reasonCodes: push ? result.reasonCodes : ["target_to_beat", ...result.reasonCodes],
+      ambition: { margin: push ? 0 : margin.margin, predictedReps: built.predictedReps, beatRate: margin.beatRate, lowered: built.lowered },
     };
   }
 

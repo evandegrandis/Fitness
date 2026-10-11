@@ -9,8 +9,12 @@
  *   TZ=Europe/Paris npx tsx scripts/suggestions-audit/replay.ts <export.json> <sortie.jsonl>
  * Pour rejouer un AUTRE moteur (par exemple la branche principale dans un autre worktree) avec ce script :
  *   cd <autre worktree>/web && TZ=Europe/Paris npx tsx --tsconfig ./tsconfig.json <ce fichier> <export.json> <sortie.jsonl>
- * Réglage : `--set SHRINK_K=4 --set HALF_LIFE_DAYS=60` modifie `REP_DROP` le temps du rejeu (si le moteur l'a),
- * `--set ALGO_V2.LOAD_FLOOR_PCT=0.2` une constante du moteur.
+ * Réglage : `--set SHRINK_K=4` modifie `REP_DROP`, `--set ALGO_V2.CLE=v` une constante du moteur, `--set TARGET.CLE=v`
+ * un réglage de la cible (si le moteur les a).
+ * `--simuler` : rejoue comme si CE moteur avait tourné depuis le début : chaque série rejouée garde la cible, la
+ * prévision et la version de ce moteur, et les séances suivantes voient cet historique (nécessaire pour la
+ * marge d'ambition, apprise sur les séries enregistrées par un moteur à deux couches).
+ * Une 2e sortie `<sortie>.seances.jsonl` donne, par séance, le jeu (cibles battues, combo) vécu et rejoué.
  *
  * Le script n'écrit rien en base et refuse d'écrire sa sortie dans le dépôt.
  */
@@ -71,8 +75,10 @@ async function main() {
   const args = process.argv.slice(2);
   const sets: [string, number][] = [];
   const positional: string[] = [];
+  let simulate = false;
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--set") {
+    if (args[i] === "--simuler") simulate = true;
+    else if (args[i] === "--set") {
       const [key, value] = args[++i].split("=");
       sets.push([key, Number(value)]);
     } else positional.push(args[i]);
@@ -89,7 +95,9 @@ async function main() {
 
   const { useWorkoutStore } = await import("@/lib/store/workout");
   const { orderedSets, primaryParent, aggregateCoefficient } = await import("@/lib/models/types");
-  const { reprojectSuggestionAtWeight } = await import("@/lib/engines/progression");
+  const { reprojectSuggestionAtWeight, SUGGESTION_ENGINE_VERSION } = await import("@/lib/engines/progression");
+  const { setVersusSuggestion } = await import("@/lib/engines/bilan");
+  const { sessionGame } = await import("@/lib/engines/session-game");
   const { effTotal } = await import("@/lib/engines/predict");
   const { ALGO_V2 } = await import("@/lib/engines/constants");
   const { physiologicalSetUnits } = await import("@/lib/engines/set-structure");
@@ -97,9 +105,17 @@ async function main() {
   const { recordCalibration, isCalibrating } = await import("@/lib/engines/records");
   type AllData = import("@/lib/db/queries").AllData;
   type LoggedSet = import("@/lib/models/types").LoggedSet;
+  type WorkoutSession = import("@/lib/models/types").WorkoutSession;
 
   for (const [rawKey, value] of sets) {
-    // `ALGO_V2.CLE=v` règle une constante du moteur ; `CLE=v` règle `REP_DROP` (moteurs qui apprennent la perte de reps).
+    // `ALGO_V2.CLE=v` règle une constante du moteur ; `TARGET.CLE=v` la cible ; `CLE=v` règle `REP_DROP`.
+    if (rawKey.startsWith("TARGET.")) {
+      const mod = (await import("@/lib/engines/target" as string).catch(() => null)) as { TARGET?: Record<string, number> } | null;
+      const key = rawKey.slice("TARGET.".length);
+      if (!mod?.TARGET || !(key in mod.TARGET)) throw new Error(`--set : clé inconnue ${rawKey}`);
+      mod.TARGET[key] = value;
+      continue;
+    }
     if (rawKey.startsWith("ALGO_V2.")) {
       const key = rawKey.slice("ALGO_V2.".length);
       const algo = ALGO_V2 as unknown as Record<string, number>;
@@ -113,14 +129,21 @@ async function main() {
     mod.REP_DROP[rawKey] = value;
   }
 
+  // Perte de reps apprise à chaque instant (moteurs qui l'ont), pour l'analyse du comportement.
+  const repDropModule = (await import("@/lib/engines/rep-drop" as string).catch(() => null)) as
+    | { learnedRepDrop?: (e: unknown, h: unknown, now: Date) => { drop: number } }
+    | null;
   const data = JSON.parse(readFileSync(dataPath, "utf8"), (_k, v) => (typeof v === "string" && ISO.test(v) ? new Date(v) : v)) as AllData;
   const bodyweight = data.settings.bodyWeightKg && data.settings.bodyWeightKg > 0 ? data.settings.bodyWeightKg : undefined;
   const sessions = [...data.sessions].sort((a, b) => a.date.getTime() - b.date.getTime());
-  if (existsSync(outPath)) unlinkSync(outPath);
+  const gamePath = outPath.replace(/\.jsonl$/, "") + ".seances.jsonl";
+  for (const path of [outPath, gamePath]) if (existsSync(path)) unlinkSync(path);
   const store = useWorkoutStore;
+  const simulated: WorkoutSession[] = [];
 
   for (const target of sessions) {
-    const history = data.sessions.filter((s) => s.date < target.date);
+    const history = simulate ? [...simulated] : data.sessions.filter((s) => s.date < target.date);
+    const engineTargets = new Map<string, { weight: number; reps: number }>();
     store.getState().hydrate({
       catalog: data.exercises, history, goals: data.goals, settings: data.settings, templates: data.templates,
       recoveryCheckins: data.recoveryCheckins, bodyWeights: data.bodyWeights,
@@ -172,6 +195,13 @@ async function main() {
       const isWarmup = s.setType === "warmup";
       if (!isWarmup) rank += 1;
       const repDrop = (suggestion as { repDrop?: { drop: number; source: string; exercisePairs: number } }).repDrop;
+      // Prévision (sans biais) et cible affichée : un moteur sans couche cible rend une seule suggestion.
+      const prediction = (suggestion as { prediction?: { weight: number; reps: number } }).prediction ?? { weight: suggestion.weight, reps: suggestion.reps };
+      const predFromEff = effTotal(prediction.weight, mode, bodyweight);
+      const predKgPerRep = Math.max(exercise.smallestIncrement, ALGO_V2.REP_SLOPE_PCT * Math.max(1, predFromEff));
+      const predictionAtActual = reprojectSuggestionAtWeight({ ...suggestion, ...prediction }, exercise, s.weight, bodyweight).reps;
+      const ambition = (suggestion as { ambition?: { margin: number; beatRate: number | null; lowered: number } }).ambition ?? null;
+      engineTargets.set(s.id, { weight: suggestion.weight, reps: suggestion.reps });
       lines.push(JSON.stringify({
         session_id: target.id, session_date: target.date.toISOString(), ts: at.toISOString(), synthetic_time: synthetic, idx,
         exercise_id: exercise.id, exercise: exercise.name, le_id: le.id, pattern_mode: exercise.setPatternMode,
@@ -182,10 +212,14 @@ async function main() {
         engine: {
           weight: suggestion.weight, reps: suggestion.reps, mode: suggestion.mode, role: suggestion.role ?? null, reasons: suggestion.reasonCodes,
           rep_drop: repDrop ? { drop: repDrop.drop, source: repDrop.source, pairs: repDrop.exercisePairs } : null,
-          pred_at_actual: suggestion.reps - (toEff - fromEff) / kgPerRep,
-          pred_at_actual_displayed: reprojectSuggestionAtWeight(suggestion, exercise, s.weight, bodyweight).reps,
+          prediction, ambition,
+          pred_at_actual: prediction.reps - (toEff - predFromEff) / predKgPerRep,
+          pred_at_actual_displayed: predictionAtActual,
+          target_at_actual: suggestion.reps - (toEff - fromEff) / kgPerRep,
           eff_suggested: fromEff, eff_actual: toEff,
+          verdict: isWarmup ? null : setVersusSuggestion(exercise, { ...s, suggestedWeight: suggestion.weight, suggestedReps: suggestion.reps }),
         },
+        verdict_stored: isWarmup ? null : setVersusSuggestion(exercise, s),
         ctx: {
           position: prior.filter((x) => x.setType !== "finisher").length + 1,
           rank, minutes: synthetic ? null : (at.getTime() - start) / 60_000,
@@ -195,18 +229,41 @@ async function main() {
           prev: prev ? { weight: prev.weight, reps: prev.reps, rir: prev.reportedRir ?? null,
             continuation: prev.setTechnique != null || (prev.logicalSetId != null && prev.logicalSetId !== prev.id) } : null,
           since_previous_any_s: synthetic || previousAt === null ? null : (at.getTime() - previousAt) / 1000,
+          learned_drop: repDropModule?.learnedRepDrop ? repDropModule.learnedRepDrop(exercise, state.history, at).drop : null,
         },
       }));
       setNow(at);
-      store.getState().logSet(le.id, {
-        weight: s.weight, reps: s.reps, setType: s.setType, suggestedWeight: s.suggestedWeight, suggestedReps: s.suggestedReps,
-        suggestedSetType: s.suggestedSetType, predictedRepsAtActualWeight: s.predictedRepsAtActualWeight, suggestionMode: s.suggestionMode,
-        suggestionReasonCodes: s.suggestionReasonCodes, suggestionEngineVersion: s.suggestionEngineVersion, reportedRir: s.reportedRir, stopReason: s.stopReason,
-      });
+      // En simulation, la série porte ce que CE moteur aurait affiché et enregistré (comme `SetEntry`).
+      const logged = simulate && !isWarmup
+        ? { suggestedWeight: suggestion.weight, suggestedReps: suggestion.reps, suggestedSetType: suggestion.setType,
+            predictedRepsAtActualWeight: predictionAtActual, suggestionMode: suggestion.mode, suggestionReasonCodes: suggestion.reasonCodes,
+            suggestionEngineVersion: SUGGESTION_ENGINE_VERSION }
+        : { suggestedWeight: s.suggestedWeight, suggestedReps: s.suggestedReps, suggestedSetType: s.suggestedSetType,
+            predictedRepsAtActualWeight: s.predictedRepsAtActualWeight, suggestionMode: s.suggestionMode, suggestionReasonCodes: s.suggestionReasonCodes,
+            suggestionEngineVersion: s.suggestionEngineVersion };
+      store.getState().logSet(le.id, { weight: s.weight, reps: s.reps, setType: s.setType, ...logged, reportedRir: s.reportedRir, stopReason: s.stopReason });
       previousLe = le.id;
       previousAt = at.getTime();
     });
     appendFileSync(outPath, lines.join("\n") + "\n");
+    // Le jeu de la séance (même calcul que l'en-tête de séance) : vécu (cibles enregistrées) et rejoué (cibles de ce moteur).
+    const withEngineTargets = {
+      ...target,
+      exercises: target.exercises.map((le) => ({
+        ...le,
+        sets: le.sets.map((set) => {
+          const t = engineTargets.get(set.id);
+          return t && set.setType !== "warmup" ? { ...set, suggestedWeight: t.weight, suggestedReps: t.reps } : set;
+        }),
+      })),
+    };
+    const lived = sessionGame(target, data.exercises, history);
+    const replayed = sessionGame(withEngineTargets, data.exercises, history);
+    appendFileSync(gamePath, JSON.stringify({ session_id: target.id, session_date: target.date.toISOString(), lived, replayed }) + "\n");
+    if (simulate) {
+      const done = store.getState().active!;
+      simulated.push({ ...done, isActive: false, endTime: target.endTime });
+    }
   }
   console.log(`rejeu écrit : ${outPath}`);
 }

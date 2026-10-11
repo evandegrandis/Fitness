@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { learnedRepDrop, pairsFromSets, REP_DROP, repDropPairs } from "@/lib/engines/rep-drop";
-import { reprojectSuggestionAtWeight, sizeLoadToRange, suggest, type SetSuggestion } from "@/lib/engines/progression";
+import { reprojectSuggestionAtWeight, suggest } from "@/lib/engines/progression";
 import { suggestionReason, learnedDropText } from "@/lib/engines/suggestion-reason";
 import { SetType } from "@/lib/models/enums";
 import { MuscleGroup } from "@/lib/models/muscles";
@@ -141,22 +141,12 @@ describe("séries suivantes dans le moteur", () => {
   ];
 
   it("« baisser d'un cran » part de la série qui vient d'être faite, plus du milieu de fourchette", () => {
-    const today = [set(20, 9, 0, new Date(NOW.getTime() - 60_000))];
+    const today = [set(20, 7, 0, new Date(NOW.getTime() - 60_000))];
     const result = suggest({ exercise: exercise(), currentSetIndex: 1, recentHistory: history3.map((s) => s.exercises[0].sets).reverse(), currentSessionSets: today, now: NOW });
     expect(result.reasonCodes[0]).toBe("fallback_down_one_step");
     expect(result.weight).toBe(17.5);
-    // 9 à RIR 0 = 8 au RIR visé, moins 1 (classe légère, sans historique fourni) = 7, plus 2,5 kg / 2,5 kg par rep = 8.
-    expect(result.reps).toBe(8);
-  });
-
-  it("si un cran ne suffit pas, la charge descend jusqu'à la fourchette, pas sous le plancher", () => {
-    const today = [set(20, 7, 0, new Date(NOW.getTime() - 60_000))];
-    const result = suggest({ exercise: exercise(), currentSetIndex: 1, recentHistory: history3.map((s) => s.exercises[0].sets).reverse(), currentSessionSets: today, now: NOW });
-    // Charge habituelle 17,5 (médiane des séries), plancher 17,5 × 0,85 = 14,9 : 15 kg au plus bas, 7 reps prévues.
-    expect(result.weight).toBe(15);
-    expect(result.reps).toBe(7);
-    expect(result.reasonCodes[0]).toBe("load_floor_reached");
-    expect(suggestionReason(result)).toContain("plancher de charge");
+    // 7 à RIR 0 = 6 au RIR visé, moins 1 (classe légère, sans historique fourni), plus 2,5 kg / 2,5 kg par rep = 6.
+    expect(result.reps).toBe(6);
   });
 
   it("la perte apprise remplace la constante quand l'historique est fourni, et la raison le dit", () => {
@@ -199,51 +189,15 @@ describe("séries suivantes dans le moteur", () => {
     // 120 × 11 suggéré, 150 × 6 fait, puis 130 × 9 : la série suivante ne remonte pas à 142,5.
     const today = [set(120, 11, 1, t(12)), set(150, 6, 1, t(8)), set(130, 9, 0, t(4))];
     const result = suggest({ exercise: press, currentSetIndex: 3, recentHistory: history.map((s) => s.exercises[0].sets).reverse(), currentSessionSets: today, now: NOW });
-    expect(result.reasonCodes).toContain("backoff_v2");
-    // 9 à RIR 0 = 8 au RIR visé, moins la perte de la classe moyenne (1,5) : 7 à 130 kg, sous la fourchette ;
-    // un cran plus léger (9,75 kg par rep à 130 kg) en donne 8 : 125 × 8, jamais 142,5.
-    expect(result.reasonCodes[0]).toBe("load_sized_to_range");
-    expect(result).toMatchObject({ weight: 125, reps: 8 });
+    expect(result.reasonCodes[0]).toBe("backoff_v2");
+    expect(result.weight).toBeLessThanOrEqual(130);
+    // 9 à RIR 0 = 8 au RIR visé, moins la perte de la classe moyenne (1,5) : 6,5, arrondi à 7.
+    expect(result.reps).toBe(7);
   });
 
   it("le texte arrondit à la demi-rep, au singulier sous 1", () => {
     expect(learnedDropText(2.37)).toBe("tu perds d'habitude 2,5 reps d'une série à l'autre ici");
     expect(learnedDropText(0.6)).toBe("tu perds d'habitude 0,5 rep d'une série à l'autre ici");
-  });
-});
-
-describe("charge dimensionnée sur la fourchette de reps", () => {
-  const base: SetSuggestion = {
-    weight: 40, reps: 6, setType: SetType.work, explanation: "", confidence: 1, reasonCodes: ["fallback_down_one_step"],
-    mode: "fallback_hypertrophy", sessionFatigueWarning: null,
-  };
-
-  it("descend d'autant de crans que nécessaire pour prévoir le minimum de la fourchette", () => {
-    // 3 kg par rep à 40 kg (7,5 %) : 37,5 → 6,8, 35 → 7,7, arrondi 8.
-    const result = sizeLoadToRange(base, exercise(), 40, 2.5, undefined);
-    expect(result).toMatchObject({ weight: 35, reps: 8 });
-    expect(result.reasonCodes[0]).toBe("load_sized_to_range");
-    expect(suggestionReason(result)).toBe("Allégé pour rester dans ta fourchette de reps");
-  });
-
-  it("s'arrête au plancher (charge habituelle moins 15 %) et le dit", () => {
-    const result = sizeLoadToRange({ ...base, reps: 4 }, exercise(), 40, 2.5, undefined);
-    expect(result).toMatchObject({ weight: 35, reps: 6 });
-    expect(result.reasonCodes[0]).toBe("load_floor_reached");
-  });
-
-  it("en assisté, ajoute de l'assistance", () => {
-    const assisted = exercise({ setPatternMode: "assisted_bodyweight" });
-    const result = sizeLoadToRange({ ...base, weight: 20 }, assisted, 20, 2.5, 75);
-    expect(result.weight).toBeGreaterThan(20);
-    expect(result.reps).toBeGreaterThanOrEqual(8);
-  });
-
-  it("ne touche ni au poids du corps pur, ni au test de plateau, ni aux finishers, ni à une série dans la fourchette", () => {
-    expect(sizeLoadToRange({ ...base, weight: 0 }, exercise({ setPatternMode: "bodyweight" }), 0, 2.5, 75).weight).toBe(0);
-    expect(sizeLoadToRange({ ...base, mode: "plateau_break" }, exercise(), 40, 2.5, undefined)).toMatchObject({ weight: 40, reps: 6 });
-    expect(sizeLoadToRange({ ...base, setType: SetType.finisher }, exercise(), 40, 2.5, undefined)).toMatchObject({ weight: 40, reps: 6 });
-    expect(sizeLoadToRange({ ...base, reps: 8 }, exercise(), 40, 2.5, undefined)).toMatchObject({ weight: 40, reps: 8 });
   });
 });
 

@@ -202,11 +202,8 @@ describe("Backoff quand predicted < repMin", () => {
     const s = suggest({ exercise, currentSetIndex: 1, recentHistory: history, currentSessionSets: [todaySet1] });
     expect(s.mode).toBe(SuggestionMode.recordAttempt);
     expect(s.reasonCodes).toContain("predicted_drop_same_load");
-    // Le candidat retenu (100 × 5) passe sous la fourchette 6-10 : la charge est ensuite dimensionnée
-    // pour y revenir (7,5 kg par rep à 100 kg : 95 kg donne 6 reps), 11/10/2026.
-    expect(s.reasonCodes[0]).toBe("load_sized_to_range");
-    expect(s.weight).toBeCloseTo(95);
-    expect(s.reps).toBe(6);
+    expect(s.weight).toBeCloseTo(100);
+    expect(s.reps).toBe(5);
   });
 });
 

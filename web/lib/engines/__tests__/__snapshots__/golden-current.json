@@ -127,11 +127,10 @@
   },
   "Leg extension": {
     "exerciseName": "Leg extension",
-    "weight": 72.5,
-    "reps": 9,
+    "weight": 80,
+    "reps": 8,
     "mode": "record_attempt",
     "reasonCodes": [
-      "load_floor_reached",
       "top_set_anchor_v2"
     ]
   },
@@ -164,11 +163,10 @@
   },
   "Tirage horizontal large": {
     "exerciseName": "Tirage horizontal large",
-    "weight": 57.5,
-    "reps": 8,
+    "weight": 60,
+    "reps": 7,
     "mode": "record_attempt",
     "reasonCodes": [
-      "load_sized_to_range",
       "top_set_anchor_v2"
     ]
   },
