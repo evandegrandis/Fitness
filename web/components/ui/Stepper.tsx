@@ -1,18 +1,18 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDecimal } from "@/lib/format";
-
-const SCRUB_DEAD_ZONE = 12; // px : en-dessous, le scroll natif de la page gagne
-const SCRUB_PX_PER_STEP = 18; // px de glissement par cran
+import { holdElapsed, moveScrub, SCRUB, startScrub, type ScrubGesture } from "./scrub-gesture";
 
 /**
  * Incrémenteur tactile (poids / reps), sans boutons +/- (Evan, 26/09/2026 : glisser suffit, les
  * boutons encombraient et se chevauchaient) :
- *  - **scrub vertical sur le chiffre** = glisser haut/bas pour ajuster vite (le geste principal à
- *    la salle). Zone morte de 12 px pour ne pas voler le scroll de page ;
+ *  - **appui tenu puis glissé vertical sur le chiffre** = ajuster vite (le geste principal à la
+ *    salle). Un glissé sans appui fait défiler la page, comme partout ailleurs : avant le
+ *    11/10/2026, la tuile captait tout glissé vertical et un simple défilement changeait la charge
+ *    (`scrub-gesture.ts`). La tuile s'allume quand le réglage est armé ;
  *  - tap sur le chevron du dessus ou du dessous = un pas, pour la précision.
  *
  * `variant="tile"` (saisie d'une série) : une tuile pleine largeur, libellé et valeur à gauche,
@@ -40,12 +40,18 @@ export function Stepper({
   className?: string;
   variant?: "stack" | "tile";
 }) {
-  // -- Scrub vertical sur le chiffre --
-  const scrubStartY = useRef<number | null>(null);
+  // -- Réglage au glissé sur le chiffre --
+  const scrubElement = useRef<HTMLSpanElement | null>(null);
+  const gesture = useRef<ScrubGesture | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrubBaseValue = useRef(value);
   const scrubLastValue = useRef(value);
-  const scrubActive = useRef(false);
+  const latest = useRef({ value, onChange });
   const [scrubbing, setScrubbing] = useState(false);
+
+  useEffect(() => {
+    latest.current = { value, onChange };
+  });
 
   const clamp = (v: number) => {
     let n = v;
@@ -53,36 +59,110 @@ export function Stepper({
     if (max != null) n = Math.min(max, n);
     return Math.round(n * 100) / 100;
   };
+  const clampRef = useRef(clamp);
+  useEffect(() => {
+    clampRef.current = clamp;
+  });
 
+  // Le doigt passe par les événements tactiles natifs : seul un `touchmove` non passif peut
+  // empêcher la page de défiler une fois le réglage armé, et rien d'autre ne l'en empêche.
+  useEffect(() => {
+    const element = scrubElement.current;
+    if (!element) return;
+    const clearHold = () => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    };
+    const arm = () => {
+      scrubBaseValue.current = latest.current.value;
+      scrubLastValue.current = latest.current.value;
+      setScrubbing(true);
+    };
+    const apply = (steps: number) => {
+      const next = clampRef.current(scrubBaseValue.current + steps * step);
+      if (next !== scrubLastValue.current) {
+        scrubLastValue.current = next;
+        latest.current.onChange(next);
+      }
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      clearHold();
+      if (event.touches.length !== 1) {
+        gesture.current = null;
+        return;
+      }
+      const touch = event.touches[0];
+      gesture.current = startScrub(touch.clientY, touch.clientX, performance.now(), "touch");
+      holdTimer.current = setTimeout(() => {
+        if (!gesture.current) return;
+        const next = holdElapsed(gesture.current, performance.now());
+        gesture.current = next;
+        if (next.phase === "scrubbing") arm();
+      }, SCRUB.HOLD_MS);
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const current = gesture.current;
+      if (!current) return;
+      const touch = event.touches[0];
+      const wasScrubbing = current.phase === "scrubbing";
+      const { gesture: next, steps } = moveScrub(current, touch.clientY, touch.clientX, performance.now());
+      gesture.current = next;
+      if (next.phase === "scrolling") {
+        clearHold();
+        return;
+      }
+      if (next.phase !== "scrubbing") return;
+      if (event.cancelable) event.preventDefault();
+      if (!wasScrubbing) arm();
+      if (steps !== null) apply(steps);
+    };
+    const onTouchEnd = () => {
+      clearHold();
+      gesture.current = null;
+      setScrubbing(false);
+    };
+    element.addEventListener("touchstart", onTouchStart, { passive: true });
+    element.addEventListener("touchmove", onTouchMove, { passive: false });
+    element.addEventListener("touchend", onTouchEnd);
+    element.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      clearHold();
+      element.removeEventListener("touchstart", onTouchStart);
+      element.removeEventListener("touchmove", onTouchMove);
+      element.removeEventListener("touchend", onTouchEnd);
+      element.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [step]);
+
+  // Souris ou stylet : le glissé règle tout de suite (aucun défilement à protéger).
   const onScrubDown = (e: React.PointerEvent) => {
     e.stopPropagation();
-    scrubStartY.current = e.clientY;
+    if (e.pointerType === "touch") return;
+    gesture.current = startScrub(e.clientY, e.clientX, performance.now(), "mouse");
     scrubBaseValue.current = value;
     scrubLastValue.current = value;
-    scrubActive.current = false;
   };
   const onScrubMove = (e: React.PointerEvent) => {
-    if (scrubStartY.current === null) return;
-    const dy = scrubStartY.current - e.clientY; // haut = +
-    if (!scrubActive.current) {
-      if (Math.abs(dy) < SCRUB_DEAD_ZONE) return; // laisse le scroll de page gagner
-      scrubActive.current = true;
+    if (e.pointerType === "touch" || !gesture.current) return;
+    const wasScrubbing = gesture.current.phase === "scrubbing";
+    const { gesture: next, steps } = moveScrub(gesture.current, e.clientY, e.clientX, performance.now());
+    gesture.current = next;
+    if (next.phase !== "scrubbing") return;
+    if (!wasScrubbing) {
       setScrubbing(true);
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     }
-    const steps = Math.trunc((dy - Math.sign(dy) * SCRUB_DEAD_ZONE) / SCRUB_PX_PER_STEP);
-    const next = clamp(scrubBaseValue.current + steps * step);
-    if (next !== scrubLastValue.current) {
-      scrubLastValue.current = next;
-      onChange(next);
+    if (steps === null) return;
+    const nextValue = clamp(scrubBaseValue.current + steps * step);
+    if (nextValue !== scrubLastValue.current) {
+      scrubLastValue.current = nextValue;
+      onChange(nextValue);
     }
   };
-  const onScrubEnd = () => {
-    scrubStartY.current = null;
-    if (scrubActive.current) {
-      scrubActive.current = false;
-      setScrubbing(false);
-    }
+  const onScrubEnd = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    gesture.current = null;
+    setScrubbing(false);
   };
 
   // Les chevrons sont la seule affordance visible : cible de 44 px de large, un pas par tap.
@@ -106,6 +186,7 @@ export function Stepper({
   };
 
   const scrubProps = {
+    ref: scrubElement,
     role: "slider",
     "aria-valuenow": value,
     "aria-valuemin": min,
@@ -131,7 +212,7 @@ export function Stepper({
           className
         )}
       >
-        <span {...scrubProps} className="flex min-w-0 flex-1 touch-pan-x cursor-ns-resize select-none flex-col justify-center px-3.5 py-2.5">
+        <span {...scrubProps} className="flex min-w-0 flex-1 touch-pan-y cursor-ns-resize select-none flex-col justify-center px-3.5 py-2.5 [-webkit-touch-callout:none]">
           {label && <span className="eyebrow !text-[0.58rem]">{label}</span>}
           <span className={cn("tnum mt-1 truncate text-[1.65rem] font-bold leading-none tabular-nums transition-transform", scrubbing && "scale-105")}>
             {formatDecimal(value, 2)}
@@ -152,7 +233,7 @@ export function Stepper({
       <span
         {...scrubProps}
         className={cn(
-          "relative flex touch-pan-x cursor-ns-resize select-none flex-col items-center",
+          "relative flex touch-pan-y cursor-ns-resize select-none flex-col items-center [-webkit-touch-callout:none]",
           scrubbing && "scale-105"
         )}
       >
