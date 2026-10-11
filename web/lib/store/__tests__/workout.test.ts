@@ -608,7 +608,10 @@ describe("useWorkoutStore", () => {
       // à cette charge ; elle ne décroche que nettement sous la fourchette.
       expect(next.weight).toBe(18);
       expect(next.prediction).toBeDefined();
-      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin - 1);
+      // Reps = prévision à cette charge + marge d'ambition (négative sans historique : une prévision juste
+      // n'est battue que 45 % du temps) ; jamais une mini-série de complément.
+      expect(next.reps).toBe(Math.max(1, Math.round(next.ambition!.predictedReps + next.ambition!.margin)));
+      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin - 2);
     }
   );
 

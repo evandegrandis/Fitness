@@ -23,14 +23,22 @@ passe sous `repTargetMin − 2,7`, il baisse lui-même la charge plus d'une fois
 séries 2+, point à 50 % : −2,69 [−4,7 ; −1,4] ; après le 21/09 : −2,56). Montées de charge du moteur (dépassement,
 promotion, série lourde), test de plateau et finishers : la cible est la prévision, inchangée.
 
+Après une série LOURDE, il redescend : la cible prend la charge de la prévision (retour ou amorce du moteur), ou au
+moins 11 % plus léger quand la prévision ne descend que d'un cran (sa baisse médiane après une série lourde, avant le
+21/09). Série lourde = reps au RIR visé sous la fourchette, à une charge d'au moins un cran au-dessus de sa charge de
+travail habituelle (médiane des 5 dernières séances). C'est la définition qui sépare le mieux ce qu'il fait : après une
+telle série, il redescend 63 % du temps avant le 21/09 (27 séries) et 74 % après (19), contre 25 % ailleurs ; les
+étiquettes « série lourde » du schéma série lourde + retours du moteur ne séparent rien (27 à 31 %).
+
 Reps de la cible : prévision à cette charge + marge d'ambition, pour qu'il la batte environ une fois sur deux (Atkinson,
 1957 : motivation maximale à probabilité de réussite intermédiaire ; Locke et Latham : un objectif difficile mais
 atteignable bat un objectif facile). « Battre » est la définition de l'app (`setVersusSuggestion`, `lib/engines/versus.ts`).
 La marge est apprise sur les séries enregistrées par un moteur à deux couches (prévision stockée contre reps faites),
 pondérées par l'âge (demi-vie 28 jours), par contexte (1re série, séries suivantes), rétrécie vers le global (poids 10)
-puis vers un a priori (poids 10 ; part battue avec une marge de 0, 1, 2 reps : 0,45 / 0,25 / 0,11, mesurée avant le
-21/09 sur 272 séries), bornée à [0 ; 2]. Une boucle de long terme la corrige : plus de 60 % de cibles battues sur la
-période récente, + 0,5 rep ; moins de 40 %, − 0,5.
+puis vers un a priori (poids 10 ; part battue avec une marge de −1, 0, 1, 2 reps : 0,64 / 0,45 / 0,25 / 0,11, mesurée
+avant le 21/09 sur 272 séries), bornée à [−1 ; 2] : une prévision juste n'est battue qu'environ 45 % du temps, la marge
+doit pouvoir descendre. Une boucle de long terme la corrige, par contexte, sur les cibles battues À LA CHARGE DE LA CIBLE
+(ailleurs, le verdict dépend de la charge choisie, pas des reps visées) : plus de 55 %, + 0,5 rep ; moins de 45 %, − 0,5.
 
 Raison affichée : « Cible à battre : tu fais d'habitude 6 à 7 ici » (prévision au RIR visé, et une rep de plus à
 l'échec).
@@ -149,27 +157,43 @@ la prévision qu'il aurait enregistrées (la marge s'apprend sur elles). Séries
 
 | Contexte | Vécu | Ancien moteur rejoué | Nouveau | Nouveau, à la charge de la cible |
 |---|---|---|---|---|
-| Toutes les séries | 37 % | 33 % | 38 % [33 ; 44] | 43 % (212 séries) |
-| Hors échantillon (depuis le 21/09) | 35 % | 32 % | 46 % [39 ; 54] | 46 % (78) |
-| 1re série | 51 % | 49 % | 41 % [35 ; 48] | 38 % (93) |
-| 2e série | 28 % | 24 % | 34 % [24 ; 43] | 38 % (69) |
-| 3e série | 30 % | 17 % | 38 % [29 ; 48] | 54 % (35) |
-| 4e série et plus | 21 % | 23 % | 41 % [29 ; 56] | 73 % (15) |
-| Branche « baisser d'un cran » | 13 % | 15 % | 39 % | |
-| Séries de retour | 10 % | 21 % | 55 % | |
+| Toutes les séries | 37 % | 33 % | 43 % [37 ; 48] | 49 % (208 séries) |
+| Avant le 21/09 (réglages) | 39 % | 33 % | 38 % | 48 % |
+| Depuis le 21/09 (hors échantillon) | 35 % | 32 % | 50 % [44 ; 56] | 50 % |
+| 1re série | 51 % | 49 % | 45 % [37 ; 53] | 42 % |
+| 2e série | 28 % | 24 % | 41 % [32 ; 50] | 44 % |
+| 3e série et plus | 27 % | 19 % | 42 % | |
 
-- La marge apprise reste à 0 sur tout l'historique : la prévision seule est déjà battue environ 45 % du temps à la même
-  charge, et la boucle voit 30 à 39 % de cibles battues. Demi-vie et poids n'y changent rien (1 294 cibles sur 1 300
-  identiques avec une demi-vie de 14 jours et un poids de 5) ; ils agiront quand il battra plus souvent.
-- 50 % n'est pas atteint partout : quand il prend une charge plus légère que la cible (40 % de ses séries 2+), la règle
-  de l'app ne la compte battue que si les reps atteignent la fourchette ET si le 1RM estimé (Epley) dépasse celui de la
-  cible ; c'est rarement le cas (19 %). Les 1res séries passent de 51 % à 41 % : l'ancien moteur y était prudent (+0,6 rep).
-- Prévision : erreur 2,35 → 1,85 sans simulation, 1,90 [1,74 ; 2,06] en simulation (le décalage appris s'y nourrit des
-  nouvelles prévisions), biais −0,04.
-- Écart entre la charge de la cible et celle qu'il prend (séries 2+, médiane) : 5,0 % avec l'ancien moteur, 8,3 % avec
-  le correctif « plancher à −15 % » essayé puis retiré, 3,6 % avec la cible.
-- Jeu en séance (même calcul que l'en-tête) : 5,4 cibles battues par séance vécues, 5,0 avec l'ancien moteur rejoué,
-  5,8 avec la cible (sur 15,4 séries jugées) ; meilleur combo moyen 2,5 vécu, 2,4 rejoué dans les deux cas.
+- 1res séries, 51 % vécus contre 45 % : la cause est dans la prévision, pas dans la cible. Sur les 181 premières séries,
+  18 cibles changent sans simulation, toutes au poids du corps (HSPU, Dips : le plafond retiré, 11,4 → 15,2 reps visées,
+  battues 67 % → 28 %) ; en simulation, le décalage appris du moteur se recale sur les nouvelles prévisions et relève de
+  0,3 rep 77 premières séries chargées (48 % → 42 %). La marge négative ramène vers 50 % autant que les reps entières le
+  permettent : avec ses séries, une rep de moins donnerait 64 %, la marge 0 donne 45 %.
+- Après une série lourde (33 cas, 22 séances) : 45 % de cibles battues contre 12 % avec l'ancien moteur ; la nouvelle
+  cible du 11/10 après 150 × 6 est 120 × 11 (au lieu de 145 × 4).
+- Prévision : erreur 2,35 → 1,85 sans simulation, 1,90 [1,74 ; 2,06] en simulation.
+- Écart entre la charge de la cible et celle qu'il prend (séries 2+, médiane) : 5,0 % avec l'ancien moteur, 8,3 % avec le
+  correctif « plancher à −15 % » essayé puis retiré, 3,8 % avec la cible.
+- Jeu en séance (même calcul que l'en-tête) : 6,5 cibles battues par séance avec la cible, contre 5,4 vécues et 5,0 avec
+  l'ancien moteur rejoué (sur 15,4 séries jugées) ; meilleur combo moyen 2,9 contre 2,5 et 2,4.
+
+### 4.3 « Battre » avec une série plus légère : à trancher par Evan (rien n'est changé dans le code)
+
+La règle de l'app juge une série plus légère que la cible par les 1RM d'Epley, et seulement si ses reps atteignent la
+fourchette. Mesure de ce que donnerait la règle 7,5 % du moteur à la place (reps de la série ramenées à la charge de la
+cible), séries jugées depuis le 17/08 (depuis le 21/09 entre parenthèses), `regle75.py` hors dépôt :
+
+| Cibles | Règle | Toutes | 1re | 2e | 3e+ |
+|---|---|---|---|---|---|
+| Vécues | Epley (actuelle) | 37 % (35 %) | 51 % | 28 % | 27 % |
+| Vécues | 7,5 %, reps dans la fourchette | 41 % (41 %) | 57 % | 34 % | 28 % |
+| Nouvelles | Epley (actuelle) | 43 % (50 %) | 45 % | 41 % | 42 % |
+| Nouvelles | 7,5 %, reps dans la fourchette | 52 % (58 %) | 51 % | 50 % | 54 % |
+| Nouvelles | 7,5 %, sans exigence | 53 % (59 %) | 51 % | 50 % | 58 % |
+
+Sur le jeu (cibles nouvelles) : 6,2 → 7,4 cibles battues par séance, meilleur combo moyen 2,8 → 3,7. Discipline
+(approchée, records non comptés) : 66 % → 74 % depuis le 17/08, 70 % → 78 % sur les 28 derniers jours ; avec les cibles
+vécues, 74 % → 81 %.
 
 ## 5. Limites
 

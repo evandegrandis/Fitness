@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ambitionMargin, TARGET, targetFromPrediction } from "@/lib/engines/target";
+import { ambitionMargin, heavyReturnLoad, isHeavySet, TARGET, targetFromPrediction, usualWorkingLoad } from "@/lib/engines/target";
 import { suggest, SUGGESTION_ENGINE_VERSION } from "@/lib/engines/progression";
 import { suggestionReason } from "@/lib/engines/suggestion-reason";
 import { SetType } from "@/lib/models/enums";
@@ -44,9 +44,11 @@ function session(daysAgo: number, specs: { reps: number; predicted: number; targ
 }
 
 describe("marge d'ambition", () => {
-  it("sans cible enregistrée par ce moteur : l'a priori (la prévision seule est battue 45 % du temps), marge 0", () => {
-    expect(ambitionMargin(undefined, undefined, true, NOW).margin).toBe(0);
-    expect(ambitionMargin([], [exercise()], false, NOW).margin).toBe(0);
+  it("sans cible enregistrée par ce moteur : l'a priori (prévision battue 45 % du temps, 64 % à une rep de moins)", () => {
+    const prior = -1 + (TARGET.PRIOR_BEAT_M1 - TARGET.GOAL) / (TARGET.PRIOR_BEAT_M1 - TARGET.PRIOR_BEAT_0);
+    expect(ambitionMargin(undefined, undefined, true, NOW).margin).toBeCloseTo(prior, 5);
+    expect(ambitionMargin([], [exercise()], false, NOW).margin).toBeCloseTo(prior, 5);
+    expect(prior).toBeLessThan(0);
   });
 
   it("monte quand il dépasse souvent la prévision, sans dépasser 2 reps", () => {
@@ -61,7 +63,9 @@ describe("marge d'ambition", () => {
   it("n'apprend que des séries d'un moteur à deux couches (la prévision enregistrée avant était une cible)", () => {
     const history = [session(40, [{ reps: 10, predicted: 8, target: 8 }], "web-v2.2-2026-08-30")];
     for (let i = 0; i < 30; i++) history.push(session(1 + i * 0.1, [{ reps: 11, predicted: 8, target: 9 }], "web-v2.2-2026-08-30"));
-    expect(ambitionMargin(history, [exercise()], true, NOW)).toMatchObject({ margin: 0, beatRate: null });
+    const margin = ambitionMargin(history, [exercise()], true, NOW);
+    expect(margin.beatRate).toBeNull();
+    expect(margin.margin).toBeCloseTo(ambitionMargin(undefined, undefined, true, NOW).margin, 5);
   });
 
   it("la boucle de long terme la baisse quand il bat moins de 40 % des cibles", () => {
@@ -71,6 +75,25 @@ describe("marge d'ambition", () => {
     const margin = ambitionMargin(history, [exercise()], true, NOW);
     expect(margin.beatRate).toBe(0);
     expect(margin.margin).toBeCloseTo(TARGET.MAX - TARGET.LOOP_STEP, 5);
+  });
+});
+
+describe("après une série lourde, la cible revient à la charge de travail", () => {
+  it("150 × 6 au-dessus d'une habitude à 110-120 : la cible redescend vers la charge de travail, pas 145 × 4", () => {
+    const history = [20, 13, 6].map((d, i) => ({
+      ...session(d, []),
+      exercises: [{
+        id: `h-${d}`, orderIndex: 0, notes: "", exerciseId: "press", exerciseName: "press", supersetGroupId: null, plateauWeakPoint: null,
+        sets: [set(110 + 5 * i, 10, new Date(NOW.getTime() - d * DAY)), set(110 + 5 * i, 8, new Date(NOW.getTime() - d * DAY + 180_000))],
+      }],
+    }));
+    const today = [set(150, 6, new Date(NOW.getTime() - 60_000), { reportedRir: 1 })];
+    const params = { exercise: exercise(), currentSetIndex: 1, recentHistory: history.map((s) => s.exercises[0].sets).reverse(), currentSessionSets: today, sessionHistory: history, catalog: [exercise()], now: NOW, target: true };
+    const shown = suggest(params);
+    // La prévision ne descend que d'un cran (147,5) : la cible redescend d'au moins 11 % (7 crans), à 132,5.
+    expect(shown.prediction!.weight).toBe(147.5);
+    expect(shown.weight).toBe(heavyReturnLoad(147.5, 150, exercise(), 2.5));
+    expect(shown.weight).toBe(132.5);
   });
 });
 
@@ -88,6 +111,19 @@ describe("cible construite sur la prévision", () => {
     expect(targetFromPrediction({ weight: 100, reps: 7, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 100, reps: 7, lowered: 0 });
     // 6 reps sous la fourchette : deux crans au plus.
     expect(targetFromPrediction({ weight: 100, reps: 2, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 95, lowered: 2 });
+  });
+
+  it("série lourde : reps au RIR visé sous la fourchette, au-dessus de la charge habituelle", () => {
+    expect(isHeavySet(6, 150, 125, exercise(), 2.5, undefined)).toBe(true);
+    expect(isHeavySet(9, 150, 125, exercise(), 2.5, undefined)).toBe(false);
+    expect(isHeavySet(6, 125, 125, exercise(), 2.5, undefined)).toBe(false);
+    expect(isHeavySet(6, 150, null, exercise(), 2.5, undefined)).toBe(false);
+    expect(usualWorkingLoad([[set(120, 10, NOW), set(130, 8, NOW)], [set(125, 9, NOW)]])).toBe(125);
+  });
+
+  it("charge de retour : la prévision si elle est déjà assez légère (retour du moteur), sinon 11 % plus léger", () => {
+    expect(heavyReturnLoad(120, 150, exercise(), 2.5)).toBe(120);
+    expect(heavyReturnLoad(147.5, 150, exercise(), 2.5)).toBe(132.5);
   });
 
   it("une montée de charge du moteur (dépassement, promotion, plateau) reste telle quelle", () => {

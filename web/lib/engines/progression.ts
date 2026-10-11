@@ -73,7 +73,7 @@ import {
 } from "@/lib/engines/predict";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
 import { classRepDrop, learnedRepDrop, type RepDropEstimate } from "@/lib/engines/rep-drop";
-import { ambitionMargin, targetFromPrediction } from "@/lib/engines/target";
+import { ambitionMargin, heavyReturnLoad, isHeavySet, targetFromPrediction, usualWorkingLoad } from "@/lib/engines/target";
 import { easierVariantName } from "@/lib/engines/variants";
 import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
 import { cleanWeight } from "@/lib/format";
@@ -2708,17 +2708,24 @@ export function suggest(params: SuggestParams): SetSuggestion {
       (lastToday !== undefined &&
         effTotal(result.weight, mode, bodyweightKg) > effTotal(lastToday.weight, mode, bodyweightKg) + 1e-9);
     const margin = ambitionMargin(sessionHistory, catalog, doneToday.length === 0, now);
+    // Après une série lourde, il redescend : la cible prend la charge de la prévision (retour ou amorce).
+    const heavy =
+      lastToday !== undefined &&
+      effTotal(result.weight, mode, bodyweightKg) < effTotal(lastToday.weight, mode, bodyweightKg) - 1e-9 &&
+      isHeavySet(repsAtSuggestionRir(lastToday), lastToday.weight, usualWorkingLoad(history), exercise, increment, bodyweightKg);
+    const returnLoad = heavy ? heavyReturnLoad(result.weight, lastToday!.weight, exercise, increment) : result.weight;
     const anchor =
-      lastToday !== undefined && Math.abs(result.weight - lastToday.weight) > 1e-9
+      lastToday !== undefined && (heavy ? Math.abs(returnLoad - result.weight) > 1e-9 : Math.abs(result.weight - lastToday.weight) > 1e-9)
         ? { load: lastToday.weight, reps: repsAtSuggestionRir(lastToday) - repDrop.drop }
         : null;
     const built = targetFromPrediction(
       { weight: result.weight, reps: result.reps, push, anchor },
       exercise,
-      lastToday?.weight ?? null,
+      heavy ? returnLoad : lastToday?.weight ?? null,
       margin.margin,
       increment,
-      bodyweightKg
+      bodyweightKg,
+      !heavy
     );
     const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
     result = {
