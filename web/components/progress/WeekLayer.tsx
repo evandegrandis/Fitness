@@ -14,6 +14,7 @@ import { useCareer } from "@/lib/hooks/use-career";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { currentWeekWindow, parentSets, weeklyProgress, weeklyTrackedVolume } from "@/lib/engines/effective-sets";
 import { weekSessionPlan } from "@/lib/engines/session-focus";
+import { weekStatus } from "@/lib/engines/week-status";
 import {
   isBehindPace,
   nextWeekTier,
@@ -115,10 +116,11 @@ export function WeekSummary() {
   );
   const current = weeks.at(-1);
   const best = weeks.find((week) => week.best) ?? null;
-  const rows = useMemo(() => weeklyProgress(history, catalog, goals, now, active), [history, catalog, goals, now, active]);
-  const goalRows = rows.filter((row) => row.goalSets > 0);
-  const goalTotal = goalRows.reduce((sum, row) => sum + row.goalSets, 0);
-  const score = goalTotal > 0 ? goalRows.reduce((sum, row) => sum + Math.min(row.effectiveSets, row.goalSets), 0) / goalTotal : 0;
+  // Même calcul que l'en-tête de séance et le bilan (`week-status.ts`).
+  const { score, goalTotal } = useMemo(
+    () => weekStatus(history, catalog, goals, now, active),
+    [history, catalog, goals, now, active]
+  );
 
   return (
     <WeekHero

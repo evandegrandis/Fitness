@@ -4,21 +4,36 @@
  * son ancienne salle (26 séances jusqu'au 21/09) ; depuis Fitness Park il s'entraîne sans modèle,
  * et l'accueil lui proposait encore ce Full Body.
  *
- * Construction, sur les mécanismes existants :
- *   1. le socle = les exercices présents dans au moins la moitié de ses dernières séances ;
- *   2. complété, jusqu'à son nombre habituel d'exercices, par les exercices de son répertoire
- *      récent (21 jours, comme « Quoi faire maintenant ») qui comblent le mieux la part du jour des
- *      déficits de la semaine (`weeklyPriorities` / `weekSessionPlan`) ;
- *   3. dans l'ordre où il les fait d'habitude, séries habituelles par exercice ;
- *   4. les paires qu'il enchaîne en superset dans au moins deux séances récentes restent liées.
+ * 11/10/2026, Evan : « quand j'ai cliqué sur la séance du jour recommandée, elle n'était pas
+ * cohérente avec ce qu'il fallait que je fasse ». Ce jour-là (dernière séance de sa semaine, tout le
+ * reste était pour aujourd'hui : pecs 6,3, abdos 6,3, triceps 5,1, dorsaux 3,6, deltoïdes 3,2 et
+ * 3,1, biceps 3,1), l'ancienne version remplissait d'abord ses exercices habituels avec leurs
+ * séries habituelles : biceps 6,2 séries pour 3,1 à faire, abdos 4,1 pour 6,3. Suivie à la lettre,
+ * elle donnait ~25 séries comptées quand l'or en demandait 27.
+ *
+ * Construction :
+ *   1. le besoin du jour par muscle = ce qui reste de l'objectif / séances qui restent d'habitude
+ *      (`weekSessionPlan`, la même part que « Quoi faire maintenant ») ; jambes exclues si Evan les a
+ *      mises de côté cette semaine ;
+ *   2. choix glouton parmi les exercices de ses 6 dernières séances : chaque exercice reçoit les
+ *      séries que demande le muscle qu'il comble le mieux (2 à 4), et n'entre que s'il apporte au
+ *      moins une série comptée. L'habitude départage (à besoin comparable, l'exercice familier passe
+ *      devant), elle ne fait plus entrer un exercice pour un muscle déjà servi ;
+ *   3. volume au plus 1,25 fois sa séance habituelle (en séries) : de quoi viser un palier sans
+ *      séance démesurée. Si les besoins du jour sont couverts avant son volume habituel, son socle
+ *      (exercices de la moitié de ses séances) complète, avec ses séries habituelles ;
+ *   4. dans l'ordre où il les fait d'habitude ; les paires qu'il enchaîne en superset dans au moins
+ *      deux séances récentes restent liées ;
+ *   5. le palier de semaine atteint si la séance est faite (`projected`), dit sur la carte.
  * Moteur pur : il propose, il n'écrit rien et ne touche pas aux suggestions de charge.
  */
 
-import { weeklyPriorities } from "@/lib/engines/effective-sets";
+import { weeklyProgress } from "@/lib/engines/effective-sets";
 import { SESSION_FOCUS, weekSessionPlan } from "@/lib/engines/session-focus";
 import { supersetBlocks } from "@/lib/engines/session-insights";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
-import { parentShortName, type MuscleParent } from "@/lib/models/muscles";
+import { WEEK_TIERS, weekTier, type WeekTier } from "@/lib/engines/progress-stats";
+import { isLowerBodyParent, LOWER_BODY_PARENTS, parentShortName, type MuscleParent } from "@/lib/models/muscles";
 import {
   aggregateCoefficient,
   primaryParent,
@@ -40,13 +55,18 @@ export const HABITUAL_SESSION = {
   /** Séances où une paire doit avoir été enchaînée pour rester liée. */
   SUPERSET_MIN_SESSIONS: 2,
   /**
-   * Poids d'un muscle en retard face à l'habitude (en « séances de présence ») : un exercice fait
-   * 2 fois sur 6 qui comble un retard passe devant un exercice fait 3 fois sur 6 pour un muscle
-   * déjà couvert, jamais devant le socle fait 5 ou 6 fois sur 6.
+   * Poids de l'habitude, en séries comptées : un exercice fait à chaque séance gagne 2 séries
+   * d'avance sur un exercice jamais fait. À besoin comparable, le familier passe devant ; un
+   * exercice qui comble 2 séries de plus passe devant le familier.
    */
-  DEFICIT_WEIGHT: 1.5,
-  /** Séries proposées par exercice, au plus (sa médiane, une montée en charge comptée à part). */
+  HABIT_WEIGHT: 2,
+  /** Séries proposées par exercice. */
+  MIN_TARGET_SETS: 2,
   MAX_TARGET_SETS: 4,
+  /** Un exercice n'entre pour le besoin du jour que s'il apporte au moins une série comptée. */
+  MIN_USEFUL_SETS: 1,
+  /** Volume au plus, en multiple de sa séance habituelle (séries). */
+  VOLUME_STRETCH: 1.25,
 } as const;
 
 const DAY_MS = 86_400_000;
@@ -73,6 +93,13 @@ export interface HabitualSessionPlan {
   /** Muscles en retard visés aujourd'hui, avec la part du jour (séries). */
   deficits: { parent: MuscleParent; share: number }[];
   expectedSets: number;
+  /** Palier de la semaine avant la séance et si la séance est faite telle quelle. */
+  projected: { scoreBefore: number; scoreAfter: number; tierBefore: WeekTier | null; tierAfter: WeekTier | null };
+}
+
+export interface HabitualSessionOptions {
+  /** Jambes mises de côté cette semaine (« Quoi faire maintenant ») : rien n'est prévu pour elles. */
+  lowerBodyOff?: boolean;
 }
 
 function median(values: readonly number[]): number {
@@ -90,29 +117,32 @@ interface Usage {
 }
 
 /** Ordre réel d'une séance : exercices rangés par l'heure de leur première série de travail. */
-function practicedOrder(session: WorkoutSession, byId: ReadonlyMap<string, Exercise>): { exercise: Exercise; sets: number }[] {
+function practicedOrder(session: WorkoutSession, byId: ReadonlyMap<string, Exercise>): { exercise: Exercise; sets: number; units: number }[] {
   const firstAt = new Map<string, number>();
   const sets = new Map<string, number>();
+  const units = new Map<string, number>();
   for (const logged of session.exercises) {
     const exercise = byId.get(logged.exerciseId);
     if (!exercise) continue;
     const done = logged.sets.filter((set) => set.completed && set.reps > 0);
-    const units = physiologicalSetUnits(done, { increment: exercise.smallestIncrement });
-    if (units <= 0) continue;
+    const loggedUnits = physiologicalSetUnits(done, { increment: exercise.smallestIncrement });
+    if (loggedUnits <= 0) continue;
     const first = Math.min(...done.map((set) => set.timestamp.getTime()));
     firstAt.set(exercise.id, Math.min(firstAt.get(exercise.id) ?? Infinity, first));
     sets.set(exercise.id, (sets.get(exercise.id) ?? 0) + done.length);
+    units.set(exercise.id, (units.get(exercise.id) ?? 0) + loggedUnits);
   }
   return [...firstAt.entries()]
     .sort((a, b) => a[1] - b[1])
-    .map(([id]) => ({ exercise: byId.get(id)!, sets: sets.get(id)! }));
+    .map(([id]) => ({ exercise: byId.get(id)!, sets: sets.get(id)!, units: units.get(id)! }));
 }
 
 export function habitualSessionPlan(
   history: readonly WorkoutSession[],
   catalog: readonly Exercise[],
   goals: readonly MuscleGoal[],
-  now: Date
+  now: Date,
+  options: HabitualSessionOptions = {}
 ): HabitualSessionPlan | null {
   const byId = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   const recent = sessionsNewestFirst(history.filter((session) => !session.isActive && session.date.getTime() <= now.getTime()))
@@ -123,9 +153,11 @@ export function habitualSessionPlan(
 
   const usage = new Map<string, Usage>();
   const sizes: number[] = [];
+  const volumes: number[] = [];
   for (const session of recent) {
     const order = practicedOrder(session, byId);
     sizes.push(order.length);
+    volumes.push(order.reduce((sum, entry) => sum + entry.units, 0));
     order.forEach(({ exercise, sets }, index) => {
       const entry = usage.get(exercise.id) ?? { exercise, sessions: 0, sets: [], positions: [], lastSeen: 0 };
       entry.sessions += 1;
@@ -136,15 +168,20 @@ export function habitualSessionPlan(
     });
   }
   const targetSize = Math.round(median(sizes));
-  const targetSetsOf = (entry: Usage) =>
-    Math.min(HABITUAL_SESSION.MAX_TARGET_SETS, Math.max(2, Math.round(median(entry.sets))));
+  const usualVolume = Math.round(median(volumes));
+  const budget = Math.max(usualVolume, Math.round(usualVolume * HABITUAL_SESSION.VOLUME_STRETCH));
+  const habitualSetsOf = (entry: Usage) =>
+    Math.min(HABITUAL_SESSION.MAX_TARGET_SETS, Math.max(HABITUAL_SESSION.MIN_TARGET_SETS, Math.round(median(entry.sets))));
 
-  // Déficits de la semaine, part du jour : ce qui reste divisé par les séances qui restent.
+  // 1. Besoin du jour : ce qui reste de chaque objectif, divisé par les séances qui restent.
   const plan = weekSessionPlan([...history], now);
-  const deficits = weeklyPriorities([...history], [...catalog], [...goals], now).map(([parent, remaining]) => ({
-    parent,
-    share: remaining / plan.sessionsLeftIncludingToday,
-  }));
+  const progress = weeklyProgress([...history], [...catalog], [...goals], now).filter((row) => row.goalSets > 0);
+  const deficits = progress
+    .filter((row) => row.remaining >= SESSION_FOCUS.MIN_REMAINING)
+    .filter((row) => !(options.lowerBodyOff && isLowerBodyParent(row.parent)))
+    .sort((a, b) => b.remaining - a.remaining)
+    .map((row) => ({ parent: row.parent, share: row.remaining / plan.sessionsLeftIncludingToday }));
+  const gaps = new Map(deficits.map(({ parent, share }) => [parent, share]));
 
   // Habitude d'un exercice : présence dans les séances récentes, les plus récentes pesant plus
   // (6 pour la dernière, 1 pour la plus ancienne), pour qu'un changement de salle se lise vite.
@@ -156,46 +193,73 @@ export function habitualSessionPlan(
     }
   });
 
-  // Choix glouton parmi ce qu'il a fait récemment : habitude + part des séries qui irait à un
-  // muscle encore en retard aujourd'hui (une fois un muscle couvert par les exercices déjà
-  // retenus, il ne pèse plus). Le socle (habitude forte) passe donc en premier, et un muscle en
-  // retard que le socle ne couvre pas fait entrer l'exercice qui le travaille d'habitude.
-  const gaps = new Map(deficits.map(({ parent, share }) => [parent, share]));
-  const chosen: { entry: Usage; reason: HabitualExercise["reason"]; forParent: MuscleParent | null }[] = [];
+  /** Ce que `sets` séries de l'exercice comblent des besoins restants (séries comptées). */
+  const usefulSets = (exercise: Exercise, sets: number) => {
+    let useful = 0;
+    for (const [parent, gap] of gaps) {
+      const coefficient = aggregateCoefficient(exercise, parent);
+      if (coefficient < SESSION_FOCUS.MIN_SUGGESTION_COEFFICIENT || gap <= 0) continue;
+      useful += Math.min(gap, coefficient * sets);
+    }
+    return useful;
+  };
+
+  const chosen: { entry: Usage; sets: number; reason: HabitualExercise["reason"]; forParent: MuscleParent | null }[] = [];
   const minSessions = Math.ceil(recent.length * HABITUAL_SESSION.CORE_SHARE);
-  while (chosen.length < targetSize) {
-    let best: { entry: Usage; score: number; parent: MuscleParent | null; need: number } | null = null;
+  let total = 0;
+  const take = (entry: Usage, sets: number, forParent: MuscleParent | null) => {
+    for (const [parent, gap] of gaps) gaps.set(parent, gap - aggregateCoefficient(entry.exercise, parent) * sets);
+    const habit = entry.sessions >= minSessions;
+    chosen.push({ entry, sets, reason: habit ? "habit" : "deficit", forParent: habit ? null : forParent });
+    total += sets;
+  };
+
+  // 2-3. Glouton sur le besoin : l'exercice qui comble le plus, habitude en départage.
+  while (chosen.length < targetSize && budget - total >= HABITUAL_SESSION.MIN_TARGET_SETS) {
+    let best: { entry: Usage; sets: number; score: number; parent: MuscleParent } | null = null;
     for (const entry of usage.values()) {
       if (chosen.some((picked) => picked.entry.exercise.id === entry.exercise.id)) continue;
-      const sets = targetSetsOf(entry);
-      let need = 0;
-      let mainParent: MuscleParent | null = null;
-      let mainNeed = 0;
+      // Le muscle qu'il comble le mieux fixe ses séries : de quoi fermer ce besoin, 2 à 4.
+      let main: { parent: MuscleParent; gap: number; coefficient: number; fill: number } | null = null;
       for (const [parent, gap] of gaps) {
         const coefficient = aggregateCoefficient(entry.exercise, parent);
         if (coefficient < SESSION_FOCUS.MIN_SUGGESTION_COEFFICIENT || gap <= 0) continue;
-        const filled = Math.min(gap, coefficient * sets);
-        need += filled;
-        if (filled > mainNeed) {
-          mainNeed = filled;
-          mainParent = parent;
-        }
+        const fill = Math.min(gap, coefficient * HABITUAL_SESSION.MAX_TARGET_SETS);
+        if (!main || fill > main.fill) main = { parent, gap, coefficient, fill };
       }
-      const score = (habitOf.get(entry.exercise.id) ?? 0) * recent.length + HABITUAL_SESSION.DEFICIT_WEIGHT * (need / sets);
-      if (!best || score > best.score) best = { entry, score, parent: mainParent, need };
+      if (!main) continue;
+      const sets = Math.min(
+        budget - total,
+        Math.min(HABITUAL_SESSION.MAX_TARGET_SETS, Math.max(HABITUAL_SESSION.MIN_TARGET_SETS, Math.round(main.gap / main.coefficient)))
+      );
+      const useful = usefulSets(entry.exercise, sets);
+      if (useful < HABITUAL_SESSION.MIN_USEFUL_SETS) continue;
+      const score = useful + HABITUAL_SESSION.HABIT_WEIGHT * (habitOf.get(entry.exercise.id) ?? 0);
+      if (!best || score > best.score + 1e-9 || (Math.abs(score - best.score) <= 1e-9 && entry.lastSeen > best.entry.lastSeen)) {
+        best = { entry, sets, score, parent: main.parent };
+      }
     }
     if (!best) break;
-    for (const [parent, gap] of gaps) {
-      gaps.set(parent, gap - aggregateCoefficient(best.entry.exercise, parent) * targetSetsOf(best.entry));
-    }
-    const habit = best.entry.sessions >= minSessions;
-    chosen.push({ entry: best.entry, reason: habit ? "habit" : "deficit", forParent: habit ? null : best.parent });
+    take(best.entry, best.sets, best.parent);
   }
 
-  // 3. Ordre habituel (position relative médiane dans ses séances).
+  // Besoins couverts avant son volume habituel : son socle complète, séries habituelles.
+  const trainsLegs = (exercise: Exercise) =>
+    LOWER_BODY_PARENTS.some((parent) => aggregateCoefficient(exercise, parent) >= SESSION_FOCUS.MIN_SUGGESTION_COEFFICIENT);
+  const core = [...usage.values()]
+    .filter((entry) => entry.sessions >= minSessions && !chosen.some((picked) => picked.entry.exercise.id === entry.exercise.id))
+    .filter((entry) => !(options.lowerBodyOff && trainsLegs(entry.exercise)))
+    .sort((a, b) => (habitOf.get(b.exercise.id) ?? 0) - (habitOf.get(a.exercise.id) ?? 0));
+  for (const entry of core) {
+    if (chosen.length >= targetSize || usualVolume - total < HABITUAL_SESSION.MIN_TARGET_SETS) break;
+    take(entry, Math.min(habitualSetsOf(entry), usualVolume - total), null);
+  }
+  if (chosen.length === 0) return null;
+
+  // 4. Ordre habituel (position relative médiane dans ses séances).
   chosen.sort((a, b) => median(a.entry.positions) - median(b.entry.positions));
 
-  // 4. Supersets récurrents : la paire reste liée et collée.
+  // Supersets récurrents : la paire reste liée et collée.
   const pairCounts = new Map<string, number>();
   for (const session of recent) {
     for (const block of supersetBlocks(session)) {
@@ -221,10 +285,10 @@ export function habitualSessionPlan(
     chosen.splice(chosen.findIndex((picked) => picked.entry.exercise.id === first) + 1, 0, moved);
   }
 
-  const exercises: HabitualExercise[] = chosen.map(({ entry, reason, forParent }) => ({
+  const exercises: HabitualExercise[] = chosen.map(({ entry, sets, reason, forParent }) => ({
     exerciseId: entry.exercise.id,
     exerciseName: entry.exercise.name,
-    targetSets: targetSetsOf(entry),
+    targetSets: sets,
     seenIn: entry.sessions,
     reason,
     forParent,
@@ -232,6 +296,15 @@ export function habitualSessionPlan(
   const coveredDeficits = deficits.filter(({ parent }) =>
     chosen.some(({ entry }) => aggregateCoefficient(entry.exercise, parent) >= SESSION_FOCUS.MIN_SUGGESTION_COEFFICIENT)
   );
+
+  // 5. Palier de la semaine si la séance est faite telle quelle (chaque muscle plafonné).
+  const goalTotal = progress.reduce((sum, row) => sum + row.goalSets, 0);
+  const planned = (parent: MuscleParent) =>
+    chosen.reduce((sum, { entry, sets }) => sum + aggregateCoefficient(entry.exercise, parent) * sets, 0);
+  const scoreBefore = goalTotal > 0 ? progress.reduce((sum, row) => sum + Math.min(row.effectiveSets, row.goalSets), 0) / goalTotal : 0;
+  const scoreAfter =
+    goalTotal > 0 ? progress.reduce((sum, row) => sum + Math.min(row.effectiveSets + planned(row.parent), row.goalSets), 0) / goalTotal : 0;
+
   return {
     exercises,
     supersetPairs,
@@ -239,13 +312,20 @@ export function habitualSessionPlan(
     since: recent.at(-1)!.date,
     deficits: coveredDeficits,
     expectedSets: exercises.reduce((sum, exercise) => sum + exercise.targetSets, 0),
+    projected: { scoreBefore, scoreAfter, tierBefore: weekTier(scoreBefore), tierAfter: weekTier(scoreAfter) },
   };
 }
 
 /** Ligne d'explication de la carte d'accueil : d'où vient la séance, en chiffres. */
 export function habitualSessionSummary(plan: HabitualSessionPlan): string {
-  const added = plan.exercises.filter((exercise) => exercise.reason === "deficit" && exercise.forParent);
   const base = `Tes ${plan.basedOnSessions} dernières séances · ${plan.exercises.length} exercices · ~${plan.expectedSets} séries`;
+  const { tierBefore, tierAfter } = plan.projected;
+  const rank = (tier: WeekTier | null) => (tier ? WEEK_TIERS.findIndex((entry) => entry.tier === tier) : -1);
+  if (tierAfter && rank(tierAfter) > rank(tierBefore)) {
+    const label = WEEK_TIERS.find((entry) => entry.tier === tierAfter)!.label.toLowerCase();
+    return `${base} · de quoi passer la semaine en ${label}`;
+  }
+  const added = plan.exercises.filter((exercise) => exercise.reason === "deficit" && exercise.forParent);
   if (added.length === 0) return base;
   const parents = [...new Set(added.map((exercise) => exercise.forParent!))];
   return `${base} · + ${parents.map((parent) => parentShortName[parent]).join(", ")} en retard`;

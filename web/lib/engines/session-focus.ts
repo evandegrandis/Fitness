@@ -27,7 +27,7 @@ import {
   type MuscleGoal,
   type WorkoutSession,
 } from "@/lib/models/types";
-import { MUSCLE_PARENTS, type MuscleParent } from "@/lib/models/muscles";
+import { isLowerBodyParent, MUSCLE_PARENTS, type MuscleParent } from "@/lib/models/muscles";
 
 export const SESSION_FOCUS = {
   /** Au-delà de trois semaines sans set effectif, le groupe passe après la routine actuelle. */
@@ -335,4 +335,33 @@ export function sessionFocus(
   const tracked = weeklyTrackedVolume(history, exercises, referenceDate, liveSession);
 
   return { weekPlan, priorities, workedToday, dormantCount, tracked };
+}
+
+/**
+ * « Quoi faire maintenant » en deux blocs (Evan, 11/10/2026 : « une séparation entre les muscles
+ * inférieurs et supérieurs, car ça pollue visuellement, notamment si j'ai décidé que je n'allais
+ * pas travailler les jambes durant la semaine »). Haut du corps d'abord, jambes ensuite ; jambes
+ * mises de côté = bloc replié. `due` = ce qui reste pour la séance du jour : sa part tant qu'il
+ * reste d'autres séances habituelles, tout le reste lors de la dernière.
+ */
+export interface FocusGroup {
+  rows: SessionFocusRow[];
+  /** Séries encore dues aujourd'hui sur le bloc. */
+  due: number;
+}
+
+export function focusRowDue(row: SessionFocusRow, sessionsLeftIncludingToday: number): number {
+  return sessionsLeftIncludingToday > 1 ? Math.max(0, row.todayShare - row.doneThisSession) : row.remaining;
+}
+
+export function focusGroups(focus: SessionFocus): { upper: FocusGroup; lower: FocusGroup } {
+  const sessionsLeft = focus.weekPlan.sessionsLeftIncludingToday;
+  const group = (rows: SessionFocusRow[]): FocusGroup => ({
+    rows,
+    due: Math.round(rows.reduce((sum, row) => sum + focusRowDue(row, sessionsLeft), 0) * 10) / 10,
+  });
+  return {
+    upper: group(focus.priorities.filter((row) => !isLowerBodyParent(row.parent))),
+    lower: group(focus.priorities.filter((row) => isLowerBodyParent(row.parent))),
+  };
 }

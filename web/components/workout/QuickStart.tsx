@@ -9,6 +9,7 @@ import { weeklyProgress } from "@/lib/engines/effective-sets";
 import { recentAchievements } from "@/lib/engines/achievements";
 import { defaultStartChoice, recommendTemplateId } from "@/lib/engines/template-recommendation";
 import { habitualSessionPlan, habitualSessionSummary } from "@/lib/engines/habitual-session";
+import { weekKey } from "@/lib/engines/week-status";
 import { WeekSummary } from "@/components/progress/WeekLayer";
 import { WeeklyCardio } from "./WeeklyCardio";
 import { QuickActions } from "./QuickActions";
@@ -26,6 +27,7 @@ export function QuickStart() {
   const startEmpty = useWorkoutStore((s) => s.startEmpty);
   const startHabitual = useWorkoutStore((s) => s.startHabitual);
   const startCardio = useWorkoutStore((s) => s.startCardio);
+  const lowerBodyOffWeek = useWorkoutStore((s) => s.lowerBodyOffWeek);
 
   // Miroir du filtre de `weeklyPriorities` (effective-sets.ts) : les muscles en retard orientent
   // la séance recommandée.
@@ -50,7 +52,10 @@ export function QuickStart() {
   }, [templates, priorities, catalog, history]);
   // « Séance du jour » : ce qu'il fait en ce moment + les muscles en retard. Un modèle ne passe
   // devant que s'il sert vraiment (`defaultStartChoice`).
-  const habitualPlan = useMemo(() => habitualSessionPlan(history, catalog, goals, new Date()), [history, catalog, goals]);
+  const habitualPlan = useMemo(() => {
+    const now = new Date();
+    return habitualSessionPlan(history, catalog, goals, now, { lowerBodyOff: lowerBodyOffWeek === weekKey(now) });
+  }, [history, catalog, goals, lowerBodyOffWeek]);
   const choice = useMemo(
     () => defaultStartChoice(templates, recommendedTemplateId, habitualPlan !== null, history),
     [templates, recommendedTemplateId, habitualPlan, history]

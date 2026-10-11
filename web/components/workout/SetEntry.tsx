@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { AlertTriangle, Check, Flame, History, Snowflake, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, Check, Flame, History, RotateCcw, Snowflake, Sparkles, Zap } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Stepper } from "@/components/ui/Stepper";
 import { REPORTED_RIR_OPTIONS, reportedRirLabel, SetType } from "@/lib/models/enums";
@@ -11,9 +11,10 @@ import {
   SUGGESTION_ENGINE_VERSION,
   type SetSuggestion,
 } from "@/lib/engines/progression";
+import { suggestionReason } from "@/lib/engines/suggestion-reason";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { cn } from "@/lib/utils";
-import { cleanWeight, formatDecimal } from "@/lib/format";
+import { cleanWeight, formatDecimal, formatLoad } from "@/lib/format";
 
 /**
  * BENCHMARK_LEVEL_SPEC.md §3 (P3.3) — signal feu intra-séance : flamme animée + libellé court quand
@@ -153,8 +154,65 @@ export function SetEntry({
   const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 2.5;
   const projectedSuggestion = reprojectSuggestionAtWeight(suggestion, exercise, weight, bodyweightKg);
 
+  // Une seule source : les champs partent de la suggestion (remontage par `key`), et la ligne du
+  // dessus dit toujours ce que le moteur propose et pourquoi. Quand les champs s'en écartent, elle
+  // le montre et dit ce que le moteur prévoit à la charge choisie (11/10/2026 : 130 × 10 dans les
+  // champs, « Suggestion 120 × 11 » et « Hypertrophie · 120 kg × 11 » au-dessus, sans explication).
+  const modified = !useWarmup && (weight !== suggestion.weight || reps !== suggestion.reps);
+  const weightChanged = !useWarmup && weight !== suggestion.weight;
+  const reason = suggestionReason(suggestion);
+
   return (
     <div className="flex flex-col gap-3">
+      {useWarmup && warmup ? (
+        <p className="text-xs text-(--color-fg-muted)">{warmup.explanation}</p>
+      ) : (
+        <div
+          className={cn("rounded-xl px-3 py-2.5", intensityReasonCode ? "" : "bg-white/[0.03]")}
+          style={intensityReasonCode ? { background: "rgba(255,138,61,0.10)" } : undefined}
+        >
+          <div className="flex min-h-7 items-center justify-between gap-2">
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-(--color-fg)">
+              {intensityReasonCode ? (
+                <Zap size={13} className="shrink-0" style={{ color: "var(--accent)" }} aria-hidden />
+              ) : (
+                <Sparkles size={13} className="shrink-0 text-(--color-fg-muted)" aria-hidden />
+              )}
+              {modified && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
+              <span className="tnum font-semibold">
+                {formatLoad(suggestion.weight)} × {suggestion.reps}
+              </span>
+            </p>
+            {modified && (
+              <button
+                type="button"
+                onClick={() => {
+                  setWeight(suggestion.weight);
+                  setReps(suggestion.reps);
+                }}
+                className="-my-1 -mr-1.5 inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold transition active:scale-95"
+                style={{ color: "var(--accent)" }}
+              >
+                <RotateCcw size={12} aria-hidden />
+                Reprendre
+              </button>
+            )}
+          </div>
+          {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 — la variante candidate est nommée, discrètement ;
+              la bascule elle-même ne s'accepte que dans le bilan (jamais en pleine séance). */}
+          <p className="mt-0.5 text-xs leading-snug text-(--color-fg-muted)">
+            {reason ?? suggestion.explanation}
+            {variantCandidateName && <> · envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
+          </p>
+          {weightChanged && (
+            <p className="mt-1 text-xs leading-snug text-(--color-fg)">
+              À <span className="tabular-nums">{formatLoad(weight)}</span>, le moteur prévoit{" "}
+              <span className="tabular-nums">{projectedSuggestion.reps}</span> rep{projectedSuggestion.reps > 1 ? "s" : ""} au même effort.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-1.5">
         {lastSessionSet && (
           <button
@@ -177,22 +235,6 @@ export function SetEntry({
             style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)" }}
           >
             W échauffement
-          </button>
-        )}
-        {/* Chip "revenir à la suggestion" : utile UNIQUEMENT après un ajustement
-            manuel (sinon les steppers montrent déjà la suggestion → redondant). */}
-        {!useWarmup && (weight !== suggestion.weight || reps !== suggestion.reps) && (
-          <button
-            type="button"
-            onClick={() => {
-              setWeight(suggestion.weight);
-              setReps(suggestion.reps);
-            }}
-            className="pill"
-            style={{ color: "var(--accent)" }}
-          >
-            <Sparkles size={11} />
-            Suggestion {cleanWeight(suggestion.weight)}{suggestion.weight > 0 ? "kg" : ""}×{suggestion.reps}
           </button>
         )}
         {suggestion.sessionFatigueWarning && !useWarmup && (
@@ -263,35 +305,6 @@ export function SetEntry({
       )}
 
       {flameLabels.length > 0 && <FlameBadge label={flameLabels.join(" · ")} />}
-
-      {!useWarmup && intensityReasonCode && (
-        <p
-          className="flex items-start gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-medium"
-          style={{ color: "var(--accent)", background: "rgba(255,138,61,0.10)" }}
-        >
-          <Zap size={12} className="mt-0.5 shrink-0" />
-          {/* VARIATION_CYCLING_SPEC §8 — nomme la variante candidate quand `switchToVariantId` est
-              posé (résolu par l'appelant). Purement informatif ici : la bascule elle-même ne
-              s'accepte que dans le bilan (§8, non destructif, jamais en pleine séance). */}
-          <span>
-            {suggestion.explanation}
-            {variantCandidateName && <> → envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
-          </span>
-        </p>
-      )}
-
-      {!useWarmup && !intensityReasonCode && (
-        <p className="text-xs text-(--color-fg-muted)">
-          {suggestion.explanation}
-          {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 (P2.3) — rotation PRÉEMPTIVE ("slowing",
-              `reasonCodes` contient "variation_preemptive", volontairement PAS dans
-              `INTENSITY_REASON_CODES`) : même phrase que le cas plateau, mais SANS l'encart
-              accentué/icône éclair réservé aux vraies escalades — reste discret, non intrusif,
-              cohérent avec "progressing: zéro bruit" et le simple indice visuel de `slowing`
-              (chip `ExerciseCard.tsx`). */}
-          {variantCandidateName && <> → envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
-        </p>
-      )}
 
       {/* Deux tuiles pleine largeur : plus basses que les réglages empilés, et plus serrées au
           milieu de la carte. Elles tiennent aussi dans une carte de superset, plus étroite. */}

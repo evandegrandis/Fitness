@@ -78,6 +78,8 @@ const goals: MuscleGoal[] = [
   { parent: "pectoraux", weeklyGoalSets: 12 },
   { parent: "grand_dorsal", weeklyGoalSets: 12 },
   { parent: "biceps", weeklyGoalSets: 9 },
+  { parent: "delt_lateral", weeklyGoalSets: 9 },
+  { parent: "abs", weeklyGoalSets: 9 },
 ];
 
 describe("habitualSessionPlan", () => {
@@ -90,20 +92,21 @@ describe("habitualSessionPlan", () => {
   ];
   const now = new Date("2026-10-07T17:00:00");
 
-  it("reprend ses exercices habituels, dans son ordre, et laisse le vieux modèle de côté", () => {
+  it("reprend ses exercices habituels quand la semaine en a besoin, dans son ordre, et laisse le vieux modèle de côté", () => {
     const plan = habitualSessionPlan(history, CATALOG, goals, now)!;
     const names = plan.exercises.map((exercise) => exercise.exerciseName);
     expect(names.slice(0, 2).sort()).toEqual(["Lateral raises", "Wide Chest Press"]);
     expect(names).toContain("Curl debout");
     expect(names).not.toContain("Leg extension");
-    expect(plan.exercises.every((exercise) => exercise.targetSets === 3)).toBe(true);
+    expect(plan.exercises.every((exercise) => exercise.targetSets >= 2 && exercise.targetSets <= 4)).toBe(true);
   });
 
   it("ajoute l'exercice qui comble un muscle en retard que le socle ne couvre pas", () => {
-    const plan = habitualSessionPlan(history, CATALOG, goals, now)!;
+    const plan = habitualSessionPlan(history, CATALOG, goals.filter((goal) => ["pectoraux", "grand_dorsal", "biceps"].includes(goal.parent)), now)!;
     const pull = plan.exercises.find((exercise) => exercise.exerciseId === PULL.id);
     expect(pull).toMatchObject({ reason: "deficit", forParent: "grand_dorsal" });
-    expect(habitualSessionSummary(plan)).toContain("+ Dorsaux en retard");
+    // La carte dit ce que la séance rapporte : le palier visé, sinon les muscles en retard ajoutés.
+    expect(habitualSessionSummary(plan)).toMatch(/de quoi passer la semaine en (bronze|argent|or)|\+ Dorsaux en retard/);
   });
 
   it("garde liées les paires enchaînées en superset dans au moins deux séances", () => {
@@ -114,8 +117,70 @@ describe("habitualSessionPlan", () => {
     expect(Math.abs(ids.indexOf(PRESS.id) - ids.indexOf(RAISE.id))).toBe(1);
   });
 
+  it("les jambes mises de côté cette semaine ne sont plus prévues", () => {
+    const LEG = ex("leg", "Leg Press", MuscleGroup.vasteLat);
+    const withLegs = [
+      session("2026-09-29", [PRESS, LEG, CURL]),
+      session("2026-10-01", [PRESS, LEG, CURL]),
+      session("2026-10-03", [PRESS, LEG, CURL]),
+    ];
+    const legGoals: MuscleGoal[] = [...goals, { parent: "quads", weeklyGoalSets: 9 }];
+    const catalog = [...CATALOG, LEG];
+    const ids = (lowerBodyOff: boolean) =>
+      habitualSessionPlan(withLegs, catalog, legGoals, new Date("2026-10-07T17:00:00"), { lowerBodyOff })!.exercises.map((exercise) => exercise.exerciseId);
+    expect(ids(false)).toContain(LEG.id);
+    expect(ids(true)).not.toContain(LEG.id);
+  });
+
   it("rien sans au moins 3 séances récentes", () => {
     expect(habitualSessionPlan(history.slice(0, 3), CATALOG, goals, new Date("2026-11-20T17:00:00"))).toBeNull();
+  });
+});
+
+/**
+ * 11/10/2026, en miniature : dernière séance habituelle de la semaine, biceps déjà presque servis
+ * (3 à faire), abdos sautés (12 à faire). L'ancienne version reprenait ses deux curls habituels avec
+ * leurs 3 séries (6 de biceps pour 3 à faire) et 3 séries d'abdos.
+ */
+describe("habitualSessionPlan : les séries suivent le besoin du jour", () => {
+  const PREACHER = ex("preacher", "Preacher Curl", MuscleGroup.bicepsCourt);
+  const catalog = [...CATALOG, PREACHER];
+  const full = [PRESS, PREACHER, CURL, RAISE, ABS];
+  const history = [
+    // Trois séances par semaine d'habitude (deux semaines pleines).
+    session("2026-09-22", full),
+    session("2026-09-24", full),
+    session("2026-09-26", full),
+    session("2026-09-29", full),
+    session("2026-10-01", full),
+    session("2026-10-03", full),
+    // Cette semaine : deux séances, sans abdos, un seul curl.
+    session("2026-10-06", [PRESS, CURL, RAISE]),
+    session("2026-10-09", [PRESS, CURL, RAISE]),
+  ];
+  const weekGoals: MuscleGoal[] = [
+    { parent: "pectoraux", weeklyGoalSets: 12 },
+    { parent: "biceps", weeklyGoalSets: 9 },
+    { parent: "delt_lateral", weeklyGoalSets: 9 },
+    { parent: "abs", weeklyGoalSets: 12 },
+  ];
+  const now = new Date("2026-10-11T15:00:00");
+  const plan = habitualSessionPlan(history, catalog, weekGoals, now)!;
+  const setsFor = (muscle: (typeof CATALOG)[number][]) =>
+    plan.exercises.filter((entry) => muscle.some((exercise) => exercise.id === entry.exerciseId)).reduce((sum, entry) => sum + entry.targetSets, 0);
+
+  it("un muscle presque servi ne reçoit plus deux exercices habituels", () => {
+    expect(setsFor([CURL, PREACHER])).toBeLessThanOrEqual(4);
+    expect(plan.exercises.filter((entry) => entry.exerciseId === CURL.id || entry.exerciseId === PREACHER.id)).toHaveLength(1);
+  });
+
+  it("le muscle le plus en retard reçoit le plus de séries", () => {
+    expect(setsFor([ABS])).toBe(4);
+  });
+
+  it("dit le palier que la séance fait atteindre", () => {
+    expect(plan.projected.scoreAfter).toBeGreaterThan(plan.projected.scoreBefore);
+    expect(plan.projected.tierAfter).not.toBeNull();
   });
 });
 
