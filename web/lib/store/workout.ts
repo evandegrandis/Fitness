@@ -47,6 +47,7 @@ import { defaultEquivalent, equivalenceKey, familyHistory, startingPointFromEqui
 import type { SessionReview } from "@/lib/engines/bilan";
 import { debriefSession, type SessionDebrief } from "@/lib/engines/session-insights";
 import { habitualSessionPlan } from "@/lib/engines/habitual-session";
+import { weekKey } from "@/lib/engines/week-status";
 import { ALGO_V2, HISTORY_WINDOW } from "@/lib/engines/constants";
 import { SetType } from "@/lib/models/enums";
 import type { PlateauWeakPoint, StopReason } from "@/lib/models/enums";
@@ -190,6 +191,21 @@ export interface WorkoutState extends ReferenceData {
   /** Boss annoncés (séance, date ISO), pour n'en annoncer que deux par semaine. Persisté. */
   bossAnnouncements: BossAnnouncement[];
   setSessionBoss: (value: { sessionId: string; boss: SessionBoss | null }) => void;
+  /**
+   * « Pas de jambes cette semaine » (Evan, 11/10/2026) : clé de la semaine civile (`weekKey`) où les
+   * jambes sont mises de côté, `null` sinon. Le choix ne vaut que pour cette semaine (lundi suivant :
+   * clé différente, plus rien de replié) et ne touche ni objectifs, ni paliers, ni statue : il retire
+   * seulement les jambes des pistes (« Quoi faire maintenant », ligne Semaine, Séance du jour).
+   * Persisté localement, jamais envoyé au serveur.
+   */
+  lowerBodyOffWeek: string | null;
+  setLowerBodyOff: (off: boolean, now?: Date) => void;
+  /**
+   * Séries prévues par la « Séance du jour » pour la séance qu'elle a lancée (exercice loggé ->
+   * séries), lues par les cartes (« 4 prévues »). Persisté localement, remis à zéro à la séance
+   * suivante.
+   */
+  habitualTargets: { sessionId: string; byLoggedExerciseId: Record<string, number> } | null;
   /**
    * `loggedExerciseId` pour lesquels Evan a déjà répondu « non » dans cette séance —
    * on ne repose plus la question, pour que la proposition reste rare.
@@ -1314,6 +1330,8 @@ export const useWorkoutStore = create<WorkoutState>()(
       levelUp: null,
       sessionBoss: null,
       bossAnnouncements: [],
+      lowerBodyOffWeek: null,
+      habitualTargets: null,
       cardioIntent: false,
       armedSupersetExerciseId: null,
       justHitRecord: {},
@@ -1406,7 +1424,10 @@ export const useWorkoutStore = create<WorkoutState>()(
 
       startHabitual: (mode) => {
         const state = get();
-        const plan = habitualSessionPlan(state.history, state.catalog, state.goals, new Date());
+        const now = new Date();
+        const plan = habitualSessionPlan(state.history, state.catalog, state.goals, now, {
+          lowerBodyOff: state.lowerBodyOffWeek === weekKey(now),
+        });
         if (!plan) {
           get().startEmpty(mode);
           return;
@@ -1416,6 +1437,13 @@ export const useWorkoutStore = create<WorkoutState>()(
           .map((entry) => findExercise(state.catalog, entry.exerciseId))
           .filter((e): e is Exercise => e !== undefined);
         let session = seedExercisesInto(makeEmptySession(null), exercises);
+        // Séries prévues, attachées aux exercices loggés (ids stables même si une machine
+        // équivalente remplace l'exercice juste après).
+        const byLoggedExerciseId: Record<string, number> = {};
+        for (const entry of plan.exercises) {
+          const logged = session.exercises.find((candidate) => candidate.exerciseId === entry.exerciseId);
+          if (logged) byLoggedExerciseId[logged.id] = entry.targetSets;
+        }
         // Les paires qu'il enchaîne d'habitude partent liées (une seule fois chacune).
         for (const [firstId, secondId] of plan.supersetPairs) {
           const first = session.exercises.find((logged) => logged.exerciseId === firstId);
@@ -1447,6 +1475,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           pendingFinisherPrompt: null,
           finisherPromptDeclined: [],
           pendingVariantSwitches: withoutKeys(state.pendingVariantSwitches, consumedIds),
+          habitualTargets: { sessionId: session.id, byLoggedExerciseId },
         });
       },
 
@@ -2169,6 +2198,7 @@ export const useWorkoutStore = create<WorkoutState>()(
             ? [...state.bossAnnouncements.filter((entry) => entry.sessionId !== value.sessionId), { sessionId: value.sessionId, date: new Date().toISOString() }].slice(-12)
             : state.bossAnnouncements,
         })),
+      setLowerBodyOff: (off, now = new Date()) => set({ lowerBodyOffWeek: off ? weekKey(now) : null }),
 
       startCardio: () => {
         get().startEmpty("normal");
@@ -2574,6 +2604,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         finisherPromptDeclined: state.finisherPromptDeclined,
         sessionBoss: state.sessionBoss,
         bossAnnouncements: state.bossAnnouncements,
+        lowerBodyOffWeek: state.lowerBodyOffWeek,
+        habitualTargets: state.habitualTargets,
         // VARIATION_CYCLING_SPEC §8 — l'acceptation d'une rotation de variation peut précéder de
         // plusieurs jours (et un reload) le début de la séance suivante qui la consommera.
         pendingVariantSwitches: state.pendingVariantSwitches,

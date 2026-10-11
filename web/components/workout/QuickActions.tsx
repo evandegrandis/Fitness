@@ -73,7 +73,7 @@ export function QuickActions({
             <p className="mt-1 font-display text-lg font-semibold text-(--color-fg)">Séance du jour</p>
             <p className="text-xs leading-snug text-(--color-fg-muted)">{habitual.summary}</p>
             <p className="mt-1.5 line-clamp-2 text-[0.7rem] leading-snug text-(--color-fg-faint)">
-              {habitual.plan.exercises.map((exercise) => shortExerciseName(exercise.exerciseName)).join(" · ")}
+              {habitual.plan.exercises.map((exercise) => `${shortExerciseName(exercise.exerciseName)} ×${exercise.targetSets}`).join(" · ")}
             </p>
           </div>
         </button>

@@ -79,6 +79,10 @@ export function ExerciseCard({
   const handleSupersetLink = useWorkoutStore((s) => s.handleSupersetLink);
   const detachFromSupersetGroup = useWorkoutStore((s) => s.detachFromSupersetGroup);
   const removeExercise = useWorkoutStore((s) => s.removeExercise);
+  // Séries prévues par la « Séance du jour » qui a lancé la séance (absentes sinon).
+  const plannedSets = useWorkoutStore((s) =>
+    s.habitualTargets?.sessionId === session.id ? s.habitualTargets.byLoggedExerciseId[loggedExercise.id] : undefined
+  );
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -426,8 +430,10 @@ export function ExerciseCard({
             <div className="flex min-w-0 items-center justify-between gap-2 text-xs text-(--color-fg-faint)">
               <span className="truncate">
                 {currentLastSet
-                  ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"} · dernière ${currentLastSet.weight > 0 ? `${cleanWeight(currentLastSet.weight)}kg` : "PDC"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
-                  : "À faire"}
+                  ? `${effectiveCount} série${effectiveCount === 1 ? "" : "s"} effective${effectiveCount === 1 ? "" : "s"}${plannedSets ? ` sur ${plannedSets}` : ""} · dernière ${currentLastSet.weight > 0 ? `${cleanWeight(currentLastSet.weight)}kg` : "PDC"} × ${currentLastSet.reps}${currentLastSet.setType === SetType.finisher ? " · finisher" : ""}`
+                  : plannedSets
+                    ? `À faire · ${plannedSets} séries prévues`
+                    : "À faire"}
                 {exercise && exercise.muscleMappings.length === 0 && (
                   <span className="text-amber-200"> · aucun muscle</span>
                 )}

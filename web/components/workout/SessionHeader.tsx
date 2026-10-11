@@ -10,7 +10,11 @@ import { cutAt, type RankInput } from "@/lib/engines/session-rank";
 import { LiveRankRow, useSessionCelebrations } from "@/components/celebrations/LiveRankRow";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { useSyncStatus } from "@/lib/sync/status";
-import { SessionFocusButton } from "./SessionFocusSheet";
+import { SessionFocusButton, SessionFocusSheet } from "./SessionFocusSheet";
+import { WeekStatusRow } from "./WeekStatusRow";
+import { weekKey, weekStatus, weekStatusText } from "@/lib/engines/week-status";
+import { parentShortName } from "@/lib/models/muscles";
+import { TIER_COLORS } from "@/lib/theme/tiers";
 import { formatDecimal, formatLoad } from "@/lib/format";
 
 /** Badge de synchronisation HONNÊTE : reflète l'état réel, jamais un faux « enregistré ». */
@@ -70,7 +74,10 @@ export function SessionHeader({
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
   const catalog = useWorkoutStore((s) => s.catalog);
+  const goals = useWorkoutStore((s) => s.goals);
+  const lowerBodyOffWeek = useWorkoutStore((s) => s.lowerBodyOffWeek);
   const history = useWorkoutStore((s) => s.history);
   const justHitRecord = useWorkoutStore((s) => s.justHitRecord);
   const sessionBoss = useWorkoutStore((s) => s.sessionBoss);
@@ -100,6 +107,22 @@ export function SessionHeader({
       recordsPossible: session.exercises.some((logged) => known.has(logged.exerciseId)),
     };
   }, [session, history, justHitRecord, totalSets, bodyWeights, settings]);
+  // La semaine en direct (Evan, 11/10/2026 : « à 3 séries d'une semaine or… si j'avais su ça durant
+  // la séance, j'en aurais fait 3 de plus »). Même calcul que l'accueil et le bilan.
+  const lowerBodyOff = lowerBodyOffWeek === weekKey(session.startTime);
+  const week = useMemo(
+    () => weekStatus(history, catalog, goals, new Date(), session, { lowerBodyOff }),
+    [history, catalog, goals, session, lowerBodyOff]
+  );
+  // Au moment de terminer, si le palier suivant tient en quelques séries, on le redit.
+  const weekText = weekStatusText(week, (parent) => parentShortName[parent].toLowerCase(), { lowerBodyOff });
+  const finishHint =
+    week.next && week.setsToNext !== null && week.setsToNext <= 6 && week.nextReachable
+      ? {
+          lead: `Encore ${week.setsToNext} série${week.setsToNext > 1 ? "s" : ""} pour la semaine en ${week.next.label.toLowerCase()}`,
+          places: weekText.places,
+        }
+      : null;
   // Passage de rang, rang en vue, suggestion battue : joués par-dessus l'écran, sans rien bloquer.
   useSessionCelebrations(session.id, rankInput, game);
   const boss = sessionBoss?.sessionId === session.id ? sessionBoss.boss : null;
@@ -110,7 +133,7 @@ export function SessionHeader({
       <div className="flex items-center justify-between gap-3">
         <p className="tnum font-display text-2xl font-bold text-(--color-fg)">{formatElapsed(session.startTime, nowMs)}</p>
         <div className="flex shrink-0 items-center gap-2">
-          <SessionFocusButton session={session} onExerciseSelected={onFocusExercise} />
+          <SessionFocusButton onOpen={() => setFocusOpen(true)} />
           <button
             type="button"
             onClick={() => {
@@ -119,7 +142,7 @@ export function SessionHeader({
                 setConfirmFinish(false);
               } else {
                 setConfirmFinish(true);
-                setTimeout(() => setConfirmFinish(false), 3000);
+                setTimeout(() => setConfirmFinish(false), finishHint ? 5000 : 3000);
               }
             }}
             className="btn-accent flex items-center gap-1.5 px-4 py-2.5 text-sm active:scale-95 transition"
@@ -129,6 +152,25 @@ export function SessionHeader({
           </button>
         </div>
       </div>
+
+      <AnimatePresence initial={false}>
+        {confirmFinish && finishHint && week.next && (
+          <motion.p
+            key="finish-hint"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden pt-2 text-xs leading-snug tabular-nums"
+            role="status"
+          >
+            <span className="font-semibold" style={{ color: TIER_COLORS[week.next.tier] }}>
+              {finishHint.lead}
+            </span>
+            {finishHint.places && <span className="text-(--color-fg-muted)"> : {finishHint.places}</span>}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
       <div className="mt-1 flex items-center gap-2 whitespace-nowrap text-xs text-(--color-fg-muted)">
         <span className="tabular-nums">
@@ -160,6 +202,15 @@ export function SessionHeader({
       </div>
 
       <LiveRankRow input={rankInput} />
+      <WeekStatusRow status={week} lowerBodyOff={lowerBodyOff} onOpen={() => setFocusOpen(true)} />
+      <SessionFocusSheet
+        open={focusOpen}
+        onClose={() => setFocusOpen(false)}
+        session={session}
+        week={week}
+        lowerBodyOff={lowerBodyOff}
+        onExerciseSelected={onFocusExercise}
+      />
 
       {boss && (
         <button
