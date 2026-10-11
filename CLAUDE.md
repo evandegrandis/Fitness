@@ -49,7 +49,7 @@ WorkoutSession → [LoggedExercise] → [LoggedSet]
 
 Exercise:
   setPatternMode: straight | topSetBackoff | ramping | bodyweight | weightedBodyweight | assistedBodyweight
-  fatigueClass: Heavy(drop 2 reps/set) | Medium(1.5) | Light(1)
+  fatigueClass: Heavy(2) | Medium(1.5) | Light(1): systemic fatigue cost; fallback rep drop when no history (the drop is learned, `rep-drop.ts`)
   repTargetMin/Max, smallestIncrement
   muscleMappings[]: (MuscleGroup, coefficient)  — MECE mapping
   benchmarkLow/High?: Double  — optional benchmark bands
@@ -65,7 +65,7 @@ Calendar week (Monday to today) for guidance AND history display
 ### ProgressionEngine.suggest()
 1. Extract anchors from last 5 sessions → derive `targetLoad` (best weight where reps ≥ repMin)
 2. Set 1 = anchor load; promote if: Heavy needs 2/3 last sessions ≥ repMax, others 1/2
-3. Set N = predict `last_reps − fatigueClass.baseRepDrop`; if < repMin → backoff (−1 increment, mid-range reps)
+3. Set N = predict `last_reps_at_RIR1 − learned rep drop` (`rep-drop.ts`, per exercise, shrunk toward the user's prior, class constant without history); if < repMin → −1 increment, reps anchored on the last set (7.5 % = 1 rep). Method and replay: `web/SUGGESTIONS.md`
 4. **Critical rule**: always predict from the set logged TODAY, never replay last session
 5. Plateau (3+ sessions same load/reps) → offer overreach at +1 increment, 5 reps
 6. Score candidates (recordAttempt+35, transitionMode+30, fallbackHypertrophy+22, plateauBreak+18)
@@ -141,12 +141,13 @@ Calendar week (Monday to today) for guidance AND history display
 | The week tier is live during the session | 11/10/2026, Evan learned in the post-session review that he was 3 sets from a gold week. `lib/engines/week-status.ts` is now the single computation (home `WeekSummary`, session header, « Quoi faire maintenant », review): score capped per muscle, sets to the next tier, and WHERE they count (muscles still under their goal, upper body first; the review used to list legs first). The session header has a « Semaine » row under the rank row; the first tap on « Terminer » repeats the next tier when it is 6 sets or less away | 2026-10 |
 | « Séance du jour » is sized on the day's need | 11/10/2026 (last session of his week, everything left was for today): the plan filled his habitual exercises with their habitual sets, biceps 6.2 sets for 3.1 needed and abs 4.1 for 6.3; followed exactly it gave ~25 counted sets when gold needed 27. Now each exercise gets the sets its best-served muscle needs (2 to 4) and enters only if it adds at least one counted set; habit breaks ties (weight 2 sets); volume at most 1.25 x his usual session; his core fills in only when the day's needs are met below his usual volume. The card says which tier the session reaches (« de quoi passer la semaine en or ») and each card shows its planned sets | 2026-10 |
 | « Quoi faire maintenant »: upper body, then legs, legs can be set aside for the week | 11/10/2026, Evan: the four first rows were legs he does not train. The sheet opens on the week row, then « Haut du corps », then « Jambes » with « Pas cette semaine », kept locally for the calendar week (`lowerBodyOffWeek`, `weekKey`). Setting legs aside changes neither goals, tiers nor the statue (Evan's decision pending); it only removes legs from the paths (week row, sheet, Séance du jour) and says when the next tier is out of reach without them | 2026-10 |
+| The rep drop between sets is learned per exercise, and every set 2+ starts from the set just done | 11/10/2026, audit of the suggestions against what Evan did (31 sessions, 439 sets, replay of the store with a frozen clock): first sets were right (+0.6 rep), sets 2+ too optimistic (−1.5 to −2.5) because Evan loses 2.5 reps [2.1; 2.9] between sets at the same load and RIR 1, against 1 / 1.5 / 2 by fatigue class; « baisser d'un cran » proposed mid-range reps (3.8 too many), backoffs started from the top set only and could be heavier than the last set; 15 suggestions in the whole history fell back to « Point de départ 20 kg ». Evan: « pense en termes structurels et adaptatif au long terme ». `lib/engines/rep-drop.ts`: pairs of consecutive sets at the same load with RIR (no completions, no calibration session), weighted by age (half-life 60 days), prior = all pairs shrunk toward the class constant (weight 5), exercise = its pairs shrunk toward the prior (weight 4), bounded [0.5; 4]; pure, recomputed at each suggestion. Settings chosen on the sets before 21/09 only. Used for hold, step-down, raise, backoff, `predictReps` §5.3.4 and the machine max; the class constant stays the session fatigue cost. Step-down and backoffs are anchored on the last set (7.5 % rule, never Epley: it did worse on 246 sets), a backoff is never heavier than the last set, an empty candidate list keeps the last load. Bodyweight first sets: the learned offset no longer re-caps them at the top of the range, the reprojection no longer caps them, and the session fatigue penalty applies as on other first sets. Rest, a muscle level, today's pairs and the previous set's RIR were tried and gave nothing before 21/09. Replay: error 2.35 → 1.85 reps (−0.50 [−0.66; −0.33]), out of sample −0.32 [−0.56; −0.10], first sets, plateau test and the 7.5 % conversion unchanged. `web/SUGGESTIONS.md` | 2026-10 |
 | Forearms and obliques tracked without a goal | Volume shown, no target: they work as secondaries, and a quota would push toward dedicated work he does not want | 2026-08 |
 | Suggest from today's sets, not last session replay | Old behavior caused inflated set 2 suggestions after a good previous session | 2026-04 |
 | Beast Mode = weight bias NOT extra reps | User explicitly: "harder on weight, not reps" | 2026-04 |
 | Monk Mode starts from usual-workout base | User: "familiar feel, not random session" | 2026-04 |
 | 2% margin on e1RM record | Without margin, trivial load changes (e.g. 80×9 vs 80×10) falsely triggered record overlay | 2026-04 |
-| FatigueClass governs rep drop (H:2 M:1.5 L:1) | Empirical: heavy compound lifts drop faster than isolation; fixed values avoid over-engineering | 2026-04 |
+| FatigueClass governs rep drop (H:2 M:1.5 L:1) | Empirical: heavy compound lifts drop faster than isolation; fixed values avoid over-engineering. SUPERSEDED on 11/10/2026 for the next-set prediction (learned per exercise, see below); the constants remain the systemic fatigue cost and the fallback without history | 2026-04 |
 
 ---
 
@@ -157,6 +158,13 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 ---
 
 ## HANDOFF
+
+### 2026-10-11 · Claude — Moteur de suggestion adaptatif (perte de reps apprise)
+
+- Audit des suggestions contre ce qu'Evan a fait (31 séances) puis, à sa demande, moteur rendu adaptatif : `lib/engines/rep-drop.ts` (perte de reps apprise par exercice, rétrécie vers un a priori appris, constantes de classe sans historique), « baisser d'un cran » et séries de retour ancrés sur la dernière série, retour jamais plus lourd que la série d'avant, plus de « 20 kg par défaut » après une série, poids du corps (plafond retiré, fatigue de séance sur la 1re série), raison « tu perds d'habitude N reps d'une série à l'autre ici ». Version `web-v2.3-2026-10-11`.
+- Méthode, résultats du rejeu et commandes : `web/SUGGESTIONS.md`. Scripts : `web/scripts/suggestions-audit/` (`export-data.ts` en lecture seule, `replay.ts`, `report.ts`, `rep-drops.ts`), exclus du déploiement ; les données ne sont jamais commitées (sorties refusées dans le dépôt).
+- Rejeu ancien/nouveau (mêmes séries) : erreur moyenne 2,35 → 1,85 reps, hors échantillon (réglages choisis avant le 21/09) −0,32 [−0,56 ; −0,10]. Inchangés : premières séries chargées, test de plateau, conversion 7,5 %. Moins bien : HSPU et Dips faits en finisher (5,17 → 5,91, 23 séries).
+- À surveiller : les séries 2+ faites moins de 3 min après la précédente restent prévues trop haut (−1,1) ; le repos n'est connu qu'après la série. Relancer `report.ts` dans quelques semaines pour vérifier que la perte apprise suit ses habitudes.
 
 ### 2026-10-11 · Claude — Séance cohérente (retours d'Evan pendant sa séance du 11/10)
 

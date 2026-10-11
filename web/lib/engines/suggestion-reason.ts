@@ -14,7 +14,7 @@ const REASONS: Record<string, string> = {
   top_set_to_backoff_transition: "Série allégée après ta série la plus lourde",
   backoff_same_load_prediction: "Série allégée après ta série la plus lourde",
   backoff_max_sets_reached: "Dernière série, plus légère",
-  fallback_down_one_step: "Un cran plus léger pour rester dans ta fourchette de reps",
+  fallback_down_one_step: "Un cran plus léger : à la même charge, la fatigue t'aurait sorti de ta fourchette",
   fallback: "Un cran plus léger pour rester dans ta fourchette de reps",
   intermediate_fallback: "Un cran plus léger pour rester dans ta fourchette de reps",
   ramp_fallback: "Un cran plus léger pour rester dans ta fourchette de reps",
@@ -62,11 +62,21 @@ const ADDENDA: Record<string, string> = {
  * alors l'explication du moteur). Étalonnage et machine équivalente gardent la phrase du moteur,
  * qui nomme la machine de départ.
  */
-export function suggestionReason(suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation">): string | null {
+export function suggestionReason(
+  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation"> & Partial<Pick<SetSuggestion, "repDrop">>
+): string | null {
   const codes = suggestion.reasonCodes;
   if (codes.includes("equivalent_starting_point") || codes.includes("equivalent_conversion")) return null;
   const main = codes.map((code) => REASONS[code]).find(Boolean);
   if (!main) return null;
   const addenda = codes.map((code) => ADDENDA[code]).filter(Boolean);
+  if (codes.includes("learned_rep_drop") && suggestion.repDrop) addenda.push(learnedDropText(suggestion.repDrop.drop));
   return addenda.length > 0 ? `${main} (${addenda.join(", ")})` : main;
+}
+
+/** « tu perds d'habitude 2,5 reps d'une série à l'autre ici », arrondi à la demi-rep. */
+export function learnedDropText(drop: number): string {
+  const rounded = Math.max(0.5, Math.round(drop * 2) / 2);
+  const value = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(".", ",");
+  return `tu perds d'habitude ${value} rep${rounded > 1 ? "s" : ""} d'une série à l'autre ici`;
 }

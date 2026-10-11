@@ -71,6 +71,11 @@ export interface PredictContext {
    */
   appliesIntraExerciseDrop?: boolean;
   fatigueClass?: FatigueClass;
+  /**
+   * Perte de reps d'une série à la suivante apprise sur l'historique (`rep-drop.ts`). Remplace la
+   * constante de la classe de fatigue au §5.3.4 quand elle est fournie.
+   */
+  intraExerciseDrop?: number;
 }
 
 function samplesForRole(samples: RepSample[], role: SetRole | number, weight: number): RepSample[] {
@@ -179,8 +184,9 @@ export function predictReps(
   }
 
   // 4. drop intra-exercice (§5.3.4) : seulement si base non-empirique directe ET signalé par l'appelant.
-  if (!fromDirectSamples && ctx.appliesIntraExerciseDrop && ctx.fatigueClass) {
-    const drop = ctx.fatigueClass ? Math.min(FATIGUE_CLASS_PROPERTIES[ctx.fatigueClass].baseRepDrop, 2.0) : 0;
+  if (!fromDirectSamples && ctx.appliesIntraExerciseDrop && (ctx.intraExerciseDrop !== undefined || ctx.fatigueClass)) {
+    const drop =
+      ctx.intraExerciseDrop ?? (ctx.fatigueClass ? Math.min(FATIGUE_CLASS_PROPERTIES[ctx.fatigueClass].baseRepDrop, 2.0) : 0);
     base -= drop;
   }
 
