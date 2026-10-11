@@ -103,4 +103,11 @@ export const ALGO_V2 = {
    * (spec §6, exemple "cycle précédent 8 sem.").
    */
   LIFECYCLE_RUN_GAP_DAYS: 21,
+  /**
+   * Charge dimensionnée sur la fourchette (`sizeLoadToRange`, progression.ts) : quand les reps prévues
+   * passent sous `repTargetMin`, le moteur allège cran par cran (règle 7,5 % = 1 rep) sans descendre
+   * sous la charge effective habituelle de l'exercice (médiane des séries de travail des 5 dernières
+   * séances) moins cette part. Choisie par rejeu sur les séries d'avant le 21/09/2026 (`web/SUGGESTIONS.md`).
+   */
+  LOAD_FLOOR_PCT: 0.15,
 } as const;

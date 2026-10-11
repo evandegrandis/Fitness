@@ -69,9 +69,17 @@ Essayé et écarté, faute de gain sur les séries d'avant le 21/09 (étude par 
   plafonnait la prévision enregistrée sur la série, ce qui nourrissait ce décalage. Les deux sont corrigés. La fatigue de
   séance retire maintenant des reps à cette 1re série comme aux autres premières séries ; sans cela, des HSPU faites en fin
   de séance étaient prévues comme fraîches.
+- **Jamais sous la fourchette** (`sizeLoadToRange`) : une suggestion chargée (externe, lestée ou assistée) dont les reps
+  prévues passent sous `repTargetMin` descend cran par cran, avec la règle 7,5 %, jusqu'à prévoir le minimum. Plancher :
+  la charge effective habituelle (médiane des séries de travail des 5 dernières séances) moins 15 %
+  (`ALGO_V2.LOAD_FLOOR_PCT`). Si le plancher ne suffit pas, il est proposé avec ses reps prévues et la raison le dit
+  (« Allégé jusqu'à ton plancher de charge »). Inchangés : poids du corps pur (pas de charge à alléger ; règle existante de
+  la variante plus facile), finishers, test de plateau, compléments de série.
+  Les 15 % : avant le 21/09, Evan n'est descendu à plus de 14,3 % sous sa charge habituelle que sur 5 % de ses séries 2+ ;
+  l'erreur moyenne avant le 21/09 varie de moins de 0,02 rep entre un plancher à 10 % et aucun plancher.
 - **Raison lisible** (`suggestion-reason.ts`) : quand la perte apprise vient de l'exercice lui-même, « tu perds d'habitude
-  2,5 reps d'une série à l'autre ici ». « Baisser d'un cran » dit « à la même charge, la fatigue t'aurait sorti de ta
-  fourchette » : les reps prévues à la charge plus légère peuvent rester sous la fourchette.
+  2,5 reps d'une série à l'autre ici » ; « Allégé pour rester dans ta fourchette de reps » quand la charge a été
+  dimensionnée.
 - Version du moteur : `web-v2.3-2026-10-11` (`SUGGESTION_ENGINE_VERSION`).
 
 Inchangés : premières séries chargées (mêmes prévisions, série pour série), test de plateau, conversion 7,5 % (Epley faisait
@@ -81,26 +89,33 @@ pire sur l'historique : erreur 4,50 contre 2,34 sur 246 séries faites à une au
 
 | Contexte | Séries (séances) | Erreur ancien → nouveau | Différence [IC 95 %] | Écart ancien → nouveau |
 |---|---|---|---|---|
-| Toutes les séries | 439 (31) | 2,35 → 1,85 | −0,50 [−0,66 ; −0,33] | −0,81 → +0,05 |
-| Hors échantillon (à partir du 21/09) | 171 (11) | 2,13 → 1,81 | −0,32 [−0,56 ; −0,10] | −0,81 → +0,31 |
-| Séries 2+, hors échantillon | 98 (11) | 2,16 → 1,59 | −0,58 [−0,97 ; −0,15] | −1,77 → +0,45 |
-| 1re série de l'exercice | 180 (31) | 2,20 → 2,05 | −0,14 [−0,33 ; +0,02] | +0,58 → +0,20 |
-| 2e série | 138 (30) | 2,40 → 1,82 | −0,58 [−0,91 ; −0,28] | −1,49 → −0,02 |
-| 3e série | 79 (29) | 2,31 → 1,56 | −0,75 [−1,22 ; −0,28] | −1,92 → −0,10 |
-| 4e série et plus | 42 (25) | 2,92 → 1,67 | −1,25 [−2,05 ; −0,60] | −2,47 → −0,08 |
-| Même charge que la série d'avant | 152 (31) | 2,54 → 1,79 | −0,75 [−1,07 ; −0,43] | −1,87 → −0,34 |
-| Plus léger que la série d'avant | 79 (25) | 2,51 → 1,69 | −0,82 [−1,40 ; −0,26] | −1,79 → +0,56 |
-| Branche « baisser d'un cran » | 54 (26) | 3,90 → 1,45 | −2,46 [−3,43 ; −1,62] | −3,83 → +0,84 |
-| Branche « garder la charge » | 71 (26) | 1,75 → 1,34 | −0,41 [−0,73 ; −0,09] | −1,41 → −0,22 |
-| Séries de retour | 29 (18) | 2,48 → 1,57 | −0,91 [−1,82 ; −0,11] | −2,41 → +0,57 |
-| Test de plateau | 35 (15) | 1,05 → 1,05 | 0,00 [−0,22 ; +0,25] | −0,44 → −0,10 |
-| Série 2+ enchaînée | 126 (30) | 2,92 → 1,75 | −1,17 [−1,57 ; −0,77] | −2,42 → −0,35 |
-| Série 2+ alternée (superset) | 133 (29) | 2,02 → 1,68 | −0,33 [−0,60 ; −0,08] | −1,17 → +0,22 |
-| Moins de 3 min depuis la série d'avant | 44 (22) | 3,42 → 2,11 | −1,31 [−2,16 ; −0,56] | −2,98 → −1,09 |
+| Toutes les séries | 439 (31) | 2,35 → 1,86 | −0,49 [−0,65 ; −0,33] | −0,81 → +0,06 |
+| Hors échantillon (à partir du 21/09) | 171 (11) | 2,13 → 1,82 | −0,32 [−0,56 ; −0,08] | −0,81 → +0,32 |
+| Séries 2+, hors échantillon | 98 (11) | 2,16 → 1,60 | −0,56 [−0,96 ; −0,12] | −1,77 → +0,45 |
+| 1re série de l'exercice | 180 (31) | 2,20 → 2,05 | −0,15 [−0,34 ; +0,01] | +0,58 → +0,20 |
+| 2e série | 138 (30) | 2,40 → 1,83 | −0,58 [−0,90 ; −0,27] | −1,49 → −0,02 |
+| 3e série | 79 (29) | 2,31 → 1,57 | −0,74 [−1,22 ; −0,27] | −1,92 → −0,09 |
+| 4e série et plus | 42 (25) | 2,92 → 1,73 | −1,19 [−2,04 ; −0,53] | −2,47 → +0,06 |
+| Même charge que la série d'avant | 152 (31) | 2,54 → 1,82 | −0,72 [−1,05 ; −0,41] | −1,87 → −0,30 |
+| Plus léger que la série d'avant | 79 (25) | 2,51 → 1,69 | −0,81 [−1,40 ; −0,25] | −1,79 → +0,56 |
+| Branche « baisser d'un cran » | 54 (26) | 3,90 → 1,46 | −2,44 [−3,43 ; −1,60] | −3,83 → +0,91 |
+| Branche « garder la charge » | 71 (26) | 1,75 → 1,35 | −0,40 [−0,70 ; −0,09] | −1,41 → −0,25 |
+| Séries de retour | 29 (18) | 2,48 → 1,62 | −0,86 [−1,79 ; −0,09] | −2,41 → +0,74 |
+| Test de plateau | 35 (15) | 1,05 → 1,05 | 0,00 [−0,23 ; +0,24] | −0,44 → −0,10 |
+| Série 2+ enchaînée | 126 (30) | 2,92 → 1,74 | −1,18 [−1,59 ; −0,77] | −2,42 → −0,35 |
+| Série 2+ alternée (superset) | 133 (29) | 2,02 → 1,72 | −0,29 [−0,55 ; −0,06] | −1,17 → +0,27 |
+| Moins de 3 min depuis la série d'avant | 44 (22) | 3,42 → 2,06 | −1,36 [−2,25 ; −0,59] | −2,98 → −1,05 |
 
 Tests pré-déclarés (t robuste par séance, Holm sur les 4 tests de gain) : toutes séries p < 0,001 ; séries 2+ p < 0,001 ;
-hors échantillon p = 0,023 (Holm 0,046) ; séries 2+ hors échantillon p = 0,026 (Holm 0,046). Le hors échantillon ne
+hors échantillon p = 0,029 (Holm 0,058) ; séries 2+ hors échantillon p = 0,033 (Holm 0,058). Le hors échantillon ne
 couvre que le réglage des constantes : la forme des changements vient de l'audit, qui a vu toute la période.
+
+Suggestions sous la fourchette (charge externe, lestée ou assistée, hors test de plateau), sur les 439 séries :
+27 avec l'ancien moteur, 116 avec la perte apprise seule, 50 après dimensionnement (45 au plancher, 5 compléments de
+série, voulus courts). Erreur sur les 116 : ancien 2,94, perte apprise seule 1,58, après dimensionnement 1,61. Le
+dimensionnement ne change presque pas la prévision à la charge choisie (+0,01 [−0,01 ; +0,02], aucune case dégradée après
+Holm), mais la charge proposée s'éloigne de celle qu'Evan prend : écart médian sur les séries 2+ de 5,0 % (ancien) et
+3,8 % (perte apprise seule) à 8,3 %.
 
 À part : séries au poids du corps faites en finisher, 5,17 → 5,91 d'erreur (23 séries, 16 séances), l'ancien plafond
 tombant par hasard plus près ; 1res séries au poids du corps de travail, 4,46 → 3,46 (26 séries, 16 séances).

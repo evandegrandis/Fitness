@@ -9,7 +9,8 @@
  *   TZ=Europe/Paris npx tsx scripts/suggestions-audit/replay.ts <export.json> <sortie.jsonl>
  * Pour rejouer un AUTRE moteur (par exemple la branche principale dans un autre worktree) avec ce script :
  *   cd <autre worktree>/web && TZ=Europe/Paris npx tsx --tsconfig ./tsconfig.json <ce fichier> <export.json> <sortie.jsonl>
- * Réglage : `--set SHRINK_K=4 --set HALF_LIFE_DAYS=60` modifie `REP_DROP` le temps du rejeu (si le moteur l'a).
+ * Réglage : `--set SHRINK_K=4 --set HALF_LIFE_DAYS=60` modifie `REP_DROP` le temps du rejeu (si le moteur l'a),
+ * `--set ALGO_V2.LOAD_FLOOR_PCT=0.2` une constante du moteur.
  *
  * Le script n'écrit rien en base et refuse d'écrire sa sortie dans le dépôt.
  */
@@ -97,14 +98,19 @@ async function main() {
   type AllData = import("@/lib/db/queries").AllData;
   type LoggedSet = import("@/lib/models/types").LoggedSet;
 
-  if (sets.length > 0) {
-    // Le module n'existe que dans les moteurs qui apprennent la perte de reps.
+  for (const [rawKey, value] of sets) {
+    // `ALGO_V2.CLE=v` règle une constante du moteur ; `CLE=v` règle `REP_DROP` (moteurs qui apprennent la perte de reps).
+    if (rawKey.startsWith("ALGO_V2.")) {
+      const key = rawKey.slice("ALGO_V2.".length);
+      const algo = ALGO_V2 as unknown as Record<string, number>;
+      if (!(key in algo)) throw new Error(`--set : clé inconnue ${rawKey}`);
+      algo[key] = value;
+      continue;
+    }
     const mod = (await import("@/lib/engines/rep-drop" as string).catch(() => null)) as { REP_DROP?: Record<string, number> } | null;
     if (!mod?.REP_DROP) throw new Error("--set : ce moteur n'a pas de REP_DROP");
-    for (const [key, value] of sets) {
-      if (!(key in mod.REP_DROP)) throw new Error(`--set : clé inconnue ${key}`);
-      mod.REP_DROP[key] = value;
-    }
+    if (!(rawKey in mod.REP_DROP)) throw new Error(`--set : clé inconnue ${rawKey}`);
+    mod.REP_DROP[rawKey] = value;
   }
 
   const data = JSON.parse(readFileSync(dataPath, "utf8"), (_k, v) => (typeof v === "string" && ISO.test(v) ? new Date(v) : v)) as AllData;
