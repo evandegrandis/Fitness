@@ -68,6 +68,25 @@ export const GOAL_MUSCLE_PARENTS: MuscleParent[] = MUSCLE_PARENTS.filter(
 
 const GOAL_MUSCLE_PARENT_SET = new Set<MuscleParent>(GOAL_MUSCLE_PARENTS);
 
+/**
+ * Bas du corps (Evan, 11/10/2026) : « Quoi faire maintenant » sépare le haut du corps des jambes,
+ * qui peuvent être mises de côté pour la semaine. Les abdos restent avec le haut du corps : il les
+ * travaille dans ses séances du haut.
+ */
+export const LOWER_BODY_PARENTS: MuscleParent[] = [
+  MuscleParent.quads,
+  MuscleParent.hamstrings,
+  MuscleParent.glutes,
+  MuscleParent.adductors,
+  MuscleParent.calves,
+];
+
+const LOWER_BODY_SET = new Set<MuscleParent>(LOWER_BODY_PARENTS);
+
+export function isLowerBodyParent(parent: MuscleParent): boolean {
+  return LOWER_BODY_SET.has(parent);
+}
+
 export function isGoalMuscleParent(value: unknown): value is MuscleParent {
   return typeof value === "string" && GOAL_MUSCLE_PARENT_SET.has(value as MuscleParent);
 }

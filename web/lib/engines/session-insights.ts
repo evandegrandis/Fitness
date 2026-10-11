@@ -27,7 +27,8 @@ import { buildRecords, classify, normalRecordSets, recordCalibration } from "@/l
 import { fatigueContextAtExerciseStart } from "@/lib/engines/session-fatigue-baselines";
 import type { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { weekSessionPlan } from "@/lib/engines/session-focus";
-import { nextWeekTier, setsToNextTier, weekTier, WEEK_TIERS, type WeekTier } from "@/lib/engines/progress-stats";
+import { WEEK_TIERS, type WeekTier } from "@/lib/engines/progress-stats";
+import { weekStatusFromRows } from "@/lib/engines/week-status";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { SetType, type TrainingPhase } from "@/lib/models/enums";
 import { parentShortName, type MuscleParent } from "@/lib/models/muscles";
@@ -901,26 +902,21 @@ function weekStatus(
   catalog: Exercise[],
   goals: MuscleGoal[]
 ): WeekTierStatus | null {
-  const before = weeklyProgress(prior, catalog, goals, session.date).filter((row) => row.goalSets > 0);
-  const after = weeklyProgress(prior, catalog, goals, session.date, session).filter((row) => row.goalSets > 0);
-  const goalTotal = after.reduce((sum, row) => sum + row.goalSets, 0);
-  if (goalTotal <= 0) return null;
-  const score = (rows: typeof after) => rows.reduce((sum, row) => sum + Math.min(row.effectiveSets, row.goalSets), 0) / goalTotal;
-  const scoreBefore = score(before);
-  const scoreAfter = score(after);
-  const next = nextWeekTier(scoreAfter);
+  // Même calcul que l'en-tête de séance et l'accueil (`week-status.ts`).
+  const before = weekStatusFromRows(weeklyProgress(prior, catalog, goals, session.date));
+  const after = weekStatusFromRows(weeklyProgress(prior, catalog, goals, session.date, session));
+  if (after.goalTotal <= 0) return null;
   const plan = weekSessionPlan(prior, session.date);
   return {
-    scoreBefore,
-    scoreAfter,
-    tierBefore: weekTier(scoreBefore),
-    tierAfter: weekTier(scoreAfter),
-    nextTierLabel: next?.label ?? null,
-    setsToNextTier: setsToNextTier(scoreAfter, goalTotal),
-    remaining: after
-      .filter((row) => row.remaining >= 0.5)
-      .sort((a, b) => b.remaining - a.remaining)
-      .map((row) => ({ parent: row.parent, sets: Math.round(row.remaining) })),
+    scoreBefore: before.score,
+    scoreAfter: after.score,
+    tierBefore: before.tier,
+    tierAfter: after.tier,
+    nextTierLabel: after.next?.label ?? null,
+    setsToNextTier: after.setsToNext,
+    // Où une série comptait encore : haut du corps d'abord (11/10/2026, « Reste surtout : Ischios 9,
+    // Fessiers 9, Mollets 9 » quand les 3 séries de l'or ne pouvaient venir que des abdos).
+    remaining: after.where.map((row) => ({ parent: row.parent, sets: Math.max(1, Math.round(row.remaining)) })),
     sessionsLeftAfterToday: Math.max(0, plan.sessionsLeftIncludingToday - 1),
   };
 }
@@ -937,6 +933,11 @@ function weekInsight(status: WeekTierStatus): SessionInsight {
         ? `Palier ${current} atteint (${percent(status.scoreAfter)}) · ${status.nextTierLabel} à ${status.setsToNextTier} séries`
         : `${current ? `Semaine ${current}` : "Semaine"} à ${percent(status.scoreAfter)} · ${status.nextTierLabel} à ${status.setsToNextTier} séries`;
   const where = status.remaining.slice(0, 3).map((row) => `${parentShortName[row.parent]} ${row.sets}`).join(", ");
+  const whereSentence = where
+    ? status.setsToNextTier !== null && status.nextTierLabel
+      ? ` Les séries pour ${({ Bronze: "le bronze", Argent: "l'argent", Or: "l'or" } as Record<string, string>)[status.nextTierLabel] ?? status.nextTierLabel} comptent sur : ${where}.`
+      : ` Reste surtout : ${where}.`
+    : "";
   const perSession =
     status.setsToNextTier !== null && status.sessionsLeftAfterToday > 0
       ? status.sessionsLeftAfterToday === 1
@@ -947,7 +948,7 @@ function weekInsight(status: WeekTierStatus): SessionInsight {
     id: "week",
     kind: "week",
     title,
-    detail: `Cette séance : ${percent(status.scoreBefore)} → ${percent(status.scoreAfter)}.${where ? ` Reste surtout : ${where}.` : ""}${perSession}`,
+    detail: `Cette séance : ${percent(status.scoreBefore)} → ${percent(status.scoreAfter)}.${whereSentence}${perSession}`,
     tone: reached ? "positive" : "neutral",
     exerciseIds: [],
     weight: reached ? 78 : status.setsToNextTier !== null && status.setsToNextTier <= 8 ? 57 : 40,
