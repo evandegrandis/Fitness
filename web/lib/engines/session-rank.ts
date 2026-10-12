@@ -51,7 +51,7 @@ export interface SessionRank {
   /** Séries étoilées. */
   records: number;
   cut: boolean;
-  /** Face à la référence du moteur, pour la Discipline (hors rang). */
+  /** Face à la cible affichée sur la 1re série de chaque exercice, pour la Discipline (hors rang). */
   rated: number;
   performed: number;
   held: number;

@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify, buildRecords, recordCalibration } from "@/lib/engines/records";
-import {
-  debriefSession,
-  historyBefore,
-  recordTarget,
-  storedFirstSuggestions,
-} from "@/lib/engines/session-insights";
+import { storedFirstSuggestions } from "@/lib/engines/bilan";
+import { debriefSession, historyBefore, recordTarget } from "@/lib/engines/session-insights";
 import { MuscleGroup } from "@/lib/models/muscles";
 import { SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedExercise, LoggedSet, WorkoutSession } from "@/lib/models/types";

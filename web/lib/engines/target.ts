@@ -16,6 +16,9 @@
  * Après une série LOURDE (reps au RIR visé sous la fourchette, charge au-dessus de sa charge de travail
  * habituelle), il redescend : la cible prend alors la charge de la prévision (retour ou amorce du moteur),
  * jamais « 145 × 4 » après 150 × 6. Montées de charge du moteur et test de plateau : inchangés.
+ * Plancher (12/10/2026) : une cible chargée ne descend jamais sous repMin − 3 reps (« 80 × 2 » alors qu'il fait
+ * 75 × 8) ; sinon la charge prend celle de la prévision, puis descend par la règle 7,5 % jusqu'au plancher.
+ * Poids du corps, finishers et compléments de série gardent leurs règles.
  *
  * Reps : prévision à cette charge + marge d'ambition. La marge est apprise sur les séries récentes
  * enregistrées par ce moteur (prévision stockée contre reps faites, « battre » au sens de
@@ -66,6 +69,11 @@ export const TARGET = {
   LOWER_BELOW_MIN: 2.7,
   /** Crans de décrochage au plus. */
   MAX_LOWER_STEPS: 2,
+  /**
+   * Plancher : une cible chargée ne propose jamais moins de repMin − 3 reps (« 80 × 2 » ne pousse pas, il
+   * décrédibilise la cible). En dessous, la charge prend celle de la prévision, puis descend par la règle 7,5 %.
+   */
+  MIN_REPS_BELOW_MIN: 3,
   /** Série lourde : sa charge dépasse la charge de travail habituelle d'au moins ce nombre de crans. */
   HEAVY_MIN_STEPS: 1,
   /**
@@ -213,6 +221,8 @@ function loadModeOf(exercise: Exercise): LoadMode {
   return "external";
 }
 
+const BODYWEIGHT_MODES = new Set<string>([SPM.bodyweight, SPM.weightedBodyweight, SPM.assistedBodyweight]);
+
 function stepEasier(load: number, increment: number, exercise: Exercise): number {
   if (exercise.setPatternMode === SPM.assistedBodyweight) return load + increment;
   return Math.max(0, load - increment);
@@ -286,13 +296,15 @@ export function targetFromPrediction(
   bodyweightKg: number | undefined,
   /** false après une série lourde : la charge de retour est déjà choisie. */
   mayLower = true
-): { weight: number; reps: number; predictedReps: number; lowered: number } {
-  if (input.push) return { weight: input.weight, reps: input.reps, predictedReps: input.reps, lowered: 0 };
+): { weight: number; reps: number; predictedReps: number; lowered: number; floored: boolean } {
+  if (input.push) return { weight: input.weight, reps: input.reps, predictedReps: input.reps, lowered: 0, floored: false };
   const mode = loadModeOf(exercise);
-  const base = input.anchor ?? { load: input.weight, reps: input.reps };
-  const from = effTotal(base.load, mode, bodyweightKg);
-  const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));
-  const predictedAt = (load: number) => base.reps + (from - effTotal(load, mode, bodyweightKg)) / kgPerRep;
+  const projector = (base: { load: number; reps: number }) => {
+    const from = effTotal(base.load, mode, bodyweightKg);
+    const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));
+    return (load: number) => base.reps + (from - effTotal(load, mode, bodyweightKg)) / kgPerRep;
+  };
+  let predictedAt = projector(input.anchor ?? { load: input.weight, reps: input.reps });
   let load = lastLoad ?? input.weight;
   let lowered = 0;
   while (
@@ -307,7 +319,24 @@ export function targetFromPrediction(
     load = next;
     lowered += 1;
   }
+  // Plancher des séries chargées (le poids du corps garde ses règles) : charge de la prévision si elle est plus
+  // légère, puis un cran à la fois par la règle 7,5 % jusqu'au plancher.
+  const floor = exercise.repTargetMin - TARGET.MIN_REPS_BELOW_MIN;
+  const below = () => Math.round(predictedAt(load) + margin) < floor;
+  let floored = false;
+  if (load > 0 && !BODYWEIGHT_MODES.has(exercise.setPatternMode) && below()) {
+    floored = true;
+    if (effTotal(input.weight, mode, bodyweightKg) < effTotal(load, mode, bodyweightKg) - 1e-9) {
+      predictedAt = projector({ load: input.weight, reps: input.reps });
+      load = input.weight;
+    }
+    for (let guard = 0; guard < 100 && load > 0 && below(); guard++) {
+      const next = stepEasier(load, increment, exercise);
+      if (Math.abs(next - load) < 1e-9) break;
+      load = next;
+    }
+  }
   const predictedReps = predictedAt(load);
   const reps = Math.max(1, Math.round(predictedReps + margin));
-  return { weight: load, reps, predictedReps, lowered };
+  return { weight: load, reps, predictedReps, lowered, floored };
 }

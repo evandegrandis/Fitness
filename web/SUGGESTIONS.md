@@ -14,9 +14,9 @@ le meilleur de moi-même, constamment me dépasser en charges ou reps ». Le mot
   la reprojection quand il change le poids (« À 130 kg, le moteur prévoit N reps »), à `predictedRepsAtActualWeight`
   (donc au décalage appris et à la marge d'ambition), au bilan des anciennes séances ;
 - **la cible** (affichée, enregistrée dans `suggestedWeight` / `suggestedReps`, donc lue par le compteur, le combo, le
-  bilan, l'Historique et Barbis) est construite sur la prévision par `lib/engines/target.ts`. La Discipline de la fiche,
-  elle, juge la meilleure série de chaque exercice contre la prévision recalculée (`career.ts` appelle
-  `buildSessionReview` sans les cibles enregistrées) : elle ne dépend pas de la cible.
+  bilan, l'Historique, la Discipline et Barbis) est construite sur la prévision par `lib/engines/target.ts`. Le bilan et
+  la Discipline jugent la meilleure série de chaque exercice contre la cible enregistrée sur sa 1re série
+  (`storedFirstSuggestions`, `bilan.ts`) ; elle n'est recalculée que si elle manque (séances d'avant le 15/08).
 
 Charge de la cible : celle de la dernière série du même exercice (1re série : celle du moteur). Elle ne baisse pas pour
 revenir dans la fourchette ; elle ne décroche d'un ou deux crans que si la prévision à cette charge tombe sous
@@ -24,6 +24,15 @@ revenir dans la fourchette ; elle ne décroche d'un ou deux crans que si la pré
 passe sous `repTargetMin − 2,7`, il baisse lui-même la charge plus d'une fois sur deux (régression logistique sur 96
 séries 2+, point à 50 % : −2,69 [−4,7 ; −1,4] ; après le 21/09 : −2,56). Montées de charge du moteur (dépassement,
 promotion, série lourde), test de plateau et finishers : la cible est la prévision, inchangée.
+
+Plancher (12/10/2026) : une cible chargée ne propose jamais moins de `repTargetMin − 3` reps (« 80 × 2 » alors qu'il
+fait 75 × 8 ne pousse pas, il décrédibilise la cible). Si le décrochage d'un ou deux crans ne suffit pas, la cible prend
+la charge de la prévision (comme après une série lourde), puis descend d'un cran à la fois par la règle 7,5 % jusqu'au
+plancher. Le poids du corps (simple, lesté, assisté), les finishers et les compléments de série gardent leurs règles.
+Rejeu simulé depuis le 17/08 : 9 cibles sous le plancher avant, 0 après (80 × 2 devient 70 × 4, la prévision étant
+70 × 5) ; restent 3 compléments de série à 3 reps. Taux battus (`report.ts`) : 52 % en tout, 1re 52 %, 2e 50 %, 3e
+56 % inchangés, 4e et plus 50 → 52 %, retour plus léger 70 → 72 %. Écart de charge effective entre cible et série faite
+(séries 2+, 245) : médiane 5,0 % inchangée, moyenne 7,3 → 7,4 %.
 
 Après une série LOURDE, il redescend : la cible prend la charge de la prévision (retour ou amorce du moteur), ou au
 moins 11 % plus léger quand la prévision ne descend que d'un cran (sa baisse médiane après une série lourde, avant le
@@ -202,7 +211,7 @@ Règle (`versusReference`, `lib/engines/versus.ts`), pour le compteur, le combo,
   au moins un cran ; poids du corps par défaut du moteur, pour qu'une pesée ne change pas le verdict d'une série
   passée), arrondies comme les reps affichées, puis comparées aux reps de la cible.
 
-« Tenir » (Discipline, `heldReference`) suit la même conversion : au plus une rep de moins, ramenée à la charge de la
+« Tenir » (`heldReference`) suit la même conversion : au plus une rep de moins, ramenée à la charge de la
 référence (avant : 97 % du 1RM d'Epley, la même rep de marge à charge égale). Plus aucun 1RM d'Epley ne juge une cible.
 Les records gardent leurs règles (`classify`) ; la meilleure série d'un exercice au bilan reste choisie par capacité
 (Epley, comme les records) : la choisir par la nouvelle règle ne changerait le verdict que d'un exercice sur 220.
@@ -217,10 +226,18 @@ même script lancé sur le moteur de `bf02350`) :
 | Moteur actuel, rejeu simulé (478 séries, 31 séances) | avant | 42 % | 6,5 | 2,9 | 64 % (13 %) |
 | | après | 51 % | 7,8 | 3,9 | 71 % (17 %) |
 
-Discipline de la fiche (jugée contre la prévision, donc identique avec les deux jeux de cibles) : 77 % → 86 % sur les
-28 derniers jours (101 exercices), 73 % → 83 % depuis le 17/08 (191). Le « 74 % » annoncé le 11/10 venait d'une
-réplique Python qui jugeait contre la cible de la 1re série, sans les records ni les séries tenues au poids du corps :
-ce n'est pas ce que calcule la fiche.
+Discipline de la fiche : elle jugeait la meilleure série contre la prévision recalculée (`career.ts` appelait
+`buildSessionReview` sans les cibles enregistrées), pas contre la cible affichée. Depuis le 12/10 elle juge contre la
+cible de la 1re série, comme le bilan (une seule vérité), recalculée seulement quand elle manque :
+
+| Discipline | 28 derniers jours (101 exercices) | Depuis le 17/08 (191) |
+|---|---|---|
+| Avant (Epley, contre la prévision recalculée) | 77 % | 73 % |
+| Règle du moteur, contre la prévision recalculée | 86 % | 83 % |
+| Règle du moteur, contre la cible affichée (cibles vécues) | 93 % | 89 % |
+| Règle du moteur, contre la cible affichée (cibles du moteur actuel, rejeu simulé) | 89 % | 88 % |
+
+Le « 74 % » annoncé le 11/10 venait d'une réplique Python sans les records ni les séries tenues au poids du corps.
 
 Par contexte (`report.ts`, rejeu simulé, 445 séries de l'audit ; avant = Epley, après = règle du moteur ; cibles
 identiques) :
@@ -238,8 +255,8 @@ identiques) :
 
 La boucle de marge vise toujours la moitié dans ses deux contextes : 52 % de cibles battues en 1re série comme aux
 séries suivantes, rien à réajuster. Le retour après une série plus lourde est battu 70 % du temps : la cible y garde
-souvent une charge qu'il quitte (cible 80 × 2, il fait 75 × 8), et la série plus légère dans la fourchette la bat. À
-suivre avec `report.ts --depuis` sur ses vraies séances.
+souvent une charge qu'il quitte, et la série plus légère dans la fourchette la bat (les cas extrêmes comme 80 × 2 sont
+réglés par le plancher, section 0). À suivre avec `report.ts --depuis` sur ses vraies séances.
 
 ## 5. Limites
 

@@ -109,8 +109,22 @@ describe("cible construite sur la prévision", () => {
   it("ne baisse pas la charge pour revenir dans la fourchette, sauf nettement en dessous et de deux crans au plus", () => {
     // 1 rep sous la fourchette : la charge reste.
     expect(targetFromPrediction({ weight: 100, reps: 7, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 100, reps: 7, lowered: 0 });
-    // 6 reps sous la fourchette : deux crans au plus.
-    expect(targetFromPrediction({ weight: 100, reps: 2, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 95, lowered: 2 });
+    // 4 reps sous la fourchette : deux crans au plus (4 + 5 / 7,5 = 4,7, soit 5 reps à 95 kg).
+    expect(targetFromPrediction({ weight: 100, reps: 4, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 95, reps: 5, lowered: 2, floored: false });
+  });
+
+  it("plancher : jamais moins de repMin − 3 reps sur une série chargée, la charge descend par la règle 7,5 %", () => {
+    // Prévision 100 × 2 (fourchette 8-12) : deux crans donnent 95 × 3, sous le plancher de 5 ; à 7,5 kg par rep,
+    // il faut 80 kg (2 + 20 / 7,5 = 4,7, soit 5).
+    expect(targetFromPrediction({ weight: 100, reps: 2, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 80, reps: 5, floored: true });
+    // Charge tenue à 80 kg alors que la prévision est à 70 × 5 (fourchette 6-12, marge −1 : 80 × 2 avant) : la cible
+    // prend la charge de la prévision, 70 × 4, au plancher de 3.
+    const pecDeck = exercise({ repTargetMin: 6 });
+    const anchor = { load: 80, reps: 3.4 };
+    expect(targetFromPrediction({ weight: 70, reps: 5, push: false, anchor }, pecDeck, 80, -1, 2.5, undefined)).toMatchObject({ weight: 70, reps: 4, floored: true });
+    // Le poids du corps garde ses règles.
+    const lest = exercise({ setPatternMode: "weighted_bodyweight", repTargetMin: 6 });
+    expect(targetFromPrediction({ weight: 15, reps: 2, push: false }, lest, 15, 0, 2.5, 74)).toMatchObject({ floored: false });
   });
 
   it("série lourde : reps au RIR visé sous la fourchette, au-dessus de la charge habituelle", () => {
