@@ -166,6 +166,33 @@ describe("progression", () => {
   });
 });
 
+describe("baisse : seulement sous ce que Jeera prévoyait, fatigue de séance comprise (12/10/2026)", () => {
+  const DIPS: Exercise = { ...BASE, id: "ex-dips", name: "Dips", setPatternMode: "bodyweight", fatigueClass: "medium", muscleMappings: [{ muscleGroup: MuscleGroup.tricepsLat, coefficient: 1 }] };
+  const PUSHDOWN: Exercise = { ...BASE, id: "ex-pushdown", name: "Extension triceps poulie", fatigueClass: "medium", muscleMappings: [{ muscleGroup: MuscleGroup.tricepsLat, coefficient: 1 }] };
+  const catalog = [...CATALOG, DIPS, PUSHDOWN];
+  const fresh = (day: string, reps: number) => makeSession(day, [[DIPS, 0, 0, reps]]);
+  // Six séries d'extensions triceps (même muscle) avant les dips.
+  const late = (day: string, reps: number) =>
+    makeSession(day, [...Array.from({ length: 6 }, (_, i) => [PUSHDOWN, i * 3, 30, 10] as Spec), [DIPS, 20, 0, reps]]);
+  const dipsInsight = (session: WorkoutSession, history: WorkoutSession[]) =>
+    debriefSession(session, history, catalog)
+      .insights.sections.flatMap((section) => section.items)
+      .find((insight) => insight.kind === "progress" && insight.exerciseIds.includes(DIPS.id));
+
+  it("exercice fait en fin de séance, même performance attendue : 3 reps de moins que la séance d'avant faite fraîche n'est pas une baisse", () => {
+    const history = [fresh("2026-09-18", 20), late("2026-09-21", 17), fresh("2026-09-24", 20), fresh("2026-09-27", 20)];
+    expect(dipsInsight(late("2026-09-30", 17), history)).toBeUndefined();
+  });
+
+  it("une vraie baisse, au même placement, reste dite, avec l'écart à la prévision", () => {
+    const history = [fresh("2026-09-18", 20), fresh("2026-09-21", 20), fresh("2026-09-24", 20)];
+    const insight = dipsInsight(fresh("2026-09-27", 12), history)!;
+    expect(insight.tone).toBe("warning");
+    expect(insight.title).toBe("Dips : 8 reps de moins au poids du corps");
+    expect(insight.detail).toContain("40 % sous ce que Jeera prévoyait, fatigue de séance comprise");
+  });
+});
+
 describe("fatigue de la séance", () => {
   it("est branchée dans le bilan et chiffrée quand l'exercice arrive plus tard que d'habitude", () => {
     const history = pressHistory();
