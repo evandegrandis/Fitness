@@ -129,16 +129,25 @@ describe("exercices", () => {
     expect(stat.delta).toBeNull();
   });
 
-  it("progression : meilleure des 3 dernières séances contre les 3 d'avant", () => {
-    const loads = [60, 60, 62.5, 62.5, 65, 67.5];
+  it("progression : les 3 dernières séances au-dessus de ce que Jeera prévoyait d'après les 3 d'avant, au-delà du bruit", () => {
+    const loads = [60, 60, 60, 67.5, 70, 72.5];
     const history = loads.map((load, i) => session(40 - i * 6, [{ exercise: ROW, sets: [[load, 10]] }]));
     const [stat] = exerciseStats(history, [ROW], NOW);
     expect(stat.status).toBe("progress");
-    expect(stat.delta).toBeCloseTo(67.5 / 62.5 - 1, 5);
+    // Moyenne géométrique des 3 dernières contre celle des 3 d'avant (même contexte, mêmes reps).
+    expect(stat.delta).toBeCloseTo(Math.cbrt(67.5 * 70 * 72.5) / 60 - 1, 5);
+    expect(stat.deltaThreshold).toBeGreaterThan(0);
     expect(stat.points).toHaveLength(6);
   });
 
-  it("une séance fatiguée n'est pas une baisse : il faut perdre plus de 3 %", () => {
+  it("une meilleure séance isolée n'est pas une progression : l'écart doit sortir du bruit de l'exercice", () => {
+    const history = [60, 60, 60, 60, 60, 62.5].map((load, i) => session(40 - i * 6, [{ exercise: ROW, sets: [[load, 10]] }]));
+    const [stat] = exerciseStats(history, [ROW], NOW);
+    expect(stat.delta).toBeGreaterThan(0);
+    expect(["stable", "plateau"]).toContain(stat.status);
+  });
+
+  it("une séance fatiguée n'est pas une baisse : il faut sortir du bruit de l'exercice", () => {
     const history = [65, 65, 65, 65, 64, 65].map((load, i) => session(40 - i * 6, [{ exercise: ROW, sets: [[load, 10]] }]));
     const [stat] = exerciseStats(history, [ROW], NOW);
     expect(stat.status).not.toBe("decline");
@@ -186,6 +195,48 @@ describe("exercices", () => {
     expect(stat.axis).toBe("load");
     expect(stat.points[0].value).toBeGreaterThan(75);
     expect(stat.points[1].value).toBeGreaterThan(85);
+  });
+
+  it("exercice fait en fin de séance, même performance attendue : pas une baisse (Dips, 12/10/2026)", () => {
+    // Dips frais : 20 reps à l'échec. Après 6 séries d'extensions triceps (même muscle) : 15, ce que coûte ce contexte.
+    // L'historique alterne les deux placements : Jeera apprend ce coût. Puis 3 séances fraîches suivies de 3 en fin de
+    // séance : à capacité égale, l'ancienne méthode (règle fixe de 2 reps, meilleure contre meilleure) disait −15 %.
+    const dips = exercise({ id: "dips", name: "Dips", setPatternMode: "bodyweight", muscleMappings: [{ muscleGroup: MuscleGroup.tricepsLat, coefficient: 1 }] });
+    const pushdown = exercise({ id: "pushdown", name: "Extension triceps poulie", muscleMappings: [{ muscleGroup: MuscleGroup.tricepsLat, coefficient: 1 }] });
+    const atFailure = (sets: LoggedSet[]) => sets.map((set) => ({ ...set, reportedRir: 0 }));
+    const fresh = (daysAgo: number) => session(daysAgo, [{ exercise: dips, sets: [[0, 20]] }]);
+    const late = (daysAgo: number) => session(daysAgo, [{ exercise: pushdown, sets: Array.from({ length: 6 }, () => [30, 10] as [number, number]) }, { exercise: dips, sets: [[0, 15]] }]);
+    const placements = ["F", "L", "F", "L", "F", "L", "F", "L", "F", "F", "F", "L", "L", "L"];
+    const history = placements
+      .map((kind, i) => (kind === "F" ? fresh : late)(3 * (placements.length - i)))
+      .map((s) => ({ ...s, exercises: s.exercises.map((logged) => ({ ...logged, sets: atFailure(logged.sets) })) }));
+    const stat = exerciseStats(history, [dips, pushdown], NOW, null).find((entry) => entry.exercise.id === "dips")!;
+    expect(stat.axis).toBe("reps");
+    // Les 3 dernières séances, faites après 6 séries du même muscle, sont ramenées au contexte : ~5 reps rendues.
+    expect(stat.points.at(-1)!.contextReps).toBeGreaterThan(4);
+    expect(stat.status).not.toBe("decline");
+    expect(Math.abs(stat.delta!)).toBeLessThan(0.03);
+  });
+
+  it("une vraie baisse, au même placement, est annoncée", () => {
+    const dips = exercise({ id: "dips", name: "Dips", setPatternMode: "bodyweight", muscleMappings: [{ muscleGroup: MuscleGroup.tricepsLat, coefficient: 1 }] });
+    const history = [20, 20, 20, 20, 20, 20, 15, 15, 15].map((reps, i) => {
+      const s = session(40 - i * 4, [{ exercise: dips, sets: [[0, reps]] }]);
+      return { ...s, exercises: s.exercises.map((logged) => ({ ...logged, sets: logged.sets.map((set) => ({ ...set, reportedRir: 0 })) })) };
+    });
+    const [stat] = exerciseStats(history, [dips], NOW, null);
+    expect(stat.status).toBe("decline");
+    expect(stat.delta).toBeCloseTo(-0.25, 5);
+  });
+
+  it("une reprise après plus de 4 semaines ne se compare pas à l'avant-pause", () => {
+    const history = [
+      ...[60, 60, 60].map((load, i) => session(90 - i * 3, [{ exercise: ROW, sets: [[load, 10]] }])),
+      ...[45, 47.5, 50].map((load, i) => session(9 - i * 3, [{ exercise: ROW, sets: [[load, 10]] }])),
+    ];
+    const [stat] = exerciseStats(history, [ROW], NOW);
+    expect(stat.status).toBe("young");
+    expect(stat.delta).toBeNull();
   });
 
   it("les constantes restent celles documentées", () => {

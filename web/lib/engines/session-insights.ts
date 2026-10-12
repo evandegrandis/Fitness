@@ -22,13 +22,14 @@ import {
   storedFirstSuggestions,
   type SessionReview,
 } from "@/lib/engines/bilan";
+import { sessionForecastGap } from "@/lib/engines/capacity-trend";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { weeklyProgress } from "@/lib/engines/effective-sets";
 import { buildRecords, classify, normalRecordSets, recordCalibration } from "@/lib/engines/records";
 import { fatigueContextAtExerciseStart } from "@/lib/engines/session-fatigue-baselines";
 import type { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { weekSessionPlan } from "@/lib/engines/session-focus";
-import { WEEK_TIERS, type WeekTier } from "@/lib/engines/progress-stats";
+import { WEEK_TIERS, exerciseStats, type WeekTier } from "@/lib/engines/progress-stats";
 import { weekStatusFromRows } from "@/lib/engines/week-status";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { SetType, type TrainingPhase } from "@/lib/models/enums";
@@ -56,7 +57,12 @@ export const SESSION_INSIGHTS = {
   PLACEMENT_DELTA_SETS: 3,
   /** Repos avant la meilleure série jugé nettement plus long que d'habitude. */
   LONGER_REST_RATIO: 1.4,
-  /** Baisse de capacité (1RM estimé) signalée ; en dessous, c'est du bruit de séance. */
+  /**
+   * Baisse de capacité (1RM estimé) contre la séance d'avant à partir de laquelle on en parle, et seulement si la séance
+   * est aussi sous ce que Jeera prévoyait, fatigue de séance comprise, au-delà du bruit de l'exercice
+   * (`sessionForecastGap`, la même prévision que la tendance de Progrès et de Barbis). Avant le 12/10/2026, des dips
+   * faits en fin de séance passaient pour une baisse.
+   */
   DECLINE_MIN: 0.03,
   /** Exercices proposés pour la prochaine fois. */
   NEXT_TIME_MAX: 3,
@@ -200,8 +206,32 @@ export function debriefSession(
     sessionFatigueByLoggedExerciseId: fatigueByLoggedExerciseId,
     referenceSuggestionByLoggedExerciseId: storedFirstSuggestions(session),
   });
-  const insights = buildSessionInsights(session, prior, catalog, goals, review, fatigueByLoggedExerciseId);
+  const forecasts = sessionForecasts(session, prior, catalog, options.bodyweightKg ?? null);
+  const insights = buildSessionInsights(session, prior, catalog, goals, review, fatigueByLoggedExerciseId, forecasts);
   return { review, insights, fatigueByLoggedExerciseId };
+}
+
+export type SessionForecast = NonNullable<ReturnType<typeof sessionForecastGap>>;
+
+/**
+ * Écart de chaque exercice de la séance à ce que Jeera prévoyait d'après ses séances d'avant, fatigue de séance comprise
+ * (capacité à contexte neutre et bruit de `exerciseStats`, comme la tendance de Progrès et de Barbis). Absent pour une
+ * machine sans assez de séances comparables.
+ */
+export function sessionForecasts(
+  session: WorkoutSession,
+  prior: readonly WorkoutSession[],
+  catalog: readonly Exercise[],
+  bodyweightKg: number | null
+): Record<string, SessionForecast> {
+  const result: Record<string, SessionForecast> = {};
+  const stats = exerciseStats([...prior, session], catalog, session.date, bodyweightKg);
+  for (const stat of stats) {
+    const index = stat.points.findIndex((point) => point.convertedFrom === null && point.date.getTime() === session.date.getTime());
+    const forecast = index >= 0 ? sessionForecastGap(stat.points, index, stat.noise) : null;
+    if (forecast) result[stat.exercise.id] = forecast;
+  }
+  return result;
 }
 
 /** Fatigue au début de chaque exercice, indexée comme le bilan (première occurrence). */
@@ -549,12 +579,14 @@ interface ExerciseFacts {
   setsBefore: number | null;
   habitSetsBefore: number | null;
   fatigueReps: number;
+  /** Écart à ce que Jeera prévoyait, fatigue de séance comprise (`sessionForecasts`) ; `null` sans prévision. */
+  forecast: SessionForecast | null;
 }
 
 /**
  * La meilleure série `a` fait-elle mieux que `b` ? Plus de reps à la même charge ; à une autre
- * charge, un 1RM estimé plus haut, et d'au moins 1,5 % si la charge a baissé (comme la tendance
- * de l'onglet Progrès : en dessous, c'est le bruit d'une rep).
+ * charge, un 1RM estimé plus haut, et d'au moins 1,5 % si la charge a baissé (en dessous, c'est le
+ * bruit d'une rep).
  */
 function improvesOn(a: Pick<LoggedSet, "weight" | "reps">, b: Pick<LoggedSet, "weight" | "reps">, exercise: Exercise): boolean {
   if (!comparable(a, b, exercise)) return false;
@@ -592,7 +624,9 @@ function progressInsight(facts: ExerciseFacts, catalogById: ReadonlyMap<string, 
   const last = previous[0];
   if (!last || delta === null) return null;
   const improved = improvesOn(best, last.best, exercise);
-  const declined = !improved && delta <= -SESSION_INSIGHTS.DECLINE_MIN;
+  // Une séance n'est en baisse que sous la prévision, fatigue de séance comprise : moins de reps qu'à la séance d'avant
+  // parce que l'exercice venait plus tard n'en est pas une.
+  const declined = !improved && delta <= -SESSION_INSIGHTS.DECLINE_MIN && facts.forecast?.direction === "down";
   if (!improved && !declined) return null;
 
   const sameLoad = Math.abs(best.weight - last.best.weight) < 0.01;
@@ -632,6 +666,9 @@ function progressInsight(facts: ExerciseFacts, catalogById: ReadonlyMap<string, 
   }
   if (declined && facts.fatigueReps >= 1) {
     reasons.push(`la fatigue de la séance coûtait ~${plural(facts.fatigueReps, "rep")}`);
+  }
+  if (declined && facts.forecast) {
+    reasons.push(`${Math.round(-facts.forecast.gap * 100)} % sous ce que Jeera prévoyait, fatigue de séance comprise`);
   }
   void catalogById;
 
@@ -960,7 +997,8 @@ export function buildSessionInsights(
   catalog: Exercise[],
   goals: MuscleGoal[],
   review: SessionReview,
-  fatigueByLoggedExerciseId: Record<string, SessionFatigueContext> = {}
+  fatigueByLoggedExerciseId: Record<string, SessionFatigueContext> = {},
+  forecasts: Record<string, SessionForecast> = {}
 ): SessionInsights {
   const catalogById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   const calibrating = new Set(review.exercises.filter((entry) => entry.calibrating).map((entry) => entry.exerciseId));
@@ -996,6 +1034,7 @@ export function buildSessionInsights(
       setsBefore: setsBefore(session, exercise, catalogById),
       habitSetsBefore: median(habitBefore),
       fatigueReps: context ? context.fatiguePenalty(primaryParent(exercise)) : 0,
+      forecast: forecasts[exercise.id] ?? null,
     });
   }
 

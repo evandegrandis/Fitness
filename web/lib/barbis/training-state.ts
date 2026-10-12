@@ -7,7 +7,8 @@
  *   - semaine : séries par muscle (`parentTotals`, comme l'accueil), objectifs, score et palier
  *     (`weekStats`), séries qui manquent pour le palier suivant et pour l'or ;
  *   - records : exactement les étoiles de l'Historique (`recordEvents`) ;
- *   - exercices : statut et tendance de Progrès › Exercices (`exerciseStats`) ;
+ *   - exercices : statut et tendance de Progrès › Exercices (`exerciseStats`), et la méthode de cette
+ *     tendance en une phrase (`trendMethod`), que Barbis affiche telle quelle ;
  *   - séances : la table par séance de `session-table.ts` (bilan résumé + base des corrélations).
  *
  * Les semaines suivent l'horloge du serveur (UTC sur Vercel) : une séance commencée entre minuit
@@ -51,9 +52,9 @@ export const TRAINING_DEFINITIONS = {
   sets: "Séries comptées comme dans l'Historique de Jeera : compléments de moins de 90 s fusionnés, série à RIR 3 = 0,75, RIR 4+ = 0,5 ; par muscle, coefficient du profil de l'exercice.",
   week: "Semaine civile du lundi au dimanche. Score = part des objectifs de séries atteinte, chaque muscle plafonné à son objectif ; bronze 40 %, argent 55 %, or 70 %.",
   records: "Étoiles de l'Historique de Jeera : charge max, 1RM estimé (+2 %), reps à charge égale ou au poids du corps ; jamais à la première séance d'une machine (étalonnage).",
-  trend: "Capacité = meilleure série de la séance ramenée à frais (1RM estimé sur reps + RIR déclaré + reps coûtées par la fatigue de la séance). Tendance = meilleure des 3 dernières séances contre meilleure des 3 d'avant : progression dès +1,5 %, baisse dès −3 %.",
+  trend: "Capacité = meilleure série de la séance à contexte neutre : 1RM estimé sur reps + RIR déclaré + reps que les séries faites avant dans la séance ont coûtées (coût appris sur l'historique, plus fort pour une série du même muscle), ou reps au poids du corps. Tendance (deltaPct) = écart moyen des 3 dernières séances à ce que Jeera prévoyait d'après les 3 d'avant ; progression ou baisse seulement au-delà du bruit mesuré de l'exercice d'une séance à l'autre (5 % de fausses alertes par sens), stable ou plateau sinon. Une reprise après plus de 28 jours ne se compare pas à l'avant-pause.",
   suggestions: "Chaque série jugée contre la cible affichée au moment de la valider, par la règle du moteur : à la même charge, battue avec plus de reps, tenue avec autant ; à une autre charge, les reps doivent rester dans la fourchette, plus lourd c'est battu, plus léger les reps sont ramenées à la charge de la cible (7,5 % de charge = 1 rep) puis comparées. En dessous sinon. Une machine découverte n'est pas jugée.",
-  capacityVsTrend: "Par séance : capacité de chaque exercice contre la moyenne de ses 3 séances précédentes (reprise après 28 jours exclue), moyenne sur les exercices.",
+  capacityVsTrend: "Par séance : écart de chaque exercice à ce que Jeera prévoyait d'après ses 3 séances précédentes, fatigue de séance comprise (reprise après 28 jours exclue), moyenne sur les exercices.",
   checkinDayBefore: "Check-in du jour J-1 (heure de Paris) : alcool de J-1 et nuit de J-1 à J, déclarés dans Jeera.",
 } as const;
 
@@ -97,11 +98,19 @@ export interface ExerciseTrend {
   convertedFrom: string[];
 }
 
+/**
+ * La méthode de `exercises[].status` et `deltaPct`, en une phrase pour l'humain : Barbis l'affiche à la suite de la
+ * ligne des tendances (« Progresse : … · en baisse : … (<trendMethod>) »).
+ */
+export const TREND_METHOD = "3 dernières séances contre ce que Jeera prévoyait d'après les 3 d'avant, fatigue de séance comprise";
+
 export interface TrainingState {
   generatedAt: string;
   timezone: "Europe/Paris";
   days: number;
   definitions: typeof TRAINING_DEFINITIONS;
+  /** Méthode de la tendance des exercices, en français, à afficher telle quelle (`TREND_METHOD`). */
+  trendMethod: string;
   weeks: { start: string; inProgress: boolean; sessions: number; sets: number; scorePct: number; tier: string | null; records: number }[];
   streak: { weeks: number; jokers: number };
   currentWeek: WeekDetail;
@@ -175,6 +184,7 @@ export function buildTrainingState({ sessions, catalog, goals, settings, checkin
     timezone: "Europe/Paris",
     days,
     definitions: TRAINING_DEFINITIONS,
+    trendMethod: TREND_METHOD,
     weeks: weeks.slice(-WEEKS).map((week) => ({
       start: parisDate(new Date(week.start.getTime() + DAY_MS / 2)),
       inProgress: week.inProgress,

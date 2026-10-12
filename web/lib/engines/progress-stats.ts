@@ -7,20 +7,33 @@
  * l'avant-veille, « Dos haut 0 % · Couvert » pour un groupe sans objectif, une moyenne de volume
  * tirée vers le bas par la semaine en cours. Ici :
  *
- *   - la capacité d'une séance = sa meilleure série démontrée, ramenée à frais (e1RM sur reps +
- *     RIR déclaré + reps coûtées par la fatigue de la séance, ou reps au poids du corps) : des dips
- *     faits en fin de séance ne passent pas pour une baisse ;
- *   - la tendance compare la meilleure des 3 dernières séances à la meilleure des 3 d'avant,
- *     et ne s'affiche que si l'exercice est pratiqué en ce moment ;
+ *   - la capacité d'une séance = sa meilleure série démontrée, à contexte neutre (e1RM sur reps +
+ *     RIR déclaré + reps que les séries faites avant dans la séance ont coûtées, coût APPRIS sur
+ *     l'historique, ou reps au poids du corps) : des dips faits en fin de séance ne passent pas
+ *     pour une baisse (`capacity-trend.ts`, 12/10/2026) ;
+ *   - la tendance est l'écart des 3 dernières séances à ce que Jeera prévoyait d'après les 3
+ *     d'avant, jugé contre le bruit mesuré de l'exercice, et ne s'affiche que si l'exercice est
+ *     pratiqué en ce moment ;
  *   - les records sont les étoiles de l'Historique, au set près (même fonction), étalonnage inclus ;
  *   - une machine découverte n'a ni tendance ni verdict : elle s'étalonne (changement de salle).
  *
  * Moteur pur : tout se recalcule depuis l'historique.
  */
 
+import {
+  CAPACITY_TREND,
+  capacityTrend,
+  contextReps,
+  learnContextCosts,
+  setContext,
+  trendNoise,
+  type AxisContextPair,
+  type ContextCosts,
+  type NoiseSample,
+} from "@/lib/engines/capacity-trend";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { coverageForWeek, currentWeekWindow, parentTotals } from "@/lib/engines/effective-sets";
-import { defaultEquivalent, equivalenceKey, familyHistory, fatigueRepsBefore } from "@/lib/engines/equivalence";
+import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
 import { machineMaxStatus, type MachineMaxStatus } from "@/lib/engines/machine-max";
 import { displayedRecordSetIDs, normalRecordSets } from "@/lib/engines/records";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
@@ -41,12 +54,8 @@ export const PROGRESS_STATS = {
   WEEKS_SHOWN: 12,
   /** Semaines lues pour la série en cours (au-delà, la série est affichée « 26+ »). */
   WEEKS_FOR_STREAK: 26,
-  /** Tendance : meilleure des N dernières séances contre meilleure des N précédentes. */
-  TREND_WINDOW: 3,
-  /** Gain minimal pour parler de progression (≈ 1 rep sur une série de 10). */
-  PROGRESS_MIN: 0.015,
-  /** Baisse minimale pour la signaler : plus large, une séance fatiguée n'est pas une baisse. */
-  DECLINE_MIN: 0.03,
+  /** Tendance : écart des N dernières séances à la prévision tirée des N d'avant (`CAPACITY_TREND.WINDOW`). */
+  TREND_WINDOW: CAPACITY_TREND.WINDOW,
   /** Plateau : aucune étoile sur les N dernières séances de la machine, et pas de progression. */
   PLATEAU_SESSIONS: 4,
   /** Au-delà, l'exercice est « en pause » : aucune tendance affichée. */
@@ -291,6 +300,10 @@ export interface CapacityPoint {
   /** Séance faite sur une machine équivalente, convertie dans les charges de la cible. */
   convertedFrom: string | null;
   records: number;
+  /** Reps jusqu'à l'échec que les séries faites avant dans la séance ont coûtées à la meilleure série (coût appris). */
+  contextReps: number;
+  /** RIR déclaré sur la meilleure série : sans lui, la capacité suppose l'échec et ne mesure pas le bruit. */
+  rirDeclared: boolean;
 }
 
 export interface ExerciseStat {
@@ -301,8 +314,15 @@ export interface ExerciseStat {
   axis: ExerciseAxis;
   points: CapacityPoint[];
   status: ExerciseStatus;
-  /** Variation de capacité récente (fraction), `null` sans tendance. */
+  /**
+   * Écart moyen des 3 dernières séances à ce que Jeera prévoyait d'après les 3 d'avant, contexte de séance compris
+   * (fraction), `null` sans tendance.
+   */
   delta: number | null;
+  /** Écart à dépasser pour parler de progression ou de baisse : le bruit mesuré de l'exercice (fraction). */
+  deltaThreshold: number | null;
+  /** Bruit d'une séance à l'autre : écart-type du log de la capacité, mesuré sur l'exercice (`capacity-trend.ts`). */
+  noise: number;
   lastDate: Date;
   /** Séances sur la machine elle-même (hors séances converties). */
   ownSessions: number;
@@ -327,17 +347,17 @@ function repsToFailure(set: LoggedSet): number {
   return set.reps + Math.max(0, Math.min(4, set.reportedRir ?? 0));
 }
 
-/** Capacité à frais : e1RM sur les reps jusqu'à l'échec, plus celles que la fatigue a coûtées. */
+/** Capacité à contexte neutre : e1RM sur les reps jusqu'à l'échec, plus celles que le contexte de la séance a coûtées. */
 function capacity(
   set: LoggedSet,
   exercise: Exercise,
   axis: ExerciseAxis,
   bodyweightKg: number | null,
-  fatigueReps: number
+  contextCostReps: number
 ): number {
-  if (axis === "reps") return repsToFailure(set) + fatigueReps;
+  if (axis === "reps") return repsToFailure(set) + contextCostReps;
   const load = movedLoad(set, exercise, bodyweightKg);
-  return load === null ? 0 : estimated1RM(load, repsToFailure(set) + fatigueReps);
+  return load === null ? 0 : estimated1RM(load, repsToFailure(set) + contextCostReps);
 }
 
 function axisFor(exercise: Exercise, sets: readonly LoggedSet[], bodyweightKg: number | null): ExerciseAxis {
@@ -355,21 +375,70 @@ function maxOf(values: readonly number[]): number {
   return values.reduce((max, value) => Math.max(max, value), 0);
 }
 
-function classifyTrend(
-  points: readonly CapacityPoint[],
-  ownRecent: readonly CapacityPoint[]
-): { status: ExerciseStatus; delta: number | null } {
-  const window = PROGRESS_STATS.TREND_WINDOW;
-  if (points.length < window + 1) return { status: "young", delta: null };
-  const recent = maxOf(points.slice(-window).map((point) => point.value));
-  const previous = maxOf(points.slice(-2 * window, -window).map((point) => point.value));
-  if (previous <= 0) return { status: "young", delta: null };
-  const delta = recent / previous - 1;
-  if (delta >= PROGRESS_STATS.PROGRESS_MIN) return { status: "progress", delta };
-  if (delta <= -PROGRESS_STATS.DECLINE_MIN) return { status: "decline", delta };
-  const plateau =
-    ownRecent.length >= PROGRESS_STATS.PLATEAU_SESSIONS && ownRecent.every((point) => point.records === 0);
-  return { status: plateau ? "plateau" : "stable", delta };
+/**
+ * Coût du contexte appris sur l'historique (`capacity-trend.ts`), par axe : pour chaque exercice, ses séances
+ * consécutives (28 jours au plus, RIR déclaré sur la meilleure série des deux) forment une paire. Écart de capacité en
+ * reps jusqu'à l'échec (au poids du corps) ou ramené en reps par la règle d'Epley de la capacité (charge moyenne de la
+ * paire). Exporté pour l'audit (`scripts/suggestions-audit/tendance.ts`).
+ */
+export function contextCosts(
+  finished: readonly WorkoutSession[],
+  byId: ReadonlyMap<string, Exercise>,
+  bodyweightKg: number | null
+): ContextCosts {
+  const series = new Map<string, { date: Date; raw: number; load: number; rir: boolean; sets: number; same: number }[]>();
+  const ownSets = new Map<string, LoggedSet[]>();
+  for (const session of finished) {
+    for (const logged of session.exercises) {
+      ownSets.set(logged.exerciseId, [...(ownSets.get(logged.exerciseId) ?? []), ...orderedSets(logged)]);
+    }
+  }
+  const axes = new Map([...ownSets].flatMap(([id, sets]) => {
+    const exercise = byId.get(id);
+    return exercise ? [[id, axisFor(exercise, sets, bodyweightKg)] as const] : [];
+  }));
+  for (const session of finished) {
+    for (const id of new Set(session.exercises.map((logged) => logged.exerciseId))) {
+      const exercise = byId.get(id);
+      const axis = axes.get(id);
+      if (!exercise || !axis) continue;
+      const sets = normalRecordSets(session.exercises.filter((logged) => logged.exerciseId === id).flatMap((logged) => orderedSets(logged)), exercise);
+      const scored = sets.map((set) => ({ set, raw: capacity(set, exercise, axis, bodyweightKg, 0) })).filter((entry) => entry.raw > 0);
+      if (scored.length === 0) continue;
+      const best = scored.reduce((top, entry) => (entry.raw > top.raw ? entry : top));
+      const context = setContext(session, exercise, best.set.timestamp, byId);
+      const load = axis === "reps" ? 0 : movedLoad(best.set, exercise, bodyweightKg) ?? 0;
+      const entry = { date: session.date, raw: best.raw, load, rir: best.set.reportedRir != null, sets: context.sets, same: context.sameMuscleSets };
+      series.set(id, [...(series.get(id) ?? []), entry]);
+    }
+  }
+  const pairs: AxisContextPair[] = [];
+  for (const [id, entries] of series) {
+    const axis = axes.get(id)!;
+    for (let index = 1; index < entries.length; index += 1) {
+      const a = entries[index - 1];
+      const b = entries[index];
+      if (!a.rir || !b.rir || b.date.getTime() - a.date.getTime() > CAPACITY_TREND.MAX_GAP_DAYS * DAY_MS) continue;
+      const repsGap = axis === "reps" ? b.raw - a.raw : (30 * (b.raw - a.raw)) / ((a.load + b.load) / 2);
+      if (!Number.isFinite(repsGap)) continue;
+      pairs.push({ axis, repsGap, setsGap: b.sets - a.sets, sameMuscleGap: b.same - a.same });
+    }
+  }
+  return learnContextCosts(pairs);
+}
+
+/** Écarts de log de capacité entre séances consécutives d'une même machine (RIR déclaré, 28 jours au plus). */
+function noiseSamples(exerciseId: string, axis: ExerciseAxis, points: readonly CapacityPoint[]): NoiseSample[] {
+  const samples: NoiseSample[] = [];
+  const lastBySource = new Map<string | null, CapacityPoint>();
+  for (const point of points) {
+    const previous = lastBySource.get(point.convertedFrom);
+    lastBySource.set(point.convertedFrom, point);
+    if (!previous || !previous.rirDeclared || !point.rirDeclared) continue;
+    if (point.date.getTime() - previous.date.getTime() > CAPACITY_TREND.MAX_GAP_DAYS * DAY_MS) continue;
+    samples.push({ exerciseId, axis, logGap: Math.log(point.value / previous.value) });
+  }
+  return samples;
 }
 
 /**
@@ -381,7 +450,9 @@ export function exerciseStats(
   catalog: readonly Exercise[],
   now: Date,
   bodyweightKg: number | null = null,
-  records: readonly RecordEvent[] = recordEvents(history, catalog)
+  records: readonly RecordEvent[] = recordEvents(history, catalog),
+  /** Coût du contexte imposé (audit hors échantillon) ; appris sur `history` sinon. */
+  costs?: ContextCosts
 ): ExerciseStat[] {
   const finished = sessionsNewestFirst(history.filter((session) => !session.isActive)).reverse();
   const byId = new Map(catalog.map((exercise) => [exercise.id, exercise]));
@@ -410,7 +481,8 @@ export function exerciseStats(
     for (const conversion of family.conversions) absorbed.add(conversion.exercise.id);
   }
 
-  const stats: ExerciseStat[] = [];
+  const learned = costs ?? contextCosts(finished, byId, bodyweightKg);
+  const cards: { stat: Omit<ExerciseStat, "status" | "delta" | "deltaThreshold" | "noise">; own: CapacityPoint[] }[] = [];
   for (const exerciseId of practiced) {
     if (absorbed.has(exerciseId)) continue;
     const exercise = byId.get(exerciseId);
@@ -443,10 +515,10 @@ export function exerciseStats(
     const axis = axisFor(exercise, allSets, bodyweightKg);
     const points: CapacityPoint[] = perSession
       .map(({ session, sets, convertedFrom, sourceId }) => {
-        const scored = sets.map((set) => ({
-          set,
-          value: capacity(set, exercise, axis, bodyweightKg, fatigueRepsBefore(session, exercise, set, byId)),
-        }));
+        const scored = sets.map((set) => {
+          const costReps = contextReps(learned[axis], setContext(session, exercise, set.timestamp, byId));
+          return { set, costReps, value: capacity(set, exercise, axis, bodyweightKg, costReps) };
+        });
         const best = scored.reduce((top, entry) => (entry.value > top.value ? entry : top));
         return {
           date: session.date,
@@ -455,6 +527,8 @@ export function exerciseStats(
           reps: best.set.reps,
           convertedFrom,
           records: recordsBySession.get(`${session.id}::${sourceId}`) ?? 0,
+          contextReps: best.costReps,
+          rirDeclared: best.set.reportedRir != null,
         };
       })
       // Série au poids du corps loggée sur un exercice chargé : rien de comparable.
@@ -471,28 +545,39 @@ export function exerciseStats(
       .filter((set) => set.completed);
     const maxStatus = exercise.maxLoad ? machineMaxStatus(exercise, ownSets, lastDate) : null;
 
-    let status: ExerciseStatus;
-    let delta: number | null = null;
-    if (now.getTime() - lastDate.getTime() > PROGRESS_STATS.DORMANT_DAYS * DAY_MS) status = "dormant";
-    else if (own.length <= 1 && points.at(-1)!.convertedFrom === null) status = "new";
-    else if (maxStatus?.maxed) status = "maxed";
-    else ({ status, delta } = classifyTrend(points, own.slice(-PROGRESS_STATS.PLATEAU_SESSIONS)));
-
-    stats.push({
-      exercise,
-      conversions,
-      axis,
-      points,
-      status,
-      delta,
-      lastDate,
-      ownSessions: own.length,
-      records: familyRecords.length,
-      lastRecordDate: familyRecords.reduce<Date | null>((latest, event) => (!latest || event.date > latest ? event.date : latest), null),
-      bestValue: maxOf(points.map((point) => point.value)),
-      maxStatus,
+    cards.push({
+      own,
+      stat: {
+        exercise,
+        conversions,
+        axis,
+        points,
+        lastDate,
+        ownSessions: own.length,
+        records: familyRecords.length,
+        lastRecordDate: familyRecords.reduce<Date | null>((latest, event) => (!latest || event.date > latest ? event.date : latest), null),
+        bestValue: maxOf(points.map((point) => point.value)),
+        maxStatus,
+      },
     });
   }
+
+  // Le bruit de chaque exercice se mesure sur ses séances, rétréci vers celui de tous les exercices du même axe.
+  const noise = trendNoise(cards.flatMap(({ stat }) => noiseSamples(stat.exercise.id, stat.axis, stat.points)));
+  const stats: ExerciseStat[] = cards.map(({ stat: card, own }) => {
+    const stat = { ...card, noise: noise(card.exercise.id, card.axis) };
+    const { points, lastDate, maxStatus } = stat;
+    if (now.getTime() - lastDate.getTime() > PROGRESS_STATS.DORMANT_DAYS * DAY_MS) return { ...stat, status: "dormant", delta: null, deltaThreshold: null };
+    if (own.length <= 1 && points.at(-1)!.convertedFrom === null) return { ...stat, status: "new", delta: null, deltaThreshold: null };
+    if (maxStatus?.maxed) return { ...stat, status: "maxed", delta: null, deltaThreshold: null };
+    const trend = capacityTrend(points, stat.noise);
+    if (trend.direction === null) return { ...stat, status: "young", delta: null, deltaThreshold: null };
+    const recentOwn = own.slice(-PROGRESS_STATS.PLATEAU_SESSIONS);
+    const plateau = recentOwn.length >= PROGRESS_STATS.PLATEAU_SESSIONS && recentOwn.every((point) => point.records === 0);
+    const status: ExerciseStatus =
+      trend.direction === "up" ? "progress" : trend.direction === "down" ? "decline" : plateau ? "plateau" : "stable";
+    return { ...stat, status, delta: trend.delta, deltaThreshold: trend.threshold };
+  });
   return stats.sort((a, b) => b.lastDate.getTime() - a.lastDate.getTime());
 }
 
