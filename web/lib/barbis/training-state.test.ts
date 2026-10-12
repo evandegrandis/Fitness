@@ -110,7 +110,12 @@ describe("état d'entraînement servi à Barbis", () => {
     expect(state.sessions[1].checkinDayBefore).toBeNull();
   });
 
-  it("mesure la capacité de la séance contre la moyenne des 3 précédentes", () => {
+  it("dit en une phrase comment la tendance des exercices est mesurée, pour que Barbis l'affiche telle quelle", () => {
+    expect(state.trendMethod).toBe("3 dernières séances contre ce que Jeera prévoyait d'après les 3 d'avant, fatigue de séance comprise");
+    expect(state.definitions.trend).toContain("au-delà du bruit mesuré de l'exercice");
+  });
+
+  it("mesure la capacité de la séance contre ce que Jeera prévoyait d'après les 3 précédentes", () => {
     const d = state.sessions[0];
     expect(d.capacity?.exercises).toBe(1);
     expect(d.capacity?.vsTrendPct).toBeGreaterThan(0);
