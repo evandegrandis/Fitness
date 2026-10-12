@@ -16,8 +16,7 @@
 
 import type { ExerciseReview, SessionReview } from "@/lib/engines/bilan";
 import { buildWeightTrend, WEIGHT_TREND } from "@/lib/engines/body-weight";
-import { estimated1RM } from "@/lib/engines/e1rm";
-import { SetPatternMode } from "@/lib/models/enums";
+import { repsAtReferenceLoad } from "@/lib/engines/versus";
 import type { BodyWeightEntry, Exercise, UserSettings } from "@/lib/models/types";
 
 const DAY_MS = 86_400_000;
@@ -30,8 +29,12 @@ export const SESSION_RANK = {
   /** Séries étoilées pour la note pleine de records ; en sèche, la moitié. */
   FULL_RECORDS: 4,
   FULL_RECORDS_CUT: 2,
-  /** Une série « tient » la référence à 97 % de son 1RM estimé, ou à une rep près au poids du corps (Discipline). */
-  HELD_E1RM_RATIO: 0.97,
+  /**
+   * Une série « tient » la référence quand, ramenée à la charge de la référence par la règle du moteur
+   * (`versus.ts`, 7,5 % = 1 rep), il lui manque au plus une rep (Discipline). Avant le 12/10/2026 :
+   * 97 % du 1RM d'Epley, soit la même rep de marge à charge égale.
+   */
+  HELD_REPS_SHORT: 1,
   /** Sèche mesurée : tendance de poids des 28 jours précédents, au seuil de perte de l'app. */
   CUT_WINDOW_DAYS: 28,
   THRESHOLDS: { S: 85, A: 65, B: 45 },
@@ -61,17 +64,11 @@ export function rankLetter(score: number): RankLetter {
   return "C";
 }
 
-/** La meilleure série du jour tient la référence sans la battre. */
+/** La meilleure série du jour tient la référence sans la battre (même règle que « battre », `versus.ts`). */
 export function heldReference(review: ExerciseReview, exercise: Exercise | undefined): boolean {
-  if (review.performed || review.noData) return false;
-  if (exercise?.setPatternMode === SetPatternMode.assistedBodyweight) return false;
-  if (review.referenceWeight <= 0 || review.achievedWeight <= 0) {
-    return review.referenceWeight <= 0 && review.achievedWeight <= 0 && review.achievedReps >= review.referenceReps - 1;
-  }
-  return (
-    estimated1RM(review.achievedWeight, review.achievedReps) >=
-    SESSION_RANK.HELD_E1RM_RATIO * estimated1RM(review.referenceWeight, review.referenceReps)
-  );
+  if (review.performed || review.noData || !exercise) return false;
+  const reps = repsAtReferenceLoad(exercise, { weight: review.achievedWeight, reps: review.achievedReps }, review.referenceWeight);
+  return reps >= review.referenceReps - SESSION_RANK.HELD_REPS_SHORT;
 }
 
 /**

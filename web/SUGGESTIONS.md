@@ -13,8 +13,10 @@ le meilleur de moi-même, constamment me dépasser en charges ou reps ». Le mot
   ce qu'il fera, sans biais : perte de reps apprise, séries ancrées sur la dernière série (sections 2 et 3). Elle sert à
   la reprojection quand il change le poids (« À 130 kg, le moteur prévoit N reps »), à `predictedRepsAtActualWeight`
   (donc au décalage appris et à la marge d'ambition), au bilan des anciennes séances ;
-- **la cible** (affichée, enregistrée dans `suggestedWeight` / `suggestedReps`, donc lue par le compteur, le combo, la
-  Discipline, le bilan et Barbis) est construite sur la prévision par `lib/engines/target.ts`.
+- **la cible** (affichée, enregistrée dans `suggestedWeight` / `suggestedReps`, donc lue par le compteur, le combo, le
+  bilan, l'Historique et Barbis) est construite sur la prévision par `lib/engines/target.ts`. La Discipline de la fiche,
+  elle, juge la meilleure série de chaque exercice contre la prévision recalculée (`career.ts` appelle
+  `buildSessionReview` sans les cibles enregistrées) : elle ne dépend pas de la cible.
 
 Charge de la cible : celle de la dernière série du même exercice (1re série : celle du moteur). Elle ne baisse pas pour
 revenir dans la fourchette ; elle ne décroche d'un ou deux crans que si la prévision à cette charge tombe sous
@@ -32,13 +34,16 @@ telle série, il redescend 63 % du temps avant le 21/09 (27 séries) et 74 % apr
 
 Reps de la cible : prévision à cette charge + marge d'ambition, pour qu'il la batte environ une fois sur deux (Atkinson,
 1957 : motivation maximale à probabilité de réussite intermédiaire ; Locke et Latham : un objectif difficile mais
-atteignable bat un objectif facile). « Battre » est la définition de l'app (`setVersusSuggestion`, `lib/engines/versus.ts`).
+atteignable bat un objectif facile). « Battre » est la définition unique de l'app (`setVersusSuggestion`,
+`lib/engines/versus.ts`, section 4.3).
 La marge est apprise sur les séries enregistrées par un moteur à deux couches (prévision stockée contre reps faites),
 pondérées par l'âge (demi-vie 28 jours), par contexte (1re série, séries suivantes), rétrécie vers le global (poids 10)
 puis vers un a priori (poids 10 ; part battue avec une marge de −1, 0, 1, 2 reps : 0,64 / 0,45 / 0,25 / 0,11, mesurée
 avant le 21/09 sur 272 séries), bornée à [−1 ; 2] : une prévision juste n'est battue qu'environ 45 % du temps, la marge
 doit pouvoir descendre. Une boucle de long terme la corrige, par contexte, sur les cibles battues À LA CHARGE DE LA CIBLE
 (ailleurs, le verdict dépend de la charge choisie, pas des reps visées) : plus de 55 %, + 0,5 rep ; moins de 45 %, − 0,5.
+Ni la courbe (reps faites contre prévision) ni la boucle (même charge) ne lisent le verdict d'une série faite à une autre
+charge : la règle du 12/10 (4.3) ne change aucune cible, rejouées série pour série (1 300 sur 1 300).
 
 Raison affichée : « Cible à battre : tu fais d'habitude 6 à 7 ici » (prévision au RIR visé, et une rep de plus à
 l'échec).
@@ -177,23 +182,64 @@ la prévision qu'il aurait enregistrées (la marge s'apprend sur elles). Séries
 - Jeu en séance (même calcul que l'en-tête) : 6,5 cibles battues par séance avec la cible, contre 5,4 vécues et 5,0 avec
   l'ancien moteur rejoué (sur 15,4 séries jugées) ; meilleur combo moyen 2,9 contre 2,5 et 2,4.
 
-### 4.3 « Battre » avec une série plus légère : à trancher par Evan (rien n'est changé dans le code)
+### 4.3 « Battre » : une seule règle, celle du moteur (décision d'Evan du 12/10/2026)
 
-La règle de l'app juge une série plus légère que la cible par les 1RM d'Epley, et seulement si ses reps atteignent la
-fourchette. Mesure de ce que donnerait la règle 7,5 % du moteur à la place (reps de la série ramenées à la charge de la
-cible), séries jugées depuis le 17/08 (depuis le 21/09 entre parenthèses), `regle75.py` hors dépôt :
+Avant : une série à une autre charge que la cible était jugée par les 1RM d'Epley (reps dans la fourchette exigées).
+Epley compte 1 rep pour 2,5 à 3 % de charge, le moteur 1 rep pour 7,5 % : une série plus légère devait faire environ
+trois fois plus de reps en plus que ce que le moteur lui-même prévoit à cette charge, et ne comptait presque jamais comme
+battue. Mesure présentée à Evan le 11/10 (règle 7,5 % pour les séries plus légères, reps dans la fourchette exigées :
+52 % de cibles battues, 7,4 par séance, combo 3,7) ; il a choisi cette variante le 12/10.
 
-| Cibles | Règle | Toutes | 1re | 2e | 3e+ |
+Règle (`versusReference`, `lib/engines/versus.ts`), pour le compteur, le combo, le bilan, l'Historique, la Discipline,
+`sessionGame` (donc Barbis, `/api/barbis/training-state`) et la marge de `target.ts` :
+
+- à la charge de la cible : plus de reps = battue, autant = tenue, moins = en dessous ;
+- à une autre charge, les reps doivent atteindre `repTargetMin`, sinon en dessous ;
+- plus lourd : battue. C'est ce que donnait Epley 64 fois sur 65 (cibles vécues) et 59 sur 61 (cibles du moteur) ; la
+  règle 7,5 % appliquée aussi aux séries plus lourdes n'en aurait gardé que 33 et 42, contre « me dépasser en charges
+  ou reps » (Evan, 11/10) ;
+- plus léger : reps de la série ramenées à la charge de la cible (`repsAtLoad` : 7,5 % de sa charge effective = 1 rep,
+  au moins un cran ; poids du corps par défaut du moteur, pour qu'une pesée ne change pas le verdict d'une série
+  passée), arrondies comme les reps affichées, puis comparées aux reps de la cible.
+
+« Tenir » (Discipline, `heldReference`) suit la même conversion : au plus une rep de moins, ramenée à la charge de la
+référence (avant : 97 % du 1RM d'Epley, la même rep de marge à charge égale). Plus aucun 1RM d'Epley ne juge une cible.
+Les records gardent leurs règles (`classify`) ; la meilleure série d'un exercice au bilan reste choisie par capacité
+(Epley, comme les records) : la choisir par la nouvelle règle ne changerait le verdict que d'un exercice sur 220.
+
+Avant/après, mêmes séries, calculés par les fonctions de l'app (`jeu.ts`, séances du 17/08 au 11/10 ; « avant » = le
+même script lancé sur le moteur de `bf02350`) :
+
+| Cibles | | Battues | Battues par séance | Meilleur combo moyen | Bilan : exercices au-dessus, records compris (tenus) |
 |---|---|---|---|---|---|
-| Vécues | Epley (actuelle) | 37 % (35 %) | 51 % | 28 % | 27 % |
-| Vécues | 7,5 %, reps dans la fourchette | 41 % (41 %) | 57 % | 34 % | 28 % |
-| Nouvelles | Epley (actuelle) | 43 % (50 %) | 45 % | 41 % | 42 % |
-| Nouvelles | 7,5 %, reps dans la fourchette | 52 % (58 %) | 51 % | 50 % | 54 % |
-| Nouvelles | 7,5 %, sans exigence | 53 % (59 %) | 51 % | 50 % | 58 % |
+| Vécues (affichées à l'époque, 460 séries, 30 séances) | avant | 37 % | 5,6 | 2,6 | 75 % (5 %) |
+| | après | 41 % | 6,3 | 3,0 | 81 % (8 %) |
+| Moteur actuel, rejeu simulé (478 séries, 31 séances) | avant | 42 % | 6,5 | 2,9 | 64 % (13 %) |
+| | après | 51 % | 7,8 | 3,9 | 71 % (17 %) |
 
-Sur le jeu (cibles nouvelles) : 6,2 → 7,4 cibles battues par séance, meilleur combo moyen 2,8 → 3,7. Discipline
-(approchée, records non comptés) : 66 % → 74 % depuis le 17/08, 70 % → 78 % sur les 28 derniers jours ; avec les cibles
-vécues, 74 % → 81 %.
+Discipline de la fiche (jugée contre la prévision, donc identique avec les deux jeux de cibles) : 77 % → 86 % sur les
+28 derniers jours (101 exercices), 73 % → 83 % depuis le 17/08 (191). Le « 74 % » annoncé le 11/10 venait d'une
+réplique Python qui jugeait contre la cible de la 1re série, sans les records ni les séries tenues au poids du corps :
+ce n'est pas ce que calcule la fiche.
+
+Par contexte (`report.ts`, rejeu simulé, 445 séries de l'audit ; avant = Epley, après = règle du moteur ; cibles
+identiques) :
+
+| Contexte | Avant | Après [IC 95 %] | À la charge de la cible |
+|---|---|---|---|
+| Toutes les séries | 43 % | 52 % [46 ; 58] | 49 % (208) |
+| Avant le 21/09 | 38 % | 48 % [41 ; 56] | 48 % (132) |
+| Depuis le 21/09 | 50 % | 58 % [51 ; 65] | 50 % (76) |
+| 1re série | 45 % | 52 % [44 ; 60] | 42 % (93) |
+| 2e série | 41 % | 50 % [42 ; 58] | 44 % (66) |
+| 3e série | 42 % | 56 % [44 ; 67] | 69 % (35) |
+| 4e et plus | 43 % | 50 % [32 ; 69] | 71 % (14) |
+| Retour plus léger que la série d'avant | 43 % | 70 % [58 ; 82] | 100 % (7) |
+
+La boucle de marge vise toujours la moitié dans ses deux contextes : 52 % de cibles battues en 1re série comme aux
+séries suivantes, rien à réajuster. Le retour après une série plus lourde est battu 70 % du temps : la cible y garde
+souvent une charge qu'il quitte (cible 80 × 2, il fait 75 × 8), et la série plus légère dans la fourchette la bat. À
+suivre avec `report.ts --depuis` sur ses vraies séances.
 
 ## 5. Limites
 
@@ -221,7 +267,9 @@ cd ../../autre-worktree/web && TZ=Europe/Paris npx tsx --tsconfig ./tsconfig.jso
   ../../ce-worktree/web/scripts/suggestions-audit/replay.ts ~/jeera-audit/export.json ~/jeera-audit/ancien.jsonl
 # 3. Rapport par contexte (un moteur, ou ancien contre nouveau), série par série pour des séances choisies
 npx tsx scripts/suggestions-audit/report.ts ~/jeera-audit/ancien.jsonl ~/jeera-audit/nouveau.jsonl --split 2026-09-21 --seance 2026-10-11
-# 4. Ce que le moteur a appris, exercice par exercice
+# 4. Le jeu tel que l'app le compte (battues, combo, Discipline, bilan), cibles vécues ou celles d'un rejeu
+TZ=Europe/Paris npx tsx scripts/suggestions-audit/jeu.ts ~/jeera-audit/export.json --depuis 2026-08-17 --au 2026-10-11 [--cibles ~/jeera-audit/nouveau.jsonl]
+# 5. Ce que le moteur a appris, exercice par exercice
 npx tsx scripts/suggestions-audit/rep-drops.ts ~/jeera-audit/export.json
 # Réglage : `replay.ts ... --set SHRINK_K=4 --set TARGET.HALF_LIFE_DAYS=28 --set ALGO_V2.CLE=v`, comparé sur une période
 # Cible : `replay.ts ... --simuler` (le moteur « en service depuis le début »), puis `report.ts ... --depuis 2026-08-17`

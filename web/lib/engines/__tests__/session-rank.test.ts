@@ -62,12 +62,21 @@ describe("rang de fin de séance : séries et records", () => {
     expect(nextRankPlan({ sets: 22, records: 4, cut: false, recordsPossible: true })).toBeNull();
   });
 
-  it("au poids du corps, tenir c'est à une rep près ; un exercice assisté n'est jamais « tenu »", () => {
-    const bodyweight = exerciseReview({ referenceWeight: 0, achievedWeight: 0, referenceReps: 10, achievedReps: 9 });
-    expect(heldReference(bodyweight, undefined)).toBe(true);
-    expect(heldReference({ ...bodyweight, achievedReps: 8 }, undefined)).toBe(false);
-    const assisted = { setPatternMode: "assisted_bodyweight" } as Exercise;
-    expect(heldReference(exerciseReview({ achievedReps: 10 }), assisted)).toBe(false);
+  it("tenir = au plus une rep de moins, la série ramenée à la charge de la référence (règle du moteur)", () => {
+    const bodyweight = { setPatternMode: "bodyweight", repTargetMin: 6, repTargetMax: 15, smallestIncrement: 2.5 } as Exercise;
+    const atBodyweight = exerciseReview({ referenceWeight: 0, achievedWeight: 0, referenceReps: 10, achievedReps: 9 });
+    expect(heldReference(atBodyweight, bodyweight)).toBe(true);
+    expect(heldReference({ ...atBodyweight, achievedReps: 8 }, bodyweight)).toBe(false);
+    // 75 × 10 face à 80 × 10 : 10 − 5 / 5,625 = 9,1, soit 9 reps à 80 kg. Epley ne la tenait pas (100 < 0,97 × 106,7).
+    const press = { setPatternMode: "straight", repTargetMin: 6, repTargetMax: 12, smallestIncrement: 2.5 } as Exercise;
+    expect(heldReference(exerciseReview({ achievedWeight: 75, achievedReps: 10 }), press)).toBe(true);
+    expect(heldReference(exerciseReview({ achievedWeight: 75, achievedReps: 9 }), press)).toBe(false);
+    // Assisté : jugé sur la charge effective, comme « battre ».
+    const assisted = { setPatternMode: "assisted_bodyweight", repTargetMin: 6, repTargetMax: 12, smallestIncrement: 5 } as Exercise;
+    const dips = exerciseReview({ referenceWeight: 20, referenceReps: 10, achievedWeight: 25 });
+    expect(heldReference({ ...dips, achievedReps: 10 }, assisted)).toBe(true);
+    expect(heldReference({ ...dips, achievedReps: 9 }, assisted)).toBe(false);
+    expect(heldReference(exerciseReview({ achievedReps: 9, performed: true }), press)).toBe(false);
   });
 
   it("sèche : déclarée, ou mesurée sur les pesées des 28 jours précédents", () => {
