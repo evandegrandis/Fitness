@@ -291,14 +291,29 @@ function ExerciseRow({
   );
 }
 
+/** « +4 % », « −3 % » : écart en pour cent arrondi, signe typographique, espace insécable avant « % ». */
+function signedPercent(value: number): string {
+  const rounded = Math.round(value * 100);
+  return rounded === 0 ? "0\u00a0%" : `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)}\u00a0%`;
+}
+
+/** Le bruit de l'exercice : l'écart en deçà duquel une tendance n'en est pas une. */
+function noiseText(stat: ExerciseStat): string {
+  return stat.deltaThreshold === null ? "" : ` ; en deçà de ±${Math.round(stat.deltaThreshold * 100)}\u00a0%, c'est le bruit de cet exercice d'une séance à l'autre`;
+}
+
 const STATUS_EXPLAINED: Record<ExerciseStatus, (stat: ExerciseStat) => string> = {
-  progress: () => "Meilleure des 3 dernières séances contre les 3 d'avant, fatigue de la séance corrigée.",
-  decline: () => "Meilleure des 3 dernières séances sous les 3 d'avant, fatigue de la séance corrigée.",
-  stable: () => "Ni mieux ni moins bien que les 3 séances d'avant.",
-  plateau: () => "Aucun record sur les 4 dernières séances.",
+  progress: (stat) =>
+    `Les 3 dernières séances font ${signedPercent(stat.delta ?? 0)} par rapport à ce que Jeera prévoyait d'après les 3 d'avant, fatigue de séance comprise${noiseText(stat)}.`,
+  decline: (stat) =>
+    `Les 3 dernières séances font ${signedPercent(stat.delta ?? 0)} par rapport à ce que Jeera prévoyait d'après les 3 d'avant, fatigue de séance comprise${noiseText(stat)}.`,
+  stable: (stat) =>
+    `${signedPercent(stat.delta ?? 0)} par rapport à ce que Jeera prévoyait d'après les 3 séances d'avant, fatigue de séance comprise${noiseText(stat)}.`,
+  plateau: (stat) =>
+    `Aucun record sur les 4 dernières séances${stat.delta === null ? "" : ` ; ${signedPercent(stat.delta)} par rapport à ce que Jeera prévoyait d'après les 3 séances d'avant, fatigue de séance comprise${noiseText(stat)}`}.`,
   maxed: (stat) => `Toute la pile (${cleanWeight(stat.maxStatus?.maxLoad ?? 0)} kg) : la progression passe par les reps.`,
   new: () => "Première séance sur cette machine : elle sert de référence, ni record ni comparaison.",
-  young: () => "Encore trop peu de séances pour une tendance.",
+  young: () => "Encore trop peu de séances comparables pour une tendance (il en faut 4 ; une pause de plus de 4 semaines repart de zéro).",
   dormant: () => "Pas pratiqué depuis 4 semaines : pas de tendance.",
 };
 
