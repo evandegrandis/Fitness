@@ -55,6 +55,21 @@ describe("parcours recalculé sur le passé", () => {
     expect(career.bySession.get("s5")?.rank?.letter).toMatch(/[SABC]/);
   });
 
+  it("Discipline : la meilleure série face à la cible affichée sur la 1re série, comme le bilan", () => {
+    const past = session(0, 10, 60);
+    const shown = (target: [number, number]): WorkoutSession => {
+      const today = session(1, 10, 60);
+      const [lateral] = today.exercises;
+      return { ...today, exercises: [{ ...lateral, sets: lateral.sets.map((set) => ({ ...set, suggestedWeight: target[0], suggestedReps: target[1] })) }] };
+    };
+    const rankOf = (today: WorkoutSession) =>
+      buildCareer({ history: [past, today], catalog: [LATERAL, PEC], goals: [], bodyWeights: [], settings: SETTINGS, now: today.date }).bySession.get(today.id)?.rank;
+    // 10 kg × 10 face à une cible de 10 × 12 : ni battue ni tenue ; 10 × 11 : tenue ; 10 × 10 : atteinte.
+    expect(rankOf(shown([10, 12]))).toMatchObject({ rated: 1, performed: 0, held: 0 });
+    expect(rankOf(shown([10, 11]))).toMatchObject({ rated: 1, performed: 0, held: 1 });
+    expect(rankOf(shown([10, 10]))).toMatchObject({ rated: 1, performed: 1, held: 0 });
+  });
+
   it("date chaque jalon à la séance qui l'a décroché", () => {
     const sessions = career.milestones.find((milestone) => milestone.family === "sessions")!;
     expect(sessions.value).toBe(10);

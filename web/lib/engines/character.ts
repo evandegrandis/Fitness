@@ -11,7 +11,8 @@
  * - Récupération : bilans des 14 derniers jours (sommeil rapporté à 8 h, soirs sans alcool,
  *   protéines, créatine), sur ce qui a été renseigné.
  * - Discipline : tenir le plan. Part des exercices des 4 dernières semaines dont la meilleure série
- *   a tenu ou battu la référence du moteur (rangs de séance). Mesurée par exercice et non série
+ *   a tenu ou battu la cible affichée sur sa 1re série (rangs de séance ; recalculée avant le 15/08/2026,
+ *   quand elle n'était pas enregistrée). Mesurée par exercice et non série
  *   par série : les dernières séries baissent normalement. Le RIR ne départage pas (98 % des séries
  *   d'Evan sont à RIR 3 ou moins).
  */
@@ -199,7 +200,7 @@ export function characterSheet({
     value: disciplineValue,
     how:
       rated > 0
-        ? `Sur 4 semaines, ${kept} exercices sur ${rated} ont tenu ou battu la suggestion : ta meilleure série au moins à la charge proposée, à 3 % de 1RM près.`
+        ? `Sur 4 semaines, ${kept} exercices sur ${rated} ont tenu ou battu la cible : ta meilleure série vaut au moins la cible de la 1re série à une rep près (plus léger, 7,5 % de charge compte pour 1 rep).`
         : "Pas encore de séance notée ces 4 semaines.",
     next:
       disciplineValue !== null && disciplineValue < 100

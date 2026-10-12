@@ -7,7 +7,7 @@
  * sont celles de l'Historique et de la semaine, les records ses étoiles.
  */
 
-import { buildSessionReview } from "@/lib/engines/bilan";
+import { buildSessionReview, storedFirstSuggestions } from "@/lib/engines/bilan";
 import { exerciseBenchmarkForSets, strengthLevelRank } from "@/lib/engines/benchmark";
 import { buildWeightTrend, WEIGHT_MILESTONES_PCT } from "@/lib/engines/body-weight";
 import { SECRETS, type SecretContext } from "@/lib/engines/career-secrets";
@@ -200,7 +200,12 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
   for (const [index, session] of sessions.entries()) {
     const previous = sessions.slice(0, index);
     const unlocks: CareerUnlock[] = [];
-    const review = buildSessionReview(session, previous, [...catalog], [...goals], { trainingPhase: settings.trainingPhase });
+    // Discipline : la meilleure série face à la cible affichée sur la 1re série, comme le bilan (recalculée
+    // seulement quand elle manque, avant le 15/08/2026).
+    const review = buildSessionReview(session, previous, [...catalog], [...goals], {
+      trainingPhase: settings.trainingPhase,
+      referenceSuggestionByLoggedExerciseId: storedFirstSuggestions(session),
+    });
     const starred = starredBySession.get(session.id);
 
     const sessionSets = session.exercises.reduce(

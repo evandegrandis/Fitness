@@ -106,7 +106,7 @@ const REP_DROP_DRIVEN_CODES = new Set([
 ]);
 
 /** Persisted with suggestion/actual snapshots so later model tuning can segment engine eras. */
-export const SUGGESTION_ENGINE_VERSION = "web-v2.3-2026-10-11";
+export const SUGGESTION_ENGINE_VERSION = "web-v2.4-2026-10-12";
 
 // ---------------------------------------------------------------------------
 // SetSuggestion
@@ -2734,7 +2734,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
       weight: built.weight,
       reps: built.reps,
       explanation: push ? result.explanation : `${modeLabel} · ${built.weight > 0 ? `${cleanWeight(built.weight)} kg` : "PDC"} × ${built.reps}`,
-      reasonCodes: push ? result.reasonCodes : ["target_to_beat", ...result.reasonCodes],
+      reasonCodes: push ? result.reasonCodes : ["target_to_beat", ...(built.floored ? ["target_rep_floor"] : []), ...result.reasonCodes],
       ambition: { margin: push ? 0 : margin.margin, predictedReps: built.predictedReps, beatRate: margin.beatRate, lowered: built.lowered },
     };
   }

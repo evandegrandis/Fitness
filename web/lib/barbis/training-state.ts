@@ -52,7 +52,7 @@ export const TRAINING_DEFINITIONS = {
   week: "Semaine civile du lundi au dimanche. Score = part des objectifs de séries atteinte, chaque muscle plafonné à son objectif ; bronze 40 %, argent 55 %, or 70 %.",
   records: "Étoiles de l'Historique de Jeera : charge max, 1RM estimé (+2 %), reps à charge égale ou au poids du corps ; jamais à la première séance d'une machine (étalonnage).",
   trend: "Capacité = meilleure série de la séance ramenée à frais (1RM estimé sur reps + RIR déclaré + reps coûtées par la fatigue de la séance). Tendance = meilleure des 3 dernières séances contre meilleure des 3 d'avant : progression dès +1,5 %, baisse dès −3 %.",
-  suggestions: "Chaque série jugée contre la suggestion affichée au moment de la valider : battue (plus de reps à la même charge, ou effort supérieur), tenue (effort demandé), en dessous. Une machine découverte n'est pas jugée.",
+  suggestions: "Chaque série jugée contre la cible affichée au moment de la valider, par la règle du moteur : à la même charge, battue avec plus de reps, tenue avec autant ; à une autre charge, les reps doivent rester dans la fourchette, plus lourd c'est battu, plus léger les reps sont ramenées à la charge de la cible (7,5 % de charge = 1 rep) puis comparées. En dessous sinon. Une machine découverte n'est pas jugée.",
   capacityVsTrend: "Par séance : capacité de chaque exercice contre la moyenne de ses 3 séances précédentes (reprise après 28 jours exclue), moyenne sur les exercices.",
   checkinDayBefore: "Check-in du jour J-1 (heure de Paris) : alcool de J-1 et nuit de J-1 à J, déclarés dans Jeera.",
 } as const;

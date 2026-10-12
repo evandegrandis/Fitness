@@ -123,6 +123,24 @@ function daysSinceMatchingSession(
   return undefined;
 }
 
+/**
+ * Cible montrée pour la première série de travail de chaque exercice, telle qu'enregistrée sur la
+ * série : la référence du bilan ET de la Discipline (une seule vérité, 12/10/2026). Absente sur les
+ * séances d'avant le 15/08/2026 : le bilan la recalcule alors.
+ */
+export function storedFirstSuggestions(session: WorkoutSession): Record<string, { weight: number; reps: number }> {
+  const result: Record<string, { weight: number; reps: number }> = {};
+  for (const merged of mergeExerciseOccurrences(session)) {
+    const first = merged.sets
+      .filter((set) => set.completed && (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff))
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())[0];
+    if (first && first.suggestedWeight != null && first.suggestedReps != null && first.suggestedReps > 0) {
+      result[merged.id] = { weight: first.suggestedWeight, reps: first.suggestedReps };
+    }
+  }
+  return result;
+}
+
 /** Plusieurs occurrences d'un même exercice dans la séance n'en font qu'une (id de la première par ordre). */
 export function mergeExerciseOccurrences(session: WorkoutSession): LoggedExercise[] {
   const ordered = [...session.exercises].sort((a, b) => a.orderIndex - b.orderIndex);

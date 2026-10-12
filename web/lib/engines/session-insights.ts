@@ -19,6 +19,7 @@ import {
   buildSessionReview,
   mergeExerciseOccurrences,
   setVersusSuggestion,
+  storedFirstSuggestions,
   type SessionReview,
 } from "@/lib/engines/bilan";
 import { estimated1RM } from "@/lib/engines/e1rm";
@@ -212,23 +213,6 @@ export function sessionFatigueByLoggedExercise(
   const result: Record<string, SessionFatigueContext> = {};
   for (const logged of mergeExerciseOccurrences(session)) {
     result[logged.id] = fatigueContextAtExerciseStart(session, catalog, logged.exerciseId, prior);
-  }
-  return result;
-}
-
-/**
- * Suggestion montrée pour la première série de travail de chaque exercice, telle qu'enregistrée
- * sur la série. Absente sur les séances d'avant le 15/08/2026 : le bilan la recalcule alors.
- */
-export function storedFirstSuggestions(session: WorkoutSession): Record<string, { weight: number; reps: number }> {
-  const result: Record<string, { weight: number; reps: number }> = {};
-  for (const merged of mergeExerciseOccurrences(session)) {
-    const first = merged.sets
-      .filter((set) => set.completed && isWorkSet(set))
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())[0];
-    if (first && first.suggestedWeight != null && first.suggestedReps != null && first.suggestedReps > 0) {
-      result[merged.id] = { weight: first.suggestedWeight, reps: first.suggestedReps };
-    }
   }
   return result;
 }
