@@ -22,7 +22,8 @@ Charge et reps de la cible (refaites le 15/10/2026, section 7) : la cible doit �
 faire, avant d'être juste. Elle part de la charge de la dernière série (1re série : celle du moteur ; montée du moteur
 gardée si elle reste cohérente ; juste après un essai quasi maximal : la charge de travail d'avant l'essai), ne monte
 jamais après une série finie au RIR 0-1 en bas de fourchette ou en dessous, ne demande jamais plus que le 1RM estimé
-qu'il a montré dans la séance, et se ramène dans la fourchette : quand la prévision à cette charge tombe sous le bas de
+qu'il a montré dans la séance ni, à charge égale ou plus lourde, plus de reps que la série qu'il vient de finir au RIR
+0-1 (reps + RIR), et se ramène dans la fourchette : quand la prévision à cette charge tombe sous le bas de
 la fourchette, la charge baisse d'un cran à la fois jusqu'à ce que le bas soit à portée de `TARGET.RANGE_STRETCH`
 (4) reps au-dessus de la prévision plus la marge, puis la cible le demande ; plus légère que la dernière série, elle en
 demande au moins les reps (une de moins après une série à l'échec). Après une série LOURDE (reps au RIR visé sous la
@@ -332,13 +333,22 @@ séances jusqu'au 21/09, vérifiés après (`criteres.ts`).
   - I6 « série à finir » jamais après un essai, jamais hors de portée en enchaînant (RIR + reps rendues par la baisse de
     charge), jamais plus de 30 % plus légère (au-delà, c'est une nouvelle série ; il enchaîne à 15-25 % plus léger) ;
   - ajoutés en lisant les cibles rejouées : I7 jamais au-delà de la charge max de la machine, I8 jamais de cible vide (Ab
-    roller : reps `NaN` par une division par zéro dans `empiricalBase`, corrigée).
+    roller : reps `NaN` par une division par zéro dans `empiricalBase`, corrigée) ;
+  - I9 (relecture du 15/10) : à charge égale ou plus lourde que la série qu'il vient de faire au RIR 0-1, jamais plus de
+    reps que ses reps + RIR (120 × 8 juste après 120 × 7 à l'échec). Une charge plus légère de moins d'une rep par la règle
+    7,5 % compte comme la même (115 × 8 après 120 × 7 : non ; 110 × 8 : oui). Série de référence : la dernière hors
+    complément enchaîné (le 22/09, 30 × 4 enchaînées 9 s après 35 × 7 au RIR 0 : la référence est 35 × 7). Aucune
+    exception de repos : sur 146 séries faites à charge égale ou plus lourde après une série au RIR 0-1, il n'a dépassé
+    reps + RIR que 3 fois (2 %), entre 5 et 10 min. Pas d'extension aux charges plus légères : plus de 5 % plus léger, il
+    dépasse la règle 7,5 % une fois sur quatre (98 cas), elle ne prouve rien (essayée : 10 × 8 après 16 × 5).
 
 ### 7.2 Ce qui a changé
 
 - `target.ts` : `chooseTarget` (charge par la fourchette sous plafonds de cohérence, étirement κ = 4, plafond de
-  capacité, retour après essai sans étirement, `ATTEMPT_COST` = 0,5 perte, a priori faute de cas), `completionTarget`,
-  objectif de la marge 40 %, boucle centrée sur l'objectif.
+  capacité et I9, retour après essai sans étirement, `ATTEMPT_COST` = 0,5 perte, a priori faute de cas),
+  `completionTarget`, objectif de la marge 40 %, boucle centrée sur l'objectif. Après I9, la grille de réglage a été
+  refaite (même règle) : κ = 4 et l'objectif 35 % ou 40 % à égalité sur tous les critères déclarés ; 40 % gardé (déjà en
+  place, plus proche du « une fois sur deux » du 11/10), sans regarder la période de test.
 - `rep-drop.ts` : perte proportionnelle aux reps de la série d'avant (section 2).
 - `progression.ts` : la couche cible lit les séries du jour (compléments compris), l'essai quasi maximal et la charge de
   travail habituelle (`SetSuggestion.usualLoad`) ; `backoff_max_sets_reached` jamais plus lourd que la dernière série.
@@ -353,18 +363,18 @@ séances jusqu'au 21/09, vérifiés après (`criteres.ts`).
 |---|---|---|---|
 | (a) Erreur de prévision (465 séries, 32 séances) | 1,96 [1,80 ; 2,11] | 1,89 [1,73 ; 2,05] | 1,97 → 1,78, −0,19 [−0,32 ; −0,07], p Holm 0,002 |
 | (a) Biais / part à une rep près | −0,03 / 45 % | −0,09 / 50 % | +0,17 → +0,16 / 42 → 50 % |
-| (b) Écart de cible moyen (467 séries) | +0,49 [+0,18 ; +0,79] | −0,21 [−0,45 ; +0,04] | +0,65 → −0,15 [−0,49 ; +0,21] |
-| (b) Cibles battues | 52 % [46 ; 57] | 41 % [37 ; 45] | 56 → 42 % |
-| (b) Battues ou tenues | 64 % | 57 % | 67 → 57 % |
+| (b) Écart de cible moyen (467 séries) | +0,49 [+0,18 ; +0,79] | −0,18 [−0,42 ; +0,06] | +0,65 → −0,10 [−0,44 ; +0,26] |
+| (b) Cibles battues | 52 % [46 ; 57] | 41 % [37 ; 45] | 56 → 43 % |
+| (b) Battues ou tenues | 64 % | 57 % | 67 → 58 % |
 | (b) Cibles à 3 reps ou plus | 25 % | 19 % | 24 → 14 % |
-| (b) Écart de charge médian, séries 2+ | 5,0 % | 3,7 % | 4,3 → 3,9 % |
-| Cibles chargées sous la fourchette | 190 / 406 | 0 hors exceptions (6 : tests de plateau, compléments) | |
-| (c) Violations d'invariants (1 324 cibles) | 557 | 0 | |
+| (b) Écart de charge médian, séries 2+ | 5,0 % | 3,6 % | 4,3 → 3,6 % |
+| Cibles chargées sous la fourchette | 190 / 406 | 0 hors exceptions (tests de plateau, compléments) | |
+| (c) Violations d'invariants (1 324 cibles) | 565 (dont I9 : 8) | 0 | |
 
-Par contexte : 1re série écart −0,23, battues 48 % ; séries suivantes −0,19, 36 % ; juste après un essai ou une série
-lourde (55 séries) −0,44, 31 %. Les cibles relevées par la fourchette (37 % des séries) le sont de 1,5 rep en moyenne
-au-dessus de la prévision mais ne ratent que de 0,37 rep (battues 32 %, battues ou tenues 50 %) : après une série dure,
-la prévision reste pessimiste et il fait mieux.
+Par contexte : 1re série écart −0,23, battues 48 % ; séries suivantes −0,14, 36 % ; juste après un essai ou une série
+lourde (55 séries) −0,39, 31 %. L'écart moyen global (−0,18) est à la limite de la bande visée (−0,2 ; −0,23 sur la
+période de réglage). Les cibles relevées par la fourchette (37 % des séries) le sont de 1,4 rep au-dessus de la
+prévision mais ne ratent que de 0,31 rep (battues 32 %, battues ou tenues 50 %).
 
 Itérations rejetées (journal) : charge ramenée dans la fourchette sans étirement (écart de charge 20,6 %, 8 kg × 8 aux
 élévations latérales après 16 × 7) ; correction apprise par séries du même muscle faites avant (test 1,97 → 2,06) ; rang
@@ -375,7 +385,11 @@ dans la séance (1,97 → 2,03). Piste non concluante : après plus de 14 jours 
 
 - La forme de la perte proportionnelle et l'étirement viennent d'une lecture de toute la période ; seuls les réglages
   numériques sont choisis avant le 21/09. Le gain de prévision n'apparaît qu'après le 21/09 (+0,02 avant).
-- L'objectif « légèrement optimiste » tient sur toutes les séries (−0,21) mais les 1res séries restent juste au bord
-  (écart −0,23, battues 48 %) et les séries suivantes plus optimistes (36 % battues).
+- L'objectif « légèrement optimiste » est atteint de justesse : écart −0,18 sur toutes les séries (bande visée
+  [−1 ; −0,2]), battues 41 % ; les 1res séries sont battues 48 % du temps, les séries suivantes 36 %.
+- Familles encore visibles (relecture du 15/10) : au poids du corps ou à la charge max d'une machine, la cible suivante
+  est ramenée au haut de la fourchette (Dips : 0 × 12 après 0 × 20 au RIR 2), préexistant ; après une série courte à
+  l'échec, une cible plus légère relevée au bas de la fourchette bien au-delà de la règle 7,5 % (Crunch : 37,5 × 10 après
+  50 × 3 au RIR 0 ; 7 cas), effet de κ = 4.
 - Essais quasi maximaux : 7 dans l'historique, 4 suivis d'une vraie série. Leur coût (0,5 perte) est un a priori.
 - Le rejeu juge ses séries réelles, faites face à d'autres cibles : une cible qui le pousse peut changer ce qu'il fait.
