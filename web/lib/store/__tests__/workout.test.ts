@@ -550,8 +550,10 @@ describe("useWorkoutStore", () => {
     store.logSet(loggedExerciseId, { weight: 100, reps: 4 });
     const completion = useWorkoutStore.getState().suggestion(loggedExerciseId);
 
+    // 4 reps à finir après 100 × 4 (RIR inconnu, compté à l'échec) : à portée en enchaînant 30 % plus léger
+    // (règle 7,5 % par rep), plus un cran plus léger qui demandait 4 reps de plus qu'il n'en avait.
     expect(completion.reasonCodes).toContain("logical_set_completion");
-    expect(completion.weight).toBe(97.5);
+    expect(completion.weight).toBe(70);
     expect(completion.reps).toBe(4);
     expect(completion.setType).toBe("work");
 
@@ -591,6 +593,19 @@ describe("useWorkoutStore", () => {
     expect(useWorkoutStore.getState().finish()!.snapshot.setCount).toBe(1);
   });
 
+  it("ne propose jamais de série à finir juste après un essai quasi maximal (13/10 : 160 × 1 après 140 × 8)", () => {
+    const store = useWorkoutStore.getState();
+    store.hydrate({ catalog: [BENCH], history: [], goals: [], settings: SETTINGS, templates: [], recoveryCheckins: [], bodyWeights: [] });
+    store.startEmpty("normal");
+    store.addExercise(BENCH.id);
+    const loggedExerciseId = useWorkoutStore.getState().active!.exercises[0].id;
+    store.logSet(loggedExerciseId, { weight: 140, reps: 8, reportedRir: 0 });
+    store.logSet(loggedExerciseId, { weight: 160, reps: 1, reportedRir: 0 });
+    const next = useWorkoutStore.getState().suggestion(loggedExerciseId);
+    expect(next.reasonCodes).not.toContain("logical_set_completion");
+    expect(next.weight).toBeLessThanOrEqual(140);
+  });
+
   it.each([0, 1])(
     "ne propose jamais une complétion absurde après 18×7 à RIR %i",
     (reportedRir) => {
@@ -604,14 +619,13 @@ describe("useWorkoutStore", () => {
       const next = useWorkoutStore.getState().suggestion(loggedExerciseId);
 
       expect(next.reasonCodes).not.toContain("logical_set_completion");
-      // Cible à battre (`target.ts`, 11/10/2026) : la charge portée est gardée, les reps sont la prévision
-      // à cette charge ; elle ne décroche que nettement sous la fourchette.
-      expect(next.weight).toBe(18);
+      // Cible à battre (`target.ts`, 15/10/2026) : dans la fourchette, jamais plus lourde qu'une série finie au
+      // RIR 0-1 en bas de fourchette, et plus légère, au moins ses reps (une de moins après l'échec).
       expect(next.prediction).toBeDefined();
-      // Reps = prévision à cette charge + marge d'ambition (négative sans historique : une prévision juste
-      // n'est battue que 45 % du temps) ; jamais une mini-série de complément.
-      expect(next.reps).toBe(Math.max(1, Math.round(next.ambition!.predictedReps + next.ambition!.margin)));
-      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin - 2);
+      expect(next.weight).toBeLessThanOrEqual(18);
+      expect(next.reps).toBeGreaterThanOrEqual(CURL.repTargetMin);
+      expect(next.reps).toBeLessThanOrEqual(CURL.repTargetMax);
+      if (next.weight < 18) expect(next.reps).toBeGreaterThanOrEqual(reportedRir === 0 ? 6 : 7);
     }
   );
 

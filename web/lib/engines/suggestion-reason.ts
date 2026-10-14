@@ -72,7 +72,12 @@ export function suggestionReason(
   // (prévision au RIR visé, et une rep de plus à l'échec).
   if (codes.includes("target_to_beat") && suggestion.ambition) {
     const usual = Math.max(1, Math.round(suggestion.ambition.predictedReps));
-    const main = `Cible à battre : tu fais d'habitude ${usual} à ${usual + 1} ici`;
+    const habit = `tu fais d'habitude ${usual} à ${usual + 1} ici`;
+    const main = codes.includes("target_after_attempt")
+      ? `Cible à battre après ton essai lourd : retour à ta charge de travail, ${habit}`
+      : codes.includes("target_lifted")
+        ? `Cible à battre : le bas de ta fourchette, ${habit}`
+        : `Cible à battre : ${habit}`;
     return addenda.length > 0 ? `${main} (${addenda.join(", ")})` : main;
   }
   const main = codes.map((code) => REASONS[code]).find(Boolean);

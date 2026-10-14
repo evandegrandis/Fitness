@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ambitionMargin, heavyReturnLoad, isHeavySet, TARGET, targetFromPrediction, usualWorkingLoad } from "@/lib/engines/target";
+import { ambitionMargin, chooseTarget, completionTarget, heavyReturnLoad, isHeavySet, TARGET, usualWorkingLoad, type TodaySet } from "@/lib/engines/target";
 import { suggest, SUGGESTION_ENGINE_VERSION } from "@/lib/engines/progression";
 import { suggestionReason } from "@/lib/engines/suggestion-reason";
 import { SetType } from "@/lib/models/enums";
@@ -44,11 +44,12 @@ function session(daysAgo: number, specs: { reps: number; predicted: number; targ
 }
 
 describe("marge d'ambition", () => {
-  it("sans cible enregistrée par ce moteur : l'a priori (prévision battue 45 % du temps, 64 % à une rep de moins)", () => {
-    const prior = -1 + (TARGET.PRIOR_BEAT_M1 - TARGET.GOAL) / (TARGET.PRIOR_BEAT_M1 - TARGET.PRIOR_BEAT_0);
+  it("sans cible enregistrée par ce moteur : l'a priori, légèrement optimiste (prévision battue 45 % du temps, objectif 40 %)", () => {
+    const prior = (TARGET.PRIOR_BEAT_0 - TARGET.GOAL) / (TARGET.PRIOR_BEAT_0 - TARGET.PRIOR_BEAT_1);
     expect(ambitionMargin(undefined, undefined, true, NOW).margin).toBeCloseTo(prior, 5);
     expect(ambitionMargin([], [exercise()], false, NOW).margin).toBeCloseTo(prior, 5);
-    expect(prior).toBeLessThan(0);
+    expect(prior).toBeGreaterThan(0);
+    expect(prior).toBeLessThan(1);
   });
 
   it("monte quand il dépasse souvent la prévision, sans dépasser 2 reps", () => {
@@ -97,34 +98,58 @@ describe("après une série lourde, la cible revient à la charge de travail", (
   });
 });
 
+/** Prévision linéaire : `reps0` à `load0`, une rep de plus tous les `kgPerRep` kg plus léger (règle du moteur). */
+const proj = (load0: number, reps0: number, kgPerRep: number) => (load: number) => reps0 + (load0 - load) / kgPerRep;
+const done = (...sets: [number, number, number | null][]): TodaySet[] => sets.map(([weight, reps, rir]) => ({ weight, reps, rir, continuation: false }));
+const epley = (load: number, repsToFailure: number) => load * (1 + repsToFailure / 30);
+
 describe("cible construite sur la prévision", () => {
-  it("garde la charge de la dernière série et vise la prévision à cette charge plus la marge", () => {
-    // Prévision : 120 × 11 ; dernière série à 130 kg ; 9 kg par rep à 120 kg : 11 − 10/9 = 9,9.
-    const t = targetFromPrediction({ weight: 120, reps: 11, push: false }, exercise(), 130, 1, 2.5, undefined);
-    expect(t.weight).toBe(130);
-    expect(t.predictedReps).toBeCloseTo(9.89, 1);
-    expect(t.reps).toBe(11);
+  it("dans la fourchette : garde la charge de la dernière série et vise la prévision plus la marge", () => {
+    // Après 130 × 10 au RIR 2 (fourchette 8-12) : 9,9 reps prévues à 130 kg, marge 1 : 130 × 11.
+    const t = chooseTarget({ predictedAt: proj(130, 9.9, 9.75), startLoad: 130, push: false, ceiling: null, today: done([130, 10, 2]), margin: 1 }, exercise(), 2.5, undefined);
+    expect(t).toMatchObject({ weight: 130, reps: 11 });
   });
 
-  it("ne baisse pas la charge pour revenir dans la fourchette, sauf nettement en dessous et de deux crans au plus", () => {
-    // 1 rep sous la fourchette : la charge reste.
-    expect(targetFromPrediction({ weight: 100, reps: 7, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 100, reps: 7, lowered: 0 });
-    // 4 reps sous la fourchette : deux crans au plus (4 + 5 / 7,5 = 4,7, soit 5 reps à 95 kg).
-    expect(targetFromPrediction({ weight: 100, reps: 4, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 95, reps: 5, lowered: 2, floored: false });
+  it("sous la fourchette : la charge baisse jusqu'à ce que le bas soit à portée, puis la cible le demande (pas 14 × 5)", () => {
+    // 13/10 : 16 × 7 au RIR 0 aux élévations latérales (8-12, cran de 2 kg = 1 rep), 4,6 reps prévues à 16 kg.
+    const lateral = exercise({ smallestIncrement: 2 });
+    const t = chooseTarget({ predictedAt: proj(16, 4.6, 2), startLoad: 16, push: false, ceiling: 16, today: done([16, 7, 0]), margin: 0 }, lateral, 2, undefined);
+    expect(t).toMatchObject({ weight: 14, reps: 8 });
+    expect(t.codes).toEqual(expect.arrayContaining(["target_range", "target_lifted"]));
   });
 
-  it("plancher : jamais moins de repMin − 3 reps sur une série chargée, la charge descend par la règle 7,5 %", () => {
-    // Prévision 100 × 2 (fourchette 8-12) : deux crans donnent 95 × 3, sous le plancher de 5 ; à 7,5 kg par rep,
-    // il faut 80 kg (2 + 20 / 7,5 = 4,7, soit 5).
-    expect(targetFromPrediction({ weight: 100, reps: 2, push: false }, exercise(), 100, 0, 2.5, undefined)).toMatchObject({ weight: 80, reps: 5, floored: true });
-    // Charge tenue à 80 kg alors que la prévision est à 70 × 5 (fourchette 6-12, marge −1 : 80 × 2 avant) : la cible
-    // prend la charge de la prévision, 70 × 4, au plancher de 3.
-    const pecDeck = exercise({ repTargetMin: 6 });
-    const anchor = { load: 80, reps: 3.4 };
-    expect(targetFromPrediction({ weight: 70, reps: 5, push: false, anchor }, pecDeck, 80, -1, 2.5, undefined)).toMatchObject({ weight: 70, reps: 4, floored: true });
-    // Le poids du corps garde ses règles.
-    const lest = exercise({ setPatternMode: "weighted_bodyweight", repTargetMin: 6 });
-    expect(targetFromPrediction({ weight: 15, reps: 2, push: false }, lest, 15, 0, 2.5, 74)).toMatchObject({ floored: false });
+  it("l'étirement est borné : loin sous la fourchette, la charge descend davantage", () => {
+    // Prévision 100 × 2 (fourchette 8-12, 7,5 kg par rep) : le bas de la fourchette est à portée de κ reps à 87,5 kg.
+    const t = chooseTarget({ predictedAt: proj(100, 2, 7.5), startLoad: 100, push: false, ceiling: null, today: [], margin: 0 }, exercise(), 2.5, undefined);
+    expect(t.weight).toBe(87.5);
+    expect(t.reps).toBe(8);
+    expect(t.reps - t.predictedReps).toBeLessThanOrEqual(TARGET.RANGE_STRETCH + 0.5);
+  });
+
+  it("jamais plus lourd que le plafond : après 100 × 8 au RIR 0, pas 127,5 × 1", () => {
+    const today = done([140, 8, 0], [160, 1, 0], [120, 7, 0], [100, 8, 0]);
+    const t = chooseTarget({ predictedAt: proj(127.5, 1.4, 9.6), startLoad: 127.5, push: true, ceiling: 100, today, margin: 0 }, exercise(), 2.5, undefined);
+    expect(t.weight).toBeLessThanOrEqual(100);
+    expect(t.reps).toBeGreaterThanOrEqual(8);
+    expect(t.codes).toContain("target_push_withheld");
+  });
+
+  it("ne demande jamais plus que le 1RM montré aujourd'hui : après 140 × 8 au RIR 0, pas 140 × 9", () => {
+    const t = chooseTarget({ predictedAt: proj(140, 10, 10.5), startLoad: 140, push: false, ceiling: 140, today: done([140, 8, 0]), margin: 0 }, exercise(), 2.5, undefined);
+    expect(epley(t.weight, t.reps + 1)).toBeLessThanOrEqual(epley(140, 8) + 1e-6);
+    expect(t).toMatchObject({ weight: 135, reps: 8 });
+    expect(t.codes).toContain("target_capacity");
+  });
+
+  it("une montée de charge du moteur reste la sienne quand elle est cohérente", () => {
+    // Après 100 × 13 au RIR 2 (au-dessus de la fourchette), le moteur monte à 105 × 10.
+    const t = chooseTarget({ predictedAt: proj(105, 10, 7.875), startLoad: 105, push: true, ceiling: null, today: done([100, 13, 2]), margin: 0 }, exercise(), 2.5, undefined);
+    expect(t).toMatchObject({ weight: 105, reps: 10 });
+  });
+
+  it("au poids du corps, la charge ne bouge pas et les reps restent sous ce qu'il a montré", () => {
+    const dips = exercise({ setPatternMode: "bodyweight" });
+    expect(chooseTarget({ predictedAt: () => 14, startLoad: 0, push: false, ceiling: null, today: done([0, 12, 0]), margin: 0 }, dips, 2.5, 74)).toMatchObject({ weight: 0, reps: 11 });
   });
 
   it("série lourde : reps au RIR visé sous la fourchette, au-dessus de la charge habituelle", () => {
@@ -138,15 +163,6 @@ describe("cible construite sur la prévision", () => {
   it("charge de retour : la prévision si elle est déjà assez légère (retour du moteur), sinon 11 % plus léger", () => {
     expect(heavyReturnLoad(120, 150, exercise(), 2.5)).toBe(120);
     expect(heavyReturnLoad(147.5, 150, exercise(), 2.5)).toBe(132.5);
-  });
-
-  it("une montée de charge du moteur (dépassement, promotion, plateau) reste telle quelle", () => {
-    expect(targetFromPrediction({ weight: 105, reps: 8, push: true }, exercise(), 100, 2, 2.5, undefined)).toMatchObject({ weight: 105, reps: 8 });
-  });
-
-  it("au poids du corps, la charge ne bouge pas", () => {
-    const dips = exercise({ setPatternMode: "bodyweight" });
-    expect(targetFromPrediction({ weight: 0, reps: 3, push: false }, dips, 0, 0, 2.5, 74)).toMatchObject({ weight: 0, reps: 3, lowered: 0 });
   });
 
   it("dans le moteur : la suggestion affichée est la cible, la prévision reste jointe, la raison l'assume", () => {
@@ -164,7 +180,44 @@ describe("cible construite sur la prévision", () => {
     expect(shown.prediction).toEqual({ weight: prediction.weight, reps: prediction.reps });
     expect(shown.weight).toBe(130);
     expect(shown.reasonCodes[0]).toBe("target_to_beat");
+    // 130 × 9 au RIR 0 : la prévision à 130 kg tombe sous la fourchette, la cible y demande le bas (8) et le dit.
     const usual = Math.round(shown.ambition!.predictedReps);
-    expect(suggestionReason(shown)).toBe(`Cible à battre : tu fais d'habitude ${usual} à ${usual + 1} ici`);
+    expect(shown.reps).toBe(8);
+    expect(usual).toBeLessThan(8);
+    expect(suggestionReason(shown)).toBe(`Cible à battre : le bas de ta fourchette, tu fais d'habitude ${usual} à ${usual + 1} ici`);
+  });
+});
+
+describe("après un essai quasi maximal (13/10/2026 : 140 × 8, puis 160 × 1 au RIR 0)", () => {
+  const history = [20, 13, 6].map((d) => ({
+    ...session(d, []),
+    exercises: [{
+      id: `h-${d}`, orderIndex: 0, notes: "", exerciseId: "press", exerciseName: "press", supersetGroupId: null, plateauWeakPoint: null,
+      sets: [set(130, 9, new Date(NOW.getTime() - d * DAY), { reportedRir: 1 }), set(130, 8, new Date(NOW.getTime() - d * DAY + 180_000), { reportedRir: 0 })],
+    }],
+  }));
+  const today = [
+    set(140, 8, new Date(NOW.getTime() - 300_000), { reportedRir: 0 }),
+    set(160, 1, new Date(NOW.getTime() - 120_000), { reportedRir: 0 }),
+  ];
+  const params = { exercise: exercise(), currentSetIndex: 2, recentHistory: history.map((s) => s.exercises[0].sets).reverse(), currentSessionSets: today, sessionHistory: history, catalog: [exercise()], now: NOW, target: true };
+
+  it("revient à la charge de travail, avec la fatigue de l'essai : jamais au-dessus de 140, sous le 1RM de 140 × 8", () => {
+    const shown = suggest(params);
+    expect(shown.reasonCodes).toContain("target_after_attempt");
+    expect(shown.weight).toBeLessThan(140);
+    expect(shown.reps).toBeGreaterThanOrEqual(8);
+    expect(epley(shown.weight, shown.reps + 1)).toBeLessThan(epley(140, 8));
+    expect(suggestionReason(shown)).toMatch(/^Cible à battre après ton essai lourd : retour à ta charge de travail/);
+  });
+
+  it("jamais de série à finir à la charge d'un essai raté : 157,5 × 7 est hors de portée", () => {
+    expect(completionTarget({ weight: 160, reps: 1, rir: 0, continuation: false }, 7, true, exercise(), 2.5, undefined)).toBeNull();
+    expect(completionTarget({ weight: 160, reps: 1, rir: 0, continuation: false }, 7, false, exercise(), 2.5, undefined)).toBeNull();
+  });
+
+  it("une série à finir n'est proposée qu'à une charge où les reps restantes sont à portée en enchaînant", () => {
+    // 87,5 × 5 au RIR 0 : 3 reps à finir demandent 3 × 6,6 kg de moins, soit 67,5 kg (il enchaîne à 15-25 % plus léger).
+    expect(completionTarget({ weight: 87.5, reps: 5, rir: 0, continuation: false }, 3, false, exercise(), 2.5, undefined)).toEqual({ weight: 67.5, reps: 3 });
   });
 });

@@ -10,26 +10,23 @@
  *    (Atkinson, 1957 : motivation maximale à probabilité de réussite intermédiaire ; Locke et Latham :
  *    un objectif difficile mais atteignable bat un objectif facile).
  *
- * Charge : celle de la dernière série du même exercice (1re série : celle du moteur). Elle ne baisse que
- * si la prévision à cette charge tombe nettement sous la fourchette (seuil appris sur son comportement :
- * il garde sa charge tant que la prévision reste au-dessus de repMin − 2,7), d'un ou deux crans au plus.
- * Après une série LOURDE (reps au RIR visé sous la fourchette, charge au-dessus de sa charge de travail
- * habituelle), il redescend : la cible prend alors la charge de la prévision (retour ou amorce du moteur),
- * jamais « 145 × 4 » après 150 × 6. Montées de charge du moteur et test de plateau : inchangés.
- * Plancher (12/10/2026) : une cible chargée ne descend jamais sous repMin − 3 reps (« 80 × 2 » alors qu'il fait
- * 75 × 8) ; sinon la charge prend celle de la prévision, puis descend par la règle 7,5 % jusqu'au plancher.
- * Poids du corps, finishers et compléments de série gardent leurs règles.
- *
+ * Charge et reps (15/10/2026, `chooseTarget`, `web/SUGGESTIONS.md` §7) : la cible est d'abord cohérente avec ce qu'il
+ * vient de faire (invariants de `target-invariants.ts`, zéro violation sur le rejeu) : jamais plus lourde après une
+ * série finie au RIR 0-1 en bas de fourchette, jamais au-dessus du 1RM montré dans la séance, dans la fourchette (la
+ * charge baisse jusqu'à ce que le bas soit à portée de `RANGE_STRETCH` reps), plus légère ⇒ au moins les reps de la
+ * dernière série ; juste après un essai quasi maximal, retour à la charge de travail avec la fatigue de l'essai. Après
+ * une série LOURDE, retour à la charge de la prévision ou 11 % plus léger. Montées du moteur gardées si cohérentes.
  * Reps : prévision à cette charge + marge d'ambition. La marge est apprise sur les séries récentes
  * enregistrées par ce moteur (prévision stockée contre reps faites, « battre » au sens de
  * `setVersusSuggestion`), par contexte (1re série, séries suivantes), rétrécie vers le global puis vers
- * un a priori, bornée à [−1 ; 2], et corrigée par une boucle de long terme, par contexte, sur les cibles
- * réellement battues (au-delà de 55 % elle monte, sous 45 % elle baisse). Pure, recalculée à chaque
- * suggestion. La marge peut être négative : une prévision juste n'est battue qu'environ 45 % du temps.
+ * un a priori, bornée à [−1 ; 2], visant 40 % de cibles battues (légèrement optimiste, Evan 14/10/2026), et
+ * corrigée par une boucle de long terme, par contexte, sur les cibles réellement battues (à plus de 5 points de
+ * l'objectif). Pure, recalculée à chaque suggestion.
  */
 
 import { ALGO_V2 } from "@/lib/engines/constants";
 import { effTotal, type LoadMode } from "@/lib/engines/predict";
+import { capacityLoad, lighterTargetMinReps } from "@/lib/engines/target-invariants";
 import { setVersusSuggestion } from "@/lib/engines/versus";
 import { SetPatternMode as SPM, SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -55,25 +52,37 @@ export const TARGET = {
   PRIOR_BEAT_1: 0.25,
   PRIOR_BEAT_2: 0.11,
   /** Probabilité visée de battre la cible. */
-  GOAL: 0.5,
+  GOAL: 0.4,
   /** Bornes de la marge, en reps. */
   MIN: -1,
   MAX: 2,
-  /** Boucle de long terme : au-delà / en deçà de ces parts de cibles battues, la marge bouge d'un pas. */
-  LOOP_HIGH: 0.55,
-  LOOP_LOW: 0.45,
+  /**
+   * Boucle de long terme : quand la part de cibles battues s'écarte de l'objectif de plus de cette demi-largeur, la
+   * marge bouge d'un pas (centrée sur `GOAL` ; avant le 15/10 elle visait 45-55 % quel que soit l'objectif).
+   */
+  LOOP_BAND: 0.05,
   LOOP_STEP: 0.5,
   /** Poids minimal de cibles jugées pour que la boucle agisse. */
   LOOP_MIN_WEIGHT: 8,
-  /** La charge tenue ne décroche que si la prévision y tombe sous repMin moins ce nombre de reps. */
-  LOWER_BELOW_MIN: 2.7,
-  /** Crans de décrochage au plus. */
-  MAX_LOWER_STEPS: 2,
   /**
-   * Plancher : une cible chargée ne propose jamais moins de repMin − 3 reps (« 80 × 2 » ne pousse pas, il
-   * décrédibilise la cible). En dessous, la charge prend celle de la prévision, puis descend par la règle 7,5 %.
+   * Fourchette : quand la prévision à la charge tenue tombe sous les reps exigées (bas de la fourchette, ou les reps de
+   * la dernière série si la cible est plus légère), la charge baisse jusqu'à ce qu'elles soient à portée de ce nombre
+   * de reps au-dessus de la prévision plus la marge, puis la cible les demande. Réglé sur les séances jusqu'au 21/09.
    */
-  MIN_REPS_BELOW_MIN: 3,
+  RANGE_STRETCH: 4,
+  /**
+   * Fatigue d'un essai quasi maximal (RIR ≤ 1, 4 reps au plus jusqu'à l'échec), en part de la perte de reps
+   * apprise d'une série à la suivante. A priori : une série de 1 à 4 reps coûte moins qu'une série de 8 à 12 (la
+   * fatigue d'une série suit le travail fait, Sánchez-Medina et González-Badillo, 2011), mais pas rien. Le seul
+   * cas mesurable de son historique (Wide Chest Press, 13/10 : 140 × 8, 160 × 1, puis 120 × 7) donne 0,5. Trop peu
+   * d'essais (7, dont 4 suivis d'une vraie série) pour l'apprendre : à remesurer (`web/SUGGESTIONS.md` §7).
+   */
+  ATTEMPT_COST: 0.5,
+  /**
+   * « Série à finir » : au-delà de cette baisse de charge, ce n'est plus un complément mais une nouvelle série. Quand
+   * il enchaîne vraiment après une série courte (11 cas avec RIR depuis le 17/08), il baisse de 15 à 25 %.
+   */
+  COMPLETION_MAX_DROP: 0.3,
   /** Série lourde : sa charge dépasse la charge de travail habituelle d'au moins ce nombre de crans. */
   HEAVY_MIN_STEPS: 1,
   /**
@@ -210,8 +219,8 @@ export function ambitionMargin(
     return judged >= TARGET.LOOP_MIN_WEIGHT ? beaten / judged : null;
   };
   const beatRate = realized(all.filter((s) => s.first === first)) ?? realized(all);
-  if (beatRate !== null && beatRate > TARGET.LOOP_HIGH) margin += TARGET.LOOP_STEP;
-  if (beatRate !== null && beatRate < TARGET.LOOP_LOW) margin -= TARGET.LOOP_STEP;
+  if (beatRate !== null && beatRate > TARGET.GOAL + TARGET.LOOP_BAND) margin += TARGET.LOOP_STEP;
+  if (beatRate !== null && beatRate < TARGET.GOAL - TARGET.LOOP_BAND) margin -= TARGET.LOOP_STEP;
   return { margin: Math.max(TARGET.MIN, Math.min(TARGET.MAX, margin)), beatRate, weight: c.total };
 }
 
@@ -219,13 +228,6 @@ function loadModeOf(exercise: Exercise): LoadMode {
   if (exercise.setPatternMode === SPM.weightedBodyweight) return "weighted_bodyweight";
   if (exercise.setPatternMode === SPM.assistedBodyweight) return "assisted_bodyweight";
   return "external";
-}
-
-const BODYWEIGHT_MODES = new Set<string>([SPM.bodyweight, SPM.weightedBodyweight, SPM.assistedBodyweight]);
-
-function stepEasier(load: number, increment: number, exercise: Exercise): number {
-  if (exercise.setPatternMode === SPM.assistedBodyweight) return load + increment;
-  return Math.max(0, load - increment);
 }
 
 /** Charge de travail habituelle : médiane des séries de travail des 5 dernières séances (plus récente en premier). */
@@ -269,74 +271,187 @@ export function heavyReturnLoad(predictionLoad: number, heavyLoad: number, exerc
   return Math.min(predictionLoad, Math.max(0, heavyLoad - steps * increment));
 }
 
-export interface TargetInput {
-  /** La prévision du moteur (charge et reps au RIR visé). */
+/** Série du jour sur cet exercice, telle que la lisent les invariants (`target-invariants.ts`). */
+export interface TodaySet {
   weight: number;
   reps: number;
-  /** true quand le moteur pousse en charge (montée, promotion, test de plateau) : la cible reste la sienne. */
+  rir: number | null;
+  continuation: boolean;
+}
+
+export interface TargetChoiceInput {
+  /** Reps prévues au RIR visé à une charge donnée pour la prochaine série (décroissantes avec la charge). */
+  predictedAt: (load: number) => number;
+  /** Charge de départ : celle du moteur en 1re série ou quand il monte, la charge de retour après une série lourde
+   * ou un essai, sinon celle de la dernière série. */
+  startLoad: number;
+  /** Le moteur monte la charge (dépassement, promotion, test de plateau) : gardée si elle reste cohérente. */
   push: boolean;
+  /** Reps d'un test de plateau explicite (`plateau_break`, hors fourchette par construction). */
+  explicitTestReps?: number | null;
+  /** Jamais plus lourd que cette charge (série dure, essai, retour après une série lourde). */
+  ceiling: number | null;
+  /** Séries normales du jour sur cet exercice, ordre chronologique. */
+  today: readonly TodaySet[];
+  margin: number;
   /**
-   * Prévision à la charge de la dernière série quand le moteur en a prévu une autre : reps de cette série au
-   * RIR visé moins la perte de reps apprise. Reprojeter la prévision d'une charge lointaine (120 × 11 après
-   * 150 × 6) vers la charge tenue donnerait n'importe quoi.
+   * Juste après un essai quasi maximal : meilleur 1RM estimé des séries d'avant l'essai. La cible reste strictement en
+   * dessous (la fatigue de l'essai doit s'y voir).
    */
-  anchor?: { load: number; reps: number } | null;
+  belowOneRepMax?: number | null;
+  /**
+   * Étirement de la fourchette (défaut `TARGET.RANGE_STRETCH`). 0 juste après un essai quasi maximal : Evan
+   * (14/10/2026) veut que la cible anticipe la fatigue de l'essai, la fourchette ne doit pas l'effacer.
+   */
+  stretch?: number;
+}
+
+export interface TargetChoice {
+  weight: number;
+  reps: number;
+  predictedReps: number;
+  /** Ce qui a déplacé la cible : `target_range` (charge ramenée vers la fourchette), `target_lifted` (reps relevées au
+   * bas de la fourchette ou aux reps de la dernière série, au-dessus de la prévision plus la marge), `target_capacity`
+   * (plafonnée par ce qu'il a montré aujourd'hui), `target_lighter_reps` (plus léger : au moins les reps de la dernière
+   * série), `target_push_withheld` (montée du moteur refusée). */
+  codes: string[];
+}
+
+const EPS = 1e-9;
+const roundLoad = (load: number) => Math.round(load * 1000) / 1000;
+
+/** Meilleur 1RM estimé (Epley, reps + RIR) montré aujourd'hui par les séries à RIR déclaré 0 à 3. */
+export function shownOneRepMax(today: readonly TodaySet[], exercise: Exercise, bodyweightKg: number | undefined): number | null {
+  // Une charge effective nulle ou négative (assistance au-delà du poids du corps saisi) ne mesure aucune capacité.
+  const bounding = today.filter((s) => s.rir !== null && s.rir <= 3 && capacityLoad(exercise.setPatternMode, s.weight, bodyweightKg) > 0);
+  if (bounding.length === 0) return null;
+  return Math.max(...bounding.map((s) => capacityLoad(exercise.setPatternMode, s.weight, bodyweightKg) * (1 + (s.reps + (s.rir ?? 0)) / 30)));
 }
 
 /**
- * Charge et reps de la cible. `lastLoad` = charge de la dernière série du même exercice aujourd'hui (null
- * pour une 1re série). Les reps prévues à une autre charge suivent la règle du moteur (7,5 % = 1 rep).
+ * La cible : une charge et des reps à battre, cohérentes avec ce qu'il vient de faire (invariants de
+ * `target-invariants.ts`, `web/SUGGESTIONS.md` §7).
+ *
+ * Reps à une charge : prévision + marge d'ambition, plafonnées par le 1RM qu'il a montré aujourd'hui (Epley, reps
+ * jusqu'à l'échec : une cible n'en demande jamais plus). Charge : la charge de départ, puis ramenée dans la fourchette
+ * (plus léger tant que les reps restent dessous, plus lourd tant qu'elles sont au-dessus), jamais au-dessus du
+ * plafond (après une série finie au RIR 0-1 en bas de fourchette ou un essai) ni de la charge max ; quand un cran fait
+ * sauter toute la fourchette, la charge la plus proche (à égalité, la plus lourde). Plus léger que la dernière série :
+ * au moins ses reps. Poids du corps pur et lesté à 0 kg : la charge ne bouge pas, les reps suivent la prévision.
  */
-export function targetFromPrediction(
-  input: TargetInput,
-  exercise: Exercise,
-  lastLoad: number | null,
-  margin: number,
-  increment: number,
-  bodyweightKg: number | undefined,
-  /** false après une série lourde : la charge de retour est déjà choisie. */
-  mayLower = true
-): { weight: number; reps: number; predictedReps: number; lowered: number; floored: boolean } {
-  if (input.push) return { weight: input.weight, reps: input.reps, predictedReps: input.reps, lowered: 0, floored: false };
+export function chooseTarget(input: TargetChoiceInput, exercise: Exercise, increment: number, bodyweightKg: number | undefined): TargetChoice {
   const mode = loadModeOf(exercise);
-  const projector = (base: { load: number; reps: number }) => {
-    const from = effTotal(base.load, mode, bodyweightKg);
-    const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));
-    return (load: number) => base.reps + (from - effTotal(load, mode, bodyweightKg)) / kgPerRep;
+  const eff = (load: number) => effTotal(load, mode, bodyweightKg);
+  const shown = shownOneRepMax(input.today, exercise, bodyweightKg);
+  const capAt = (load: number) => {
+    const c = capacityLoad(exercise.setPatternMode, load, bodyweightKg);
+    if (!(c > 0)) return Number.POSITIVE_INFINITY;
+    let cap = shown === null ? Number.POSITIVE_INFINITY : Math.floor((30 * shown) / c - 31 + 1e-6);
+    if (input.belowOneRepMax != null) cap = Math.min(cap, Math.ceil(30 * (input.belowOneRepMax / c - 1) - 1 - 1e-6) - 1);
+    return cap;
   };
-  let predictedAt = projector(input.anchor ?? { load: input.weight, reps: input.reps });
-  let load = lastLoad ?? input.weight;
-  let lowered = 0;
-  while (
-    mayLower &&
-    lastLoad !== null &&
-    lowered < TARGET.MAX_LOWER_STEPS &&
-    predictedAt(load) < exercise.repTargetMin - TARGET.LOWER_BELOW_MIN &&
-    exercise.setPatternMode !== SPM.bodyweight
-  ) {
-    const next = stepEasier(load, increment, exercise);
-    if (Math.abs(next - load) < 1e-9) break;
-    load = next;
-    lowered += 1;
-  }
-  // Plancher des séries chargées (le poids du corps garde ses règles) : charge de la prévision si elle est plus
-  // légère, puis un cran à la fois par la règle 7,5 % jusqu'au plancher.
-  const floor = exercise.repTargetMin - TARGET.MIN_REPS_BELOW_MIN;
-  const below = () => Math.round(predictedAt(load) + margin) < floor;
-  let floored = false;
-  if (load > 0 && !BODYWEIGHT_MODES.has(exercise.setPatternMode) && below()) {
-    floored = true;
-    if (effTotal(input.weight, mode, bodyweightKg) < effTotal(load, mode, bodyweightKg) - 1e-9) {
-      predictedAt = projector({ load: input.weight, reps: input.reps });
-      load = input.weight;
+  const lastRegular = [...input.today].reverse().find((s) => !s.continuation) ?? null;
+  const lighterThanLast = (load: number) => lastRegular !== null && eff(load) < eff(lastRegular.weight) - EPS;
+  /** Reps exigées par la cohérence : le bas de la fourchette, et plus léger que la dernière série, au moins ses reps. */
+  const needed = (load: number) => Math.max(exercise.repTargetMin, lighterThanLast(load) ? lighterTargetMinReps(lastRegular!, exercise) : 0);
+  const raw = (load: number) => Math.round(input.predictedAt(load) + input.margin);
+  /** Les reps exigées sont à portée : à moins de `RANGE_STRETCH` reps au-dessus de la prévision plus la marge. */
+  const reachable = (load: number) =>
+    Math.round(input.predictedAt(load) + input.margin + (input.stretch ?? TARGET.RANGE_STRETCH)) >= needed(load) && capAt(load) >= needed(load);
+  const codes: string[] = [];
+  const done = (load: number, loaded = true): TargetChoice => {
+    let reps = raw(load);
+    // Les reps de cohérence ne sont exigées que si elles sont à portée ; au plancher de charge (lesté ramené au poids
+    // du corps, charge nulle), la cible reste la prévision plus la marge.
+    if (loaded && reachable(load)) reps = Math.min(Math.max(reps, needed(load)), Math.max(needed(load), exercise.repTargetMax));
+    else {
+      if (loaded) reps = Math.min(reps, exercise.repTargetMax);
+      // Plus léger que la dernière série (lesté ramené au poids du corps compris) : au moins ses reps.
+      if (lighterThanLast(load)) reps = Math.max(reps, lighterTargetMinReps(lastRegular!, exercise));
     }
-    for (let guard = 0; guard < 100 && load > 0 && below(); guard++) {
-      const next = stepEasier(load, increment, exercise);
-      if (Math.abs(next - load) < 1e-9) break;
+    if (reps > raw(load) && reps <= capAt(load)) codes.push("target_lifted");
+    if (reps > capAt(load)) {
+      reps = capAt(load);
+      codes.push("target_capacity");
+    }
+    return { weight: roundLoad(load), reps: Math.max(1, reps), predictedReps: input.predictedAt(load), codes };
+  };
+
+  // Poids du corps (pur, ou lesté prévu sans lest) : seules les reps bougent.
+  if (exercise.setPatternMode === SPM.bodyweight || (mode === "weighted_bodyweight" && Math.abs(input.startLoad) < EPS && !input.push)) {
+    return done(input.startLoad, false);
+  }
+  const inc = increment > 0 ? increment : 0;
+  const harder = (load: number) => roundLoad(mode === "assisted_bodyweight" ? Math.max(0, load - inc) : load + inc);
+  const easier = (load: number) => roundLoad(mode === "assisted_bodyweight" ? load + inc : Math.max(0, load - inc));
+  const maxLoad = mode === "external" && exercise.maxLoad && exercise.maxLoad > 0 ? exercise.maxLoad : null;
+  const allowed = (load: number) =>
+    load >= -EPS && (input.ceiling === null || eff(load) <= eff(input.ceiling) + EPS) && (maxLoad === null || load <= maxLoad + EPS);
+
+  // Test de plateau explicite : gardé seulement s'il ne demande pas plus que ce qu'il a montré aujourd'hui.
+  if (input.push && input.explicitTestReps != null) {
+    if (allowed(input.startLoad) && input.explicitTestReps <= capAt(input.startLoad)) {
+      return { weight: roundLoad(input.startLoad), reps: input.explicitTestReps, predictedReps: input.predictedAt(input.startLoad), codes };
+    }
+    codes.push("target_push_withheld");
+  }
+  let load = input.startLoad;
+  if (input.push && (input.explicitTestReps != null || !(allowed(load) && reachable(load)))) {
+    if (input.explicitTestReps == null) codes.push("target_push_withheld");
+    load = lastRegular?.weight ?? load;
+  }
+  if (input.ceiling !== null && eff(load) > eff(input.ceiling) + EPS) load = input.ceiling;
+  if (maxLoad !== null && load > maxLoad + EPS) load = maxLoad;
+
+  // La charge descend d'un cran à la fois jusqu'à ce que les reps exigées soient à portée ; elle monte tant que la
+  // prévision dépasse le haut de la fourchette (sans franchir le plafond, la charge max ni ce qu'il a montré).
+  const start = load;
+  if (inc > 0 && !reachable(load)) {
+    for (let guard = 0; guard < 400 && !reachable(load); guard++) {
+      const next = easier(load);
+      if (Math.abs(next - load) < EPS) break;
+      load = next;
+    }
+  } else if (inc > 0 && raw(load) > exercise.repTargetMax) {
+    for (let guard = 0; guard < 400 && raw(load) > exercise.repTargetMax; guard++) {
+      const next = harder(load);
+      if (Math.abs(next - load) < EPS || !allowed(next) || !reachable(next)) break;
       load = next;
     }
   }
-  const predictedReps = predictedAt(load);
-  const reps = Math.max(1, Math.round(predictedReps + margin));
-  return { weight: load, reps, predictedReps, lowered, floored };
+  if (Math.abs(start - load) > EPS) codes.push("target_range");
+  if (lighterThanLast(load) && needed(load) > exercise.repTargetMin && raw(load) < needed(load)) codes.push("target_lighter_reps");
+  return done(load);
+}
+
+/**
+ * Charge et reps d'une « série à finir » juste après une série trop courte pour compter (moins de 8 reps cumulées),
+ * ou null quand il n'y a rien à finir. Les reps restantes doivent être à portée en enchaînant : son RIR plus les
+ * reps que rend la baisse de charge (règle 7,5 %), au moins un cran plus léger. Jamais après un essai quasi maximal
+ * (il revient à sa charge de travail), jamais quand il faudrait baisser de plus de 30 % (une nouvelle série, pas un
+ * complément) : 157,5 × 7 juste après 160 × 1 au RIR 0 était hors de portée.
+ */
+export function completionTarget(
+  short: TodaySet,
+  remainingReps: number,
+  attempt: boolean,
+  exercise: Exercise,
+  increment: number,
+  bodyweightKg: number | undefined
+): { weight: number; reps: number } | null {
+  if (attempt || remainingReps <= 0) return null;
+  const reserve = Math.max(0, Math.min(4, short.rir ?? 0));
+  // Poids du corps pur : pas de charge à baisser, seules les reps en réserve sont à portée.
+  if (exercise.setPatternMode === SPM.bodyweight) return reserve >= remainingReps ? { weight: short.weight, reps: remainingReps } : null;
+  const mode = loadModeOf(exercise);
+  const eff = (load: number) => effTotal(load, mode, bodyweightKg);
+  const inc = increment > 0 ? increment : 0.5;
+  const kgPerRep = Math.max(inc, ALGO_V2.REP_SLOPE_PCT * Math.max(1, eff(short.weight)));
+  const steps = Math.max(1, Math.ceil(((remainingReps - reserve) * kgPerRep) / inc - 1e-9));
+  const load = roundLoad(mode === "assisted_bodyweight" ? short.weight + steps * inc : short.weight - steps * inc);
+  if (load < -EPS) return null;
+  const reach = reserve + (eff(short.weight) - eff(load)) / kgPerRep;
+  const drop = (eff(short.weight) - eff(load)) / Math.max(EPS, eff(short.weight));
+  if (reach < remainingReps - 0.5 || drop > TARGET.COMPLETION_MAX_DROP + EPS) return null;
+  return { weight: load, reps: remainingReps };
 }
