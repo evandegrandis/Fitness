@@ -19,6 +19,11 @@ export const STREAK_SCENES: Record<number, StreakSceneDef> = {
   4: { load: () => import("./Streak4"), duration: 4000 },
   5: { load: () => import("./Streak5"), duration: 3500 },
   7: { load: () => import("./Streak7"), duration: 3700 },
+  6: { load: () => import("./Streak6"), duration: 3700 },
+  8: { load: () => import("./Streak8"), duration: 3800 },
+  9: { load: () => import("./Streak9"), duration: 4000 },
+  10: { load: () => import("./Streak10"), duration: 4200 },
+  11: { load: () => import("./Streak11"), duration: 4000 },
   0: { load: () => import("./StreakChain"), duration: 2700 },
   [-1]: { load: () => import("./StreakLegend"), duration: 4000 },
 };
