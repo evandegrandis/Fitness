@@ -6,6 +6,7 @@ import { useCareer } from "@/lib/hooks/use-career";
 import type { WorkoutSession } from "@/lib/models/types";
 import { GOLD, MetalText } from "./kit";
 import { nextStreakMilestone } from "./scenes/streak/milestones";
+import { preloadStreakScene } from "./scenes/streak/pick";
 import { celebrate, type CelebrationEvent } from "./store";
 import { streakContext } from "./streak-context";
 
@@ -14,7 +15,7 @@ const played = new Set<string>();
 
 /**
  * Point d'entrée unique du bilan (PostWorkoutSheet) : la série de S de la séance, et les scènes
- * plein écran qu'elle a méritées (série de S dès 2, puis chaque secret débloqué), jouées une fois,
+ * plein écran qu'elle a méritées (série de S dès 1, puis chaque secret débloqué), jouées une fois,
  * après la médaille du rang.
  */
 export function BilanCelebrations({ session }: { session: WorkoutSession }) {
@@ -25,7 +26,13 @@ export function BilanCelebrations({ session }: { session: WorkoutSession }) {
   useEffect(() => {
     if (!entry || played.has(session.id)) return;
     const events: CelebrationEvent[] = [];
-    if (entry.sStreak >= 2) events.push({ kind: "streak", count: entry.sStreak });
+    if (entry.sStreak >= 1) {
+      events.push({ kind: "streak", count: entry.sStreak });
+      // La scène de ce soir, et celle de la prochaine séance S : gardée par le service worker,
+      // elle jouera même sans réseau à la salle.
+      preloadStreakScene(entry.sStreak);
+      preloadStreakScene(entry.sStreak + 1);
+    }
     for (const unlock of entry.unlocks) {
       if (unlock.kind === "secret") events.push({ kind: "secret", id: unlock.id, title: unlock.title, description: unlock.description });
     }

@@ -1,13 +1,13 @@
-/** Paliers de la série de S qui ont chacun leur mise en scène (Evan, 07/10/2026). */
-export const STREAK_MILESTONES = [2, 3, 4, 5, 7, 10, 15, 20, 25] as const;
+/** Dernier compte qui a sa propre mise en scène (Evan, 11/10/2026 : une scène pour chaque S de 1 à 50). */
+export const LAST_DESIGNED_STREAK = 50;
 
-/** Un palier : 2, 3, 4, 5, 7, 10, puis tous les 5. */
+/** Un palier : chaque compte de 1 à 50, puis tous les 5. */
 export function isStreakMilestone(count: number): boolean {
-  return count >= 2 && ((STREAK_MILESTONES as readonly number[]).includes(count) || (count > 25 && count % 5 === 0));
+  return count >= 1 && (count <= LAST_DESIGNED_STREAK || count % 5 === 0);
 }
 
 /** Le prochain palier après `count`. */
 export function nextStreakMilestone(count: number): number {
-  const designed = STREAK_MILESTONES.find((milestone) => milestone > count);
-  return designed ?? (Math.floor(count / 5) + 1) * 5;
+  if (count < LAST_DESIGNED_STREAK) return Math.max(1, Math.floor(count) + 1);
+  return (Math.floor(count / 5) + 1) * 5;
 }

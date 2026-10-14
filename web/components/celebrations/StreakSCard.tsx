@@ -64,7 +64,7 @@ export function StreakSCard({ career }: { career: Career }) {
           </p>
         </div>
       </div>
-      {current >= 2 && (
+      {current >= 1 && (
         <button type="button" onClick={() => celebrate({ kind: "streak", count: current })} className="pill mt-3 !text-(--color-fg) active:scale-95">
           Revoir la mise en scène
         </button>

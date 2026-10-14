@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { Suspense, type ComponentType } from "react";
 import { RANK_COLORS } from "@/lib/theme/tiers";
 import { CREAM, GOLD } from "./kit";
 import type { CelebrationEvent } from "./store";
@@ -41,7 +41,16 @@ export function sceneEntry(event: CelebrationEvent): SceneEntry | null {
       const scene = streakScene(event.count);
       if (!scene) return null;
       const { Component, duration } = scene;
-      return { render: () => <Component count={event.count} />, duration, tap: true, label: `${event.count} rangs S d'affilée` };
+      return {
+        render: () => (
+          <Suspense fallback={null}>
+            <Component count={event.count} />
+          </Suspense>
+        ),
+        duration,
+        tap: true,
+        label: event.count === 1 ? "Premier rang S" : `${event.count} rangs S d'affilée`,
+      };
     }
     case "secret": {
       const scene = SECRET_SCENES[event.id];

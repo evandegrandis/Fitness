@@ -39,7 +39,7 @@ const FAKE_CAREER: Career = (() => {
   return { bySession, milestones: [], secrets: [], sStreak: { current: 3, best: 3 } };
 })();
 
-const STREAKS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15, 20, 25, 30, 35, 40];
+const STREAKS = [...Array.from({ length: 50 }, (_, index) => index + 1), 51, 55, 60];
 
 /**
  * Écran d'aperçu (développement) : chaque mise en scène d'un tap, et un simulateur de séance qui
