@@ -119,11 +119,13 @@ describe("cible construite sur la prévision", () => {
   });
 
   it("l'étirement est borné : loin sous la fourchette, la charge descend davantage", () => {
-    // Prévision 100 × 2 (fourchette 8-12, 7,5 kg par rep) : le bas de la fourchette est à portée de κ reps à 87,5 kg.
-    const t = chooseTarget({ predictedAt: proj(100, 2, 7.5), startLoad: 100, push: false, ceiling: null, today: [], margin: 0 }, exercise(), 2.5, undefined);
-    expect(t.weight).toBe(87.5);
+    // Prévision 100 × 2 (fourchette 8-12, 7,5 kg par rep) : la charge descend jusqu'à ce que le bas de la fourchette
+    // soit à portée de κ reps, pas plus bas.
+    const p = proj(100, 2, 7.5);
+    const t = chooseTarget({ predictedAt: p, startLoad: 100, push: false, ceiling: null, today: [], margin: 0 }, exercise(), 2.5, undefined);
     expect(t.reps).toBe(8);
     expect(t.reps - t.predictedReps).toBeLessThanOrEqual(TARGET.RANGE_STRETCH + 0.5);
+    expect(Math.round(p(t.weight + 2.5) + TARGET.RANGE_STRETCH)).toBeLessThan(8);
   });
 
   it("jamais plus lourd que le plafond : après 100 × 8 au RIR 0, pas 127,5 × 1", () => {

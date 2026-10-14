@@ -26,7 +26,7 @@
 
 import { ALGO_V2 } from "@/lib/engines/constants";
 import { effTotal, type LoadMode } from "@/lib/engines/predict";
-import { capacityLoad, lighterTargetMinReps } from "@/lib/engines/target-invariants";
+import { capacityLoad, lighterTargetMinReps, maxRepsAfterLastSet } from "@/lib/engines/target-invariants";
 import { setVersusSuggestion } from "@/lib/engines/versus";
 import { SetPatternMode as SPM, SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -343,14 +343,17 @@ export function chooseTarget(input: TargetChoiceInput, exercise: Exercise, incre
   const mode = loadModeOf(exercise);
   const eff = (load: number) => effTotal(load, mode, bodyweightKg);
   const shown = shownOneRepMax(input.today, exercise, bodyweightKg);
+  const lastRegular = [...input.today].reverse().find((s) => !s.continuation) ?? null;
+  const lastCapacity = lastRegular ? capacityLoad(exercise.setPatternMode, lastRegular.weight, bodyweightKg) : 0;
   const capAt = (load: number) => {
     const c = capacityLoad(exercise.setPatternMode, load, bodyweightKg);
-    if (!(c > 0)) return Number.POSITIVE_INFINITY;
+    // I9 : à charge égale ou plus lourde que la série juste faite au RIR 0-1, pas plus que ses reps + RIR.
+    const afterLast = maxRepsAfterLastSet(lastRegular, lastCapacity, c, increment);
+    if (!(c > 0)) return afterLast;
     let cap = shown === null ? Number.POSITIVE_INFINITY : Math.floor((30 * shown) / c - 31 + 1e-6);
     if (input.belowOneRepMax != null) cap = Math.min(cap, Math.ceil(30 * (input.belowOneRepMax / c - 1) - 1 - 1e-6) - 1);
-    return cap;
+    return Math.min(cap, afterLast);
   };
-  const lastRegular = [...input.today].reverse().find((s) => !s.continuation) ?? null;
   const lighterThanLast = (load: number) => lastRegular !== null && eff(load) < eff(lastRegular.weight) - EPS;
   /** Reps exigées par la cohérence : le bas de la fourchette, et plus léger que la dernière série, au moins ses reps. */
   const needed = (load: number) => Math.max(exercise.repTargetMin, lighterThanLast(load) ? lighterTargetMinReps(lastRegular!, exercise) : 0);

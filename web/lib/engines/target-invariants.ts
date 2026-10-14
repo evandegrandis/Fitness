@@ -54,7 +54,8 @@ export type InvariantCode =
   | "I5_pas_de_retour_apres_essai"
   | "I6_complement_hors_de_portee"
   | "I7_au_dela_charge_max"
-  | "I8_cible_vide";
+  | "I8_cible_vide"
+  | "I9_plus_que_la_serie_juste_faite";
 
 export interface Violation {
   code: InvariantCode;
@@ -115,6 +116,21 @@ export function isNearMaxAttempt(
  */
 export function lighterTargetMinReps(last: InvariantSet, exercise: Pick<InvariantExercise, "repTargetMax">): number {
   return Math.min(exercise.repTargetMax, last.reps - (last.rir !== null && last.rir <= 0 ? 1 : 0));
+}
+
+/**
+ * I9 : reps au plus qu'une cible peut demander à une charge (capacité `capacity`) après la série juste faite `last`, si
+ * elle a fini au RIR 0-1 : ses reps + RIR, à charge égale ou plus lourde. Une charge plus légère de moins d'une rep par
+ * la règle du moteur (7,5 % de la charge = 1 rep, au moins un cran) compte comme la même charge : elle ne rend pas une rep
+ * entière, donc 115 × 8 après 120 × 7 au RIR 0 n'est pas plus cohérent que 120 × 8 ; 110 × 8, si. Au-delà, pas de borne :
+ * quand il prend plus léger de plus de 5 % après une série au RIR 0-1, il dépasse ce que donne la règle 7,5 % une fois sur
+ * quatre (98 cas, 15/10/2026).
+ */
+export function maxRepsAfterLastSet(last: InvariantSet | null, lastCapacity: number, capacity: number, increment: number): number {
+  if (!last || last.rir === null || last.rir > 1) return Number.POSITIVE_INFINITY;
+  const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, lastCapacity));
+  if (capacity < lastCapacity - kgPerRep + EPS) return Number.POSITIVE_INFINITY;
+  return last.reps + Math.max(0, last.rir);
 }
 
 /** Reps au RIR 1 les plus hautes qu'une cible peut demander à `load` sans dépasser le 1RM `shown` (Epley). */
@@ -178,6 +194,17 @@ export function targetInvariantViolations(input: InvariantInput): Violation[] {
   // I3 — pas de remontée de charge après une série finie au RIR 0-1 en bas de fourchette ou en dessous.
   if (last && last.rir !== null && last.rir <= 1 && last.reps <= exercise.repTargetMin + 1 && eff(target.weight) > eff(last.weight) + EPS) {
     out.push({ code: "I3_remontee_apres_serie_dure", detail: `${set(target.weight, target.reps)} après ${set(last.weight, last.reps)} RIR ${last.rir}` });
+  }
+
+  // I9 — à charge égale ou plus lourde que la série qu'il vient de faire au RIR 0-1 (à moins d'une rep près), jamais plus de
+  // reps que ses reps + RIR (« 7 à l'échec à 120, puis 8 à 120 » : non). Série de référence : la dernière hors complément
+  // enchaîné (fait sans repos, il ne mesure pas ce qu'il fera après un repos). Aucune exception de repos : sur 146 séries
+  // faites à charge égale ou plus lourde après une série au RIR 0-1, il n'a dépassé ses reps + RIR que 3 fois (2 %),
+  // toutes entre 5 et 10 min.
+  // Pour une « série à finir », la série juste faite est le bout enchaîné qu'elle complète.
+  const justDone = completion ? today.at(-1) ?? null : last;
+  if (justDone && target.reps > maxRepsAfterLastSet(justDone, cap(justDone.weight), cap(target.weight), exercise.smallestIncrement)) {
+    out.push({ code: "I9_plus_que_la_serie_juste_faite", detail: `${set(target.weight, target.reps)} après ${set(justDone.weight, justDone.reps)} RIR ${justDone.rir}` });
   }
 
   // I4 — 1RM estimé de la cible (reps au RIR 1, donc reps + 1 jusqu'à l'échec) ≤ meilleur 1RM montré aujourd'hui. Hors

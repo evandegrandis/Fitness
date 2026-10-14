@@ -88,7 +88,7 @@ describe("le vérificateur reconnaît les incohérences du 13/10/2026", () => {
       today: today([140, 8, 0], [160, 1, 0]),
       target: { weight: 157.5, reps: 7, mode: "fallback_hypertrophy", reasonCodes: ["logical_set_completion"] },
     });
-    expect(codes(v)).toEqual(["I6_complement_hors_de_portee"]);
+    expect(codes(v)).toEqual(["I9_plus_que_la_serie_juste_faite", "I6_complement_hors_de_portee"]);
   });
 
   it("14 × 5 après 16 × 7 au RIR 0 (élévations latérales 8-12) : sous la fourchette, plus léger avec moins de reps", () => {
@@ -105,7 +105,46 @@ describe("le vérificateur reconnaît les incohérences du 13/10/2026", () => {
       exercise: press, usualLoad: 130, today: today([140, 8, 0]),
       target: { weight: 140, reps: 9, mode: "record_attempt", reasonCodes: [] },
     });
-    expect(codes(v)).toEqual(["I4_au_dessus_du_1rm_montre"]);
+    expect(codes(v)).toEqual(["I9_plus_que_la_serie_juste_faite", "I4_au_dessus_du_1rm_montre"]);
+  });
+
+  it("120 × 8 après 120 × 7 au RIR 0 : plus que ce qu'il vient de prouver, même sous le 1RM de la 1re série", () => {
+    const v = targetInvariantViolations({
+      exercise: press, usualLoad: 130,
+      today: today([140, 8, 0], [160, 1, 0], [120, 7, 0]),
+      target: { weight: 120, reps: 8, mode: "fallback_hypertrophy", reasonCodes: ["backoff_v2"] },
+    });
+    expect(codes(v)).toEqual(["I9_plus_que_la_serie_juste_faite"]);
+  });
+
+  it("115 × 8 après 120 × 7 au RIR 0 : 5 kg de moins ne rendent pas une rep entière ; 110 × 8 est cohérent", () => {
+    const after = (weight: number, reps: number) =>
+      codes(targetInvariantViolations({
+        exercise: press, usualLoad: 130, today: today([140, 8, 0], [120, 7, 0]),
+        target: { weight, reps, mode: "fallback_hypertrophy", reasonCodes: [] },
+      }));
+    expect(after(117.5, 8)).toEqual(["I9_plus_que_la_serie_juste_faite"]);
+    expect(after(115, 8)).toEqual(["I9_plus_que_la_serie_juste_faite"]);
+    expect(after(110, 8)).toEqual([]);
+  });
+
+  it("poids du corps : 0 × 11 après 0 × 8 au RIR 0, même après 0 × 11 au RIR 2 en 1re série", () => {
+    const pullups = exercise({ setPatternMode: "weighted_bodyweight", repTargetMin: 6, repTargetMax: 10, smallestIncrement: 1.25 });
+    const v = targetInvariantViolations({
+      exercise: pullups, usualLoad: 0, today: today([0, 11, 2], [0, 8, 0]),
+      target: { weight: 0, reps: 11, mode: "record_attempt", reasonCodes: ["bw_rep_v2_first_set"] },
+    });
+    expect(codes(v)).toContain("I9_plus_que_la_serie_juste_faite");
+  });
+
+  it("22/09 : 35 × 7 au RIR 0 puis 30 × 4 enchaînées : la série de référence est 35 × 7, la cible ne peut pas être 35 × 8", () => {
+    const triceps = exercise({ repTargetMin: 8, repTargetMax: 15 });
+    const v = targetInvariantViolations({
+      exercise: triceps, usualLoad: 35,
+      today: today([40, 6, 0], [35, 5, 1, true], [35, 10, 2], [35, 7, 0], [30, 4, 1, true]),
+      target: { weight: 35, reps: 8, mode: "fallback_hypertrophy", reasonCodes: ["backoff_v2"] },
+    });
+    expect(codes(v)).toEqual(["I9_plus_que_la_serie_juste_faite"]);
   });
 
   it("un essai quasi maximal : RIR ≤ 1, 4 reps au plus jusqu'à l'échec, plus lourd que les séries du jour", () => {
