@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { learnedRepDrop, pairsFromSets, REP_DROP, repDropPairs } from "@/lib/engines/rep-drop";
+import { learnedRepDrop, pairsFromSets, REP_DROP, repDropAfter, repDropPairs } from "@/lib/engines/rep-drop";
 import { reprojectSuggestionAtWeight, suggest } from "@/lib/engines/progression";
 import { suggestionReason, learnedDropText } from "@/lib/engines/suggestion-reason";
 import { SetType } from "@/lib/models/enums";
@@ -129,6 +129,30 @@ describe("perte de reps apprise", () => {
     for (let i = 0; i < 8; i++) history.push(session("curl", 1 + i, [[20, 12, 1], [20, 11, 1]]));
     const estimate = learnedRepDrop(exercise(), history, NOW);
     expect(estimate.exerciseMean!).toBeLessThan(1.6);
+  });
+});
+
+describe("perte proportionnelle aux reps de la série d'avant (15/10/2026)", () => {
+  it("il perd plus après une série longue qu'après une courte : la perte suit les reps de la série d'avant", () => {
+    // Il perd 3 reps après 13 (au RIR visé) et 1 après 7 : un taux d'environ 20 %, rétréci vers l'a priori.
+    const history = [session("curl", 60, [[20, 12, 1]])];
+    for (let i = 0; i < 10; i++) history.push(session("curl", 1 + i, [[20, 13, 1], [20, 10, 1], [24, 7, 1], [24, 5, 2]]));
+    const estimate = learnedRepDrop(exercise(), history, NOW);
+    expect(estimate.rate!).toBeGreaterThan(0.15);
+    expect(estimate.rate!).toBeLessThan(0.3);
+    const afterLong = learnedRepDrop(exercise(), history, NOW, 12).drop;
+    const afterShort = learnedRepDrop(exercise(), history, NOW, 6).drop;
+    expect(afterLong).toBeCloseTo(estimate.rate! * 12, 6);
+    expect(afterShort).toBeCloseTo(estimate.rate! * 6, 6);
+    expect(afterLong).toBeGreaterThan(afterShort + 1);
+    expect(repDropAfter(estimate, 8)).toBeCloseTo(estimate.rate! * 8, 6);
+  });
+
+  it("des paires parties d'une rep à l'échec (0 rep au RIR visé) ne produisent jamais une perte indéfinie", () => {
+    const history = [session("curl", 60, [[20, 12, 1]]), session("curl", 3, [[30, 1, 0], [30, 1, 0]])];
+    const estimate = learnedRepDrop(exercise(), history, NOW, 6);
+    expect(Number.isFinite(estimate.drop)).toBe(true);
+    expect(Number.isFinite(estimate.rate!)).toBe(true);
   });
 });
 
