@@ -1,68 +1,64 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Backdrop, Embers, GOLD, GOLD_HI, Glow, MetalText, SceneLayout, Shockwave } from "../../kit";
+import { Backdrop, GOLD, GOLD_HI, Glow, INK, MetalText, SceneLayout, Sparks } from "../../kit";
 import { StreakCaption } from "./caption";
 
-/** Feuilles le long d'un arc, de la base vers le haut (côté gauche ; le droit en miroir). */
-const LEAVES = Array.from({ length: 8 }, (_, index) => {
-  const t = index / 7;
-  const angle = Math.PI * (0.62 + 0.62 * t); // de bas-gauche vers le haut
-  const radius = 104;
-  return { x: 150 + Math.cos(angle) * radius, y: 158 - Math.sin(angle) * radius * -1, rotate: (angle * 180) / Math.PI + 90, delay: 0.35 + index * 0.11, scale: 1 - t * 0.35 };
-});
+/** Les cinq anneaux : bleu, noir (crème sur fond sombre), rouge en haut ; jaune, vert en bas. */
+const RINGS = [
+  { x: -78, y: -14, color: "#3d7fc4" },
+  { x: 0, y: -14, color: "#ece6d8" },
+  { x: 78, y: -14, color: "#d8504a" },
+  { x: -39, y: 22, color: "#e9b949" },
+  { x: 39, y: 22, color: "#4f9a5e" },
+];
+const R = 35;
 
-/** 5 · « Laurier » : la couronne de la statue se tresse feuille à feuille autour du 5. */
+/** Arc d'un anneau, de `from` à `to` degrés (0 = à droite, sens horaire). */
+function arc(x: number, y: number, from: number, to: number) {
+  const p = (deg: number) => `${(x + Math.cos((deg * Math.PI) / 180) * R).toFixed(2)} ${(y + Math.sin((deg * Math.PI) / 180) * R).toFixed(2)}`;
+  return `M${p(from)} A${R} ${R} 0 ${to - from > 180 ? 1 : 0} 1 ${p(to)}`;
+}
+
+/**
+ * 5 · « Anneaux » : les cinq anneaux olympiques se tracent l'un après l'autre puis s'entrelacent
+ * (chaque anneau du bas repasse par-dessus ceux du haut à un croisement, comme sur le drapeau).
+ */
 export default function Streak5({ count }: { count: number }) {
   return (
     <>
-      <Backdrop tint={GOLD} />
-      <SceneLayout caption={<StreakCaption count={count} sub="La couronne de laurier, comme la statue." accent={GOLD} delay={1.35} />}>
-        <Glow color={GOLD} size={280} delay={1.1} strength={45} />
-        <Embers count={22} color={GOLD_HI} delay={0.2} width={300} from={-210} rise={[-260, -420]} band={60} duration={[2.4, 3.2]} seed={5} />
-        <svg aria-hidden viewBox="0 0 300 300" className="absolute inset-0 overflow-visible">
-          {[1, -1].map((mirror) => (
-            <g key={mirror} transform={mirror < 0 ? "translate(300 0) scale(-1 1)" : undefined}>
-              <motion.path
-                d="M136 262 C 58 238, 34 150, 78 72"
-                fill="none"
-                stroke={GOLD}
-                strokeWidth="2"
-                strokeLinecap="round"
-                initial={{ pathLength: 0, opacity: 0 }}
-                animate={{ pathLength: 1, opacity: 1 }}
-                transition={{ delay: 0.2, duration: 1, ease: "easeOut" }}
-              />
-              {LEAVES.map((leaf, index) => (
-                <motion.path
-                  key={index}
-                  d="M0 0 C 7 -9, 7 -22, 0 -30 C -7 -22, -7 -9, 0 0Z"
-                  fill="url(#laurier)"
-                  stroke="rgba(251,238,196,0.6)"
-                  strokeWidth="0.6"
-                  style={{ x: leaf.x, y: leaf.y, rotate: leaf.rotate - (index % 2 ? 28 : -28) }}
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: leaf.scale, opacity: 1 }}
-                  transition={{ delay: leaf.delay, type: "spring", stiffness: 380, damping: 14 }}
-                />
-              ))}
+      <Backdrop tint={GOLD} veil={0.9} />
+      <SceneLayout caption={<StreakCaption count={count} sub="Cinq S, cinq anneaux." accent={GOLD} delay={1.7} />}>
+        <Glow color={GOLD} size={300} delay={1.3} strength={28} y={4} />
+        <svg aria-hidden viewBox="-150 -150 300 300" className="absolute inset-0 overflow-visible">
+          {RINGS.map((ring, index) => (
+            <g key={index}>
+              <motion.circle cx={ring.x} cy={ring.y} r={R} fill="none" stroke={INK} strokeWidth="11" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.15 + index * 0.2, duration: 0.55, ease: "easeInOut" }} />
+              <motion.circle cx={ring.x} cy={ring.y} r={R} fill="none" stroke={ring.color} strokeWidth="6.5" strokeLinecap="round" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ delay: 0.15 + index * 0.2, duration: 0.55, ease: "easeInOut" }} />
             </g>
           ))}
-          <defs>
-            <linearGradient id="laurier" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#fbeec4" />
-              <stop offset="1" stopColor="#a8823e" />
-            </linearGradient>
-          </defs>
+          {/* Entrelacs : le haut de chaque anneau du bas repasse au-dessus de ses voisins du haut. */}
+          {RINGS.slice(3).map((ring, index) => (
+            <motion.g key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2, duration: 0.2 }}>
+              <path d={arc(ring.x, ring.y, 200, 250)} fill="none" stroke={INK} strokeWidth="11" />
+              <path d={arc(ring.x, ring.y, 196, 254)} fill="none" stroke={ring.color} strokeWidth="6.5" />
+            </motion.g>
+          ))}
+          {RINGS.slice(0, 3).map((ring, index) => (
+            <motion.g key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2, duration: 0.2 }}>
+              <path d={arc(ring.x, ring.y, 20, 70)} fill="none" stroke={INK} strokeWidth="11" />
+              <path d={arc(ring.x, ring.y, 16, 74)} fill="none" stroke={ring.color} strokeWidth="6.5" />
+            </motion.g>
+          ))}
         </svg>
-        <div className="absolute inset-0 grid place-items-center">
-          <motion.div initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 1.15, type: "spring", stiffness: 260, damping: 14 }}>
-            <MetalText metal="or" style={{ fontSize: 120, lineHeight: 1, display: "block", transform: "translateY(4px)" }}>
-              {count}
-            </MetalText>
-          </motion.div>
-        </div>
-        <Shockwave color={GOLD_HI} delay={1.18} size={300} />
+        <motion.div className="absolute inset-0" initial={{ scale: 1 }} animate={{ scale: [1, 1.06, 1] }} transition={{ delay: 1.2, duration: 0.5 }}>
+          <Sparks count={26} color={GOLD_HI} delay={1.25} distance={[110, 190]} size={2.5} seed={55} />
+        </motion.div>
+        <motion.div className="absolute inset-x-0 top-[-6px] grid place-items-center" initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.35, duration: 0.5 }}>
+          <MetalText metal="or" style={{ fontSize: 72, lineHeight: 1, display: "block" }}>
+            {count}
+          </MetalText>
+        </motion.div>
       </SceneLayout>
     </>
   );

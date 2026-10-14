@@ -1,62 +1,73 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Backdrop, CREAM, Embers, GOLD, GOLD_HI, Glow, MetalText, Rays, SceneLayout, Shockwave } from "../../kit";
+import { motion, useReducedMotion } from "framer-motion";
+import { useMemo } from "react";
+import { Backdrop, CREAM, EMBER, GOLD, GOLD_HI, MetalText, SceneLayout, seeded } from "../../kit";
 import { StreakCaption } from "./caption";
 
-const COLUMNS = [62, 97, 132, 168, 203, 238];
+const TICK = 0.16;
+const LIFTOFF = 0.25 + TICK * 10;
 
-/** 10 · « Olympe » : le temple se bâtit (marches, colonnes, fronton) et le 10 s'y pose dans la lumière. */
+/** La fusée : corps crème, coiffe et ailerons d'or, hublot. */
+function Rocket() {
+  return (
+    <svg viewBox="-30 -80 60 150" width="60" height="150" aria-hidden>
+      <path d="M0 -78 C18 -56 20 -20 18 30 L-18 30 C-20 -20 -18 -56 0 -78Z" fill={CREAM} />
+      <path d="M0 -78 C10 -66 14 -54 15 -44 L-15 -44 C-14 -54 -10 -66 0 -78Z" fill={GOLD} />
+      <circle cx="0" cy="-18" r="7" fill="#1d2a4a" stroke={GOLD} strokeWidth="2.5" />
+      <path d="M-18 6 L-30 40 L-18 32Z M18 6 L30 40 L18 32Z" fill={GOLD} />
+      <rect x="-10" y="30" width="20" height="6" fill="#8f6a2c" />
+    </svg>
+  );
+}
+
+/**
+ * 10 · « Compte à rebours » : dix, neuf, huit… le compte part de la série elle-même. À zéro, mise
+ * à feu : la fumée s'étale sur le pas de tir, l'écran tremble, la fusée part et sort par le haut.
+ */
 export default function Streak10({ count }: { count: number }) {
+  const reduced = useReducedMotion();
+  const smoke = useMemo(() => {
+    const random = seeded(10);
+    return Array.from({ length: 22 }, (_, index) => ({ x: (random() - 0.5) * 60, to: (index % 2 ? 1 : -1) * (40 + random() * 170), up: -random() * 70, size: 40 + random() * 60, lag: random() * 0.4 }));
+  }, []);
   return (
     <>
-      <Backdrop tint={GOLD} />
-      <SceneLayout caption={<StreakCaption count={count} sub="Dix S d'affilée. Bienvenue sur l'Olympe." accent={GOLD} delay={1.9} />}>
-        <Rays count={24} color={GOLD_HI} delay={1.4} spin={18} duration={2.4} peak={0.45} y={-40} />
-        <Glow color={GOLD} size={320} delay={1} strength={50} y={10} />
-        <Embers count={30} color={GOLD_HI} delay={1.3} width={340} from={140} rise={[200, 380]} seed={10} />
-        <svg aria-hidden viewBox="0 0 300 300" className="absolute inset-0 overflow-visible">
-          {[0, 1, 2].map((step) => (
-            <motion.rect
-              key={step}
-              x={36 + step * 10}
-              y={268 - step * 9}
-              width={228 - step * 20}
-              height="8"
-              fill="#1d1a14"
-              stroke="rgba(236,230,216,0.55)"
-              strokeWidth="0.8"
-              initial={{ scaleX: 0, opacity: 0 }}
-              animate={{ scaleX: 1, opacity: 1 }}
-              transition={{ delay: step * 0.1, duration: 0.35 }}
-            />
-          ))}
-          {COLUMNS.map((x, index) => (
-            <motion.g key={x} style={{ transformOrigin: `${x}px 250px` }} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: 0.3 + index * 0.07, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}>
-              <rect x={x - 9} y="150" width="18" height="100" fill="url(#marbre)" />
-              {[-4, 0, 4].map((dx) => (
-                <line key={dx} x1={x + dx} y1="154" x2={x + dx} y2="246" stroke="rgba(7,7,8,0.25)" strokeWidth="0.8" />
-              ))}
-              <rect x={x - 12} y="144" width="24" height="6" fill={CREAM} opacity="0.8" />
-            </motion.g>
-          ))}
-          <motion.path d="M34 142 L150 84 L266 142 Z" fill="rgba(236,230,216,0.08)" stroke={CREAM} strokeWidth="1.4" strokeLinejoin="round" initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ delay: 0.85, duration: 0.6 }} />
-          <motion.rect x="34" y="138" width="232" height="6" fill={CREAM} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} style={{ transformOrigin: "150px 141px" }} transition={{ delay: 0.8, duration: 0.4 }} />
-          <defs>
-            <linearGradient id="marbre" x1="0" x2="1">
-              <stop offset="0" stopColor="#8f897c" />
-              <stop offset="0.45" stopColor="#f3eee3" />
-              <stop offset="1" stopColor="#9a9386" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <motion.div className="absolute inset-x-0 grid place-items-center" style={{ top: 98 }} initial={{ opacity: 0, y: -70, scale: 1.3 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 1.25, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}>
-          <MetalText metal="or" style={{ fontSize: 46, lineHeight: 1, display: "block" }}>
-            {count}
-          </MetalText>
-        </motion.div>
-        <Shockwave color={GOLD} delay={1.45} size={360} />
-      </SceneLayout>
+      <Backdrop tint={EMBER} veil={0.92} />
+      <motion.div className="absolute inset-0" animate={reduced ? undefined : { x: [0, 0, -3, 3, -2, 2, 0] }} transition={{ delay: LIFTOFF, duration: 0.9, times: [0, 0.05, 0.2, 0.4, 0.6, 0.8, 1] }}>
+        <SceneLayout caption={<StreakCaption count={count} sub="Dix, neuf, huit… décollage." accent={GOLD} delay={LIFTOFF + 0.6} />}>
+          {/* Le compte à rebours : chaque chiffre frappe puis s'efface. */}
+          {Array.from({ length: 10 }, (_, index) => {
+            const value = 10 - index;
+            return (
+              <motion.div key={value} className="absolute inset-x-0 top-6 grid place-items-center" initial={{ opacity: 0, scale: 1.4 }} animate={{ opacity: [0, 1, 0], scale: [1.4, 1, 0.9] }} transition={{ delay: 0.25 + index * TICK, duration: TICK * 1.6, times: [0, 0.2, 1] }}>
+                <MetalText metal={index === 0 ? "or" : "creme"} style={{ fontSize: index === 0 ? 96 : 76, lineHeight: 1, display: "block" }}>
+                  {value}
+                </MetalText>
+              </motion.div>
+            );
+          })}
+          {/* Pas de tir, puis la fusée qui part. */}
+          <div className="absolute inset-x-10 bottom-2 h-[3px] rounded-full" style={{ background: "#4a4438" }} />
+          <motion.div className="absolute bottom-[10px] left-1/2 -ml-[30px]" initial={{ y: 0 }} animate={{ y: [0, 2, -40, -1000] }} transition={{ delay: LIFTOFF - 0.1, duration: 1.4, times: [0, 0.1, 0.35, 1], ease: "easeIn" }}>
+            <motion.div className="absolute left-1/2 top-[146px] -ml-[9px] h-24 w-[18px] origin-top rounded-b-full" style={{ background: `linear-gradient(180deg, #fff, ${GOLD_HI} 25%, ${EMBER} 65%, transparent)` }} initial={{ scaleY: 0, opacity: 0 }} animate={{ scaleY: [0, 0.6, 1.2, 1], opacity: 1 }} transition={{ delay: LIFTOFF - 0.15, duration: 0.5 }} />
+            <Rocket />
+          </motion.div>
+          {!reduced &&
+            smoke.map((puff, index) => (
+              <motion.span
+                key={index}
+                aria-hidden
+                className="absolute bottom-0 left-1/2 rounded-full"
+                style={{ width: puff.size, height: puff.size, marginLeft: -puff.size / 2 + puff.x, marginBottom: -puff.size / 3, background: "radial-gradient(circle, rgba(236,230,216,0.55), rgba(236,230,216,0.12) 60%, transparent 70%)" }}
+                initial={{ x: 0, y: 0, scale: 0.2, opacity: 0 }}
+                animate={{ x: puff.to, y: puff.up, scale: [0.2, 1.4, 2], opacity: [0, 0.9, 0] }}
+                transition={{ delay: LIFTOFF + puff.lag * 0.6, duration: 2, ease: "easeOut" }}
+              />
+            ))}
+          <motion.div aria-hidden className="absolute inset-x-0 bottom-0 h-40" style={{ background: `radial-gradient(60% 100% at 50% 100%, color-mix(in srgb, ${GOLD_HI} 55%, transparent), transparent 70%)` }} initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0.2] }} transition={{ delay: LIFTOFF, duration: 1.4 }} />
+        </SceneLayout>
+      </motion.div>
     </>
   );
 }

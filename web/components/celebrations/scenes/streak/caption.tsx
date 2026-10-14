@@ -1,20 +1,51 @@
 "use client";
 
-import { Caption } from "../../kit";
-import { nextStreakMilestone } from "./milestones";
+import { Backdrop, Caption, GOLD, MetalText, SceneLayout } from "../../kit";
 
-const WORDS: Record<number, string> = { 2: "Deux", 3: "Trois", 4: "Quatre", 5: "Cinq", 7: "Sept", 10: "Dix", 15: "Quinze", 20: "Vingt", 25: "Vingt-cinq" };
+const UNITS = ["", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize"];
+const TENS: Record<number, string> = { 10: "dix", 20: "vingt", 30: "trente", 40: "quarante", 50: "cinquante", 60: "soixante" };
 
-/** Légende commune des scènes de série : « 5 S d'affilée » et la phrase de la scène. */
+/** Un nombre en toutes lettres, de 1 à 69 (au-delà : en chiffres). */
+export function frenchNumber(count: number): string {
+  if (count <= 16) return UNITS[count] ?? String(count);
+  if (count < 20) return `dix-${UNITS[count - 10]}`;
+  if (count >= 70) return String(count);
+  const tens = Math.floor(count / 10) * 10;
+  const unit = count % 10;
+  if (unit === 0) return TENS[tens];
+  return unit === 1 ? `${TENS[tens]} et un` : `${TENS[tens]}-${UNITS[unit]}`;
+}
+
+function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Légende commune des scènes de série : « Douze S d'affilée » et la phrase de la scène. */
 export function StreakCaption({ count, sub, accent, delay = 0.9 }: { count: number; sub?: string; accent: string; delay?: number }) {
   return (
     <Caption
       kicker="Série de S"
-      title={`${WORDS[count] ?? count} S d'affilée`}
-      sub={sub ?? `La série continue. Prochain palier : ${nextStreakMilestone(count)}.`}
+      title={count === 1 ? "Premier S" : `${capitalized(frenchNumber(count))} S d'affilée`}
+      sub={sub ?? "La série continue."}
       accent={accent}
       delay={delay}
     />
+  );
+}
+
+/** Repli quand la scène n'a pas pu être chargée (hors réseau) : le compte et sa légende. */
+export function StreakFallback({ count }: { count: number }) {
+  return (
+    <>
+      <Backdrop tint={GOLD} />
+      <SceneLayout caption={<StreakCaption count={count} accent={GOLD} delay={0.3} />}>
+        <div className="absolute inset-0 grid place-items-center">
+          <MetalText metal="or" style={{ fontSize: 120, lineHeight: 1 }}>
+            {count}
+          </MetalText>
+        </div>
+      </SceneLayout>
+    </>
   );
 }
 
