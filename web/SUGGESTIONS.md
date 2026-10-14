@@ -18,44 +18,37 @@ le meilleur de moi-même, constamment me dépasser en charges ou reps ». Le mot
   la Discipline jugent la meilleure série de chaque exercice contre la cible enregistrée sur sa 1re série
   (`storedFirstSuggestions`, `bilan.ts`) ; elle n'est recalculée que si elle manque (séances d'avant le 15/08).
 
-Charge de la cible : celle de la dernière série du même exercice (1re série : celle du moteur). Elle ne baisse pas pour
-revenir dans la fourchette ; elle ne décroche d'un ou deux crans que si la prévision à cette charge tombe sous
-`repTargetMin − 2,7`. Le seuil vient de son comportement réel : avant le 21/09, quand la prévision à la charge tenue
-passe sous `repTargetMin − 2,7`, il baisse lui-même la charge plus d'une fois sur deux (régression logistique sur 96
-séries 2+, point à 50 % : −2,69 [−4,7 ; −1,4] ; après le 21/09 : −2,56). Montées de charge du moteur (dépassement,
-promotion, série lourde), test de plateau et finishers : la cible est la prévision, inchangée.
+Charge et reps de la cible (refaites le 15/10/2026, section 7) : la cible doit être cohérente avec ce qu'il vient de
+faire, avant d'être juste. Elle part de la charge de la dernière série (1re série : celle du moteur ; montée du moteur
+gardée si elle reste cohérente ; juste après un essai quasi maximal : la charge de travail d'avant l'essai), ne monte
+jamais après une série finie au RIR 0-1 en bas de fourchette ou en dessous, ne demande jamais plus que le 1RM estimé
+qu'il a montré dans la séance, et se ramène dans la fourchette : quand la prévision à cette charge tombe sous le bas de
+la fourchette, la charge baisse d'un cran à la fois jusqu'à ce que le bas soit à portée de `TARGET.RANGE_STRETCH`
+(4) reps au-dessus de la prévision plus la marge, puis la cible le demande ; plus légère que la dernière série, elle en
+demande au moins les reps (une de moins après une série à l'échec). Après une série LOURDE (reps au RIR visé sous la
+fourchette, à au moins un cran au-dessus de sa charge de travail habituelle), elle part de la charge de retour (celle de
+la prévision, ou au moins 11 % plus léger) et n'y remonte pas. Juste après un essai, pas d'étirement : la cible garde la
+fatigue de l'essai. L'ancienne règle (garder la charge, décrocher d'un ou deux crans sous repMin − 2,7,
+plancher repMin − 3) laissait 39 % des cibles sous la fourchette et permettait 127,5 × 1 après 100 × 8.
 
-Plancher (12/10/2026) : une cible chargée ne propose jamais moins de `repTargetMin − 3` reps (« 80 × 2 » alors qu'il
-fait 75 × 8 ne pousse pas, il décrédibilise la cible). Si le décrochage d'un ou deux crans ne suffit pas, la cible prend
-la charge de la prévision (comme après une série lourde), puis descend d'un cran à la fois par la règle 7,5 % jusqu'au
-plancher. Le poids du corps (simple, lesté, assisté), les finishers et les compléments de série gardent leurs règles.
-Rejeu simulé depuis le 17/08 : 9 cibles sous le plancher avant, 0 après (80 × 2 devient 70 × 4, la prévision étant
-70 × 5) ; restent 3 compléments de série à 3 reps. Taux battus (`report.ts`) : 52 % en tout, 1re 52 %, 2e 50 %, 3e
-56 % inchangés, 4e et plus 50 → 52 %, retour plus léger 70 → 72 %. Écart de charge effective entre cible et série faite
-(séries 2+, 245) : médiane 5,0 % inchangée, moyenne 7,3 → 7,4 %.
-
-Après une série LOURDE, il redescend : la cible prend la charge de la prévision (retour ou amorce du moteur), ou au
-moins 11 % plus léger quand la prévision ne descend que d'un cran (sa baisse médiane après une série lourde, avant le
-21/09). Série lourde = reps au RIR visé sous la fourchette, à une charge d'au moins un cran au-dessus de sa charge de
-travail habituelle (médiane des 5 dernières séances). C'est la définition qui sépare le mieux ce qu'il fait : après une
-telle série, il redescend 63 % du temps avant le 21/09 (27 séries) et 74 % après (19), contre 25 % ailleurs ; les
-étiquettes « série lourde » du schéma série lourde + retours du moteur ne séparent rien (27 à 31 %).
-
-Reps de la cible : prévision à cette charge + marge d'ambition, pour qu'il la batte environ une fois sur deux (Atkinson,
-1957 : motivation maximale à probabilité de réussite intermédiaire ; Locke et Latham : un objectif difficile mais
-atteignable bat un objectif facile). « Battre » est la définition unique de l'app (`setVersusSuggestion`,
+Reps de la cible : prévision à cette charge + marge d'ambition, pour qu'il la batte un peu moins d'une fois sur deux
+(objectif 40 % depuis le 15/10/2026, « légèrement optimiste », section 7 ; avant : 50 %). Atkinson, 1957 : motivation
+maximale à probabilité de réussite intermédiaire ; Locke et Latham : un objectif difficile mais atteignable bat un
+objectif facile. « Battre » est la définition unique de l'app (`setVersusSuggestion`,
 `lib/engines/versus.ts`, section 4.3).
 La marge est apprise sur les séries enregistrées par un moteur à deux couches (prévision stockée contre reps faites),
 pondérées par l'âge (demi-vie 28 jours), par contexte (1re série, séries suivantes), rétrécie vers le global (poids 10)
 puis vers un a priori (poids 10 ; part battue avec une marge de −1, 0, 1, 2 reps : 0,64 / 0,45 / 0,25 / 0,11, mesurée
-avant le 21/09 sur 272 séries), bornée à [−1 ; 2] : une prévision juste n'est battue qu'environ 45 % du temps, la marge
-doit pouvoir descendre. Une boucle de long terme la corrige, par contexte, sur les cibles battues À LA CHARGE DE LA CIBLE
-(ailleurs, le verdict dépend de la charge choisie, pas des reps visées) : plus de 55 %, + 0,5 rep ; moins de 45 %, − 0,5.
+avant le 21/09 sur 272 séries), bornée à [−1 ; 2]. Sans historique, la marge vaut +0,25 rep (objectif 40 %). Une boucle
+de long terme la corrige, par contexte, sur les cibles battues À LA CHARGE DE LA CIBLE (ailleurs, le verdict dépend de la
+charge choisie, pas des reps visées) : au-delà de l'objectif + 5 points, + 0,5 rep ; en deçà de l'objectif − 5 points,
+− 0,5 (jusqu'au 15/10, 45-55 % codés en dur).
 Ni la courbe (reps faites contre prévision) ni la boucle (même charge) ne lisent le verdict d'une série faite à une autre
 charge : la règle du 12/10 (4.3) ne change aucune cible, rejouées série pour série (1 300 sur 1 300).
 
 Raison affichée : « Cible à battre : tu fais d'habitude 6 à 7 ici » (prévision au RIR visé, et une rep de plus à
-l'échec).
+l'échec) ; « Cible à battre : le bas de ta fourchette, tu fais d'habitude 6 à 7 ici » quand la fourchette relève la
+cible ; « Cible à battre après ton essai lourd : retour à ta charge de travail, … » juste après un essai.
 
 ## 1. Ce qu'on mesure
 
@@ -90,6 +83,14 @@ Méthode, pure, refaite depuis l'historique à chaque suggestion :
 4. **Exercice** : moyenne pondérée de ses paires, rétrécie vers l'a priori avec un poids de 4 paires (bayésien empirique,
    poids propre W / (W + 4)). Un nouvel exercice part de l'a priori.
 5. **Bornes** : [0,5 ; 4] reps.
+
+**Perte proportionnelle (15/10/2026).** À charge égale, il perd 2,9 reps après une série en haut de fourchette, 1,6 en
+bas, presque rien en dessous, contre 2,25 appris partout (rejeu du 15/10). La perte est maintenant un TAUX (reps
+perdues par rep de la série d'avant, au RIR visé), appris comme la perte (rapport des sommes pondérées, a priori = toutes
+les paires plus la constante de classe ramenée à une série de 10 reps, poids 5 ; exercice rétréci vers l'a priori,
+poids 4), borné à [0,03 ; 0,45] ; la perte d'une série = taux × ses reps au RIR visé (`learnedRepDrop(..., reps)`,
+`repDropAfter`). Étude par paires sans fuite : erreur 1,56 → 1,37 rep, 1,51 → 1,35 sur les paires d'après le 21/09 ;
+la forme a été suggérée par toute la période, les poids n'ont pas été réglés.
 
 Où elle sert : séries 2+ du chemin général (« garder la charge », « baisser d'un cran », montée après dépassement), séries
 de retour du schéma série lourde + retours, §5.3.4 de `predictReps`, et la charge max d'une machine. La constante de classe
@@ -290,4 +291,91 @@ TZ=Europe/Paris npx tsx scripts/suggestions-audit/jeu.ts ~/jeera-audit/export.js
 npx tsx scripts/suggestions-audit/rep-drops.ts ~/jeera-audit/export.json
 # Réglage : `replay.ts ... --set SHRINK_K=4 --set TARGET.HALF_LIFE_DAYS=28 --set ALGO_V2.CLE=v`, comparé sur une période
 # Cible : `replay.ts ... --simuler` (le moteur « en service depuis le début »), puis `report.ts ... --depuis 2026-08-17`
+# 6. Critères du moteur fiable (section 7) : prévision, cible, invariants, séance par séance ; `--au` pour régler
+npx tsx scripts/suggestions-audit/criteres.ts ~/jeera-audit/base-sim.jsonl ~/jeera-audit/nouveau-sim.jsonl --split 2026-09-21 --seance 2026-10-13 [--au 2026-09-21] [--json sortie.json]
+# 7. Invariants sur des séances tirées au hasard, jouées dans le store (400 par défaut ; 10 000 le 15/10 : zéro violation)
+SEEDS=10000 npx vitest run lib/engines/__tests__/target-invariants.test.ts
 ```
+
+## 7. Moteur fiable (15/10/2026) : critères, invariants, rejeu
+
+Demande d'Evan (14/10), après sa séance du 13/10 (127,5 × 1 proposé après 100 × 8, 157,5 × 7 « à finir » juste après un
+essai à 160 × 1, 14 × 5 après 16 × 7) : un moteur extrêmement fiable, légèrement optimiste, sans incohérence grossière,
+qui se sert de tout le contexte. Journal du chantier (critères écrits avant les itérations, chaque itération chiffrée,
+itérations rejetées) et rapport avant/après série par série : hors dépôt (données personnelles),
+`~/.local/share/barbis-dev/jeera-fiable-data/RAPPORT.md`.
+
+### 7.1 Les critères
+
+Rejeu simulé (`replay.ts --simuler`), séries de travail hors compléments, étalonnage et repli ; bootstrap par séance ;
+différences appariées ; Holm sur les contextes ; aucune conclusion sous 20 séries ou 8 séances ; réglages choisis sur les
+séances jusqu'au 21/09, vérifiés après (`criteres.ts`).
+
+- (a) Prévision à la charge choisie (reps au RIR 1 − prévues) : non-infériorité contre le moteur précédent, biais dans
+  [−0,3 ; +0,3], part à une rep près pas en baisse.
+- (b) Cible légèrement optimiste. Écart de cible = reps faites ramenées à la charge de la cible (règle 7,5 % de
+  `versus.ts`) − reps de la cible : moyen dans [−1 ; −0,2], médian dans [−1 ; 0] ; cibles battues (`versus.ts`, règle
+  d'Evan inchangée) dans [35 % ; 50 %] ; battues ou tenues ≥ 50 % ; moins de cibles à 3 reps ou plus de ce qu'il a fait ;
+  écart de charge cible / série faite pas en hausse. Avec un bruit de ±2,7 reps, une prévision juste est battue 45 % du
+  temps : « légèrement optimiste » = environ une demi-rep au-dessus de ce qu'il fera.
+- (c) Invariants (`lib/engines/target-invariants.ts`), ZÉRO violation sur tout le rejeu et en test de propriété
+  (`target-invariants.test.ts`, séances tirées au hasard jouées dans le store) :
+  - I1 cible chargée dans la fourchette (sauf test de plateau explicite, poids du corps, charge max, cran trop grossier,
+    plancher de charge) ;
+  - I2 plus légère que la dernière série ⇒ au moins ses reps (une de moins après une série à l'échec, au plus le haut de
+    la fourchette ; cède à I4 quand les deux ne tiennent pas ensemble) ;
+  - I3 jamais plus lourde après une série finie au RIR 0-1 avec reps ≤ repMin + 1 ;
+  - I4 1RM estimé (Epley, reps cible + 1) ≤ meilleur 1RM montré dans la séance (séries à RIR 0 à 3 ; une cible d'une rep
+    est le plancher) ;
+  - I5 juste après un essai quasi maximal (RIR ≤ 1, 4 reps au plus jusqu'à l'échec, plus lourd que les séries d'avant) :
+    charge de travail ou moins, 1RM strictement sous celui d'avant l'essai ;
+  - I6 « série à finir » jamais après un essai, jamais hors de portée en enchaînant (RIR + reps rendues par la baisse de
+    charge), jamais plus de 30 % plus légère (au-delà, c'est une nouvelle série ; il enchaîne à 15-25 % plus léger) ;
+  - ajoutés en lisant les cibles rejouées : I7 jamais au-delà de la charge max de la machine, I8 jamais de cible vide (Ab
+    roller : reps `NaN` par une division par zéro dans `empiricalBase`, corrigée).
+
+### 7.2 Ce qui a changé
+
+- `target.ts` : `chooseTarget` (charge par la fourchette sous plafonds de cohérence, étirement κ = 4, plafond de
+  capacité, retour après essai sans étirement, `ATTEMPT_COST` = 0,5 perte, a priori faute de cas), `completionTarget`,
+  objectif de la marge 40 %, boucle centrée sur l'objectif.
+- `rep-drop.ts` : perte proportionnelle aux reps de la série d'avant (section 2).
+- `progression.ts` : la couche cible lit les séries du jour (compléments compris), l'essai quasi maximal et la charge de
+  travail habituelle (`SetSuggestion.usualLoad`) ; `backoff_max_sets_reached` jamais plus lourd que la dernière série.
+- `store/workout.ts` : la « série à finir » passe par `completionTarget` (un cran plus léger et 8 − reps devenait 157,5 × 7
+  juste après 160 × 1).
+- `predict.ts` : plus de division par zéro au poids du corps sans incrément.
+- Version `web-v2.5-2026-10-15`.
+
+### 7.3 Résultat (rejeu simulé, 76 séances, mêmes séries que le moteur web-v2.4)
+
+| Critère | web-v2.4 | web-v2.5 | Après le 21/09 (hors réglage) |
+|---|---|---|---|
+| (a) Erreur de prévision (465 séries, 32 séances) | 1,96 [1,80 ; 2,11] | 1,89 [1,73 ; 2,05] | 1,97 → 1,78, −0,19 [−0,32 ; −0,07], p Holm 0,002 |
+| (a) Biais / part à une rep près | −0,03 / 45 % | −0,09 / 50 % | +0,17 → +0,16 / 42 → 50 % |
+| (b) Écart de cible moyen (467 séries) | +0,49 [+0,18 ; +0,79] | −0,21 [−0,45 ; +0,04] | +0,65 → −0,15 [−0,49 ; +0,21] |
+| (b) Cibles battues | 52 % [46 ; 57] | 41 % [37 ; 45] | 56 → 42 % |
+| (b) Battues ou tenues | 64 % | 57 % | 67 → 57 % |
+| (b) Cibles à 3 reps ou plus | 25 % | 19 % | 24 → 14 % |
+| (b) Écart de charge médian, séries 2+ | 5,0 % | 3,7 % | 4,3 → 3,9 % |
+| Cibles chargées sous la fourchette | 190 / 406 | 0 hors exceptions (6 : tests de plateau, compléments) | |
+| (c) Violations d'invariants (1 324 cibles) | 557 | 0 | |
+
+Par contexte : 1re série écart −0,23, battues 48 % ; séries suivantes −0,19, 36 % ; juste après un essai ou une série
+lourde (55 séries) −0,44, 31 %. Les cibles relevées par la fourchette (37 % des séries) le sont de 1,5 rep en moyenne
+au-dessus de la prévision mais ne ratent que de 0,37 rep (battues 32 %, battues ou tenues 50 %) : après une série dure,
+la prévision reste pessimiste et il fait mieux.
+
+Itérations rejetées (journal) : charge ramenée dans la fourchette sans étirement (écart de charge 20,6 %, 8 kg × 8 aux
+élévations latérales après 16 × 7) ; correction apprise par séries du même muscle faites avant (test 1,97 → 2,06) ; rang
+dans la séance (1,97 → 2,03). Piste non concluante : après plus de 14 jours d'arrêt, il fait 1,5 rep de plus que prévu
+(17 séries, sous le seuil).
+
+### 7.4 Limites
+
+- La forme de la perte proportionnelle et l'étirement viennent d'une lecture de toute la période ; seuls les réglages
+  numériques sont choisis avant le 21/09. Le gain de prévision n'apparaît qu'après le 21/09 (+0,02 avant).
+- L'objectif « légèrement optimiste » tient sur toutes les séries (−0,21) mais les 1res séries restent juste au bord
+  (écart −0,23, battues 48 %) et les séries suivantes plus optimistes (36 % battues).
+- Essais quasi maximaux : 7 dans l'historique, 4 suivis d'une vraie série. Leur coût (0,5 perte) est un a priori.
+- Le rejeu juge ses séries réelles, faites face à d'autres cibles : une cible qui le pousse peut changer ce qu'il fait.
