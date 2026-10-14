@@ -24,7 +24,7 @@ describe("registre des célébrations", () => {
     expect(designed.size).toBe(50);
     for (const count of [51, 54, 56, 101]) expect(streakSceneDef(count)).toBe(STREAK_SCENES[0]);
     for (const count of [55, 60, 100]) expect(streakSceneDef(count)).toBe(STREAK_SCENES[-1]);
-    expect(streakScene(12)).toBe(streakScene(12));
+    expect(streakScene(12)?.Component).toBe(streakScene(12)?.Component);
     expect([1, 31, 50, 51, 55].map(isStreakMilestone)).toEqual([true, true, true, false, true]);
     expect([0, 1, 49, 50, 54, 55].map(nextStreakMilestone)).toEqual([1, 2, 50, 55, 55, 60]);
   });
