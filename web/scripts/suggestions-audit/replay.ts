@@ -103,6 +103,9 @@ async function main() {
   const { physiologicalSetUnits } = await import("@/lib/engines/set-structure");
   const { collectExerciseHistory } = await import("@/lib/engines/patterns");
   const { recordCalibration, isCalibrating } = await import("@/lib/engines/records");
+  const targetModule = (await import("@/lib/engines/target" as string).catch(() => null)) as
+    | { usualWorkingLoad?: (h: unknown) => number | null }
+    | null;
   type AllData = import("@/lib/db/queries").AllData;
   type LoggedSet = import("@/lib/models/types").LoggedSet;
   type WorkoutSession = import("@/lib/models/types").WorkoutSession;
@@ -202,15 +205,18 @@ async function main() {
       const predictionAtActual = reprojectSuggestionAtWeight({ ...suggestion, ...prediction }, exercise, s.weight, bodyweight).reps;
       const ambition = (suggestion as { ambition?: { margin: number; beatRate: number | null; lowered: number } }).ambition ?? null;
       engineTargets.set(s.id, { weight: suggestion.weight, reps: suggestion.reps });
-      lines.push(JSON.stringify({
+      const line: Record<string, unknown> = {
         session_id: target.id, session_date: target.date.toISOString(), ts: at.toISOString(), synthetic_time: synthetic, idx,
         exercise_id: exercise.id, exercise: exercise.name, le_id: le.id, pattern_mode: exercise.setPatternMode,
         fatigue_class: exercise.fatigueClass, rep_min: exercise.repTargetMin, rep_max: exercise.repTargetMax, increment: exercise.smallestIncrement,
+        max_load: exercise.maxLoad ?? null, bw: bodyweight ?? null,
+        usual_load: (suggestion as { usualLoad?: number | null }).usualLoad !== undefined ? (suggestion as { usualLoad?: number | null }).usualLoad : targetModule?.usualWorkingLoad ? targetModule.usualWorkingLoad(collectExerciseHistory(state.history, exercise.id, 10, { skipFinisherOnlySessions: true }).sets) : null,
         set_id: s.id, set_type: s.setType, weight: s.weight, reps: s.reps, rir: s.reportedRir ?? null, stop_reason: s.stopReason ?? null,
         continuation: s.setTechnique != null || (s.logicalSetId != null && s.logicalSetId !== s.id),
         stored: s.suggestedWeight == null ? null : { weight: s.suggestedWeight, reps: s.suggestedReps ?? null, mode: s.suggestionMode ?? null, version: s.suggestionEngineVersion ?? null },
         engine: {
           weight: suggestion.weight, reps: suggestion.reps, mode: suggestion.mode, role: suggestion.role ?? null, reasons: suggestion.reasonCodes,
+          set_type: suggestion.setType ?? null,
           rep_drop: repDrop ? { drop: repDrop.drop, source: repDrop.source, pairs: repDrop.exercisePairs } : null,
           prediction, ambition,
           pred_at_actual: prediction.reps - (toEff - predFromEff) / predKgPerRep,
@@ -231,7 +237,7 @@ async function main() {
           since_previous_any_s: synthetic || previousAt === null ? null : (at.getTime() - previousAt) / 1000,
           learned_drop: repDropModule?.learnedRepDrop ? repDropModule.learnedRepDrop(exercise, state.history, at).drop : null,
         },
-      }));
+      };
       setNow(at);
       // En simulation, la série porte ce que CE moteur aurait affiché et enregistré (comme `SetEntry`).
       const logged = simulate && !isWarmup
@@ -242,6 +248,10 @@ async function main() {
             predictedRepsAtActualWeight: s.predictedRepsAtActualWeight, suggestionMode: s.suggestionMode, suggestionReasonCodes: s.suggestionReasonCodes,
             suggestionEngineVersion: s.suggestionEngineVersion };
       store.getState().logSet(le.id, { weight: s.weight, reps: s.reps, setType: s.setType, ...logged, reportedRir: s.reportedRir, stopReason: s.stopReason });
+      // Complément / drop-set tel que le store l'a décidé au log, c'est-à-dire ce que le moteur verra ensuite.
+      const replayed = orderedSets(store.getState().active!.exercises.find((x) => x.id === le.id)!).at(-1);
+      line.continuation_replayed = replayed ? replayed.setTechnique != null || (replayed.logicalSetId != null && replayed.logicalSetId !== replayed.id) : null;
+      lines.push(JSON.stringify(line));
       previousLe = le.id;
       previousAt = at.getTime();
     });
