@@ -72,8 +72,9 @@ import {
   type RepSample,
 } from "@/lib/engines/predict";
 import { setsForNormalPrediction } from "@/lib/engines/set-structure";
-import { classRepDrop, learnedRepDrop, type RepDropEstimate } from "@/lib/engines/rep-drop";
-import { ambitionMargin, heavyReturnLoad, isHeavySet, targetFromPrediction, usualWorkingLoad } from "@/lib/engines/target";
+import { classRepDrop, learnedRepDrop, repDropAfter, type RepDropEstimate } from "@/lib/engines/rep-drop";
+import { ambitionMargin, chooseTarget, heavyReturnLoad, isHeavySet, shownOneRepMax, TARGET, type TodaySet, usualWorkingLoad } from "@/lib/engines/target";
+import { isNearMaxAttempt } from "@/lib/engines/target-invariants";
 import { easierVariantName } from "@/lib/engines/variants";
 import { mostRecentPlateauWeakPoint, selectAlternative } from "@/lib/engines/variation-select";
 import { cleanWeight } from "@/lib/format";
@@ -106,7 +107,7 @@ const REP_DROP_DRIVEN_CODES = new Set([
 ]);
 
 /** Persisted with suggestion/actual snapshots so later model tuning can segment engine eras. */
-export const SUGGESTION_ENGINE_VERSION = "web-v2.4-2026-10-12";
+export const SUGGESTION_ENGINE_VERSION = "web-v2.5-2026-10-15";
 
 // ---------------------------------------------------------------------------
 // SetSuggestion
@@ -192,6 +193,8 @@ export interface SetSuggestion {
   prediction?: { weight: number; reps: number };
   /** Marge d'ambition appliquée, reps prévues à la charge de la cible, part récente de cibles battues. */
   ambition?: { margin: number; predictedReps: number; beatRate: number | null; lowered: number };
+  /** Charge de travail habituelle (médiane des 5 dernières séances) lue par la couche cible ; dérivée, jamais persistée. */
+  usualLoad?: number | null;
 }
 
 function makeSuggestion(
@@ -2017,7 +2020,8 @@ function suggestTopSetBackoffV2(
   };
 
   if (doneToday.length >= ALGO_V2.MAX_WORK_SETS_SUGGESTED) {
-    const load = Math.max(0, amorceAdj - increment);
+    // Comme toute série de retour, jamais plus lourde que la dernière série (127,5 × 1 après 100 × 8, 13/10/2026).
+    const load = Math.min(Math.max(0, amorceAdj - increment), lastDone.weight);
     return render(
       { load, reps: repsAtLoad(load), mode: SuggestionMode.fallbackHypertrophy, reasonCodes: ["backoff_max_sets_reached"] },
       0.5,
@@ -2437,7 +2441,8 @@ export function suggest(params: SuggestParams): SetSuggestion {
   const derived = deriveState(exercise, history, increment, effectiveGapDays);
   // Perte de reps d'une série à la suivante, apprise sur tout l'historique (`rep-drop.ts`) ; sans
   // historique fourni, la constante de la classe de fatigue (comportement d'origine).
-  const repDrop = learnedRepDrop(exercise, sessionHistory, now);
+  const lastDoneToday = doneToday[doneToday.length - 1];
+  const repDrop = learnedRepDrop(exercise, sessionHistory, now, lastDoneToday ? repsAtSuggestionRir(lastDoneToday) : undefined);
   const genericOpts: GenericOptions = { repDrop: repDrop.drop, bodyweightKg };
 
   const parent = primaryParent(exercise);
@@ -2698,44 +2703,99 @@ export function suggest(params: SuggestParams): SetSuggestion {
   }
 
   // Couche cible : ce que l'app affiche et enregistre est une cible à battre construite sur cette
-  // prévision (`target.ts`). Les finishers gardent leurs règles.
+  // prévision (`target.ts`), cohérente avec ce qu'il vient de faire (`target-invariants.ts`). Les finishers
+  // gardent leurs règles.
   if (target && result.setType !== ST.finisher) {
     const lastToday = doneToday[doneToday.length - 1];
     const mode = loadModeOf(exercise);
+    const eff = (load: number) => effTotal(load, mode, bodyweightKg);
+    const today: TodaySet[] = currentSessionSets
+      .filter((set) => set.completed && (set.setType === ST.work || set.setType === ST.topSet || set.setType === ST.backoff))
+      .map((set) => ({
+        weight: set.weight,
+        reps: set.reps,
+        rir: set.reportedRir ?? null,
+        continuation: set.setTechnique != null || (set.logicalSetId != null && set.logicalSetId !== set.id),
+      }));
+    const usual = usualWorkingLoad(history);
+    const regular = today.filter((set) => !set.continuation);
+    const lastRegular = regular.at(-1) ?? null;
+    const attempt =
+      lastRegular !== null && isNearMaxAttempt(lastRegular, today.slice(0, today.lastIndexOf(lastRegular)), exercise, usual, bodyweightKg);
     const push =
-      result.mode === SuggestionMode.plateauBreak ||
-      result.mode === SuggestionMode.transitionMode ||
-      (lastToday !== undefined &&
-        effTotal(result.weight, mode, bodyweightKg) > effTotal(lastToday.weight, mode, bodyweightKg) + 1e-9);
+      !attempt &&
+      (result.mode === SuggestionMode.plateauBreak ||
+        result.mode === SuggestionMode.transitionMode ||
+        (lastToday !== undefined && eff(result.weight) > eff(lastToday.weight) + 1e-9));
     const margin = ambitionMargin(sessionHistory, catalog, doneToday.length === 0, now);
-    // Après une série lourde, il redescend : la cible prend la charge de la prévision (retour ou amorce).
-    const heavy =
-      lastToday !== undefined &&
-      effTotal(result.weight, mode, bodyweightKg) < effTotal(lastToday.weight, mode, bodyweightKg) - 1e-9 &&
-      isHeavySet(repsAtSuggestionRir(lastToday), lastToday.weight, usualWorkingLoad(history), exercise, increment, bodyweightKg);
-    const returnLoad = heavy ? heavyReturnLoad(result.weight, lastToday!.weight, exercise, increment) : result.weight;
-    const anchor =
-      lastToday !== undefined && (heavy ? Math.abs(returnLoad - result.weight) > 1e-9 : Math.abs(result.weight - lastToday.weight) > 1e-9)
-        ? { load: lastToday.weight, reps: repsAtSuggestionRir(lastToday) - repDrop.drop }
-        : null;
-    const built = targetFromPrediction(
-      { weight: result.weight, reps: result.reps, push, anchor },
+    const projector = (base: { load: number; reps: number }) => {
+      const from = eff(base.load);
+      const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));
+      return (load: number) => base.reps + (from - eff(load)) / kgPerRep;
+    };
+    let predictedAt = projector({ load: result.weight, reps: result.reps });
+    let startLoad = result.weight;
+    let ceiling: number | null = null;
+    if (attempt) {
+      // Juste après un essai quasi maximal : retour à la charge de travail (dernière série d'avant l'essai, à
+      // défaut l'habitude), prévue depuis la série d'avant l'essai moins la perte apprise et la fatigue de l'essai
+      // (`TARGET.ATTEMPT_COST`) ; essai en 1re série : depuis la prévision fraîche du moteur.
+      const work = regular.length >= 2 ? regular[regular.length - 2] : null;
+      if (work) {
+        const workReps = work.reps + (work.rir === null ? 0 : Math.max(0, Math.min(4, Math.round(work.rir))) - SUGGESTION_TARGET_RIR);
+        predictedAt = projector({ load: work.weight, reps: workReps - repDropAfter(repDrop, workReps) * (1 + TARGET.ATTEMPT_COST) });
+        startLoad = work.weight;
+      } else {
+        const fresh = suggest({ ...params, currentSessionSets: [], target: false });
+        predictedAt = projector({ load: fresh.weight, reps: fresh.reps - repDropAfter(repDrop, fresh.reps) * TARGET.ATTEMPT_COST });
+        startLoad = usual !== null && eff(usual) < eff(fresh.weight) ? usual : fresh.weight;
+      }
+      ceiling = startLoad;
+    } else if (lastToday !== undefined) {
+      // Après une série lourde, il redescend : la cible part de la charge de la prévision (retour ou amorce).
+      const heavy =
+        eff(result.weight) < eff(lastToday.weight) - 1e-9 &&
+        isHeavySet(repsAtSuggestionRir(lastToday), lastToday.weight, usual, exercise, increment, bodyweightKg);
+      const returnLoad = heavy ? heavyReturnLoad(result.weight, lastToday.weight, exercise, increment) : result.weight;
+      if (heavy ? Math.abs(returnLoad - result.weight) > 1e-9 : Math.abs(result.weight - lastToday.weight) > 1e-9) {
+        predictedAt = projector({ load: lastToday.weight, reps: repsAtSuggestionRir(lastToday) - repDrop.drop });
+      }
+      startLoad = heavy ? returnLoad : push ? result.weight : lastToday.weight;
+      if (heavy) ceiling = returnLoad;
+    }
+    // Série finie au RIR 0-1 en bas de fourchette ou dessous : jamais plus lourd ensuite (127,5 après 100 × 8).
+    if (!attempt && lastRegular && lastRegular.rir !== null && lastRegular.rir <= 1 && lastRegular.reps <= exercise.repTargetMin + 1) {
+      ceiling = ceiling !== null && eff(ceiling) < eff(lastRegular.weight) ? ceiling : lastRegular.weight;
+    }
+    const built = chooseTarget(
+      {
+        predictedAt,
+        startLoad,
+        push,
+        explicitTestReps: push && result.mode === SuggestionMode.plateauBreak ? result.reps : null,
+        ceiling,
+        today,
+        margin: margin.margin,
+        stretch: attempt ? 0 : undefined,
+        belowOneRepMax: attempt ? shownOneRepMax(regular.slice(0, -1), exercise, bodyweightKg) : null,
+      },
       exercise,
-      heavy ? returnLoad : lastToday?.weight ?? null,
-      margin.margin,
       increment,
-      bodyweightKg,
-      !heavy
+      bodyweightKg
     );
+    const kept = push && built.codes.length === 0 && Math.abs(built.weight - result.weight) < 1e-9 && built.reps === result.reps;
     const modeLabel = MODE_LABEL_FR[result.mode] ?? result.mode.replace(/_/g, " ");
     result = {
       ...result,
       prediction: { weight: result.weight, reps: result.reps },
       weight: built.weight,
       reps: built.reps,
-      explanation: push ? result.explanation : `${modeLabel} · ${built.weight > 0 ? `${cleanWeight(built.weight)} kg` : "PDC"} × ${built.reps}`,
-      reasonCodes: push ? result.reasonCodes : ["target_to_beat", ...(built.floored ? ["target_rep_floor"] : []), ...result.reasonCodes],
-      ambition: { margin: push ? 0 : margin.margin, predictedReps: built.predictedReps, beatRate: margin.beatRate, lowered: built.lowered },
+      explanation: kept ? result.explanation : `${modeLabel} · ${built.weight > 0 ? `${cleanWeight(built.weight)} kg` : "PDC"} × ${built.reps}`,
+      reasonCodes: kept
+        ? result.reasonCodes
+        : ["target_to_beat", ...(attempt ? ["target_after_attempt"] : []), ...built.codes, ...result.reasonCodes],
+      ambition: { margin: kept ? 0 : margin.margin, predictedReps: built.predictedReps, beatRate: margin.beatRate, lowered: 0 },
+      usualLoad: usual,
     };
   }
 

@@ -146,7 +146,7 @@ export function empiricalBase(
     return { base: Math.ceil((ctx.repTargetMin + ctx.repTargetMax) / 2), fromDirectSamples: false };
   }
 
-  const kgPerRep = Math.max(ctx.increment, ALGO_V2.REP_SLOPE_PCT * effTotal(nearest.weight, ctx.mode, ctx.bodyweightKg));
+  const kgPerRep = Math.max(ctx.increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, effTotal(nearest.weight, ctx.mode, ctx.bodyweightKg)));
   const base = nearest.median - (effTotal(P, ctx.mode, ctx.bodyweightKg) - effTotal(nearest.weight, ctx.mode, ctx.bodyweightKg)) / kgPerRep;
   return { base, fromDirectSamples: false };
 }

@@ -47,12 +47,22 @@ export const REP_DROP = {
   OWN_EVIDENCE_MIN: 3,
   /** RIR visé par les suggestions (même cible que `progression.ts`). */
   TARGET_RIR: 1,
+  /**
+   * Reps de référence pour convertir la constante de classe en taux (perte par rep de la série d'avant) dans l'a
+   * priori proportionnel : une série de travail de 8 à 12 reps.
+   */
+  RATE_REFERENCE_REPS: 10,
+  /** Bornes du taux de perte (part des reps de la série d'avant perdues à la suivante). */
+  RATE_MIN: 0.03,
+  RATE_MAX: 0.45,
 };
 
 export interface RepDropPair {
   exerciseId: string;
   at: Date;
   drop: number;
+  /** Reps de la 1re série de la paire, au RIR visé. */
+  reps: number;
 }
 
 export interface RepDropEstimate {
@@ -70,6 +80,11 @@ export interface RepDropEstimate {
   prior: number;
   /** Constante d'origine de la classe de fatigue. */
   classDrop: number;
+  /**
+   * Taux de perte appris (reps perdues par rep de la série d'avant), null sans paire. Quand `learnedRepDrop` reçoit
+   * les reps de la série d'avant, `drop` = taux × ces reps.
+   */
+  rate: number | null;
 }
 
 const NORMAL = new Set<string>([SetType.work, SetType.topSet, SetType.backoff]);
@@ -101,7 +116,7 @@ export function pairsFromSets(sets: readonly LoggedSet[], exerciseId: string): R
     const ra = repsAtTargetRir(a);
     const rb = repsAtTargetRir(b);
     if (ra === null || rb === null) continue;
-    pairs.push({ exerciseId, at: b.timestamp, drop: Math.max(REP_DROP.PAIR_MIN, Math.min(REP_DROP.PAIR_MAX, ra - rb)) });
+    pairs.push({ exerciseId, at: b.timestamp, drop: Math.max(REP_DROP.PAIR_MIN, Math.min(REP_DROP.PAIR_MAX, ra - rb)), reps: ra });
   }
   return pairs;
 }
@@ -140,7 +155,7 @@ function weight(pair: RepDropPair, now: Date): number {
 /** La constante d'origine, telle que le moteur l'utilisait avant la perte apprise. */
 export function classRepDrop(exercise: Pick<Exercise, "fatigueClass">): RepDropEstimate {
   const classDrop = FATIGUE_CLASS_PROPERTIES[exercise.fatigueClass].baseRepDrop;
-  return { drop: classDrop, source: "class", exercisePairs: 0, exerciseWeight: 0, exerciseMean: null, prior: classDrop, classDrop };
+  return { drop: classDrop, source: "class", exercisePairs: 0, exerciseWeight: 0, exerciseMean: null, prior: classDrop, classDrop, rate: null };
 }
 
 /**
@@ -150,37 +165,65 @@ export function classRepDrop(exercise: Pick<Exercise, "fatigueClass">): RepDropE
 export function learnedRepDrop(
   exercise: Pick<Exercise, "id" | "fatigueClass">,
   history: readonly WorkoutSession[] | undefined,
-  now: Date
+  now: Date,
+  /**
+   * Reps au RIR visé de la série d'avant. La perte est proportionnelle aux reps (audit du 15/10/2026 : à charge
+   * égale, il perd 2,9 reps après une série en haut de fourchette, 1,6 en bas, presque rien en dessous ; erreur sur
+   * les paires d'après le 21/09 1,51 → 1,35 contre une perte constante). Sans elle, la perte moyenne (additive).
+   */
+  referenceReps?: number
 ): RepDropEstimate {
   const base = classRepDrop(exercise);
   if (!history || history.length === 0) return base;
   const pairs = repDropPairs(history).filter((pair) => pair.at.getTime() <= now.getTime());
   if (pairs.length === 0) return base;
-
   let total = 0;
   let totalSum = 0;
+  let totalReps = 0;
   let own = 0;
   let ownSum = 0;
+  let ownReps = 0;
   let ownCount = 0;
   for (const pair of pairs) {
     const w = weight(pair, now);
     total += w;
     totalSum += w * pair.drop;
+    totalReps += w * pair.reps;
     if (pair.exerciseId === exercise.id) {
       own += w;
       ownSum += w * pair.drop;
+      ownReps += w * pair.reps;
       ownCount += 1;
     }
   }
   const prior = (totalSum + REP_DROP.PRIOR_K * base.classDrop) / (total + REP_DROP.PRIOR_K);
   const estimate = (ownSum + REP_DROP.SHRINK_K * prior) / (own + REP_DROP.SHRINK_K);
+  // Même rétrécissement, sur le taux (rapport des sommes, robuste aux séries courtes) : a priori = toutes les paires
+  // plus la constante de classe ramenée à une série de 10 reps ; exercice = ses paires plus K paires de l'a priori.
+  const R0 = REP_DROP.RATE_REFERENCE_REPS;
+  const priorRate = (totalSum + REP_DROP.PRIOR_K * base.classDrop) / (totalReps + REP_DROP.PRIOR_K * R0);
+  // Des paires parties de 0 rep au RIR visé (1 rep à l'échec) ne donnent aucune base : la série typique les remplace.
+  const ownMeanReps = ownReps > 0 ? ownReps / own : R0;
+  const rawRate = (ownSum + REP_DROP.SHRINK_K * priorRate * ownMeanReps) / (ownReps + REP_DROP.SHRINK_K * ownMeanReps);
+  const rate = Math.max(REP_DROP.RATE_MIN, Math.min(REP_DROP.RATE_MAX, Number.isFinite(rawRate) ? rawRate : base.classDrop / R0));
+  const drop =
+    referenceReps !== undefined && Number.isFinite(referenceReps)
+      ? Math.max(0, Math.min(REP_DROP.MAX, rate * Math.max(0, referenceReps)))
+      : Math.max(REP_DROP.MIN, Math.min(REP_DROP.MAX, estimate));
   return {
-    drop: Math.max(REP_DROP.MIN, Math.min(REP_DROP.MAX, estimate)),
+    drop,
     source: own >= REP_DROP.OWN_EVIDENCE_MIN ? "exercise" : "prior",
     exercisePairs: ownCount,
     exerciseWeight: own,
     exerciseMean: own > 0 ? ownSum / own : null,
     prior,
     classDrop: base.classDrop,
+    rate,
   };
+}
+
+/** Perte prévue après une série de `referenceReps` reps (au RIR visé), selon le taux appris, sinon la perte moyenne. */
+export function repDropAfter(estimate: RepDropEstimate, referenceReps: number): number {
+  if (estimate.rate === null) return estimate.drop;
+  return Math.max(0, Math.min(REP_DROP.MAX, estimate.rate * Math.max(0, referenceReps)));
 }

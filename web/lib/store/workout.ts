@@ -34,6 +34,9 @@ import {
   type SuggestParams,
 } from "@/lib/engines/progression";
 import { collectExerciseHistory } from "@/lib/engines/patterns";
+import { completionTarget } from "@/lib/engines/target";
+import { nextGridLoad, snapToGrid } from "@/lib/engines/load-grid";
+import { isNearMaxAttempt } from "@/lib/engines/target-invariants";
 import {
   compositeSetBlocks,
   immediateCompositeKind,
@@ -566,10 +569,15 @@ export function recentWorkSetsForExercise(history: WorkoutSession[], exerciseId:
  * PROPOSER : voir `pendingFinisherPrompt` / `confirmFinisherPrompt`.
  */
 
-/** Proposition immédiate pour compléter un mini-set jusqu'au seuil effectif de 8 reps. */
+/**
+ * Proposition immédiate pour compléter un mini-set jusqu'au seuil effectif de 8 reps, quand ces reps restent à portée
+ * en enchaînant (`completionTarget`, `target.ts`) ; jamais juste après un essai quasi maximal.
+ */
 function compositeCompletionSuggestion(
   loggedExercise: LoggedExercise,
-  exercise: Exercise
+  exercise: Exercise,
+  usualLoad: number | null,
+  bodyweightKg: number | undefined
 ): SetSuggestion | null {
   const normalSets = completedWorkSets(loggedExercise);
   const last = normalSets.at(-1);
@@ -590,16 +598,27 @@ function compositeCompletionSuggestion(
     return null;
   }
 
-  const increment = Math.max(0.5, exercise.smallestIncrement);
-  const easierWeight = last.weight === 0
-    ? 0
-    : stepLoad(last.weight, increment, exercise.setPatternMode, false);
+  const today = normalSets.map((set) => ({
+    weight: set.weight,
+    reps: set.reps,
+    rir: set.reportedRir ?? null,
+    continuation: set.setTechnique != null || (set.logicalSetId != null && set.logicalSetId !== set.id),
+  }));
+  const short = today[today.length - 1];
+  // L'essai se lit sur la tête du bloc : un enchaînement juste après un essai n'est pas une série à finir.
+  const lead = [...today].reverse().find((set) => !set.continuation) ?? null;
+  // Un enchaînement plus lourd que la tête du bloc n'est pas une série à finir (jamais plus lourd après elle).
+  if (lead !== null && short !== lead && effectiveLoad(short.weight, exercise.setPatternMode) > effectiveLoad(lead.weight, exercise.setPatternMode) + 1e-9) return null;
+  const attempt =
+    lead !== null && isNearMaxAttempt(lead, today.slice(0, today.lastIndexOf(lead)), exercise, usualLoad, bodyweightKg);
   const remainingReps = Math.max(1, SET_STRUCTURE.EFFECTIVE_REPS_PER_SET - repsAlreadyDone);
+  const completion = completionTarget(short, remainingReps, attempt, exercise, Math.max(0.5, exercise.smallestIncrement), bodyweightKg);
+  if (!completion) return null;
   return {
-    weight: Math.round(easierWeight * 100) / 100,
-    reps: remainingReps,
+    weight: completion.weight,
+    reps: completion.reps,
     setType: SetType.work,
-    explanation: `Série courte : complète-la avec ${remainingReps} rep${remainingReps > 1 ? "s" : ""}${last.weight > 0 ? " à la charge inférieure" : ""} pour former exactement 1 série effective.`,
+    explanation: `Série courte : complète-la avec ${completion.reps} rep${completion.reps > 1 ? "s" : ""}${last.weight > 0 ? ` à ${cleanWeight(completion.weight)} kg` : ""} pour former exactement 1 série effective.`,
     confidence: 0.94,
     reasonCodes: ["logical_set_completion"],
     mode: "fallback_hypertrophy",
@@ -2439,7 +2458,12 @@ export const useWorkoutStore = create<WorkoutState>()(
           // Ce que l'app affiche est une cible à battre construite sur la prévision (`target.ts`, Evan, 11/10/2026).
           target: true,
         };
-        let result = compositeCompletionSuggestion(loggedExercise, exercise) ?? suggest(params);
+        const engineSuggestion = suggest(params);
+        let result =
+          (() => {
+            const completion = compositeCompletionSuggestion(loggedExercise, exercise, engineSuggestion.usualLoad ?? null, params.bodyweightKg);
+            return completion ? { ...completion, usualLoad: engineSuggestion.usualLoad } : null;
+          })() ?? engineSuggestion;
 
         // Première séance sur cette machine (aucun historique, même converti) : partir de la série
         // de tête de l'équivalente utilisée récemment plutôt que de 20 kg par défaut. Sans facteur
@@ -2447,9 +2471,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (recentContext.sets.length === 0 && currentSessionSets.length === 0 && result.weight > 0) {
           const start = startingPointFromEquivalent(exercise, state.catalog, state.history, new Date());
           if (start) {
-            const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 2.5;
-            const rounded = Math.max(increment, Math.round(start.set.weight / increment) * increment);
-            const weight = exercise.maxLoad && exercise.maxLoad > 0 ? Math.min(rounded, exercise.maxLoad) : rounded;
+            // Sur la grille de la machine (pas et décalage de l'exercice, charge max comprise), jamais à vide.
+            const snapped = snapToGrid(start.set.weight, exercise, "nearest");
+            const weight = snapped > 0 ? snapped : nextGridLoad(0, exercise, true);
             const reps = Math.min(exercise.repTargetMax, Math.max(exercise.repTargetMin, start.set.reps));
             result = {
               ...result,
@@ -2494,7 +2518,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           const bumpedReps = result.mode === "plateau_break" ? result.reps : Math.max(exercise.repTargetMin, result.reps - 1);
           result = {
             ...result,
-            weight: stepLoad(result.weight, bump, exercise.setPatternMode, true),
+            weight: snapToGrid(stepLoad(result.weight, bump, exercise.setPatternMode, true), exercise, exercise.setPatternMode === "assisted_bodyweight" ? "down" : "up"),
             reps: bumpedReps,
             explanation: `Beast mode: ${result.explanation}`,
             reasonCodes: [...result.reasonCodes, "beast_mode_weight_bias"],
@@ -2523,10 +2547,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         const workingSuggestion = get().suggestion(loggedExerciseId);
         if (workingSuggestion.weight < 40) return null;
 
-        const inc = exercise.smallestIncrement;
         const workWeight = workingSuggestion.weight;
-        const rawWarmup = Math.round((workWeight * 0.6) / inc) * inc;
-        const warmupWeight = Math.max(20, Math.min(rawWarmup, workWeight - inc));
+        // Sur la grille de la machine, au moins 20 kg, jamais la charge de travail elle-même.
+        const below = nextGridLoad(workWeight, exercise, false);
+        const warmupWeight = Math.min(snapToGrid(Math.max(20, workWeight * 0.6), exercise, "nearest"), below);
 
         return {
           weight: warmupWeight,
