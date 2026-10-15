@@ -34,6 +34,8 @@ import {
   type SuggestParams,
 } from "@/lib/engines/progression";
 import { collectExerciseHistory } from "@/lib/engines/patterns";
+import { habitualSupersetPairs } from "@/lib/engines/superset-habits";
+import { autoLinkHabitualPairs, autoLinkMessage, pairKeysBrokenByDetach } from "@/lib/store/superset-auto-link";
 import { completionTarget } from "@/lib/engines/target";
 import { nextGridLoad, snapToGrid } from "@/lib/engines/load-grid";
 import { isNearMaxAttempt } from "@/lib/engines/target-invariants";
@@ -106,6 +108,8 @@ export interface UndoState {
   message: string;
   /** Séance à restaurer si l'utilisateur annule l'action. */
   snapshot: WorkoutSession;
+  /** Supersets liés d'office que « Annuler » défait : ils ne se relient plus dans la séance. */
+  declinePairs?: string[];
 }
 
 /**
@@ -176,6 +180,11 @@ export interface WorkoutState extends ReferenceData {
   rest: RestState | null;
   undo: UndoState | null;
   achievement: AchievementState | null;
+  /**
+   * Paires de supersets habituels (`superset-habits.ts`) qu'Evan a défaites dans la séance en cours :
+   * elles ne se relient plus d'office avant la séance suivante. Clés de `supersetPairKey`.
+   */
+  supersetAutoLinkDeclined: { sessionId: string; pairs: string[] } | null;
 
   /**
    * Finisher proposé pour la dernière série loggée, `null` s'il n'y a rien à demander.
@@ -1326,6 +1335,40 @@ function applyModeOverlay(session: WorkoutSession, mode: WorkoutMode, ref: Refer
 // Store
 // ---------------------------------------------------------------------------
 
+/**
+ * Supersets qu'Evan forme d'habitude, liés d'office dès que les deux exercices sont dans la séance
+ * (`lib/engines/superset-habits.ts`, 16/10/2026). Le toast « Annuler » défait le lien et le retient
+ * pour la séance (`declinePairs`), comme le bouton de la carte.
+ */
+function linkHabitualSupersets(
+  state: Pick<WorkoutState, "history" | "supersetAutoLinkDeclined">,
+  session: WorkoutSession,
+  addedLoggedExerciseId?: string
+): { session: WorkoutSession; undo: UndoState | null } {
+  const declined = new Set(
+    state.supersetAutoLinkDeclined?.sessionId === session.id ? state.supersetAutoLinkDeclined.pairs : []
+  );
+  const result = autoLinkHabitualPairs(session, habitualSupersetPairs(state.history, new Date()), declined, newId);
+  if (result.linked.length === 0) return { session, undo: null };
+  return {
+    session: result.session,
+    undo: {
+      message: autoLinkMessage(result.linked, addedLoggedExerciseId),
+      snapshot: session,
+      declinePairs: result.linked.map((pair) => pair.key),
+    },
+  };
+}
+
+function withDeclinedPairs(
+  state: Pick<WorkoutState, "supersetAutoLinkDeclined">,
+  sessionId: string,
+  keys: readonly string[]
+): { sessionId: string; pairs: string[] } {
+  const previous = state.supersetAutoLinkDeclined?.sessionId === sessionId ? state.supersetAutoLinkDeclined.pairs : [];
+  return { sessionId, pairs: [...new Set([...previous, ...keys])] };
+}
+
 export const useWorkoutStore = create<WorkoutState>()(
   persist(
     (set, get) => ({
@@ -1344,6 +1387,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       rest: null,
       undo: null,
       achievement: null,
+      supersetAutoLinkDeclined: null,
       pendingFinisherPrompt: null,
       finisherPromptDeclined: [],
       levelUp: null,
@@ -1402,7 +1446,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
+        const habitualLinks = linkHabitualSupersets(state, session);
+        session = habitualLinks.session;
         set({
+          ...(habitualLinks.undo ? { undo: habitualLinks.undo } : {}),
           active: session,
           activeMode: resolvedMode,
           recordsCache: {},
@@ -1429,7 +1476,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
+        const habitualLinks = linkHabitualSupersets(state, session);
+        session = habitualLinks.session;
         set({
+          ...(habitualLinks.undo ? { undo: habitualLinks.undo } : {}),
           active: session,
           activeMode: resolvedMode,
           recordsCache: {},
@@ -1485,7 +1535,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
+        const habitualLinks = linkHabitualSupersets(state, session);
+        session = habitualLinks.session;
         set({
+          ...(habitualLinks.undo ? { undo: habitualLinks.undo } : {}),
           active: session,
           activeMode: resolvedMode,
           recordsCache: {},
@@ -1511,7 +1564,10 @@ export const useWorkoutStore = create<WorkoutState>()(
         session = resolveSessionEquivalents(session, state.catalog, state.history);
         const { session: switched, consumedIds } = applyPendingVariantSwitches(session, state.catalog, state.pendingVariantSwitches);
         session = switched;
+        const habitualLinks = linkHabitualSupersets(state, session);
+        session = habitualLinks.session;
         set({
+          ...(habitualLinks.undo ? { undo: habitualLinks.undo } : {}),
           active: session,
           activeMode: resolvedMode,
           recordsCache: {},
@@ -1690,7 +1746,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         const orderIndex = state.active.exercises.reduce((max, e) => Math.max(max, e.orderIndex), -1) + 1;
         const logged = makeLoggedExercise(exercise, orderIndex);
         const appended = { ...state.active, exercises: [...state.active.exercises, logged] };
-        set({ active: applyReorderAfterValidate(appended, logged.id) });
+        // Ajouter un exercice qu'il enchaîne d'habitude avec un autre déjà là forme le superset.
+        const habitualLinks = linkHabitualSupersets(state, applyReorderAfterValidate(appended, logged.id), logged.id);
+        set({ active: habitualLinks.session, ...(habitualLinks.undo ? { undo: habitualLinks.undo } : {}) });
       },
 
       replaceExercise: (loggedExerciseId, newExerciseId) => {
@@ -1700,20 +1758,25 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!newExercise) return;
         const replaced = state.active.exercises.find((e) => e.id === loggedExerciseId);
         if (!replaced) return;
+        const withReplacement: WorkoutSession = {
+          ...state.active,
+          exercises: state.active.exercises.map((e) =>
+            e.id === loggedExerciseId
+              ? { ...e, exerciseId: newExercise.id, exerciseName: newExercise.name, sets: [], plateauWeakPoint: null }
+              : e
+          ),
+        };
+        const habitualLinks = linkHabitualSupersets(state, withReplacement, loggedExerciseId);
         set({
           // Les séries faites partent avec l'ancien exercice : sans filet, un mauvais choix dans le
           // sélecteur les effaçait pour de bon. Rien à annuler quand l'exercice était encore vide.
+          // Ce filet-là prime sur celui d'un superset habituel (qui se défait aussi par la carte).
           ...(replaced.sets.length > 0
             ? { undo: { message: `${replaced.exerciseName} remplacé`, snapshot: state.active } }
-            : {}),
-          active: {
-            ...state.active,
-            exercises: state.active.exercises.map((e) =>
-              e.id === loggedExerciseId
-                ? { ...e, exerciseId: newExercise.id, exerciseName: newExercise.name, sets: [], plateauWeakPoint: null }
-                : e
-            ),
-          },
+            : habitualLinks.undo
+              ? { undo: habitualLinks.undo }
+              : {}),
+          active: habitualLinks.session,
         });
       },
 
@@ -1774,14 +1837,25 @@ export const useWorkoutStore = create<WorkoutState>()(
       handleSupersetLink: (loggedExerciseId) => {
         const state = get();
         if (!state.active) return;
+        // Sans armement, toucher le lien d'un exercice groupé le détache : la paire est défaite.
+        const broken = state.armedSupersetExerciseId === null ? pairKeysBrokenByDetach(state.active, loggedExerciseId) : [];
         const result = handleSupersetLinkPure(state.active, loggedExerciseId, state.armedSupersetExerciseId, newId);
-        set({ active: result.session, armedSupersetExerciseId: result.armed });
+        set({
+          active: result.session,
+          armedSupersetExerciseId: result.armed,
+          ...(broken.length > 0 ? { supersetAutoLinkDeclined: withDeclinedPairs(state, state.active.id, broken) } : {}),
+        });
       },
 
       detachFromSupersetGroup: (loggedExerciseId) => {
         const state = get();
         if (!state.active) return;
-        set({ active: detachFromSupersetGroupPure(state.active, loggedExerciseId) });
+        const broken = pairKeysBrokenByDetach(state.active, loggedExerciseId);
+        set({
+          active: detachFromSupersetGroupPure(state.active, loggedExerciseId),
+          // Une paire défaite à la main ne se relie plus d'office dans cette séance.
+          ...(broken.length > 0 ? { supersetAutoLinkDeclined: withDeclinedPairs(state, state.active.id, broken) } : {}),
+        });
       },
 
       // -----------------------------------------------------------------
@@ -2205,7 +2279,14 @@ export const useWorkoutStore = create<WorkoutState>()(
       undoLastAction: () => {
         const state = get();
         if (!state.undo) return;
-        set({ active: state.undo.snapshot, undo: null });
+        const declinePairs = state.undo.declinePairs ?? [];
+        set({
+          active: state.undo.snapshot,
+          undo: null,
+          ...(declinePairs.length > 0
+            ? { supersetAutoLinkDeclined: withDeclinedPairs(state, state.undo.snapshot.id, declinePairs) }
+            : {}),
+        });
       },
 
       dismissUndo: () => set({ undo: null }),
@@ -2624,6 +2705,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         lastServerSnapshotAt: state.lastServerSnapshotAt,
         rest: state.rest,
         justHitRecord: state.justHitRecord,
+        // Un lien défait reste défait après un rechargement en pleine séance.
+        supersetAutoLinkDeclined: state.supersetAutoLinkDeclined,
         // `armedSupersetExerciseId` n'est plus persisté (15/10/2026) : le mode « lier en superset »
         // est un geste en cours, il ne survit ni à un rechargement ni à un changement d'onglet
         // (`lib/store/superset-link-mode.ts`).
