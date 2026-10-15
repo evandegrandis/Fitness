@@ -197,6 +197,8 @@ export function ExerciseCard({
             isArmed && "ring-1 ring-[color:var(--accent)]",
             isLinkTarget && "ring-1 ring-[color:#ff8a3d] animate-pulse cursor-pointer",
           )}
+          // Fait partie du geste de liaison : un tap ici ne compte pas comme « touché ailleurs ».
+          data-superset-link={isLinkTarget ? "" : undefined}
           {...(isLinkTarget
             ? {
                 onClickCapture: (e: React.MouseEvent) => {
@@ -292,6 +294,7 @@ export function ExerciseCard({
                     : "Lier en superset"
               }
               aria-pressed={isArmed}
+              data-superset-link=""
               className={cn(
                 "-my-1 shrink-0 grid h-10 w-10 place-items-center rounded-full transition active:scale-90",
                 isLinked || isArmed ? "text-white" : "text-(--color-fg-muted)"
