@@ -25,7 +25,7 @@ jamais après une série finie au RIR 0-1 en bas de fourchette ou en dessous, ne
 qu'il a montré dans la séance ni, à charge égale ou plus lourde, plus de reps que la série qu'il vient de finir au RIR
 0-1 (reps + RIR), et se ramène dans la fourchette : quand la prévision à cette charge tombe sous le bas de
 la fourchette, la charge baisse d'un cran à la fois jusqu'à ce que le bas soit à portée de `TARGET.RANGE_STRETCH`
-(4) reps au-dessus de la prévision plus la marge, puis la cible le demande ; plus légère que la dernière série, elle en
+(2) reps au-dessus de la prévision plus la marge, puis la cible le demande ; plus légère que la dernière série, elle en
 demande au moins les reps (une de moins après une série à l'échec). Après une série LOURDE (reps au RIR visé sous la
 fourchette, à au moins un cran au-dessus de sa charge de travail habituelle), elle part de la charge de retour (celle de
 la prévision, ou au moins 11 % plus léger) et n'y remonte pas. Juste après un essai, pas d'étirement : la cible garde la
@@ -33,14 +33,14 @@ fatigue de l'essai. L'ancienne règle (garder la charge, décrocher d'un ou deux
 plancher repMin − 3) laissait 39 % des cibles sous la fourchette et permettait 127,5 × 1 après 100 × 8.
 
 Reps de la cible : prévision à cette charge + marge d'ambition, pour qu'il la batte un peu moins d'une fois sur deux
-(objectif 40 % depuis le 15/10/2026, « légèrement optimiste », section 7 ; avant : 50 %). Atkinson, 1957 : motivation
+(objectif 35 % depuis le 15/10/2026, « légèrement optimiste », sections 7 et 7.5 ; avant : 50 %). Atkinson, 1957 : motivation
 maximale à probabilité de réussite intermédiaire ; Locke et Latham : un objectif difficile mais atteignable bat un
 objectif facile. « Battre » est la définition unique de l'app (`setVersusSuggestion`,
 `lib/engines/versus.ts`, section 4.3).
 La marge est apprise sur les séries enregistrées par un moteur à deux couches (prévision stockée contre reps faites),
 pondérées par l'âge (demi-vie 28 jours), par contexte (1re série, séries suivantes), rétrécie vers le global (poids 10)
 puis vers un a priori (poids 10 ; part battue avec une marge de −1, 0, 1, 2 reps : 0,64 / 0,45 / 0,25 / 0,11, mesurée
-avant le 21/09 sur 272 séries), bornée à [−1 ; 2]. Sans historique, la marge vaut +0,25 rep (objectif 40 %). Une boucle
+avant le 21/09 sur 272 séries), bornée à [−1 ; 2]. Sans historique, la marge vaut +0,5 rep (objectif 35 %). Une boucle
 de long terme la corrige, par contexte, sur les cibles battues À LA CHARGE DE LA CIBLE (ailleurs, le verdict dépend de la
 charge choisie, pas des reps visées) : au-delà de l'objectif + 5 points, + 0,5 rep ; en deçà de l'objectif − 5 points,
 − 0,5 (jusqu'au 15/10, 45-55 % codés en dur).
@@ -334,6 +334,7 @@ séances jusqu'au 21/09, vérifiés après (`criteres.ts`).
     charge), jamais plus de 30 % plus légère (au-delà, c'est une nouvelle série ; il enchaîne à 15-25 % plus léger) ;
   - ajoutés en lisant les cibles rejouées : I7 jamais au-delà de la charge max de la machine, I8 jamais de cible vide (Ab
     roller : reps `NaN` par une division par zéro dans `empiricalBase`, corrigée) ;
+  - I10 (15/10) : jamais une charge hors de la grille de la machine (section 7.5) ;
   - I9 (relecture du 15/10) : à charge égale ou plus lourde que la série qu'il vient de faire au RIR 0-1, jamais plus de
     reps que ses reps + RIR (120 × 8 juste après 120 × 7 à l'échec). Une charge plus légère de moins d'une rep par la règle
     7,5 % compte comme la même (115 × 8 après 120 × 7 : non ; 110 × 8 : oui). Série de référence : la dernière hors
@@ -344,7 +345,7 @@ séances jusqu'au 21/09, vérifiés après (`criteres.ts`).
 
 ### 7.2 Ce qui a changé
 
-- `target.ts` : `chooseTarget` (charge par la fourchette sous plafonds de cohérence, étirement κ = 4, plafond de
+- `target.ts` : `chooseTarget` (charge par la fourchette sous plafonds de cohérence, étirement κ = 4 puis 2 (§7.5), plafond de
   capacité et I9, retour après essai sans étirement, `ATTEMPT_COST` = 0,5 perte, a priori faute de cas),
   `completionTarget`, objectif de la marge 40 %, boucle centrée sur l'objectif. Après I9, la grille de réglage a été
   refaite (même règle) : κ = 4 et l'objectif 35 % ou 40 % à égalité sur tous les critères déclarés ; 40 % gardé (déjà en
@@ -390,6 +391,35 @@ dans la séance (1,97 → 2,03). Piste non concluante : après plus de 14 jours 
 - Familles encore visibles (relecture du 15/10) : au poids du corps ou à la charge max d'une machine, la cible suivante
   est ramenée au haut de la fourchette (Dips : 0 × 12 après 0 × 20 au RIR 2), préexistant ; après une série courte à
   l'échec, une cible plus légère relevée au bas de la fourchette bien au-delà de la règle 7,5 % (Crunch : 37,5 × 10 après
-  50 × 3 au RIR 0 ; 7 cas), effet de κ = 4.
+  50 × 3 au RIR 0 ; 7 cas), effet de κ = 4 (réduit par κ = 2, §7.5).
 - Essais quasi maximaux : 7 dans l'historique, 4 suivis d'une vraie série. Leur coût (0,5 perte) est un a priori.
 - Le rejeu juge ses séries réelles, faites face à d'autres cibles : une cible qui le pousse peut changer ce qu'il fait.
+
+### 7.5 Séance du 15/10 : grille des machines, charge égale après l'échec, réglage refait
+
+- **Grille de charges (I10).** Une cible ne propose jamais une charge qui n'existe pas sur la machine
+  (`lib/engines/load-grid.ts`) : pas = `smallestIncrement`, décalage = `Exercise.loadOffset` (colonne `load_offset`,
+  migration 0017, nulle = 0 ; une pile 29, 31, 33 = pas 2, décalage 1), charge max toujours valide, 0 toujours valide
+  pour un lesté ou un assisté. La cible part de la grille (une charge saisie hors grille, 72,5 sur une poulie de 6 en 6,
+  repart vers le bas), monte et descend d'un point de la grille à la fois ; la série à finir, l'échauffement, le point
+  de départ d'une machine équivalente et le mode Beast aussi. Le 72,5 venait de là : la cible gardait la charge saisie
+  et se décalait d'un cran depuis elle. Grilles déduites des charges qu'il saisit, à valider par Evan avant toute
+  écriture en base (liste hors dépôt, `jeera-fiable-data/GRILLES-A-VALIDER.md`).
+- **Charge égale après une série au RIR 0-1** (15/10 : 120 × 8 redemandé après 120 × 8 au RIR 0, il a fait 100 × 10) :
+  la cible demande au plus reps + RIR − 2 (`TARGET.SAME_LOAD_AFTER_FAILURE_GAP`). Sur 133 séries suivantes à charge
+  égale : reps + RIR battues 3 %, − 1 : 12 %, − 2 : 28 % avant le 21/09 (37 % après), − 3 : 54 % ; − 2 est le plus proche
+  de l'objectif, côté optimiste. Une charge plus légère de moins d'une rep par la règle 7,5 % compte comme la même, pour
+  I9 et pour I2 (`lighterByARep`).
+- **Charge max de la machine** : plus de plafond au haut de la fourchette (la progression y passe par les reps).
+- **Rejetés.** (1) Poids du corps, séries 2+ ancrées sur la série d'avant sans plafond (0 × 12 après 0 × 20 au RIR 2) :
+  erreur du contexte poids du corps 2,93 → 3,00, +0,07 [−0,15 ; +0,30], hors de la non-infériorité. (2) Limiter le
+  relèvement à ce que la série courte à l'échec prouve (Crunch : 37,5 × 10 après 50 × 3) : la famille passe de 9 à 7 cas
+  seulement, la cible part bien plus léger que ce qu'il prend (27,5 × 10 quand il fait 40 × 4) et l'écart de charge
+  monte (5,0 → 6,3 %). κ plus petit (2, ci-dessous) réduit l'effet.
+- **Réglage refait** (même règle, période jusqu'au 21/09) : à égalité dans les tolérances déclarées, le plus petit κ,
+  soit κ = 2 ; objectif 35 % (ne rate qu'un critère par contexte, contre deux à 30 %).
+- **Résultat** (export du 15/10, 33 séances, contre web-v2.4 rejoué) : prévision 1,98 → 1,90, après le 21/09 −0,20
+  [−0,32 ; −0,07], p Holm 0,008 ; écart de cible +0,52 → −0,23 [−0,48 ; +0,02], battues 52 → 41 %, à 3 reps ou plus
+  25 → 20 %, écart de charge 5,5 → 5,4 % (après le 21/09 : 5,0 → 6,3 %) ; 1res séries −0,62 (battues 43 %), séries
+  suivantes +0,04 (39 %). Violations : 567 → 0 (dont I10 : 7 → 0 aux grilles en base, 17 → 0 aux grilles proposées),
+  0 sur 10 000 séances aléatoires (grilles décalées et saisies hors grille comprises).

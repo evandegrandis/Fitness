@@ -51,7 +51,7 @@ WorkoutSession → [LoggedExercise] → [LoggedSet]
 Exercise:
   setPatternMode: straight | topSetBackoff | ramping | bodyweight | weightedBodyweight | assistedBodyweight
   fatigueClass: Heavy(2) | Medium(1.5) | Light(1): systemic fatigue cost; fallback rep drop when no history (the drop is learned, `rep-drop.ts`)
-  repTargetMin/Max, smallestIncrement
+  repTargetMin/Max, smallestIncrement, loadOffset (load grid of the machine: loadOffset + k × smallestIncrement, `load-grid.ts`)
   muscleMappings[]: (MuscleGroup, coefficient)  — MECE mapping
   benchmarkLow/High?: Double  — optional benchmark bands
 
@@ -167,10 +167,10 @@ Format: `[date] [agent: Claude|Codex] — what was done / what's next / any gotc
 
 - Demande d'Evan (14/10) après le 13/10 (127,5 × 1 après 100 × 8, 157,5 × 7 à finir après 160 × 1, 14 × 5 après 16 × 7). Critères écrits avant d'itérer, rejeu simulé de 76 séances, réglages choisis avant le 21/09 : `web/SUGGESTIONS.md` §7 ; journal et rapport hors dépôt (`~/.local/share/barbis-dev/jeera-fiable/JOURNAL-chantier.md`, `~/.local/share/barbis-dev/jeera-fiable-data/RAPPORT.md`).
 - `lib/engines/target-invariants.ts` (I1 à I9, une seule définition pour le rejeu `scripts/suggestions-audit/criteres.ts` et les tests de propriété `target-invariants.test.ts`, joués dans le store ; `SEEDS=10000` pour un tirage large). Violations : 565 → 0 sur 1 324 cibles rejouées, 0 sur 10 000 séances aléatoires. I9 (relecture du coordinateur) : à charge égale ou plus lourde (à moins d'une rep près) que la série juste faite au RIR 0-1, jamais plus que ses reps + RIR.
-- `target.ts` : `chooseTarget` (charge ramenée vers la fourchette jusqu'à ce que le bas soit à portée de κ = 4 reps, jamais plus lourd après une série dure, jamais au-dessus du 1RM montré, plus léger ⇒ au moins les reps, retour à la charge de travail après un essai quasi maximal sans étirement), `completionTarget`, objectif de marge 40 % et boucle centrée dessus. `rep-drop.ts` : perte proportionnelle aux reps. Version `web-v2.5-2026-10-15`.
+- `target.ts` : `chooseTarget` (charge ramenée vers la fourchette jusqu'à ce que le bas soit à portée de κ reps, 2 depuis le réglage du 15/10, jamais plus lourd après une série dure, jamais au-dessus du 1RM montré, plus léger ⇒ au moins les reps, retour à la charge de travail après un essai quasi maximal sans étirement), `completionTarget`, objectif de marge 40 % et boucle centrée dessus. `rep-drop.ts` : perte proportionnelle aux reps. Version `web-v2.5-2026-10-15`.
 - Rejeu : prévision 1,96 → 1,89 (après le 21/09 −0,19 [−0,32 ; −0,07]) ; cible +0,49 → −0,18 rep (légèrement optimiste, à la limite), battues 52 → 41 %, à 3 reps ou plus 25 → 19 %, écart de charge 5,0 → 3,6 % ; cibles chargées sous la fourchette 190 / 406 → 0 hors tests de plateau et compléments.
 - Familles encore visibles : cible ramenée au haut de la fourchette au poids du corps / à la charge max (Dips 0 × 12 après 0 × 20 au RIR 2, préexistant) ; cible plus légère relevée bien au-delà de la règle 7,5 % après une série courte à l'échec (Crunch 37,5 × 10 après 50 × 3 au RIR 0, effet de κ).
-- À trancher par Evan : κ (4 = cible au bas de la fourchette à une charge proche de la sienne ; 2 = plus léger, plus souvent battu). À suivre : `criteres.ts` sur ses vraies séances après déploiement ; après plus de 14 jours d'arrêt la prévision semble trop prudente (17 séries).
+- 15/10 (séance d'Evan sur la v2.4) : grille de charges par machine (I10, `lib/engines/load-grid.ts`, colonne `exercises.load_offset`, **migration 0017 à appliquer AVANT le déploiement**) ; à charge égale après une série au RIR 0-1, au plus reps + RIR − 2 ; charge max sans plafond au haut de la fourchette ; réglage refait : κ = 2, objectif 35 %. Grilles à faire valider par Evan avant d'écrire en base : `~/.local/share/barbis-dev/jeera-fiable-data/GRILLES-A-VALIDER.md`. Rejetés : poids du corps sans plafond en séries 2+ (pas plus juste), limite du relèvement après une série courte (cibles trop légères). À suivre : `criteres.ts` sur ses vraies séances après déploiement ; après plus de 14 jours d'arrêt la prévision semble trop prudente (17 séries).
 
 ### 2026-10-12 · Claude — Tendance des exercices : écart à ce que Jeera prévoyait
 
