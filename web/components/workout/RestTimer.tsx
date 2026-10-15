@@ -95,6 +95,8 @@ function RestTimerCard({
       onDragEnd={(_, info) => {
         if (info.offset.y < -50) onSkip(); // flick vers le haut = passer
       }}
+      // Repère pour le bandeau superset, qui se pose au-dessus de lui (`SupersetLinkBanner`).
+      data-rest-timer=""
       className="surface-solid fixed inset-x-0 bottom-[calc(6.25rem+env(safe-area-inset-bottom))] z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md touch-none items-center gap-3 rounded-2xl px-4 py-3"
     >
       <svg width="52" height="52" viewBox="0 0 52 52" className="shrink-0 -rotate-90">

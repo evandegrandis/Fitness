@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { AlertTriangle, Check, Flame, History, RotateCcw, Snowflake, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, Check, Flame, History, RotateCcw, Snowflake, Zap } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Stepper } from "@/components/ui/Stepper";
 import { REPORTED_RIR_OPTIONS, reportedRirLabel, SetType } from "@/lib/models/enums";
@@ -47,6 +47,22 @@ function FlameBadge({ label }: { label: string }) {
 }
 
 /**
+ * Équerres aux quatre coins de la cible : un viseur, pas une ligne de plus dans la liste des séries
+ * faites (dalles pleines). Même vocabulaire que les cadres à coins du design system.
+ */
+function TargetCorners({ color }: { color: string }) {
+  const corner = "pointer-events-none absolute h-2.5 w-2.5";
+  return (
+    <>
+      <span aria-hidden className={cn(corner, "left-0 top-0 border-l border-t")} style={{ borderColor: color }} />
+      <span aria-hidden className={cn(corner, "right-0 top-0 border-r border-t")} style={{ borderColor: color }} />
+      <span aria-hidden className={cn(corner, "bottom-0 left-0 border-b border-l")} style={{ borderColor: color }} />
+      <span aria-hidden className={cn(corner, "bottom-0 right-0 border-b border-r")} style={{ borderColor: color }} />
+    </>
+  );
+}
+
+/**
  * ReasonCodes signalant une escalade / un changement de méthode — affichés via `suggestion.explanation`.
  * VARIATION_CYCLING_SPEC §8 — `"variant_switch"` corrigé en `"variant_switch_easier"` (mismatch réel :
  * `progression.ts` émet `"variant_switch_easier"`, jamais `"variant_switch"` — cette liste ne
@@ -81,6 +97,7 @@ export function SetEntry({
   suggestion,
   warmup,
   lastSessionSet,
+  nextSeriesNumber,
   onLogSet,
   variantCandidateName = null,
 }: {
@@ -89,6 +106,8 @@ export function SetEntry({
   suggestion: SetSuggestion;
   warmup: SetSuggestion | null;
   lastSessionSet: LoggedSet | null;
+  /** Numéro de la série à faire, dans la numérotation des séries faites affichées au-dessus. */
+  nextSeriesNumber: number;
   onLogSet: (input: {
     weight: number;
     reps: number;
@@ -164,57 +183,71 @@ export function SetEntry({
   const modified = !useWarmup && (weight !== suggestion.weight || reps !== suggestion.reps);
   const weightChanged = !useWarmup && weight !== suggestion.weight;
   const reason = suggestionReason(suggestion);
+  const isCompletion = suggestion.reasonCodes.includes("logical_set_completion");
+  const heading = useWarmup && warmup
+    ? "Échauffement · à faire"
+    : isCompletion && nextSeriesNumber > 1
+      ? `Série ${nextSeriesNumber - 1} · à compléter`
+      : `Série ${nextSeriesNumber} · à faire`;
+  const cornerColor = intensityReasonCode ? "rgba(255,138,61,0.75)" : "var(--color-fg-faint)";
 
   return (
     <div className="flex flex-col gap-3">
-      {useWarmup && warmup ? (
-        <p className="text-xs text-(--color-fg-muted)">{warmup.explanation}</p>
-      ) : (
-        <div
-          className={cn("rounded-xl px-3 py-2.5", intensityReasonCode ? "" : "bg-white/[0.03]")}
-          style={intensityReasonCode ? { background: "rgba(255,138,61,0.10)" } : undefined}
-        >
-          <div className="flex min-h-7 items-center justify-between gap-2">
-            <p className="flex min-w-0 items-center gap-1.5 text-sm text-(--color-fg)">
-              {intensityReasonCode ? (
-                <Zap size={13} className="shrink-0" style={{ color: "var(--accent)" }} aria-hidden />
-              ) : (
-                <Sparkles size={13} className="shrink-0 text-(--color-fg-muted)" aria-hidden />
+      {/* 15/10/2026, Evan : « je crois parfois avoir déjà entré ma série alors que c'est juste un
+          encadré d'informations ». La cible avait la dalle sombre arrondie des séries faites, juste
+          sous elles. Elle ouvre maintenant la zone de saisie : un en-tête qui dit « à faire », plus
+          près de la cible que des séries d'au-dessus, puis un viseur à équerres sans fond.
+          Fait = dalle pleine ; à faire = cadre ouvert. */}
+      <div className="flex flex-col gap-1.5 pt-2">
+        <div className="flex min-h-6 items-center gap-2">
+          <span className="eyebrow shrink-0 text-(--color-fg)">{heading}</span>
+          <span aria-hidden className="h-px min-w-4 flex-1 bg-(--line)" />
+        </div>
+        {useWarmup && warmup ? (
+          <p className="text-xs text-(--color-fg-muted)">{warmup.explanation}</p>
+        ) : (
+          <div className="relative px-3 py-2.5">
+            <TargetCorners color={cornerColor} />
+            <div className="flex min-h-8 items-center justify-between gap-2">
+              <p className="flex min-w-0 items-baseline gap-2 text-(--color-fg)">
+                {intensityReasonCode && (
+                  <Zap size={14} className="shrink-0 self-center" style={{ color: "#ff8a3d" }} aria-hidden />
+                )}
+                {modified && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
+                <span className="tnum text-lg font-bold leading-tight">
+                  {formatLoad(suggestion.weight)} × {suggestion.reps}
+                </span>
+              </p>
+              {modified && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWeight(suggestion.weight);
+                    setReps(suggestion.reps);
+                  }}
+                  className="-my-1 -mr-1.5 inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold transition active:scale-95"
+                  style={{ color: "var(--accent)" }}
+                >
+                  <RotateCcw size={12} aria-hidden />
+                  Reprendre
+                </button>
               )}
-              {modified && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
-              <span className="tnum font-semibold">
-                {formatLoad(suggestion.weight)} × {suggestion.reps}
-              </span>
+            </div>
+            {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 — la variante candidate est nommée, discrètement ;
+                la bascule elle-même ne s'accepte que dans le bilan (jamais en pleine séance). */}
+            <p className="mt-0.5 text-xs leading-snug text-(--color-fg-muted)">
+              {reason ?? suggestion.explanation}
+              {variantCandidateName && <> · envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
             </p>
-            {modified && (
-              <button
-                type="button"
-                onClick={() => {
-                  setWeight(suggestion.weight);
-                  setReps(suggestion.reps);
-                }}
-                className="-my-1 -mr-1.5 inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold transition active:scale-95"
-                style={{ color: "var(--accent)" }}
-              >
-                <RotateCcw size={12} aria-hidden />
-                Reprendre
-              </button>
+            {weightChanged && (
+              <p className="mt-1 text-xs leading-snug text-(--color-fg)">
+                À <span className="tabular-nums">{formatLoad(weight)}</span>, le moteur prévoit{" "}
+                <span className="tabular-nums">{projectedSuggestion.reps}</span> rep{projectedSuggestion.reps > 1 ? "s" : ""} au même effort.
+              </p>
             )}
           </div>
-          {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 — la variante candidate est nommée, discrètement ;
-              la bascule elle-même ne s'accepte que dans le bilan (jamais en pleine séance). */}
-          <p className="mt-0.5 text-xs leading-snug text-(--color-fg-muted)">
-            {reason ?? suggestion.explanation}
-            {variantCandidateName && <> · envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
-          </p>
-          {weightChanged && (
-            <p className="mt-1 text-xs leading-snug text-(--color-fg)">
-              À <span className="tabular-nums">{formatLoad(weight)}</span>, le moteur prévoit{" "}
-              <span className="tabular-nums">{projectedSuggestion.reps}</span> rep{projectedSuggestion.reps > 1 ? "s" : ""} au même effort.
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         {lastSessionSet && (

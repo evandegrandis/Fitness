@@ -2624,7 +2624,9 @@ export const useWorkoutStore = create<WorkoutState>()(
         lastServerSnapshotAt: state.lastServerSnapshotAt,
         rest: state.rest,
         justHitRecord: state.justHitRecord,
-        armedSupersetExerciseId: state.armedSupersetExerciseId,
+        // `armedSupersetExerciseId` n'est plus persisté (15/10/2026) : le mode « lier en superset »
+        // est un geste en cours, il ne survit ni à un rechargement ni à un changement d'onglet
+        // (`lib/store/superset-link-mode.ts`).
         // Un reload en pleine séance ne doit pas reposer une question déjà refusée.
         // (`pendingFinisherPrompt` reste volontairement éphémère, comme `freshOverrides`.)
         finisherPromptDeclined: state.finisherPromptDeclined,
@@ -2660,6 +2662,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         return {
           ...current,
           ...p,
+          // Un mode superset armé et persisté par une version d'avant le 15/10/2026 ne se réarme pas.
+          armedSupersetExerciseId: null,
           active: reviveSessionDates(p.active ?? null),
           // OFFLINE_PWA_SPEC §2 (P4.1) — mêmes garanties que `active` ci-dessus, étendues aux
           // données de référence désormais cachées : ne revivifier QUE si `p.<clé>` est bien
