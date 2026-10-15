@@ -76,8 +76,10 @@ async function main() {
   const sets: [string, number][] = [];
   const positional: string[] = [];
   let simulate = false;
+  let gridsPath: string | null = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--simuler") simulate = true;
+    else if (args[i] === "--grilles") gridsPath = args[++i];
     else if (args[i] === "--set") {
       const [key, value] = args[++i].split("=");
       sets.push([key, Number(value)]);
@@ -137,6 +139,12 @@ async function main() {
     | { learnedRepDrop?: (e: unknown, h: unknown, now: Date) => { drop: number } }
     | null;
   const data = JSON.parse(readFileSync(dataPath, "utf8"), (_k, v) => (typeof v === "string" && ISO.test(v) ? new Date(v) : v)) as AllData;
+  // `--grilles fichier.json` : { "<id d'exercice>": { "smallestIncrement": 6, "loadOffset": 0 } } remplace la grille de
+  // charges de ces exercices le temps du rejeu (grilles proposées, avant validation par Evan).
+  if (gridsPath) {
+    const grids = JSON.parse(readFileSync(gridsPath, "utf8")) as Record<string, { smallestIncrement: number; loadOffset?: number | null }>;
+    data.exercises = data.exercises.map((e) => (grids[e.id] ? { ...e, smallestIncrement: grids[e.id].smallestIncrement, loadOffset: grids[e.id].loadOffset ?? null } : e));
+  }
   const bodyweight = data.settings.bodyWeightKg && data.settings.bodyWeightKg > 0 ? data.settings.bodyWeightKg : undefined;
   const sessions = [...data.sessions].sort((a, b) => a.date.getTime() - b.date.getTime());
   const gamePath = outPath.replace(/\.jsonl$/, "") + ".seances.jsonl";
@@ -209,7 +217,7 @@ async function main() {
         session_id: target.id, session_date: target.date.toISOString(), ts: at.toISOString(), synthetic_time: synthetic, idx,
         exercise_id: exercise.id, exercise: exercise.name, le_id: le.id, pattern_mode: exercise.setPatternMode,
         fatigue_class: exercise.fatigueClass, rep_min: exercise.repTargetMin, rep_max: exercise.repTargetMax, increment: exercise.smallestIncrement,
-        max_load: exercise.maxLoad ?? null, bw: bodyweight ?? null,
+        max_load: exercise.maxLoad ?? null, load_offset: exercise.loadOffset ?? null, bw: bodyweight ?? null,
         usual_load: (suggestion as { usualLoad?: number | null }).usualLoad !== undefined ? (suggestion as { usualLoad?: number | null }).usualLoad : targetModule?.usualWorkingLoad ? targetModule.usualWorkingLoad(collectExerciseHistory(state.history, exercise.id, 10, { skipFinisherOnlySessions: true }).sets) : null,
         set_id: s.id, set_type: s.setType, weight: s.weight, reps: s.reps, rir: s.reportedRir ?? null, stop_reason: s.stopReason ?? null,
         continuation: s.setTechnique != null || (s.logicalSetId != null && s.logicalSetId !== s.id),

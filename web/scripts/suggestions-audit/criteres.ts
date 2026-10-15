@@ -30,6 +30,7 @@ interface Row {
   rep_max: number;
   increment: number;
   max_load?: number | null;
+  load_offset?: number | null;
   bw?: number | null;
   usual_load?: number | null;
   set_id: string;
@@ -245,7 +246,7 @@ function evaluate(rows: Row[], base: Map<string, Row> | null, split: string, sin
   for (const r of rows) {
     const today = before.get(r.set_id)!;
     const v = targetInvariantViolations({
-      exercise: { setPatternMode: r.pattern_mode, repTargetMin: r.rep_min, repTargetMax: r.rep_max, smallestIncrement: r.increment, maxLoad: r.max_load ?? null },
+      exercise: { setPatternMode: r.pattern_mode, repTargetMin: r.rep_min, repTargetMax: r.rep_max, smallestIncrement: r.increment, maxLoad: r.max_load ?? null, loadOffset: r.load_offset ?? null },
       today,
       target: { weight: r.engine.weight, reps: r.engine.reps, mode: r.engine.mode, reasonCodes: r.engine.reasons, setType: r.engine.set_type ?? undefined },
       usualLoad: r.usual_load ?? null,
