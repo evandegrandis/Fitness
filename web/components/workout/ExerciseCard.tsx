@@ -399,6 +399,7 @@ export function ExerciseCard({
                   suggestion={currentSuggestion}
                   warmup={currentWarmup}
                   lastSessionSet={repeatSet}
+                  nextSeriesNumber={workBlocks.length + 1}
                   variantCandidateName={variantCandidateName}
                   onLogSet={(input) => {
                     logSet(loggedExercise.id, input);
