@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link2, Unlink, X } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
@@ -14,32 +14,7 @@ import {
   useSupersetLinkNotice,
   watchSupersetLinkMode,
 } from "@/lib/store/superset-link-mode";
-
-/**
- * Bas du bandeau, mesuré le 15/10/2026. La barre d'onglets est une pilule de 68 px posée sur
- * max(0,75rem, encoche) : le bandeau se pose 8 px au-dessus (il était à 4,5rem, 8 px DESSOUS, et la
- * barre, peinte après lui, le masquait). Pendant le repos, 8 px au-dessus du minuteur, posé à
- * 6,25rem + encoche, qu'il chevauchait aussi : la hauteur du minuteur dépend de la largeur (86 px à
- * 390 px, 118 px à 320 px, son texte passe sur deux lignes), elle est donc mesurée.
- */
-const ABOVE_TAB_BAR = "calc(max(0.75rem, env(safe-area-inset-bottom)) + 4.75rem)";
-const aboveRestTimer = (restTimerHeight: number) => `calc(env(safe-area-inset-bottom) + 6.75rem + ${restTimerHeight}px)`;
-const REST_TIMER_HEIGHT_FALLBACK = 86;
-
-/** Hauteur de mise en page du minuteur de repos (sans son animation d'entrée), suivie s'il change. */
-function useRestTimerHeight(restActive: boolean): number | null {
-  const [height, setHeight] = useState<number | null>(null);
-  useEffect(() => {
-    if (!restActive) return;
-    const element = document.querySelector<HTMLElement>("[data-rest-timer]");
-    if (!element) return;
-    // Un ResizeObserver notifie aussi à l'observation : la première mesure arrive sans attendre.
-    const observer = new ResizeObserver(() => setHeight(element.offsetHeight));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [restActive]);
-  return restActive ? height : null;
-}
+import { FLOATING, floatingBottom, FLOATING_FALLBACK_HEIGHT, useFloatingHeight } from "./floating-stack";
 
 /**
  * Bandeau du mode « lier en superset ». Il dit quoi faire, montre le temps qui reste (un filet qui
@@ -52,7 +27,13 @@ export function SupersetLinkBanner() {
   const restActive = useWorkoutStore((s) => s.rest !== null);
   const handleSupersetLink = useWorkoutStore((s) => s.handleSupersetLink);
   const notice = useSupersetLinkNotice((s) => s.notice);
-  const restTimerHeight = useRestTimerHeight(restActive);
+  const undoActive = useWorkoutStore((s) => s.undo !== null);
+  const finisherActive = useWorkoutStore((s) => s.pendingFinisherPrompt !== null);
+  // Au-dessus de la barre d'onglets ou du minuteur, puis du toast « Annuler » et de la question du
+  // finisher s'ils sont là (`floating-stack.ts`).
+  const restTimerHeight = useFloatingHeight(FLOATING.restTimer, restActive);
+  const undoHeight = useFloatingHeight(FLOATING.undoToast, undoActive);
+  const finisherHeight = useFloatingHeight(FLOATING.finisherPrompt, finisherActive);
 
   const armedExercise = active?.exercises.find((e) => e.id === armedSupersetExerciseId);
   const armedId = armedExercise?.id ?? null;
@@ -94,7 +75,10 @@ export function SupersetLinkBanner() {
             armedExercise ? "" : "pointer-events-none"
           }`}
           style={{
-            bottom: restActive ? aboveRestTimer(restTimerHeight ?? REST_TIMER_HEIGHT_FALLBACK) : ABOVE_TAB_BAR,
+            bottom: floatingBottom(restActive ? restTimerHeight ?? FLOATING_FALLBACK_HEIGHT.restTimer : null, [
+              ...(undoActive ? [undoHeight ?? FLOATING_FALLBACK_HEIGHT.banner] : []),
+              ...(finisherActive ? [finisherHeight ?? FLOATING_FALLBACK_HEIGHT.banner] : []),
+            ]),
             boxShadow: armedExercise ? "0 0 0 1px var(--accent), 0 10px 34px rgba(0,0,0,0.6)" : undefined,
           }}
         >
