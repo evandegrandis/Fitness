@@ -26,7 +26,8 @@
 
 import { ALGO_V2 } from "@/lib/engines/constants";
 import { effTotal, type LoadMode } from "@/lib/engines/predict";
-import { capacityLoad, lighterTargetMinReps, maxRepsAfterLastSet } from "@/lib/engines/target-invariants";
+import { nextGridLoad, snapToGrid } from "@/lib/engines/load-grid";
+import { capacityLoad, lighterByARep, lighterTargetMinReps, maxRepsAfterLastSet } from "@/lib/engines/target-invariants";
 import { setVersusSuggestion } from "@/lib/engines/versus";
 import { SetPatternMode as SPM, SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -52,7 +53,7 @@ export const TARGET = {
   PRIOR_BEAT_1: 0.25,
   PRIOR_BEAT_2: 0.11,
   /** Probabilité visée de battre la cible. */
-  GOAL: 0.4,
+  GOAL: 0.35,
   /** Bornes de la marge, en reps. */
   MIN: -1,
   MAX: 2,
@@ -69,7 +70,14 @@ export const TARGET = {
    * la dernière série si la cible est plus légère), la charge baisse jusqu'à ce qu'elles soient à portée de ce nombre
    * de reps au-dessus de la prévision plus la marge, puis la cible les demande. Réglé sur les séances jusqu'au 21/09.
    */
-  RANGE_STRETCH: 4,
+  RANGE_STRETCH: 2,
+  /**
+   * À charge égale (à moins d'une rep près) après une série finie au RIR 0-1, la cible demande au plus ses reps + RIR
+   * moins ce nombre. Mesuré sur 133 séries suivantes à charge égale : reps + RIR battues 3 % du temps, − 1 : 12 %,
+   * − 2 : 28 % avant le 21/09 (37 % après), − 3 : 54 % (64 %). − 2 est le plus proche des 40 % visés, du côté optimiste.
+   * (15/10 : 120 × 8 redemandé après 120 × 8 au RIR 0, il a fait 100 × 10.)
+   */
+  SAME_LOAD_AFTER_FAILURE_GAP: 2,
   /**
    * Fatigue d'un essai quasi maximal (RIR ≤ 1, 4 reps au plus jusqu'à l'échec), en part de la perte de reps
    * apprise d'une série à la suivante. A priori : une série de 1 à 4 reps coûte moins qu'une série de 8 à 12 (la
@@ -348,13 +356,15 @@ export function chooseTarget(input: TargetChoiceInput, exercise: Exercise, incre
   const capAt = (load: number) => {
     const c = capacityLoad(exercise.setPatternMode, load, bodyweightKg);
     // I9 : à charge égale ou plus lourde que la série juste faite au RIR 0-1, pas plus que ses reps + RIR.
-    const afterLast = maxRepsAfterLastSet(lastRegular, lastCapacity, c, increment);
+    const proven = maxRepsAfterLastSet(lastRegular, lastCapacity, c, increment);
+    const afterLast = Number.isFinite(proven) ? proven - TARGET.SAME_LOAD_AFTER_FAILURE_GAP : proven;
     if (!(c > 0)) return afterLast;
     let cap = shown === null ? Number.POSITIVE_INFINITY : Math.floor((30 * shown) / c - 31 + 1e-6);
     if (input.belowOneRepMax != null) cap = Math.min(cap, Math.ceil(30 * (input.belowOneRepMax / c - 1) - 1 - 1e-6) - 1);
     return Math.min(cap, afterLast);
   };
-  const lighterThanLast = (load: number) => lastRegular !== null && eff(load) < eff(lastRegular.weight) - EPS;
+  const lighterThanLast = (load: number) =>
+    lastRegular !== null && lighterByARep(lastCapacity, capacityLoad(exercise.setPatternMode, load, bodyweightKg), increment);
   /** Reps exigées par la cohérence : le bas de la fourchette, et plus léger que la dernière série, au moins ses reps. */
   const needed = (load: number) => Math.max(exercise.repTargetMin, lighterThanLast(load) ? lighterTargetMinReps(lastRegular!, exercise) : 0);
   const raw = (load: number) => Math.round(input.predictedAt(load) + input.margin);
@@ -364,11 +374,15 @@ export function chooseTarget(input: TargetChoiceInput, exercise: Exercise, incre
   const codes: string[] = [];
   const done = (load: number, loaded = true): TargetChoice => {
     let reps = raw(load);
+    // À la charge max de la machine, la progression passe par les reps, au-delà de la fourchette (décision de septembre
+    // 2026) : pas de plafond au haut de la fourchette.
+    const atMax = exercise.maxLoad != null && exercise.maxLoad > 0 && mode === "external" && load >= exercise.maxLoad - EPS;
+    const top = atMax ? Number.POSITIVE_INFINITY : exercise.repTargetMax;
     // Les reps de cohérence ne sont exigées que si elles sont à portée ; au plancher de charge (lesté ramené au poids
     // du corps, charge nulle), la cible reste la prévision plus la marge.
-    if (loaded && reachable(load)) reps = Math.min(Math.max(reps, needed(load)), Math.max(needed(load), exercise.repTargetMax));
+    if (loaded && reachable(load)) reps = Math.min(Math.max(reps, needed(load)), Math.max(needed(load), top));
     else {
-      if (loaded) reps = Math.min(reps, exercise.repTargetMax);
+      if (loaded) reps = Math.min(reps, top);
       // Plus léger que la dernière série (lesté ramené au poids du corps compris) : au moins ses reps.
       if (lighterThanLast(load)) reps = Math.max(reps, lighterTargetMinReps(lastRegular!, exercise));
     }
@@ -381,20 +395,24 @@ export function chooseTarget(input: TargetChoiceInput, exercise: Exercise, incre
   };
 
   // Poids du corps (pur, ou lesté prévu sans lest) : seules les reps bougent.
-  if (exercise.setPatternMode === SPM.bodyweight || (mode === "weighted_bodyweight" && Math.abs(input.startLoad) < EPS && !input.push)) {
-    return done(input.startLoad, false);
-  }
+  if (exercise.setPatternMode === SPM.bodyweight) return done(0, false);
+  if (mode === "weighted_bodyweight" && Math.abs(input.startLoad) < EPS && !input.push) return done(0, false);
   const inc = increment > 0 ? increment : 0;
-  const harder = (load: number) => roundLoad(mode === "assisted_bodyweight" ? Math.max(0, load - inc) : load + inc);
-  const easier = (load: number) => roundLoad(mode === "assisted_bodyweight" ? load + inc : Math.max(0, load - inc));
+  // Les charges suivent la grille de la machine (`load-grid.ts`, invariant I10) : pas et décalage de l'exercice.
+  const grid = { ...exercise, smallestIncrement: inc };
+  const harder = (load: number) => nextGridLoad(load, grid, mode !== "assisted_bodyweight");
+  const easier = (load: number) => nextGridLoad(load, grid, mode === "assisted_bodyweight");
+  /** Sur la grille, jamais plus difficile que `load` (une charge saisie hors grille, 72,5 sur une poulie de 6 en 6). */
+  const easierOrOn = (load: number) => snapToGrid(load, grid, mode === "assisted_bodyweight" ? "up" : "down");
   const maxLoad = mode === "external" && exercise.maxLoad && exercise.maxLoad > 0 ? exercise.maxLoad : null;
   const allowed = (load: number) =>
     load >= -EPS && (input.ceiling === null || eff(load) <= eff(input.ceiling) + EPS) && (maxLoad === null || load <= maxLoad + EPS);
 
   // Test de plateau explicite : gardé seulement s'il ne demande pas plus que ce qu'il a montré aujourd'hui.
   if (input.push && input.explicitTestReps != null) {
-    if (allowed(input.startLoad) && input.explicitTestReps <= capAt(input.startLoad)) {
-      return { weight: roundLoad(input.startLoad), reps: input.explicitTestReps, predictedReps: input.predictedAt(input.startLoad), codes };
+    const testLoad = snapToGrid(input.startLoad, grid, "nearest");
+    if (allowed(testLoad) && input.explicitTestReps <= capAt(testLoad)) {
+      return { weight: roundLoad(testLoad), reps: input.explicitTestReps, predictedReps: input.predictedAt(testLoad), codes };
     }
     codes.push("target_push_withheld");
   }
@@ -405,6 +423,8 @@ export function chooseTarget(input: TargetChoiceInput, exercise: Exercise, incre
   }
   if (input.ceiling !== null && eff(load) > eff(input.ceiling) + EPS) load = input.ceiling;
   if (maxLoad !== null && load > maxLoad + EPS) load = maxLoad;
+  // 1re série : la charge de la grille la plus proche ; ensuite, jamais plus difficile que la charge de départ.
+  if (inc > 0) load = lastRegular === null ? snapToGrid(load, grid, "nearest") : easierOrOn(load);
 
   // La charge descend d'un cran à la fois jusqu'à ce que les reps exigées soient à portée ; elle monte tant que la
   // prévision dépasse le haut de la fourchette (sans franchir le plafond, la charge max ni ce qu'il a montré).
@@ -451,8 +471,11 @@ export function completionTarget(
   const inc = increment > 0 ? increment : 0.5;
   const kgPerRep = Math.max(inc, ALGO_V2.REP_SLOPE_PCT * Math.max(1, eff(short.weight)));
   const steps = Math.max(1, Math.ceil(((remainingReps - reserve) * kgPerRep) / inc - 1e-9));
-  const load = roundLoad(mode === "assisted_bodyweight" ? short.weight + steps * inc : short.weight - steps * inc);
-  if (load < -EPS) return null;
+  const raw = mode === "assisted_bodyweight" ? short.weight + steps * inc : short.weight - steps * inc;
+  if (raw < -EPS) return null;
+  // Sur la grille de la machine, du côté plus facile (plus de reps à portée).
+  const load = snapToGrid(raw, exercise, mode === "assisted_bodyweight" ? "up" : "down");
+  if (Math.abs(load - short.weight) < EPS) return null;
   const reach = reserve + (eff(short.weight) - eff(load)) / kgPerRep;
   const drop = (eff(short.weight) - eff(load)) / Math.max(EPS, eff(short.weight));
   if (reach < remainingReps - 0.5 || drop > TARGET.COMPLETION_MAX_DROP + EPS) return null;

@@ -9,6 +9,7 @@
  * Pur, sans dépendance au store. Charges comparées en charge effective (poids du corps compris pour lesté/assisté).
  */
 import { ALGO_V2 } from "@/lib/engines/constants";
+import { isOnGrid, loadGrid, snapToGrid } from "@/lib/engines/load-grid";
 import { effTotal, type LoadMode } from "@/lib/engines/predict";
 
 export interface InvariantExercise {
@@ -17,6 +18,8 @@ export interface InvariantExercise {
   repTargetMax: number;
   smallestIncrement: number;
   maxLoad?: number | null;
+  /** Décalage de la grille de charges (`load-grid.ts`). */
+  loadOffset?: number | null;
 }
 
 /** Série du jour sur cet exercice (ordre chronologique, échauffements et finishers exclus). */
@@ -55,7 +58,8 @@ export type InvariantCode =
   | "I6_complement_hors_de_portee"
   | "I7_au_dela_charge_max"
   | "I8_cible_vide"
-  | "I9_plus_que_la_serie_juste_faite";
+  | "I9_plus_que_la_serie_juste_faite"
+  | "I10_charge_hors_grille";
 
 export interface Violation {
   code: InvariantCode;
@@ -128,9 +132,17 @@ export function lighterTargetMinReps(last: InvariantSet, exercise: Pick<Invarian
  */
 export function maxRepsAfterLastSet(last: InvariantSet | null, lastCapacity: number, capacity: number, increment: number): number {
   if (!last || last.rir === null || last.rir > 1) return Number.POSITIVE_INFINITY;
-  const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, lastCapacity));
-  if (capacity < lastCapacity - kgPerRep + EPS) return Number.POSITIVE_INFINITY;
+  if (lighterByARep(lastCapacity, capacity, increment)) return Number.POSITIVE_INFINITY;
   return last.reps + Math.max(0, last.rir);
+}
+
+/**
+ * Plus léger que la série d'avant d'au moins une rep par la règle du moteur (7,5 % de sa charge effective, au moins un
+ * cran). En deçà, c'est la même charge pour I2 comme pour I9 : 117,5 kg après 120 kg ne rend pas une rep entière.
+ */
+export function lighterByARep(lastCapacity: number, capacity: number, increment: number): boolean {
+  const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, lastCapacity));
+  return capacity < lastCapacity - kgPerRep + EPS;
 }
 
 /** Reps au RIR 1 les plus hautes qu'une cible peut demander à `load` sans dépasser le 1RM `shown` (Epley). */
@@ -160,6 +172,11 @@ export function targetInvariantViolations(input: InvariantInput): Violation[] {
     out.push({ code: "I8_cible_vide", detail: `cible ${set(target.weight, target.reps)}` });
     return out;
   }
+  // I10 — jamais une charge qui n'existe pas sur la machine (grille : pas et décalage de l'exercice, charge max).
+  if (!isOnGrid(target.weight, exercise)) {
+    const { step, offset } = loadGrid(exercise);
+    out.push({ code: "I10_charge_hors_grille", detail: `${target.weight} hors de la grille (pas ${step}${offset ? `, décalage ${offset}` : ""})` });
+  }
   if (exercise.maxLoad && exercise.maxLoad > 0 && mode === "external" && target.weight > exercise.maxLoad + EPS) {
     out.push({ code: "I7_au_dela_charge_max", detail: `${target.weight} > charge max ${exercise.maxLoad}` });
   }
@@ -179,20 +196,35 @@ export function targetInvariantViolations(input: InvariantInput): Violation[] {
     }
   }
 
-  // I2 — plus léger que la dernière série : au moins autant de reps (une de moins après une série à l'échec, la cible se
+  // I2 — plus léger que la dernière série (d'au moins une rep par la règle du moteur, `lighterByARep`) : au moins autant
+  // de reps (une de moins après une série à l'échec, la cible se
   // lisant au RIR 1 : après 16 × 7 au RIR 0, au moins 6), dans la limite du haut de la fourchette. Il cède à I4 quand
   // les deux ne tiennent pas ensemble (charge au plancher, épuisé) : on ne demande jamais plus que ce qu'il a montré.
   const cap = (w: number) => capacityLoad(exercise.setPatternMode, w, bodyweightKg);
   const bounding = today.filter((s) => s.rir !== null && s.rir <= RIR_BOUNDING_MAX && cap(s.weight) > 0);
   const shown = bounding.length > 0 ? Math.max(...bounding.map((s) => epley(cap(s.weight), s.reps + (s.rir ?? 0)))) : null;
-  const capReps = shown === null ? Number.POSITIVE_INFINITY : maxRepsUnderOneRepMax(shown, cap(target.weight));
+  // Plafond de capacité de la cible : 1RM montré (I4), série juste faite (I9), et après un essai le 1RM d'avant l'essai
+  // (I5, strictement en dessous).
+  let capReps = shown === null ? Number.POSITIVE_INFINITY : maxRepsUnderOneRepMax(shown, cap(target.weight));
+  if (last) capReps = Math.min(capReps, maxRepsAfterLastSet(last, cap(last.weight), cap(target.weight), exercise.smallestIncrement));
+  if (attempt && last && cap(target.weight) > 0) {
+    const pre = regular.slice(0, -1).filter((s) => s.rir !== null && s.rir <= RIR_BOUNDING_MAX && cap(s.weight) > 0);
+    if (pre.length > 0) {
+      const best = Math.max(...pre.map((s) => epley(cap(s.weight), s.reps + (s.rir ?? 0))));
+      capReps = Math.min(capReps, Math.ceil(30 * (best / cap(target.weight) - 1) - 1 - 1e-6) - 1);
+    }
+  }
   const minLighter = last ? lighterTargetMinReps(last, exercise) : 0;
-  if (last && !completion && eff(target.weight) < eff(last.weight) - EPS && target.reps < minLighter && !(capReps < minLighter && target.reps >= capReps)) {
+  const lighter = last !== null && lighterByARep(cap(last.weight), cap(target.weight), exercise.smallestIncrement);
+  if (last && !completion && lighter && target.reps < minLighter && !(capReps < minLighter && target.reps >= Math.max(1, capReps))) {
     out.push({ code: "I2_plus_leger_moins_de_reps", detail: `${set(target.weight, target.reps)} après ${set(last.weight, last.reps)} RIR ${last.rir ?? "?"}` });
   }
 
-  // I3 — pas de remontée de charge après une série finie au RIR 0-1 en bas de fourchette ou en dessous.
-  if (last && last.rir !== null && last.rir <= 1 && last.reps <= exercise.repTargetMin + 1 && eff(target.weight) > eff(last.weight) + EPS) {
+  // I3 — pas de remontée de charge après une série finie au RIR 0-1 en bas de fourchette ou en dessous. I10 prime : si la
+  // dernière série a été saisie sous la plus petite charge de la machine, la plus petite charge n'est pas une remontée.
+  const lightest = snapToGrid(mode === "assisted_bodyweight" ? Number.POSITIVE_INFINITY : 0, exercise, mode === "assisted_bodyweight" ? "down" : "up");
+  const atLightest = mode !== "assisted_bodyweight" && Math.abs(target.weight - lightest) < EPS && last !== null && last.weight < lightest - EPS;
+  if (last && last.rir !== null && last.rir <= 1 && last.reps <= exercise.repTargetMin + 1 && eff(target.weight) > eff(last.weight) + EPS && !atLightest) {
     out.push({ code: "I3_remontee_apres_serie_dure", detail: `${set(target.weight, target.reps)} après ${set(last.weight, last.reps)} RIR ${last.rir}` });
   }
 
@@ -221,7 +253,8 @@ export function targetInvariantViolations(input: InvariantInput): Violation[] {
   if (attempt && last && !completion) {
     const before = regular.slice(0, -1);
     const work = before.at(-1)?.weight ?? usualLoad;
-    if (work !== null && eff(target.weight) > eff(work) + EPS) {
+    const workBelowGrid = work !== null && Math.abs(target.weight - lightest) < EPS && work < lightest - EPS && mode !== "assisted_bodyweight";
+    if (work !== null && eff(target.weight) > eff(work) + EPS && !workBelowGrid) {
       out.push({ code: "I5_pas_de_retour_apres_essai", detail: `${set(target.weight, target.reps)} au-dessus de la charge de travail ${work} après l'essai ${set(last.weight, last.reps)}` });
     }
     const fresh = before.filter((s) => s.rir !== null && s.rir <= RIR_BOUNDING_MAX && cap(s.weight) > 0);

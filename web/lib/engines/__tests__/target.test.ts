@@ -136,11 +136,31 @@ describe("cible construite sur la prévision", () => {
     expect(t.codes).toContain("target_push_withheld");
   });
 
-  it("ne demande jamais plus que le 1RM montré aujourd'hui : après 140 × 8 au RIR 0, pas 140 × 9", () => {
+  it("après 140 × 8 au RIR 0, ni 140 × 9 ni 140 × 8 : plus léger d'au moins une rep, sous le 1RM montré", () => {
+    // À charge égale (à moins d'une rep près, 10,5 kg ici), au plus 8 − 2 = 6 : sous la fourchette, la charge baisse.
     const t = chooseTarget({ predictedAt: proj(140, 10, 10.5), startLoad: 140, push: false, ceiling: 140, today: done([140, 8, 0]), margin: 0 }, exercise(), 2.5, undefined);
     expect(epley(t.weight, t.reps + 1)).toBeLessThanOrEqual(epley(140, 8) + 1e-6);
-    expect(t).toMatchObject({ weight: 135, reps: 8 });
+    expect(t.weight).toBeLessThanOrEqual(140 - 10.5);
+    expect(t).toMatchObject({ weight: 127.5, reps: 10 });
     expect(t.codes).toContain("target_capacity");
+  });
+
+  it("à charge égale après une série à l'échec, pas « refais la même chose » : 120 × 8 au RIR 0 ne donne pas 120 × 8", () => {
+    const t = chooseTarget({ predictedAt: proj(120, 6, 9), startLoad: 120, push: false, ceiling: 120, today: done([120, 8, 0]), margin: 0 }, exercise(), 2.5, undefined);
+    expect(t.weight).toBeLessThan(120);
+    expect(t.reps).toBeGreaterThanOrEqual(8);
+  });
+
+  it("sur une poulie qui monte de 6 en 6, la cible ne propose que 60, 66, 72, 78 (jamais 72,5 ni 73)", () => {
+    const pulley = exercise({ smallestIncrement: 6 });
+    // Une charge saisie hors grille (72,5) : la cible repart de la grille, jamais plus lourd.
+    const t = chooseTarget({ predictedAt: proj(72.5, 6, 6), startLoad: 72.5, push: false, ceiling: null, today: done([72.5, 8, 1]), margin: 0 }, pulley, 6, undefined);
+    expect(t.weight % 6).toBe(0);
+    expect(t.weight).toBeLessThanOrEqual(72);
+    // Une grille qui ne part pas de zéro : 29, 31, 33.
+    const offset = exercise({ smallestIncrement: 2, loadOffset: 1 });
+    const u = chooseTarget({ predictedAt: proj(31, 9, 2.3), startLoad: 31, push: false, ceiling: null, today: [], margin: 0 }, offset, 2, undefined);
+    expect((u.weight - 1) % 2).toBe(0);
   });
 
   it("une montée de charge du moteur reste la sienne quand elle est cohérente", () => {
@@ -151,7 +171,8 @@ describe("cible construite sur la prévision", () => {
 
   it("au poids du corps, la charge ne bouge pas et les reps restent sous ce qu'il a montré", () => {
     const dips = exercise({ setPatternMode: "bodyweight" });
-    expect(chooseTarget({ predictedAt: () => 14, startLoad: 0, push: false, ceiling: null, today: done([0, 12, 0]), margin: 0 }, dips, 2.5, 74)).toMatchObject({ weight: 0, reps: 11 });
+    // 0 × 12 au RIR 0 : même charge (le corps), au plus 12 − 2 = 10.
+    expect(chooseTarget({ predictedAt: () => 14, startLoad: 0, push: false, ceiling: null, today: done([0, 12, 0]), margin: 0 }, dips, 2.5, 74)).toMatchObject({ weight: 0, reps: 10 });
   });
 
   it("série lourde : reps au RIR visé sous la fourchette, au-dessus de la charge habituelle", () => {
@@ -180,13 +201,12 @@ describe("cible construite sur la prévision", () => {
     const prediction = suggest(params);
     const shown = suggest({ ...params, target: true });
     expect(shown.prediction).toEqual({ weight: prediction.weight, reps: prediction.reps });
-    expect(shown.weight).toBe(130);
     expect(shown.reasonCodes[0]).toBe("target_to_beat");
-    // 130 × 9 au RIR 0 : la prévision à 130 kg tombe sous la fourchette, la cible y demande le bas (8) et le dit.
+    // 130 × 9 au RIR 0 : à 130 kg, au plus 9 − 2 = 7, sous la fourchette ; la cible prend plus léger, dans la fourchette.
     const usual = Math.round(shown.ambition!.predictedReps);
-    expect(shown.reps).toBe(8);
-    expect(usual).toBeLessThan(8);
-    expect(suggestionReason(shown)).toBe(`Cible à battre : le bas de ta fourchette, tu fais d'habitude ${usual} à ${usual + 1} ici`);
+    expect(shown.weight).toBeLessThan(130);
+    expect(shown.reps).toBeGreaterThanOrEqual(8);
+    expect(suggestionReason(shown)).toMatch(new RegExp(`^Cible à battre : (le bas de ta fourchette, )?tu fais d'habitude ${usual} à ${usual + 1} ici$`));
   });
 });
 
