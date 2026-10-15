@@ -19,6 +19,12 @@ import { holdElapsed, moveScrub, SCRUB, startScrub, type ScrubGesture } from "./
  * chevrons empilés à droite. Deux tuiles côte à côte tiennent sur ~66 px de haut au lieu de ~100,
  * sans laisser les deux réglages serrés au milieu de la carte (Evan, 26/09/2026).
  */
+/** Taille de la valeur d'une tuile : 1,65rem, ou moins si elle ne tient pas dans `100cqw`. */
+export function tileValueFontSize(characters: number, withSuffix: boolean): string {
+  const suffix = withSuffix ? " - 1.3rem" : "";
+  return `min(1.65rem, calc((100cqw${suffix}) / ${(Math.max(1, characters) * 0.6).toFixed(2)}))`;
+}
+
 export function Stepper({
   value,
   onChange,
@@ -212,9 +218,15 @@ export function Stepper({
           className
         )}
       >
-        <span {...scrubProps} className="flex min-w-0 flex-1 touch-pan-y cursor-ns-resize select-none flex-col justify-center px-3.5 py-2.5 [-webkit-touch-callout:none]">
+        <span {...scrubProps} className="@container flex min-w-0 flex-1 touch-pan-y cursor-ns-resize select-none flex-col justify-center px-3.5 py-2.5 [-webkit-touch-callout:none]">
           {label && <span className="eyebrow !text-[0.58rem]">{label}</span>}
-          <span className={cn("tnum mt-1 truncate text-[1.65rem] font-bold leading-none tabular-nums transition-transform", scrubbing && "scale-105")}>
+          <span
+            className={cn("tnum mt-1 truncate font-bold leading-none tabular-nums transition-transform", scrubbing && "scale-105")}
+            // La valeur se lit toujours en entier : pleine taille (1,65rem) tant qu'elle tient, sinon
+            // la taille qui la fait tenir dans la largeur de la tuile (chasse fixe : 0,6em par
+            // caractère, plus le suffixe « kg » en taille fixe). Cas typique : 111,25 kg.
+            style={{ fontSize: tileValueFontSize(formatDecimal(value, 2).length, Boolean(suffix)) }}
+          >
             {formatDecimal(value, 2)}
             {suffix && <span className="ml-1 text-sm font-medium text-(--color-fg-muted)">{suffix}</span>}
           </span>

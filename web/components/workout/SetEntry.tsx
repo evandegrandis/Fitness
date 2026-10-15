@@ -208,13 +208,15 @@ export function SetEntry({
         ) : (
           <div className="relative px-3 py-2.5">
             <TargetCorners color={cornerColor} />
-            <div className="flex min-h-8 items-center justify-between gap-2">
-              <p className="flex min-w-0 items-baseline gap-2 text-(--color-fg)">
+            {/* Sur une carte étroite, « Reprendre » passe à la ligne plutôt que de casser la charge
+                (« 110 / kg × / 8 » à 320 px dans une carte de superset). */}
+            <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-2">
+              <p className="flex items-baseline gap-2 text-(--color-fg)">
                 {intensityReasonCode && (
                   <Zap size={14} className="shrink-0 self-center" style={{ color: "#ff8a3d" }} aria-hidden />
                 )}
                 {modified && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
-                <span className="tnum text-lg font-bold leading-tight">
+                <span className="tnum whitespace-nowrap text-lg font-bold leading-tight">
                   {formatLoad(suggestion.weight)} × {suggestion.reps}
                 </span>
               </p>
@@ -225,7 +227,7 @@ export function SetEntry({
                     setWeight(suggestion.weight);
                     setReps(suggestion.reps);
                   }}
-                  className="-my-1 -mr-1.5 inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold transition active:scale-95"
+                  className="-my-1 -mr-1.5 ml-auto inline-flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-semibold transition active:scale-95"
                   style={{ color: "var(--accent)" }}
                 >
                   <RotateCcw size={12} aria-hidden />
@@ -342,24 +344,28 @@ export function SetEntry({
 
       {flameLabels.length > 0 && <FlameBadge label={flameLabels.join(" · ")} />}
 
-      {/* Deux tuiles pleine largeur : plus basses que les réglages empilés, et plus serrées au
-          milieu de la carte. Elles tiennent aussi dans une carte de superset, plus étroite. */}
-      <div className="grid grid-cols-2 gap-2">
-        <Stepper
-          variant="tile"
-          label="Poids"
-          value={weight}
-          onChange={(nextWeight) => {
-            setWeight(nextWeight);
-            if (!useWarmup) {
-              setReps(reprojectSuggestionAtWeight(suggestion, exercise, nextWeight, bodyweightKg).reps);
-            }
-          }}
-          step={increment}
-          min={0}
-          suffix="kg"
-        />
-        <Stepper variant="tile" label="Reps" value={reps} onChange={setReps} step={1} min={1} />
+      {/* Deux tuiles côte à côte, POIDS plus large que REPS : une charge a jusqu'à 5 caractères
+          (« 117,5 »), des reps 2. À parts égales, « 117,5 kg » sortait de sa tuile dans une carte de
+          superset (« 117… » à 390 px, « 1… » à 320 px, 16/10/2026). Sous 16,25rem de large (carte de
+          superset sur petit écran), elles s'empilent pour garder des chiffres pleine taille. */}
+      <div className="@container">
+        <div className="grid grid-cols-1 gap-2 @min-[16.25rem]:grid-cols-[1.6fr_1fr]">
+          <Stepper
+            variant="tile"
+            label="Poids"
+            value={weight}
+            onChange={(nextWeight) => {
+              setWeight(nextWeight);
+              if (!useWarmup) {
+                setReps(reprojectSuggestionAtWeight(suggestion, exercise, nextWeight, bodyweightKg).reps);
+              }
+            }}
+            step={increment}
+            min={0}
+            suffix="kg"
+          />
+          <Stepper variant="tile" label="Reps" value={reps} onChange={setReps} step={1} min={1} />
+        </div>
       </div>
 
       {/* RIR (reps en réserve) — oui.rtf #1 : facultatif, 1 tap, aucune présélection, jamais en

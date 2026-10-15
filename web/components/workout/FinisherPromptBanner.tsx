@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Flame } from "lucide-react";
 import { useWorkoutStore } from "@/lib/store/workout";
+import { FLOATING, floatingBottom, FLOATING_FALLBACK_HEIGHT, useFloatingHeight } from "./floating-stack";
 import { finisherPromptLabel } from "@/lib/engines/finisher";
 
 /**
@@ -22,9 +23,14 @@ export function FinisherPromptBanner() {
   const confirmFinisherPrompt = useWorkoutStore((s) => s.confirmFinisherPrompt);
   const dismissFinisherPrompt = useWorkoutStore((s) => s.dismissFinisherPrompt);
 
-  // Le RestTimer est haut (~5.5rem) : 9.5rem — la valeur qu'utilise l'UndoToast — ne
-  // suffit pas à le dégager, la bande finirait posée dessus. Mesuré à 375×812.
-  const offset = restActive && undoActive ? "17rem" : restActive ? "13rem" : undoActive ? "8.5rem" : "4.5rem";
+  // Au-dessus de la barre d'onglets ou du minuteur, puis du toast « Annuler » : hauteurs mesurées
+  // (`floating-stack.ts`). Les valeurs fixes d'avant (4,5rem) la posaient 8 px sous la barre.
+  const restTimerHeight = useFloatingHeight(FLOATING.restTimer, restActive);
+  const undoHeight = useFloatingHeight(FLOATING.undoToast, undoActive);
+  const bottom = floatingBottom(
+    restActive ? restTimerHeight ?? FLOATING_FALLBACK_HEIGHT.restTimer : null,
+    undoActive ? [undoHeight ?? FLOATING_FALLBACK_HEIGHT.banner] : []
+  );
 
   return (
     <AnimatePresence>
@@ -38,7 +44,8 @@ export function FinisherPromptBanner() {
           // `surface-solid` comme le RestTimer, et non `glass` : la bande flotte au-dessus
           // du contenu défilant, un fond translucide laisserait le texte transparaître.
           className="surface-solid fixed inset-x-0 z-40 mx-auto flex w-[calc(100%-2.5rem)] max-w-md items-center gap-3 rounded-2xl px-4 py-3"
-          style={{ bottom: `calc(${offset} + env(safe-area-inset-bottom))` }}
+          style={{ bottom }}
+          data-finisher-prompt=""
         >
           <Flame aria-hidden="true" size={18} className="shrink-0" style={{ color: "var(--accent)" }} />
           <div className="min-w-0 flex-1">
