@@ -91,6 +91,7 @@ const exerciseSchema = z.object({
   voluntaryRepCap: finiteNumber.int().nonnegative().nullish(),
   // Champ web-only, absent des exports antérieurs.
   maxLoad: finiteNumber.nonnegative().nullish(), // 0 = « pas de max »
+  loadOffset: finiteNumber.nullish(),
   profileSource: z.enum(["legacy", "known_profile", "donor", "barbis", "user"]).nullish(),
   equivalenceKey: z.string().max(200).nullish(),
   muscleMappings: z.array(muscleMappingSchema),
@@ -651,6 +652,7 @@ export function parseBackup(json: unknown): BackupData {
       progressionPolicy: resolveProgressionPolicy(exData.progressionPolicy),
       voluntaryRepCap: exData.voluntaryRepCap ?? 0,
       maxLoad: exData.maxLoad ?? null,
+      loadOffset: exData.loadOffset ?? null,
       profileSource: exData.profileSource ?? null,
       equivalenceKey: exData.equivalenceKey ?? null,
       muscleMappings,

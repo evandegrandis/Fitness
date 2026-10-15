@@ -1,0 +1,1 @@
+ALTER TABLE "exercises" ADD COLUMN "load_offset" double precision;

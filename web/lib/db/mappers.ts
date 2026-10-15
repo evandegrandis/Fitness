@@ -184,6 +184,7 @@ export function mapExerciseRow(row: ExerciseRow, mappingRows: MuscleMappingRow[]
     progressionPolicy: asProgressionPolicy(row.progressionPolicy),
     voluntaryRepCap: row.voluntaryRepCap,
     maxLoad: row.maxLoad ?? null,
+    loadOffset: row.loadOffset ?? null,
     profileSource: asProfileSource(row.profileSource),
     equivalenceKey: row.equivalenceKey ?? null,
     muscleMappings: mappingRows
@@ -229,6 +230,7 @@ export function exerciseToUpsertUpdateRow(
     progressionPolicy: exercise.progressionPolicy,
     voluntaryRepCap: exercise.voluntaryRepCap,
     maxLoad: exercise.maxLoad ?? null,
+    loadOffset: exercise.loadOffset ?? null,
     profileSource: exercise.profileSource ?? null,
     equivalenceKey: exercise.equivalenceKey ?? null,
     movementPattern: exercise.movementPattern,

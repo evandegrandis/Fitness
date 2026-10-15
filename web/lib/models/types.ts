@@ -81,6 +81,12 @@ export interface Exercise {
    */
   maxLoad?: number | null;
   /**
+   * Décalage de la grille de charges de la machine (`lib/engines/load-grid.ts`) : les charges valent
+   * `loadOffset + k × smallestIncrement`. `null`/absent = 0 (la grille part de zéro : 60, 66, 72 pour un pas de 6).
+   * Exemple : une pile qui monte 29, 31, 33 a un pas de 2 et un décalage de 1.
+   */
+  loadOffset?: number | null;
+  /**
    * D'où vient le profil musculaire. Décide qui peut le remplacer : un réglage fait à la main
    * (`user`) n'est jamais écrasé, Barbis complète ce que l'app a seulement copié ou deviné.
    * `null`/absent = aucun profil vérifié (exercice créé en salle, à faire cartographier).

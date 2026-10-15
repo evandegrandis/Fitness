@@ -120,6 +120,13 @@
       "when": 1790377873498,
       "tag": "0016_data_safety",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792100407819,
+      "tag": "0017_exercise_load_offset",
+      "breakpoints": true
     }
   ]
 }
