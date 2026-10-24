@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ambitionMargin, chooseTarget, completionTarget, heavyReturnLoad, isHeavySet, TARGET, usualWorkingLoad, type TodaySet } from "@/lib/engines/target";
 import { suggest, SUGGESTION_ENGINE_VERSION } from "@/lib/engines/progression";
 import { suggestionReason } from "@/lib/engines/suggestion-reason";
+import { loadHabit } from "@/lib/engines/target-display";
 import { SetType } from "@/lib/models/enums";
 import { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -203,10 +204,13 @@ describe("cible construite sur la prévision", () => {
     expect(shown.prediction).toEqual({ weight: prediction.weight, reps: prediction.reps });
     expect(shown.reasonCodes[0]).toBe("target_to_beat");
     // 130 × 9 au RIR 0 : à 130 kg, au plus 9 − 2 = 7, sous la fourchette ; la cible prend plus léger, dans la fourchette.
-    const usual = Math.round(shown.ambition!.predictedReps);
     expect(shown.weight).toBeLessThan(130);
     expect(shown.reps).toBeGreaterThanOrEqual(8);
-    expect(suggestionReason(shown)).toMatch(new RegExp(`^Cible à battre : (le bas de ta fourchette, )?tu fais d'habitude ${usual} à ${usual + 1} ici$`));
+    // « D'habitude » : ses séries réelles à la charge de la cible (24/10/2026), plus la prévision.
+    const habit = loadHabit(exercise(), history, shown.weight, NOW);
+    const done = history.flatMap((s) => s.exercises[0].sets).filter((x) => x.weight === shown.weight).map((x) => x.reps);
+    expect(habit.reps.sort()).toEqual(done.sort());
+    expect(suggestionReason(shown, habit)).toMatch(/^Cible à battre( : le bas de ta fourchette)?\. (À [\d,]+ kg, tu (fais d'habitude|as fait) \d+ reps?|Aucune série à [\d,]+ kg ces 8 dernières semaines)/);
   });
 });
 

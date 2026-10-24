@@ -47,9 +47,10 @@ charge choisie, pas des reps visées) : au-delà de l'objectif + 5 points, + 0,5
 Ni la courbe (reps faites contre prévision) ni la boucle (même charge) ne lisent le verdict d'une série faite à une autre
 charge : la règle du 12/10 (4.3) ne change aucune cible, rejouées série pour série (1 300 sur 1 300).
 
-Raison affichée : « Cible à battre : tu fais d'habitude 6 à 7 ici » (prévision au RIR visé, et une rep de plus à
-l'échec) ; « Cible à battre : le bas de ta fourchette, tu fais d'habitude 6 à 7 ici » quand la fourchette relève la
-cible ; « Cible à battre après ton essai lourd : retour à ta charge de travail, … » juste après un essai.
+Raison affichée (depuis le 24/10/2026, section 8) : « Cible à battre. À 72 kg, tu fais d'habitude 7 reps (au mieux 9) »,
+tiré de ses séries réelles à la charge de la cible ; « Cible à battre : le bas de ta fourchette. … » quand la fourchette
+relève la cible ; « Cible à battre après ton essai lourd : retour à ta charge de travail. … » juste après un essai.
+Jusqu'au 22/10, « tu fais d'habitude N à N + 1 ici » était la prévision (au RIR visé, + 1 à l'échec), pas un relevé.
 
 ## 1. Ce qu'on mesure
 
@@ -423,3 +424,51 @@ dans la séance (1,97 → 2,03). Piste non concluante : après plus de 14 jours 
   25 → 20 %, écart de charge 5,5 → 5,4 % (après le 21/09 : 5,0 → 6,3 %) ; 1res séries −0,62 (battues 43 %), séries
   suivantes +0,04 (39 %). Violations : 567 → 0 (dont I10 : 7 → 0 aux grilles en base, 17 → 0 aux grilles proposées),
   0 sur 10 000 séances aléatoires (grilles décalées et saisies hors grille comprises).
+
+## 8. Cohérence de l'écran (24/10/2026, séance du 22/10)
+
+Ce qu'Evan a vu le 22/10 : « Rang B · pour A : 4 séries ou 2 records · Records 1/4 » en séance, « Rang S · 17 séries ·
+5 records » au bilan ; « Proposé 80 kg × 12 » et « À 90 kg, le moteur prévoit 8 reps » côte à côte ; « tu fais
+d'habitude 8 à 9 ici » à 72 kg au tirage horizontal, où il avait fait 7, 9, 7, 7. Causes vérifiées par rejeu de la
+séance dans le store (corrections de série comprises), moteur de charges v2.5 inchangé :
+
+- **Records : deux définitions.** L'en-tête comptait des marques posées par `classify` au moment de valider (un
+  record par type et par exercice, gain de 2 % de 1RM exigé à une charge jamais faite), et une correction de série
+  (`editSet`) effaçait la marque sans la recalculer ; le bilan (parcours) comptait les étoiles de l'Historique. Le
+  22/10 : 5 étoiles, 3 marques, dont 2 effacées par deux corrections → 1. Désormais une seule définition,
+  `lib/engines/session-stars.ts` (les étoiles de l'Historique), lue par `recordEvents`, le compte de l'Historique, le
+  bilan (une ligne par étoile) et le store, où les marques sont dérivées des faits à chaque série validée, corrigée,
+  supprimée et au rechargement. Le rang en direct et le rang du bilan passent par `sessionRankInput`
+  (`session-rank.ts`) : mêmes séries (au cran de chaque machine), mêmes étoiles, même sèche, mêmes « records
+  possibles ». Rang du passé : inchangé (le parcours lisait déjà les étoiles).
+- **Ligne « À X kg ».** Elle reprojetait la PRÉVISION brute du moteur (sans la marge d'ambition, parfois depuis une
+  autre charge que la cible), à côté de la CIBLE. Elle dit maintenant ce que vaut la cible à cette charge
+  (`lib/engines/target-display.ts`) : plus lourd, la cible ramenée par la règle de 7,5 % de sa charge (80 × 12 →
+  10 reps à 90 kg), au moins le bas de la fourchette ; plus léger, le plus petit nombre de reps qui la tient selon la
+  règle « battre » (`versus.ts`, qui ramène la série depuis SA charge : 80 × 12 → 16 reps à 60 kg ; 15 serait « en
+  dessous »). La prévision reste enregistrée (`predictedRepsAtActualWeight`) pour l'apprentissage.
+- **« D'habitude ».** C'était la prévision arrondie. Ce sont maintenant ses séries de travail réelles à la charge de
+  la cible (les 6 plus récentes des 8 dernières semaines, toutes positions) : médiane basse et meilleure, « tu as fait
+  10 reps le 06/10 » s'il n'y en a qu'une, « aucune série à 66 kg ces 8 dernières semaines » sinon.
+- **Bilan.** Le superset se lit sur ses séries enchaînées (jusqu'à la première série d'un autre exercice) : le 22/10,
+  une 3e série d'élévations faite seule 24 min plus tard donnait « 8 séries en 40 min 39 » pour un superset de 17 min.
+  « En hausse » suit la règle « battre » (`versusReference`) au lieu d'Epley (« Tirage horizontal : +6 kg (2 reps de
+  moins) » comptait comme une hausse : 78 × 5 vaut 72 × 6 par la règle, et 5 reps sont sous la fourchette) ; le
+  « 1RM estimé +N % » d'Epley n'est plus affiché. « La prochaine fois : … pour une étoile » cherche la plus petite série
+  étoilée par la règle des étoiles (`isRecordSet`).
+- **Libellés.** « Vers le max : 72 / 150 kg (8+ reps) » (charge validée, à côté de « Record 78 × 7 », la plus
+  lourde tout court) ; le bouton d'échauffement dit ce qu'il fait (« Échauffer d'abord · 42 kg »).
+
+Invariants d'affichage (`lib/engines/display-invariants.ts`), zéro violation exigée, au test de propriété
+(`target-invariants.test.ts`, séances tirées au hasard jouées dans le store, corrections et suppressions comprises) et
+sur le rejeu de tout l'historique (`scripts/suggestions-audit/coherence.ts`) :
+
+- D1 : le rang en direct est celui du bilan pour les mêmes séries (lettre, score, séries, records) ;
+- D2 : faire ce que dit la ligne « À X kg » n'est jamais « en dessous » ; plus léger, une rep de moins le serait ; plus
+  lourd, c'est la cible ramenée par la règle de 7,5 % (au moins le bas de la fourchette) ;
+- D3 : « d'habitude » ne cite que des reps de séries réelles à cette charge, et rien sans série.
+
+```sh
+TZ=Europe/Paris npx tsx scripts/suggestions-audit/coherence.ts ~/jeera-audit/export.json [--seance 2026-10-22]
+```
+
