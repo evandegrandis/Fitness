@@ -2,10 +2,13 @@
  * Pourquoi le moteur propose cette série, en mots d'Evan (11/10/2026 : « Hypertrophie · 120 kg × 11 »
  * ne lui disait pas pourquoi 120 kg après sa série à 150 kg). Lecture seule des `reasonCodes` posés
  * par `progression.ts` : rien ici ne change une suggestion.
+ *
+ * Jamais de prévision, d'habitude ni de capacité (24/10/2026, Evan : savoir que le moteur le croit capable de moins que
+ * la cible le pousse à viser ce moins) : ni « tu fais d'habitude N reps ici » (cible à battre), ni « tu perds d'habitude
+ * N reps d'une série à l'autre » (perte apprise). Les raisons disent ce que fait la cible, pas ce qu'il ferait.
  */
 
 import type { SetSuggestion } from "@/lib/engines/progression";
-import { loadHabitText, type LoadHabit } from "@/lib/engines/target-display";
 
 /** Code du moteur → raison affichée. Le premier code connu de la suggestion l'emporte. */
 const REASONS: Record<string, string> = {
@@ -64,34 +67,22 @@ const ADDENDA: Record<string, string> = {
  * qui nomme la machine de départ.
  */
 export function suggestionReason(
-  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation"> & Partial<Pick<SetSuggestion, "repDrop" | "ambition">>,
-  /** Ses séries réelles à la charge de la cible (`target-display.ts`) : seules à pouvoir dire « d'habitude ». */
-  habit?: LoadHabit
+  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation">
 ): string | null {
   const codes = suggestion.reasonCodes;
   if (codes.includes("equivalent_starting_point") || codes.includes("equivalent_conversion")) return null;
   const addenda = codes.map((code) => ADDENDA[code]).filter(Boolean);
-  // Cible à battre (`target.ts`) : la raison l'assume, puis dit ce qu'il a VRAIMENT fait à cette charge. Jusqu'au
-  // 24/10/2026, « tu fais d'habitude N à N + 1 ici » était la prévision du moteur (22/10 : « 8 à 9 » au tirage
-  // horizontal à 72 kg, où il avait fait 7, 9, 7, 7).
+  // Cible à battre (`target.ts`) : la raison l'assume, sans rien dire de ce qu'il ferait. Jusqu'au 24/10/2026 elle
+  // ajoutait « À 72 kg, tu fais d'habitude 7 reps (au mieux 9) » : un chiffre sous la cible, à côté d'elle.
   if (codes.includes("target_to_beat")) {
     const base = codes.includes("target_after_attempt")
       ? "Cible à battre après ton essai lourd : retour à ta charge de travail"
       : codes.includes("target_lifted")
         ? "Cible à battre : le bas de ta fourchette"
         : "Cible à battre";
-    const main = addenda.length > 0 ? `${base} (${addenda.join(", ")})` : base;
-    return habit ? `${main}. ${loadHabitText(habit)}` : main;
+    return addenda.length > 0 ? `${base} (${addenda.join(", ")})` : base;
   }
   const main = codes.map((code) => REASONS[code]).find(Boolean);
   if (!main) return null;
-  if (codes.includes("learned_rep_drop") && suggestion.repDrop) addenda.push(learnedDropText(suggestion.repDrop.drop));
   return addenda.length > 0 ? `${main} (${addenda.join(", ")})` : main;
-}
-
-/** « tu perds d'habitude 2,5 reps d'une série à l'autre ici », arrondi à la demi-rep. */
-export function learnedDropText(drop: number): string {
-  const rounded = Math.max(0.5, Math.round(drop * 2) / 2);
-  const value = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(".", ",");
-  return `tu perds d'habitude ${value} rep${rounded > 1 ? "s" : ""} d'une série à l'autre ici`;
 }

@@ -33,9 +33,9 @@ const { useWorkoutStore } = await import("@/lib/store/workout");
 const { MuscleGroup } = await import("@/lib/models/muscles");
 const { orderedSets } = await import("@/lib/models/types");
 const { targetInvariantViolations, isNearMaxAttempt } = await import("@/lib/engines/target-invariants");
-const { atLoadViolations, habitViolations, rankViolations } = await import("@/lib/engines/display-invariants");
-const { atLoadText, loadHabit, targetRepsAtLoad } = await import("@/lib/engines/target-display");
-const { suggestionReason } = await import("@/lib/engines/suggestion-reason");
+const { atLoadViolations, rankViolations, recordedTargetViolations, sessionTextViolations } = await import("@/lib/engines/display-invariants");
+const { targetPanel } = await import("@/lib/engines/target-display");
+const { reprojectSuggestionAtWeight, SUGGESTION_ENGINE_VERSION } = await import("@/lib/engines/progression");
 const { sessionRankInput } = await import("@/lib/engines/session-rank");
 const { sessionStars } = await import("@/lib/engines/session-stars");
 const { buildCareer } = await import("@/lib/engines/career");
@@ -291,7 +291,7 @@ describe("propriété : aucune cible incohérente, quelle que soit la séance", 
   }, 300_000);
 });
 
-describe("propriété : l'écran ne se contredit pas (`display-invariants.ts`, séance du 22/10/2026)", () => {
+describe("propriété : l'écran ne se contredit pas et ne dit que la cible (`display-invariants.ts`, 22 et 24/10/2026)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
@@ -300,50 +300,35 @@ describe("propriété : l'écran ne se contredit pas (`display-invariants.ts`, s
     vi.useRealTimers();
   });
 
-  it("22/10 : 80 × 12 vaut 10 reps à 90 kg (et non « 8 »), 72 kg au tirage : « d'habitude 7 (au mieux 9) »", () => {
-    const abdo = exercise({ repTargetMin: 8, repTargetMax: 12, smallestIncrement: 2.5 });
-    expect(atLoadText(abdo, { weight: 80, reps: 12 }, 90)).toBe("À 90 kg, cette cible vaut 10 reps (7,5 % de charge = 1 rep).");
-    expect(atLoadViolations(abdo, { weight: 80, reps: 12 }, 90)).toEqual([]);
-    // Plus léger : le nombre qui TIENT la cible par la règle « battre » (15 à 60 kg serait « en dessous »).
-    expect(atLoadText(abdo, { weight: 80, reps: 12 }, 60)).toBe("À 60 kg, cette cible vaut 16 reps (7,5 % de charge = 1 rep).");
-    expect(atLoadViolations(abdo, { weight: 80, reps: 12 }, 60)).toEqual([]);
-    const tirage = exercise({ smallestIncrement: 6 });
-    const at = (day: string, reps: number[]) => {
-      const date = new Date(`${day}T16:00:00Z`);
-      return {
-        id: day, date, startTime: date, endTime: date, notes: "", isActive: false, templateName: null, supersetGroups: [], cardioEntries: [],
-        exercises: [{ id: `le-${day}`, orderIndex: 0, notes: "", exerciseId: tirage.id, exerciseName: tirage.name, supersetGroupId: null, plateauWeakPoint: null,
-          sets: reps.map((value, i) => ({ id: `${day}-${i}`, weight: 72, reps: value, setType: "work" as const, timestamp: new Date(date.getTime() + i * 200_000), setSlotIndex: i, completed: true, supersetRoundIndex: null, reportedRir: 0 })) }],
-      } satisfies WorkoutSession;
-    };
-    const history = [at("2026-10-15", [7]), at("2026-10-11", [7]), at("2026-10-09", [9]), at("2026-10-06", [7])];
-    const now = new Date("2026-10-22T17:47:00Z");
-    const habit = loadHabit(tirage, history, 72, now);
-    const text = suggestionReason({ reasonCodes: ["target_to_beat", "straight_ref_v2"], explanation: "" }, habit)!;
-    expect(text).toBe("Cible à battre. À 72 kg, tu fais d'habitude 7 reps (au mieux 9)");
-    expect(habitViolations(tirage, history, habit, text, now)).toEqual([]);
-    const none = loadHabit(tirage, history, 66, now);
-    expect(suggestionReason({ reasonCodes: ["target_to_beat", "target_lifted"], explanation: "" }, none)).toBe(
-      "Cible à battre : le bas de ta fourchette. Aucune série à 66 kg ces 8 dernières semaines"
-    );
+  const abdo = exercise({ repTargetMin: 8, repTargetMax: 12, smallestIncrement: 2.5 });
+  // Total Abdominal, 22/10 : cible 80 × 12 = prévision 10,7 à 80 kg + marge 1,27.
+  const proposal = { weight: 80, reps: 12, prediction: { weight: 80, reps: 10.7 }, ambition: { margin: 1.27, predictedReps: 10.7, beatRate: null, lowered: 0 }, reasonCodes: ["target_to_beat", "straight_ref_v2"], explanation: "" };
+
+  it("22/10 : il prend 90 kg au lieu de 80 × 12 ; l'écran dit « Cible à 90 kg : 10 reps », enregistrée telle quelle", () => {
+    const at80 = targetPanel(proposal, abdo, { weight: 80, reps: 12 }, [], undefined);
+    expect(at80.headline).toBe("80 kg × 12");
+    expect(at80.reason).toBe("Cible à battre");
+    const at90 = targetPanel(proposal, abdo, { weight: 90, reps: 12 }, [], undefined);
+    expect(at90.headline).toBe("Cible à 90 kg : 10 reps");
+    expect(at90.reason).toBeNull();
+    expect(at90.modified).toBe(true);
+    expect(atLoadViolations(abdo, proposal, at90, [], undefined)).toEqual([]);
+    expect(sessionTextViolations(at90)).toEqual([]);
+    expect(recordedTargetViolations(abdo, at90, { suggestedWeight: 90, suggestedReps: 10 })).toEqual([]);
+    // Après 77,5 × 14 au RIR 0 : à 77,5 kg ou plus, jamais plus que 14 − 2 (I9).
+    const after = targetPanel({ ...proposal, weight: 72.5, reps: 13, prediction: { weight: 72.5, reps: 13 } }, abdo, { weight: 77.5, reps: 13 }, [{ weight: 77.5, reps: 14, rir: 0, continuation: false }], undefined);
+    expect(after.target.reps).toBeLessThanOrEqual(12);
   });
 
-  it("le vérificateur reconnaît l'écran du 22/10 : B en direct et S au bilan, « 8 » à 90 kg, « d'habitude 8 à 9 »", () => {
+  it("le vérificateur reconnaît l'écran d'avant : « cette cible vaut », « d'habitude », B en direct et S au bilan", () => {
     expect(rankViolations({ sets: 16, records: 1, cut: false, recordsPossible: true }, { letter: "S", score: 86, sets: 17, records: 5 }).map((v) => v.code)).toEqual(["D1"]);
-    const tirage = exercise({ smallestIncrement: 6 });
-    const date = new Date("2026-10-15T16:00:00Z");
-    const history: WorkoutSession[] = [{
-      id: "s", date, startTime: date, endTime: date, notes: "", isActive: false, templateName: null, supersetGroups: [], cardioEntries: [],
-      exercises: [{ id: "le", orderIndex: 0, notes: "", exerciseId: tirage.id, exerciseName: tirage.name, supersetGroupId: null, plateauWeakPoint: null,
-        sets: [7, 9, 7, 7].map((reps, i) => ({ id: `x${i}`, weight: 72, reps, setType: "work" as const, timestamp: new Date(date.getTime() + i * 200_000), setSlotIndex: i, completed: true, supersetRoundIndex: null, reportedRir: 0 })) }],
-    }];
-    const now = new Date("2026-10-22T17:47:00Z");
-    const habit = loadHabit(tirage, history, 72, now);
-    expect(habitViolations(tirage, history, habit, "Cible à battre : tu fais d'habitude 8 à 9 ici", now).map((v) => v.detail)).toEqual([
-      "« Cible à battre : tu fais d'habitude 8 à 9 ici » cite 8, absent de ses séries à 72 kg",
-    ]);
-    // 80 × 12, et « À 90 kg, le moteur prévoit 8 reps » : 8 n'est pas ce que vaut la cible à 90 kg.
-    expect(targetRepsAtLoad(exercise({ smallestIncrement: 2.5 }), { weight: 80, reps: 12 }, 90)).not.toBe(8);
+    const target = { weight: 80, reps: 12 };
+    expect(sessionTextViolations({ target, headline: "80 kg × 12", reason: "Cible à battre. À 72 kg, tu fais d'habitude 7 reps (au mieux 9)" }).map((v) => v.code)).toContain("D4");
+    expect(sessionTextViolations({ target: { weight: 90, reps: 10 }, headline: "À 90 kg, cette cible vaut 10 reps (7,5 % de charge = 1 rep).", reason: null }).map((v) => v.code)).toContain("D4");
+    expect(sessionTextViolations({ target, headline: "80 kg × 12", reason: "Même charge (tu perds d'habitude 2,5 reps d'une série à l'autre ici)" }).map((v) => v.code)).toContain("D4");
+    expect(sessionTextViolations({ target, headline: "80 kg × 12", reason: "À 90 kg, le moteur prévoit 8 reps" }).length).toBeGreaterThan(0);
+    // Une cible à 90 kg enregistrée comme 80 × 12 jugerait autre chose que ce que l'écran a dit.
+    expect(recordedTargetViolations(abdo, { target: { weight: 90, reps: 10 } }, { suggestedWeight: 80, suggestedReps: 12 }).map((v) => v.code)).toEqual(["D3"]);
   });
 
   // `SEEDS=10000` pour un tirage plus large.
@@ -366,14 +351,13 @@ describe("propriété : l'écran ne se contredit pas (`display-invariants.ts`, s
       for (let k = 0; k <= sets; k++) {
         const state = useWorkoutStore.getState();
         const target = state.suggestion(leId);
-        // D2 : une autre charge de la grille, comme quand il change le poids dans la tuile.
-        if (ex.setPatternMode !== "bodyweight") {
-          const load = Math.max(0, target.weight + step * r.pick([-4, -2, -1, 1, 2, 4]));
-          fail(`cible ${target.weight} × ${target.reps}`, atLoadViolations(ex, target, load));
-        }
-        // D3 : la raison dite sous la cible.
-        const habit = loadHabit(ex, state.history, target.weight, new Date());
-        fail("raison", habitViolations(ex, state.history, habit, suggestionReason(target, habit) ?? "", new Date()));
+        const today = orderedSets(state.active!.exercises[0])
+          .filter((set) => set.completed && (set.setType === "work" || set.setType === "top_set" || set.setType === "backoff"))
+          .map((set) => ({ weight: set.weight, reps: set.reps, rir: set.reportedRir ?? null, continuation: set.setTechnique != null || (set.logicalSetId != null && set.logicalSetId !== set.id) }));
+        const bw = state.settings.bodyWeightKg ?? undefined;
+        // D4 : à la charge proposée, la carte ne dit que la cible.
+        const proposed = targetPanel(target, ex, { weight: target.weight, reps: target.reps }, today, bw);
+        fail("carte", sessionTextViolations(proposed));
         // D1 : le rang en direct contre le bilan de la même séance, si elle s'arrêtait là.
         const session = state.active!;
         const live = sessionRankInput({ session, previous: state.history, catalog: state.catalog, bodyWeights: state.bodyWeights, settings: state.settings });
@@ -388,9 +372,23 @@ describe("propriété : l'écran ne se contredit pas (`display-invariants.ts`, s
         const attempt = ex.setPatternMode !== "bodyweight" && r.next() < 0.12;
         const weight =
           ex.setPatternMode === "bodyweight" ? 0 : attempt ? target.weight + step * r.int(2, 6) : Math.max(0, target.weight + step * r.int(-2, 1) + typo());
-        const reps = attempt ? r.int(1, 3) : Math.max(1, target.reps + r.int(-4, 2));
+        // D2, D3, D4 : la carte à la charge qu'il prend (une autre charge de la grille, ou saisie hors grille), la cible
+        // dite, et la cible enregistrée avec la série, comme `SetEntry`.
+        const panel = targetPanel(target, ex, { weight, reps: target.reps }, today, bw);
+        fail(`cible ${target.weight} × ${target.reps} → ${weight} kg`, [
+          ...atLoadViolations(ex, target, panel, today, bw),
+          ...sessionTextViolations(panel),
+          ...recordedTargetViolations(ex, panel, { suggestedWeight: panel.target.weight, suggestedReps: panel.target.reps }),
+        ]);
+        const reps = attempt ? r.int(1, 3) : Math.max(1, panel.target.reps + r.int(-4, 2));
+        const prediction = target.prediction ? { ...target, ...target.prediction } : target;
         vi.setSystemTime(Date.now() + r.int(60, 300) * 1000);
-        useWorkoutStore.getState().logSet(leId, { weight, reps, reportedRir: r.next() < 0.15 ? null : r.int(0, 4) });
+        useWorkoutStore.getState().logSet(leId, {
+          weight, reps, reportedRir: r.next() < 0.15 ? null : r.int(0, 4),
+          suggestedWeight: panel.target.weight, suggestedReps: panel.target.reps, suggestedSetType: target.setType,
+          predictedRepsAtActualWeight: reprojectSuggestionAtWeight(prediction, ex, weight, bw).reps,
+          suggestionMode: target.mode, suggestionReasonCodes: target.reasonCodes, suggestionEngineVersion: SUGGESTION_ENGINE_VERSION,
+        });
         // Une série corrigée ou supprimée après coup (le 22/10, deux corrections avaient effacé deux records).
         const done = orderedSets(useWorkoutStore.getState().active!.exercises[0]);
         if (done.length > 0 && r.next() < 0.2) {
@@ -405,4 +403,3 @@ describe("propriété : l'écran ne se contredit pas (`display-invariants.ts`, s
     expect(failures.slice(0, 10)).toEqual([]);
   }, 300_000);
 });
-

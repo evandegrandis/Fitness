@@ -536,7 +536,7 @@ export interface TargetAtLoadSource {
   reps: number;
   /** Prévision du moteur (sans biais), à sa charge (`SetSuggestion.prediction`) ; à défaut, la cible elle-même. */
   prediction?: { weight: number; reps: number } | null;
-  /** Marge d'ambition de la cible (`SetSuggestion.ambition`), absente hors couche cible. */
+  /** Marge d'ambition de la cible (`SetSuggestion.ambition`), absente hors couche cible : la cible sert alors de base. */
   ambition?: { margin: number } | null;
 }
 
@@ -562,7 +562,8 @@ export function targetAtLoad(
   const mode = loadModeOf(exercise);
   const eff = (value: number) => effTotal(value, mode, bodyweightKg);
   if (Math.abs(eff(load) - eff(suggestion.weight)) < 1e-9) return { weight: suggestion.weight, reps: suggestion.reps };
-  const prediction = suggestion.prediction ?? suggestion;
+  // Sans marge (série à finir, point de départ d'une autre machine, couche cible absente), la cible est sa propre base.
+  const prediction = suggestion.ambition ? suggestion.prediction ?? suggestion : suggestion;
   const margin = suggestion.ambition?.margin ?? 0;
   const from = eff(prediction.weight);
   const kgPerRep = Math.max(increment > 0 ? increment : exercise.smallestIncrement, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));

@@ -11,8 +11,7 @@ import {
   SUGGESTION_ENGINE_VERSION,
   type SetSuggestion,
 } from "@/lib/engines/progression";
-import { suggestionReason } from "@/lib/engines/suggestion-reason";
-import { atLoadText, loadHabit } from "@/lib/engines/target-display";
+import { targetPanel } from "@/lib/engines/target-display";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { cn } from "@/lib/utils";
 import { cleanWeight, formatDecimal, formatLoad } from "@/lib/format";
@@ -133,7 +132,7 @@ export function SetEntry({
   const setFreshOverride = useWorkoutStore((s) => s.setFreshOverride);
   const clearFreshOverride = useWorkoutStore((s) => s.clearFreshOverride);
   const bodyweightKg = useWorkoutStore((s) => s.settings.bodyWeightKg ?? undefined);
-  const history = useWorkoutStore((s) => s.history);
+  const loggedSets = useWorkoutStore((s) => s.active?.exercises.find((logged) => logged.id === loggedExerciseId)?.sets);
   const isFresh = freshOverrides.has(loggedExerciseId);
 
   const [useWarmup, setUseWarmup] = useState(false);
@@ -178,15 +177,25 @@ export function SetEntry({
   const prediction = suggestion.prediction ? { ...suggestion, ...suggestion.prediction } : suggestion;
   const projectedSuggestion = reprojectSuggestionAtWeight(prediction, exercise, weight, bodyweightKg);
 
-  // Une seule source : les champs partent de la suggestion (remontage par `key`), et la ligne du
-  // dessus dit toujours ce que le moteur propose et pourquoi. Quand les champs s'en écartent, elle
-  // le montre et dit ce que le moteur prévoit à la charge choisie (11/10/2026 : 130 × 10 dans les
-  // champs, « Suggestion 120 × 11 » et « Hypertrophie · 120 kg × 11 » au-dessus, sans explication).
-  const modified = !useWarmup && (weight !== suggestion.weight || reps !== suggestion.reps);
-  const weightChanged = !useWarmup && weight !== suggestion.weight;
-  // « D'habitude » ne se dit que de ses séries réelles à la charge de la cible (`target-display.ts`).
-  const habit = useMemo(() => loadHabit(exercise, history, suggestion.weight, new Date()), [exercise, history, suggestion.weight]);
-  const reason = suggestionReason(suggestion, habit);
+  // Une seule source : les champs partent de la suggestion (remontage par `key`), et le cadre du dessus dit la
+  // cible, rien d'autre (24/10/2026, `target-display.ts`). Quand il change la charge, la cible est recalculée à
+  // cette charge (« Cible à 90 kg : 10 reps », « Reprendre ») ; c'est elle qui est enregistrée avec la série.
+  const today = useMemo(
+    () =>
+      [...(loggedSets ?? [])]
+        .sort((a, b) => a.setSlotIndex - b.setSlotIndex)
+        .filter((set) => set.completed && (set.setType === SetType.work || set.setType === SetType.topSet || set.setType === SetType.backoff))
+        .map((set) => ({
+          weight: set.weight,
+          reps: set.reps,
+          rir: set.reportedRir ?? null,
+          continuation: set.setTechnique != null || (set.logicalSetId != null && set.logicalSetId !== set.id),
+        })),
+    [loggedSets]
+  );
+  const panel = targetPanel(suggestion, exercise, { weight, reps }, today, bodyweightKg);
+  const modified = !useWarmup && panel.modified;
+  const weightChanged = !useWarmup && panel.weightChanged;
   const isCompletion = suggestion.reasonCodes.includes("logical_set_completion");
   const heading = useWarmup && warmup
     ? "Échauffement · à faire"
@@ -219,10 +228,8 @@ export function SetEntry({
                 {intensityReasonCode && (
                   <Zap size={14} className="shrink-0 self-center" style={{ color: "#ff8a3d" }} aria-hidden />
                 )}
-                {modified && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
-                <span className="tnum whitespace-nowrap text-lg font-bold leading-tight">
-                  {formatLoad(suggestion.weight)} × {suggestion.reps}
-                </span>
+                {modified && !weightChanged && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
+                <span className="tnum whitespace-nowrap text-lg font-bold leading-tight">{panel.headline}</span>
               </p>
               {modified && (
                 <button
@@ -241,14 +248,11 @@ export function SetEntry({
             </div>
             {/* VARIATION_CYCLING_SPEC §3/§4.2/§8 — la variante candidate est nommée, discrètement ;
                 la bascule elle-même ne s'accepte que dans le bilan (jamais en pleine séance). */}
-            <p className="mt-0.5 text-xs leading-snug text-(--color-fg-muted)">
-              {reason ?? suggestion.explanation}
-              {variantCandidateName && <> · envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
-            </p>
-            {weightChanged && (
-              // La cible elle-même, ramenée à la charge choisie par la règle qui juge « battre » : jamais une autre
-              // source à côté d'elle (22/10/2026 : 80 × 12 proposé, « à 90 kg, le moteur prévoit 8 »).
-              <p className="mt-1 text-xs leading-snug text-(--color-fg)">{atLoadText(exercise, suggestion, weight)}</p>
+            {panel.reason && (
+              <p className="mt-0.5 text-xs leading-snug text-(--color-fg-muted)">
+                {panel.reason}
+                {variantCandidateName && <> · envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
+              </p>
             )}
           </div>
         )}
@@ -360,9 +364,8 @@ export function SetEntry({
             value={weight}
             onChange={(nextWeight) => {
               setWeight(nextWeight);
-              if (!useWarmup) {
-                setReps(reprojectSuggestionAtWeight(suggestion, exercise, nextWeight, bodyweightKg).reps);
-              }
+              // Les reps suivent la cible recalculée à cette charge, celle que le cadre du dessus annonce.
+              if (!useWarmup) setReps(targetPanel(suggestion, exercise, { weight: nextWeight, reps }, today, bodyweightKg).target.reps);
             }}
             step={increment}
             min={0}
@@ -408,8 +411,9 @@ export function SetEntry({
             weight,
             reps,
             setType: useWarmup ? SetType.warmup : SetType.work,
-            suggestedWeight: useWarmup ? warmup?.weight ?? null : suggestion.weight,
-            suggestedReps: useWarmup ? warmup?.reps ?? null : suggestion.reps,
+            // La cible que l'écran a dite à cette charge (D3, `display-invariants.ts`) : c'est contre elle qu'il est jugé.
+            suggestedWeight: useWarmup ? warmup?.weight ?? null : panel.target.weight,
+            suggestedReps: useWarmup ? warmup?.reps ?? null : panel.target.reps,
             suggestedSetType: useWarmup ? SetType.warmup : suggestion.setType,
             predictedRepsAtActualWeight: useWarmup ? null : projectedSuggestion.reps,
             suggestionMode: useWarmup ? warmup?.mode ?? null : suggestion.mode,

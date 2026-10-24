@@ -2,9 +2,9 @@
  * Cohérence de l'écran sur tout l'historique réel (LECTURE SEULE, voir `web/SUGGESTIONS.md` §8) : chaque séance est
  * rejouée dans le store, horloge figée, série par série, corrections de série comprises (une série dont la prévision
  * enregistrée a été effacée a été corrigée après validation : la correction est rejouée). Avant chaque série, la carte
- * de saisie (raison de la cible, ligne « À X kg » à la charge qu'il a prise) ; après chaque série, l'en-tête (rang en
- * direct) contre le bilan de la séance arrêtée là (rang du parcours). Invariants D1 à D3 de
- * `lib/engines/display-invariants.ts`, comptés par invariant, avec les premiers exemples.
+ * de saisie (`targetPanel` : la cible à la charge proposée, puis à la charge qu'il a prise, et la cible que `SetEntry`
+ * enregistrerait) ; après chaque série, l'en-tête (rang en direct) contre le bilan de la séance arrêtée là (rang du
+ * parcours). Invariants D1 à D4 de `lib/engines/display-invariants.ts`, comptés par invariant, avec les premiers exemples.
  *
  * Usage (depuis `web/`) :
  *   TZ=Europe/Paris npx tsx scripts/suggestions-audit/coherence.ts <export.json> [--depuis AAAA-MM-JJ] [--seance AAAA-MM-JJ]
@@ -67,10 +67,9 @@ async function main() {
   const { useWorkoutStore } = await import("@/lib/store/workout");
   const { orderedSets } = await import("@/lib/models/types");
   const { buildCareer } = await import("@/lib/engines/career");
-  const { suggestionReason } = await import("@/lib/engines/suggestion-reason");
   const { sessionRankInput } = await import("@/lib/engines/session-rank");
-  const { loadHabit, targetRepsAtLoad } = await import("@/lib/engines/target-display");
-  const { atLoadViolations, habitViolations, rankViolations } = await import("@/lib/engines/display-invariants");
+  const { targetPanel } = await import("@/lib/engines/target-display");
+  const { atLoadViolations, rankViolations, recordedTargetViolations, sessionTextViolations } = await import("@/lib/engines/display-invariants");
   type AllData = import("@/lib/db/queries").AllData;
   type DisplayViolation = import("@/lib/engines/display-invariants").DisplayViolation;
 
@@ -84,8 +83,9 @@ async function main() {
     D1: { checked: 0, violations: 0, examples: [] },
     D2: { checked: 0, violations: 0, examples: [] },
     D3: { checked: 0, violations: 0, examples: [] },
+    D4: { checked: 0, violations: 0, examples: [] },
   };
-  const tally = (code: "D1" | "D2" | "D3", where: string, violations: DisplayViolation[]) => {
+  const tally = (code: "D1" | "D2" | "D3" | "D4", where: string, violations: DisplayViolation[]) => {
     counts[code].checked += 1;
     if (violations.length === 0) return;
     counts[code].violations += 1;
@@ -115,14 +115,16 @@ async function main() {
       const name = exercise.name;
       if (s.setType !== "warmup") {
         const suggestion = state.suggestion(le.id);
-        // La carte de saisie avant la série : raison de la cible, puis la ligne à la charge qu'il a prise.
-        const habit = loadHabit(exercise, state.history, suggestion.weight, new Date());
-        const reason = suggestionReason(suggestion, habit) ?? suggestion.explanation;
-        tally("D3", `${where} ${name}, ${reason}`, habitViolations(exercise, state.history, habit, reason, new Date()));
-        if (Math.abs(s.weight - suggestion.weight) > 1e-9 && suggestion.reps > 0) {
-          const shown = targetRepsAtLoad(exercise, suggestion, s.weight);
-          tally("D2", `${where} ${name}`, atLoadViolations(exercise, suggestion, s.weight, shown));
-        }
+        const bw = state.settings.bodyWeightKg ?? undefined;
+        const today = orderedSets(state.active!.exercises.find((x) => x.id === le.id)!)
+          .filter((x) => x.completed && (x.setType === "work" || x.setType === "top_set" || x.setType === "backoff"))
+          .map((x) => ({ weight: x.weight, reps: x.reps, rir: x.reportedRir ?? null, continuation: x.setTechnique != null || (x.logicalSetId != null && x.logicalSetId !== x.id) }));
+        // La carte de saisie avant la série : la cible proposée, puis la cible à la charge qu'il a prise.
+        const proposed = targetPanel(suggestion, exercise, { weight: suggestion.weight, reps: suggestion.reps }, today, bw);
+        const chosen = targetPanel(suggestion, exercise, { weight: s.weight, reps: s.reps }, today, bw);
+        tally("D4", `${where} ${name}, ${proposed.headline} · ${proposed.reason ?? ""}`, [...sessionTextViolations(proposed), ...sessionTextViolations(chosen)]);
+        if (chosen.weightChanged) tally("D2", `${where} ${name}`, atLoadViolations(exercise, suggestion, chosen, today, bw));
+        tally("D3", `${where} ${name}`, recordedTargetViolations(exercise, chosen, { suggestedWeight: chosen.target.weight, suggestedReps: chosen.target.reps }));
       }
       setNow(s.timestamp);
       store.getState().logSet(le.id, {
