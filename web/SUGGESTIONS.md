@@ -47,10 +47,10 @@ charge choisie, pas des reps visées) : au-delà de l'objectif + 5 points, + 0,5
 Ni la courbe (reps faites contre prévision) ni la boucle (même charge) ne lisent le verdict d'une série faite à une autre
 charge : la règle du 12/10 (4.3) ne change aucune cible, rejouées série pour série (1 300 sur 1 300).
 
-Raison affichée (depuis le 24/10/2026, section 8) : « Cible à battre. À 72 kg, tu fais d'habitude 7 reps (au mieux 9) »,
-tiré de ses séries réelles à la charge de la cible ; « Cible à battre : le bas de ta fourchette. … » quand la fourchette
-relève la cible ; « Cible à battre après ton essai lourd : retour à ta charge de travail. … » juste après un essai.
-Jusqu'au 22/10, « tu fais d'habitude N à N + 1 ici » était la prévision (au RIR visé, + 1 à l'échec), pas un relevé.
+Raison affichée (depuis le 24/10/2026 au soir, section 9) : « Cible à battre », « Cible à battre : le bas de ta
+fourchette », « Cible à battre après ton essai lourd : retour à ta charge de travail ». Plus aucune prévision ni habitude
+en séance (« tu fais d'habitude 7 reps (au mieux 9) », section 8, est retiré) ; à une autre charge, « Cible à 90 kg :
+10 reps ». Objectif de la marge : une cible battue une fois sur trois, par exercice (section 9).
 
 ## 1. Ce qu'on mesure
 
@@ -472,3 +472,64 @@ sur le rejeu de tout l'historique (`scripts/suggestions-audit/coherence.ts`) :
 TZ=Europe/Paris npx tsx scripts/suggestions-audit/coherence.ts ~/jeera-audit/export.json [--seance 2026-10-22]
 ```
 
+
+## 9. Une cible battue une fois sur trois, et seulement la cible en séance (24/10/2026)
+
+Evan, 24/10 : « Le moteur doit être réglé de sorte à ce que je puisse battre sa suggestion 33 % du temps ; et c'est
+dans le bilan que je sais à quel point je me suis dépassé ou pas » ; « Si je suis prévenu, intra-séance, que le moteur
+me propose X et qu'en réalité il sait que je suis censé être capable de faire Y (avec X > Y), ça va me démotiver ».
+Journal, critères écrits avant d'itérer, rejeux et mesures : hors dépôt (`~/.local/share/barbis-dev/jeera-cible/
+JOURNAL-chantier.md`, `~/.local/share/barbis-dev/jeera-cible-data/`). Version `web-v2.6-2026-10-24`.
+
+**Constat (rejeu simulé v2.5, 546 séries, 36 séances depuis le 17/08).** Battues 41 % (objectif codé 35 %) ; par
+exercice de 11 % à 55 %. Une série plus lourde que la cible se juge sur le seul bas de la fourchette (règle du 12/10) :
+191 séries, battues 51 %, quelle que soit la marge ; la courbe de la marge les comptait comme les autres. Elle était
+globale, pas par exercice.
+
+**Conversion (règle 7,5 %, au moins un cran) : gardée.** Erreur de la prévision ramenée à la charge prise, par sens et
+écart, contre le biais à charge égale (−0,09) : plus léger 3-10 % −0,63, 10-20 % −0,18, > 20 % −1,12 ; plus lourd 3-10 %
+−0,17, 10-20 % +0,19, > 20 % +1,22 ; cran > 7,5 % de la charge (élévations, curls) −0,21 / −0,17. Sans cran minimum,
+à 5 % ou par Epley, c'est moins juste dans chaque case. Aucun verdict passé ne change (`versus.ts` inchangé).
+
+**Ce qui change.**
+- Quand il prend une autre charge, la cible est recalculée à cette charge (`targetAtLoad`, `target.ts`) : prévision du
+  moteur ramenée par la règle 7,5 %, plus la même marge, au plus reps + RIR − 2 après une série au RIR 0-1 (I9) ; série
+  à compléter : les reps qui manquent. L'écran dit « Cible à 90 kg : 10 reps » ; c'est elle qui est enregistrée avec la
+  série et qui la juge (même règle `versusReference`, mais à sa charge). Plus lourd ne gagne donc plus d'office.
+- Marge (`ambitionMargin`) : objectif 1/3 ; les séries plus lourdes que la cible (historique) comptent comme la règle les
+  juge ; l'écart de l'exercice au global s'ajoute, rétréci (`EXERCISE_K` = 5) ; boucle proportionnelle sur toutes les
+  cibles jugées ; bornes [−1 ; 1,5].
+- La couche cible garde la prévision du moteur quand il change de charge (avant : dernière série moins la perte, 0,5 rep
+  plus bas, cibles battues 42 %) ; le retour après une série lourde garde son ancrage.
+- Réglage (grille `MAX` ∈ {1 ; 1,5 ; 2} × `EXERCISE_K` ∈ {5 ; 10 ; 20}, séances jusqu'au 21/09) : seuls les K = 5 tiennent
+  tous les contextes, dispersion la plus basse, départage par le moins d'optimisme local.
+
+**Résultat (rejeu simulé, mêmes séries).**
+
+| | v2.5 | v2.6 |
+|---|---|---|
+| Battues, toutes [IC 95 %] | 41 % [36 ; 46] | 35 % [31 ; 39] |
+| Réglage (≤ 21/09) / vérification (après) | 39 % / 42 % | 34 % / 36 % [30 ; 41] |
+| 1re série / suivantes / après série dure / superset | 44 / 39 / 40 / 46 % | 29 / 39 / 41 / 39 % |
+| Par exercice (≥ 8 séries), taux rétréci : min - max / dispersion à 1/3 | 22 - 52 % / 10,0 points | 24 - 43 % / 4,8 points |
+| Cibles à 3 reps ou plus (tous sens) / au-dessus de ce qu'il a fait | 106 / 58 (11 %) | 124 / 76 (14 %) |
+| Prévision (erreur, biais) | 1,92 / −0,08 | identique série pour série |
+| Invariants I1-I10 | 0 | 0 |
+
+Limite : durcir de 41 à 35 % rend plus de cibles lointaines (bruit de ±2,7 reps sur la 1re série). Le rejeu suppose
+qu'il aurait choisi les mêmes charges face à d'autres cibles.
+
+**Séance : seulement la cible** (`target-display.ts` `targetPanel`, `suggestion-reason.ts`). Retirés : « tu fais
+d'habitude N reps (au mieux M) », « tu as fait N reps le … », « cette cible vaut N reps (7,5 % de charge = 1 rep) »,
+« tu perds d'habitude N reps d'une série à l'autre ici », la série de l'autre machine dans « Étalonnage · départ
+d'après … ». Restent (faits passés, peuvent montrer un chiffre sous la cible) : « dernier · 72 kg × 7 », le fantôme,
+« Record 78 × 7 », « Vers le max 72 / 150 kg (8+ reps) », le détail de fatigue (séries d'avant contre habituellement).
+Invariants d'affichage : D2 cible à la charge choisie = `targetAtLoad` (et I9), D3 cible enregistrée = cible dite, D4
+aucun mot de prévision, d'habitude ou de capacité et seul nombre de reps cité celui de la cible ; test de propriété et
+rejeu de tout l'historique (`coherence.ts`) : D1 0 / 1 417, D2 0 / 695, D3 0 / 1 411, D4 0 / 1 411.
+
+**Bilan : face à sa capacité du jour** (`session-insights.ts`, famille « Face à ta capacité du jour »). Par exercice :
+« Wide Chest Press : 120 kg × 11, ta capacité du jour était 120 kg × 7, +4 reps », capacité = prévision enregistrée avec
+la série (moteur ≥ v2.3, fatigue de la séance comprise), et l'écart sur toutes ses séries. « 8 cibles battues sur 20, le
+moteur en attend une sur trois » (le tiers n'est dit que des cibles v2.6), compté sur les séries de l'en-tête de séance.
+Rangs, étoiles, records et compte de l'Historique des 80 séances : identiques.
