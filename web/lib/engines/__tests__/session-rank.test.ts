@@ -32,25 +32,26 @@ describe("rang de fin de séance : séries et records", () => {
   });
 
   it("22 séries et 4 records : 100", () => {
-    expect(rankSession({ review: review([above("a")]), catalog, sets: 22, records: 4, cut: false })).toMatchObject({ letter: "S", score: 100 });
+    expect(rankSession({ review: review([above("a")]), catalog, input: { sets: 22, records: 4, cut: false, recordsPossible: true } })).toMatchObject({ letter: "S", score: 100 });
   });
 
   it("à records égaux, plus de séries fait un meilleur rang", () => {
-    const at = (sets: number) => rankSession({ review: review([above("a")]), catalog, sets, records: 2, cut: false })!;
+    const at = (sets: number) => rankSession({ review: review([above("a")]), catalog, input: { sets, records: 2, cut: false, recordsPossible: true } })!;
     expect(at(14).score).toBeLessThan(at(17).score);
     expect(at(17).score).toBeLessThan(at(30).score);
     expect(at(30).score).toBe(Math.round(100 * (0.6 + 0.4 * 0.5)));
   });
 
   it("en sèche, deux records valent la note pleine", () => {
-    const base = { review: review([above("a")]), catalog, sets: 22, records: 2 };
-    expect(rankSession({ ...base, cut: true })!.score).toBe(100);
-    expect(rankSession({ ...base, cut: false })!.score).toBe(80);
+    const base = { review: review([above("a")]), catalog };
+    const input = { sets: 22, records: 2, recordsPossible: true };
+    expect(rankSession({ ...base, input: { ...input, cut: true } })!.score).toBe(100);
+    expect(rankSession({ ...base, input: { ...input, cut: false } })!.score).toBe(80);
   });
 
   it("en séance d'étalonnage, seules les séries comptent", () => {
-    expect(rankSession({ review: review([calibrating("a"), calibrating("b")]), catalog, sets: 11, records: 0, cut: false })!.score).toBe(50);
-    expect(rankSession({ review: review([]), catalog, sets: 0, records: 0, cut: false })).toBeNull();
+    expect(rankSession({ review: review([calibrating("a"), calibrating("b")]), catalog, input: { sets: 11, records: 0, cut: false, recordsPossible: false } })!.score).toBe(50);
+    expect(rankSession({ review: review([]), catalog, input: { sets: 0, records: 0, cut: false, recordsPossible: false } })).toBeNull();
   });
 
   it("en séance, dit ce qu'il manque pour le rang suivant : des séries, ou des records", () => {

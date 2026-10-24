@@ -25,7 +25,7 @@ import {
 import { sessionForecastGap } from "@/lib/engines/capacity-trend";
 import { estimated1RM } from "@/lib/engines/e1rm";
 import { weeklyProgress } from "@/lib/engines/effective-sets";
-import { buildRecords, classify, normalRecordSets, recordCalibration } from "@/lib/engines/records";
+import { isRecordSet, normalRecordSets } from "@/lib/engines/records";
 import { fatigueContextAtExerciseStart } from "@/lib/engines/session-fatigue-baselines";
 import type { SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { weekSessionPlan } from "@/lib/engines/session-focus";
@@ -45,6 +45,7 @@ import {
   type WorkoutSession,
 } from "@/lib/models/types";
 import { cleanWeight } from "@/lib/format";
+import { versusReference } from "@/lib/engines/versus";
 
 export const SESSION_INSIGHTS = {
   /** Enseignements montrés en tête ; le reste est dans le détail repliable. */
@@ -53,6 +54,8 @@ export const SESSION_INSIGHTS = {
   HABIT_SESSIONS: 5,
   /** Écart entre deux séries au-delà duquel ce n'est plus un enchaînement de superset. */
   SUPERSET_MAX_GAP_S: 240,
+  /** Séries d'un autre exercice tolérées d'affilée au milieu d'un superset (au-delà, il est fini). */
+  SUPERSET_CHAIN_MAX_FOREIGN: 1,
   /** Écart de séries faites avant un exercice qui change sa fraîcheur (≈ un exercice entier). */
   PLACEMENT_DELTA_SETS: 3,
   /** Repos avant la meilleure série jugé nettement plus long que d'habitude. */
@@ -444,6 +447,41 @@ function average(values: readonly number[]): number | null {
   return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+/**
+ * Les séries enchaînées du superset : la plus longue suite de séries de ses membres, qu'interrompent au plus
+ * `SUPERSET_CHAIN_MAX_FOREIGN` séries d'un autre exercice d'affilée (un exercice glissé dans un tour, non lié, reste
+ * dedans). Une série d'un membre faite ensuite, seule, n'en fait plus partie : le 22/10/2026, une 3e série
+ * d'élévations faite 24 min plus tard, après les triceps et les abdos, comptait dans « 8 séries en 40 min 39 » d'un
+ * superset qui avait duré 17 min.
+ */
+function chainedSetIds(session: WorkoutSession, exerciseIds: readonly string[]): Set<string> {
+  const members = new Set(exerciseIds);
+  const sequence = session.exercises
+    .flatMap((logged) => logged.sets.filter((set) => set.completed && isWorkSet(set)).map((set) => ({ set, exerciseId: logged.exerciseId })))
+    .sort((a, b) => a.set.timestamp.getTime() - b.set.timestamp.getTime());
+  const runs: { ids: Set<string>; exercises: Set<string> }[] = [];
+  let current: { ids: Set<string>; exercises: Set<string> } | null = null;
+  let foreign = 0;
+  for (const { set, exerciseId } of sequence) {
+    if (!members.has(exerciseId)) {
+      foreign += 1;
+      if (foreign > SESSION_INSIGHTS.SUPERSET_CHAIN_MAX_FOREIGN) current = null;
+      continue;
+    }
+    foreign = 0;
+    if (!current) {
+      current = { ids: new Set(), exercises: new Set() };
+      runs.push(current);
+    }
+    current.ids.add(set.id);
+    current.exercises.add(exerciseId);
+  }
+  const best = runs
+    .filter((run) => run.exercises.size >= 2)
+    .reduce<(typeof runs)[number] | null>((kept, run) => (!kept || run.ids.size > kept.ids.size ? run : kept), null);
+  return best?.ids ?? new Set();
+}
+
 function summarizeSupersets(
   session: WorkoutSession,
   prior: readonly WorkoutSession[],
@@ -454,8 +492,13 @@ function summarizeSupersets(
   for (const block of supersetBlocks(session)) {
     const exercises = block.exerciseIds.map((id) => catalogById.get(id)).filter((e): e is Exercise => e !== undefined);
     if (exercises.length < 2) continue;
+    // Séance importée sans horaires (toutes les séries à la même seconde) : ni ordre ni durée ; seules les reps se lisent.
+    const memberSets = exercises.flatMap((exercise) => workSetsOf(session, exercise));
+    const timed = new Set(memberSets.map((set) => set.timestamp.getTime())).size > 1;
+    const inBlock = timed ? chainedSetIds(session, block.exerciseIds) : new Set(memberSets.map((set) => set.id));
+    const blockSets = (exercise: Exercise) => workSetsOf(session, exercise).filter((set) => inBlock.has(set.id));
     const members: SupersetMemberSummary[] = exercises.map((exercise) => {
-      const sets = workSetsOf(session, exercise);
+      const sets = blockSets(exercise);
       const solo = soloOccurrences(prior, exercise).slice(0, SESSION_INSIGHTS.HABIT_SESSIONS);
       const load = mostUsedLoad(sets);
       const atLoad = (list: readonly LoggedSet[]) =>
@@ -478,7 +521,7 @@ function summarizeSupersets(
       };
     });
     const all = exercises
-      .flatMap((exercise) => workSetsOf(session, exercise).map((set) => ({ set, exerciseId: exercise.id })))
+      .flatMap((exercise) => blockSets(exercise).map((set) => ({ set, exerciseId: exercise.id })))
       .sort((a, b) => a.set.timestamp.getTime() - b.set.timestamp.getTime());
     const switchGaps: number[] = [];
     for (let index = 1; index < all.length; index += 1) {
@@ -487,17 +530,21 @@ function summarizeSupersets(
       if (gap <= SESSION_INSIGHTS.SUPERSET_MAX_GAP_S) switchGaps.push(gap);
     }
     const soloRests = members.map((member) => member.soloRestSeconds);
-    const soloEstimateSeconds = soloRests.every((rest): rest is number => rest !== null)
+    const soloEstimateSeconds = timed && soloRests.every((rest): rest is number => rest !== null)
       ? members.reduce((sum, member, index) => sum + Math.max(0, member.sets - 1) * soloRests[index]!, 0) +
         (members.length - 1) * (median(soloRests as number[]) ?? 0)
       : null;
+    // Sans tour enchaîné, rien de vrai à dire ; sans horaires, pas de durée (0 s n'en est pas une).
+    const rounds = Math.min(...members.map((member) => member.sets));
+    if (rounds < 1) continue;
+    const durationSeconds = timed && all.length > 1 ? (all.at(-1)!.set.timestamp.getTime() - all[0].set.timestamp.getTime()) / 1000 : 0;
     summaries.push({
       soloEstimateSeconds,
       linked: block.linked,
       members,
-      rounds: Math.min(...members.map((member) => member.sets)),
-      durationSeconds: all.length > 1 ? (all.at(-1)!.set.timestamp.getTime() - all[0].set.timestamp.getTime()) / 1000 : 0,
-      switchSeconds: median(switchGaps),
+      rounds,
+      durationSeconds,
+      switchSeconds: timed ? median(switchGaps) : null,
     });
   }
   return summaries;
@@ -507,8 +554,9 @@ function supersetInsight(summary: SupersetSummary, index: number): SessionInsigh
   const names = summary.members.map((member) => shortExerciseName(member.exerciseName)).join(" + ");
   const totalSets = summary.members.reduce((sum, member) => sum + member.sets, 0);
   const estimate = summary.soloEstimateSeconds;
+  const timed = summary.durationSeconds > 0;
   const parts: string[] = [
-    `${plural(totalSets, "série")} en ${duration(summary.durationSeconds)}${estimate !== null ? ` (l'une après l'autre : ~${duration(estimate)})` : ""}${
+    `${plural(totalSets, "série")}${timed ? ` en ${duration(summary.durationSeconds)}` : ""}${estimate !== null ? ` (l'une après l'autre : ~${duration(estimate)})` : ""}${
       summary.switchSeconds !== null ? `, ${duration(summary.switchSeconds)} pour passer de l'un à l'autre` : ""
     }${summary.linked ? "" : " (alternance non liée)"}.`,
   ];
@@ -534,7 +582,7 @@ function supersetInsight(summary: SupersetSummary, index: number): SessionInsigh
   const restToday = median(rested.map((member) => member.restSeconds!));
   const restSolo = median(rested.map((member) => member.soloRestSeconds!));
   const costly = worst !== null && worst.delta <= -1;
-  const faster = estimate !== null && summary.durationSeconds <= estimate * 0.8;
+  const faster = timed && estimate !== null && summary.durationSeconds <= estimate * 0.8;
   const longerRests = restToday !== null && restSolo !== null && restToday >= restSolo * SESSION_INSIGHTS.LONGER_REST_RATIO;
   const loss = costly
     ? `${shortExerciseName(worst!.member.exerciseName)} perd ${oneDecimal(-worst!.delta)} rep${-worst!.delta >= 2 ? "s" : ""} par série`
@@ -547,7 +595,7 @@ function supersetInsight(summary: SupersetSummary, index: number): SessionInsigh
         ? `${names} : ${duration(summary.durationSeconds)} au lieu de ~${duration(estimate!)} l'un après l'autre`
         : longerRests
           ? `${names} : ~${Math.round(restToday! / 60)} min de repos par exercice, contre ~${Math.round(restSolo! / 60)} seul`
-          : `${names} : ${plural(summary.rounds, "tour")} en ${duration(summary.durationSeconds)}`;
+          : `${names} : ${plural(summary.rounds, "tour")}${timed ? ` en ${duration(summary.durationSeconds)}` : ""}`;
   return {
     id: `superset-${index}`,
     kind: "superset",
@@ -584,15 +632,15 @@ interface ExerciseFacts {
 }
 
 /**
- * La meilleure série `a` fait-elle mieux que `b` ? Plus de reps à la même charge ; à une autre
- * charge, un 1RM estimé plus haut, et d'au moins 1,5 % si la charge a baissé (en dessous, c'est le
- * bruit d'une rep).
+ * La meilleure série `a` fait-elle mieux que `b` ? La règle unique de l'app (`versusReference`, `versus.ts`) :
+ * même charge, plus de reps ; plus lourd, reps dans la fourchette ; plus léger, reps ramenées à la charge de `b`
+ * par la règle 7,5 %. Avant le 24/10/2026, un 1RM d'Epley : « Tirage horizontal : +6 kg (2 reps de moins) »
+ * comptait comme une hausse (78 × 5 contre 72 × 7, +2 % d'Epley), alors que par la règle de l'app 78 × 5 vaut
+ * 72 × 6 et que 5 reps sont sous sa fourchette.
  */
 function improvesOn(a: Pick<LoggedSet, "weight" | "reps">, b: Pick<LoggedSet, "weight" | "reps">, exercise: Exercise): boolean {
   if (!comparable(a, b, exercise)) return false;
-  if (Math.abs(a.weight - b.weight) < 0.01) return a.reps > b.reps;
-  const ratio = capacityOf(a, exercise) / Math.max(1e-6, capacityOf(b, exercise));
-  return a.weight > b.weight ? ratio > 1 + 1e-6 : ratio >= 1.015;
+  return versusReference(exercise, a, b) === "beat";
 }
 
 function streakOf(today: LoggedSet, previous: readonly ExerciseOccurrence[], exercise: Exercise): number {
@@ -631,8 +679,6 @@ function progressInsight(facts: ExerciseFacts, catalogById: ReadonlyMap<string, 
 
   const sameLoad = Math.abs(best.weight - last.best.weight) < 0.01;
   const gain = gainLabel(best, last.best);
-  const percent = Math.round(delta * 100);
-  const percentText = !sameLoad && Math.abs(percent) >= 1 ? ` (1RM estimé ${percent > 0 ? "+" : "−"}${Math.abs(percent)} %)` : "";
   const streakText = facts.streak >= 2 ? `, ${facts.streak}e séance de suite en hausse` : "";
 
   // Pourquoi : ce qui a changé par rapport à l'habitude de CET exercice, en chiffres.
@@ -683,7 +729,7 @@ function progressInsight(facts: ExerciseFacts, catalogById: ReadonlyMap<string, 
     id: `progress-${exercise.id}`,
     kind: "progress",
     title: `${shortExerciseName(exercise.name)} : ${gain}${improved ? streakText : ""}`,
-    detail: `${setLabel(best.weight, best.reps)} contre ${setLabel(last.best.weight, last.best.reps)} le ${dayLabel(last.session.date)}${percentText}.${reasonText}`,
+    detail: `${setLabel(best.weight, best.reps)} contre ${setLabel(last.best.weight, last.best.reps)} le ${dayLabel(last.session.date)}.${reasonText}`,
     tone: improved ? "positive" : "warning",
     exerciseIds: [exercise.id],
     weight: improved ? 60 + Math.min(25, facts.streak * 7) + Math.min(10, Math.round(Math.max(0, delta) * 200)) : 58,
@@ -803,8 +849,6 @@ export function recordTarget(
   load: number,
   at: Date
 ): { weight: number; reps: number }[] {
-  const records = buildRecords(exercise, allSets);
-  const calibration = recordCalibration(allSets, exercise);
   const increment = exercise.smallestIncrement > 0 ? exercise.smallestIncrement : 2.5;
   const loads = exercise.setPatternMode === "assisted_bodyweight" || load <= 0 ? [load] : [load, load + increment];
   const targets: { weight: number; reps: number }[] = [];
@@ -821,7 +865,8 @@ export function recordTarget(
         completed: true,
         supersetRoundIndex: null,
       } as unknown as LoggedSet;
-      if (classify(candidate, exercise, records, calibration)) {
+      // La règle des étoiles de l'Historique (`isRecordSet`), celle que le bilan et le rang comptent.
+      if (isRecordSet(candidate, [...allSets, candidate], exercise)) {
         // Un cran plus lourd ne vaut d'être proposé que s'il demande moins de reps.
         if (targets.length === 0 || reps < targets[0].reps) targets.push({ weight, reps });
         break;

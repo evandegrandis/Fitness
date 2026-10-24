@@ -16,8 +16,11 @@
 
 import type { ExerciseReview, SessionReview } from "@/lib/engines/bilan";
 import { buildWeightTrend, WEIGHT_TREND } from "@/lib/engines/body-weight";
+import { sessionStars } from "@/lib/engines/session-stars";
+import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { repsAtReferenceLoad } from "@/lib/engines/versus";
-import type { BodyWeightEntry, Exercise, UserSettings } from "@/lib/models/types";
+import { SetType } from "@/lib/models/enums";
+import type { BodyWeightEntry, Exercise, UserSettings, WorkoutSession } from "@/lib/models/types";
 
 const DAY_MS = 86_400_000;
 
@@ -99,6 +102,54 @@ export interface RankInput {
   recordsPossible: boolean;
 }
 
+/** Séries de la séance, comptées comme dans l'Historique (RIR pondéré, compléments fusionnés, cran de chaque machine). */
+export function sessionSetUnits(session: WorkoutSession, catalogById: ReadonlyMap<string, Exercise>): number {
+  return session.exercises.reduce(
+    (sum, logged) => sum + physiologicalSetUnits(logged.sets, { increment: catalogById.get(logged.exerciseId)?.smallestIncrement }),
+    0
+  );
+}
+
+const RANKED_SET_TYPES = new Set<string>([SetType.work, SetType.topSet, SetType.backoff]);
+
+/**
+ * Ce que le rang lit d'une séance : UNE fonction pour l'en-tête de séance (séance en cours) et le bilan
+ * (`career.ts`, séance terminée), pour que le rang en direct soit celui du bilan pour les mêmes séries
+ * (24/10/2026 : B en direct, S au bilan). `previous` : les séances d'avant (la séance et les séances actives
+ * exclues). `records` : le compte d'étoiles quand l'appelant l'a déjà fait avec la même définition
+ * (`recordEvents`, qui passe par `session-stars.ts`) ; sinon compté ici.
+ */
+export function sessionRankInput({
+  session,
+  previous,
+  catalog,
+  bodyWeights,
+  settings,
+  records,
+}: {
+  session: WorkoutSession;
+  previous: readonly WorkoutSession[];
+  catalog: readonly Exercise[];
+  bodyWeights: readonly BodyWeightEntry[];
+  settings: Pick<UserSettings, "trainingPhase" | "trainingPhaseStartedAt">;
+  records?: number;
+}): RankInput {
+  const catalogById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
+  const before = previous.filter((candidate) => !candidate.isActive && candidate.id !== session.id);
+  const practiced = new Set(
+    before.flatMap((past) => past.exercises.filter((logged) => logged.sets.some((set) => set.completed)).map((logged) => logged.exerciseId))
+  );
+  return {
+    sets: sessionSetUnits(session, catalogById),
+    records: records ?? sessionStars(session, before, catalog).size,
+    cut: cutAt(session.date, bodyWeights, settings),
+    // Un record n'est possible que sur un exercice déjà pratiqué et fait aujourd'hui (sinon : étalonnage).
+    recordsPossible: session.exercises.some(
+      (logged) => practiced.has(logged.exerciseId) && logged.sets.some((set) => set.completed && RANKED_SET_TYPES.has(set.setType))
+    ),
+  };
+}
+
 export interface RankPart {
   key: "sets" | "records";
   weight: number;
@@ -165,27 +216,24 @@ export function nextRankPlan(input: RankInput): NextRankPlan | null {
 export function rankSession({
   review,
   catalog,
-  sets,
-  records,
-  cut,
+  input,
 }: {
   review: SessionReview;
   catalog: ReadonlyMap<string, Exercise>;
-  sets: number;
-  records: number;
-  cut: boolean;
+  /** `sessionRankInput` : la même lecture que l'en-tête de séance. */
+  input: RankInput;
 }): SessionRank | null {
-  if (sets <= 0) return null;
+  if (input.sets <= 0) return null;
   const rated = review.exercises.filter((exercise) => !exercise.calibrating && !exercise.noData);
   const performed = rated.filter((exercise) => exercise.performed).length;
   const held = rated.filter((exercise) => heldReference(exercise, catalog.get(exercise.exerciseId))).length;
-  const score = rankScore({ sets, records, cut, recordsPossible: rated.length > 0 });
+  const score = rankScore(input);
   return {
     letter: rankLetter(score),
     score,
-    sets: Math.round(sets * 10) / 10,
-    records,
-    cut,
+    sets: Math.round(input.sets * 10) / 10,
+    records: input.records,
+    cut: input.cut,
     rated: rated.length,
     performed,
     held,

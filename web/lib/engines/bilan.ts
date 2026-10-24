@@ -17,15 +17,8 @@
  * `history` par l'appelant (voir `sessionReview` dans `lib/store/workout.ts`).
  */
 
-import {
-  buildFinisherRecords,
-  buildRecords,
-  classify,
-  classifyFinisher,
-  displayedRecordSetIDs,
-  recordCalibration,
-  type RecordKind,
-} from "@/lib/engines/records";
+import { buildFinisherRecords, classifyFinisher, type RecordKind } from "@/lib/engines/records";
+import { sessionStars } from "@/lib/engines/session-stars";
 import {
   deriveState,
   deriveStateV2,
@@ -509,7 +502,8 @@ function buildExerciseReview(
   reviewDate: Date,
   options: SessionReviewOptions,
   catalog: Exercise[],
-  goals: MuscleGoal[]
+  goals: MuscleGoal[],
+  stars: ReadonlyMap<string, RecordKind>
 ): ExerciseReview | null {
   const workSetsToday = setsForNormalPrediction(completedWorkSets(logged), { increment });
   const parent = primaryParent(exercise);
@@ -559,23 +553,13 @@ function buildExerciseReview(
       ...integrationContext,
     });
 
-  // -- Records all-time avec le set exact -------------------------------------------
-  const priorRecords = buildRecords(exercise, allHistory);
-  const displayedIds = displayedRecordSetIDs(logged, [...allHistory, ...workSetsToday], exercise);
-  const achievementsByKind = new Map<
-    RecordKind,
-    { kind: RecordKind; setId: string; weight: number; reps: number }
-  >();
-  for (const set of workSetsToday) {
-    if (!displayedIds.has(set.id)) continue;
-    const calibration = recordCalibration(
-      [...allHistory, ...workSetsToday.filter((earlier) => earlier.timestamp < set.timestamp)],
-      exercise
-    );
-    const kind = classify(set, exercise, priorRecords, calibration);
-    if (kind) achievementsByKind.set(kind, { kind, setId: set.id, weight: set.weight, reps: set.reps });
-  }
-  const recordAchievements = [...achievementsByKind.values()];
+  // -- Records : les étoiles de la séance (`session-stars.ts`, la définition de l'Historique et du rang) ----
+  // Une par série étoilée, avec son type ; avant le 24/10/2026, un seul record par type et `classify` contre
+  // l'historique seul : 4 records listés au bilan du 22/10 pour 5 étoiles comptées par le rang.
+  // Toutes les séries du jour : `workSetsToday` écarte une dernière série allégée (prédiction), pas l'Historique.
+  const recordAchievements = orderedSets(logged)
+    .filter((set) => stars.has(set.id))
+    .map((set) => ({ kind: stars.get(set.id)!, setId: set.id, weight: set.weight, reps: set.reps }));
   const recordKinds = recordAchievements.map((record) => record.kind);
 
   // Changement de salle (sept. 2026) : une machine découverte aujourd'hui n'a pas d'historique
@@ -763,12 +747,13 @@ export function buildSessionReview(
   const exerciseIndex = new Map(catalog.map((e) => [e.id, e]));
   const settingsIncrement = 2.5;
 
+  const stars = sessionStars(session, history, catalog);
   const exercises: ExerciseReview[] = [];
   for (const logged of mergeExerciseOccurrences(session).sort((a, b) => a.orderIndex - b.orderIndex)) {
     const exercise = exerciseIndex.get(logged.exerciseId);
     if (!exercise) continue;
     const increment = exercise.smallestIncrement || settingsIncrement;
-    const review = buildExerciseReview(logged, exercise, history, increment, session.date, options, catalog, goals);
+    const review = buildExerciseReview(logged, exercise, history, increment, session.date, options, catalog, goals, stars);
     if (review) exercises.push(review);
   }
 

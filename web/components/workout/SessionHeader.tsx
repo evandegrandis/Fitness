@@ -4,9 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Cloud, CloudOff, Loader2, Swords, WifiOff } from "lucide-react";
 import type { WorkoutSession } from "@/lib/models/types";
-import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { bossDefeated, sessionGame } from "@/lib/engines/session-game";
-import { cutAt, type RankInput } from "@/lib/engines/session-rank";
+import { sessionRankInput, type RankInput } from "@/lib/engines/session-rank";
 import { LiveRankRow, useSessionCelebrations } from "@/components/celebrations/LiveRankRow";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { useSyncStatus } from "@/lib/sync/status";
@@ -89,24 +88,14 @@ export function SessionHeader({
     return () => clearInterval(id);
   }, []);
 
-  const totalSets = Math.round(
-    session.exercises.reduce((acc, exercise) => acc + physiologicalSetUnits(exercise.sets), 0) * 10
-  ) / 10;
+  // Le rang en direct est celui que donnera le bilan pour les mêmes séries : même lecture (`sessionRankInput`,
+  // étoiles de `session-stars.ts`), recalculée sur les faits à chaque changement, correction de série comprise.
+  const rankInput = useMemo<RankInput>(
+    () => sessionRankInput({ session, previous: history, catalog, bodyWeights, settings }),
+    [session, history, catalog, bodyWeights, settings]
+  );
+  const totalSets = Math.round(rankInput.sets * 10) / 10;
   const game = useMemo(() => sessionGame(session, catalog, history), [session, catalog, history]);
-  const rankInput = useMemo<RankInput>(() => {
-    const done = session.exercises.flatMap((logged) => logged.sets.filter((set) => set.completed));
-    const known = new Set(
-      history
-        .filter((past) => !past.isActive && past.id !== session.id)
-        .flatMap((past) => past.exercises.filter((logged) => logged.sets.some((set) => set.completed)).map((logged) => logged.exerciseId))
-    );
-    return {
-      sets: totalSets,
-      records: done.filter((set) => justHitRecord[set.id] !== undefined).length,
-      cut: cutAt(session.startTime, bodyWeights, settings),
-      recordsPossible: session.exercises.some((logged) => known.has(logged.exerciseId)),
-    };
-  }, [session, history, justHitRecord, totalSets, bodyWeights, settings]);
   // La semaine en direct (Evan, 11/10/2026 : « à 3 séries d'une semaine or… si j'avais su ça durant
   // la séance, j'en aurais fait 3 de plus »). Même calcul que l'accueil et le bilan.
   const lowerBodyOff = lowerBodyOffWeek === weekKey(session.startTime);

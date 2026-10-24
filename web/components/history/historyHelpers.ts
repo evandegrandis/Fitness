@@ -1,17 +1,11 @@
 /**
  * Helpers purs partagés par les vues Historique (liste + détail). Regroupe les
  * séances par semaine ISO et calcule le nombre de sets record par séance en
- * s'appuyant sur `displayedRecordSetIDs` (source de vérité des étoiles PR).
+ * s'appuyant sur `session-stars.ts` (source de vérité des étoiles PR).
  */
 
-import { displayedRecordSetIDs } from "@/lib/engines/records";
-import {
-  orderedSets,
-  sessionsNewestFirst,
-  type Exercise,
-  type LoggedSet,
-  type WorkoutSession,
-} from "@/lib/models/types";
+import { sessionStarIds, setsBeforeSession } from "@/lib/engines/session-stars";
+import { sessionsNewestFirst, type Exercise, type WorkoutSession } from "@/lib/models/types";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 
 /** ~3,5 min par série de travail (exécution + repos), moyenne réaliste toutes séries confondues. */
@@ -88,8 +82,7 @@ export function groupSessionsByIsoWeek(sessions: WorkoutSession[]): WeekGroupDat
  * l'historique de sets (jusqu'à et y compris la séance) pour cet exercice.
  */
 export function countRecordSetsInSession(session: WorkoutSession, allSessions: WorkoutSession[], exercises: Exercise[]): number {
-  const exerciseById = new Map(exercises.map((e) => [e.id, e]));
-  // Chronologique (plus ancien en premier) jusqu'à la séance incluse. On
+  // Chronologique (plus ancien en premier) jusqu'à la séance exclue. On
   // tranche par date métier PUIS startTime (et id), via l'invariant global :
   // comparer seulement `date` omettait tout historique antérieur effectué le
   // même jour et pouvait aussi inclure une séance plus tardive dans le calcul.
@@ -99,33 +92,11 @@ export function countRecordSetsInSession(session: WorkoutSession, allSessions: W
       : [...allSessions, session]
   ).reverse();
   const targetIndex = allChronological.findIndex((candidate) => candidate.id === session.id);
-  const chronological = allChronological.slice(0, targetIndex + 1);
   const priorSessions = allChronological.slice(0, targetIndex);
-
-  let total = 0;
-  for (const logged of session.exercises) {
-    const exercise = exerciseById.get(logged.exerciseId);
-    if (!exercise) continue;
-
-    // Un "record" suppose un historique antérieur à battre : le tout premier
-    // passage d'un exercice n'est pas un PR (on ne bat pas un record inexistant).
-    const hadPriorHistory = priorSessions.some((prior) =>
-      prior.exercises.some((loggedExercise) => loggedExercise.exerciseId === logged.exerciseId)
-    );
-    if (!hadPriorHistory) continue;
-
-    const setsForExercise: LoggedSet[] = [];
-    for (const s of chronological) {
-      for (const le of s.exercises) {
-        if (le.exerciseId === logged.exerciseId) {
-          setsForExercise.push(...orderedSets(le));
-        }
-      }
-    }
-
-    total += displayedRecordSetIDs(logged, setsForExercise, exercise).size;
-  }
-  return total;
+  // La définition unique des étoiles (`session-stars.ts`) : pas de record au tout premier passage d'un
+  // exercice, puis `displayedRecordSetIDs` sur tout ce qui précède et la séance elle-même.
+  const exerciseById = new Map(exercises.map((e) => [e.id, e]));
+  return sessionStarIds(session, setsBeforeSession(priorSessions), exerciseById).length;
 }
 
 /** Construit une map sessionId -> nb de sets record, pour un ensemble de séances. */

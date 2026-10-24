@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { AlertTriangle, Check, Flame, History, RotateCcw, Snowflake, Zap } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Stepper } from "@/components/ui/Stepper";
@@ -12,6 +12,7 @@ import {
   type SetSuggestion,
 } from "@/lib/engines/progression";
 import { suggestionReason } from "@/lib/engines/suggestion-reason";
+import { atLoadText, loadHabit } from "@/lib/engines/target-display";
 import { useWorkoutStore } from "@/lib/store/workout";
 import { cn } from "@/lib/utils";
 import { cleanWeight, formatDecimal, formatLoad } from "@/lib/format";
@@ -132,6 +133,7 @@ export function SetEntry({
   const setFreshOverride = useWorkoutStore((s) => s.setFreshOverride);
   const clearFreshOverride = useWorkoutStore((s) => s.clearFreshOverride);
   const bodyweightKg = useWorkoutStore((s) => s.settings.bodyWeightKg ?? undefined);
+  const history = useWorkoutStore((s) => s.history);
   const isFresh = freshOverrides.has(loggedExerciseId);
 
   const [useWarmup, setUseWarmup] = useState(false);
@@ -182,7 +184,9 @@ export function SetEntry({
   // champs, « Suggestion 120 × 11 » et « Hypertrophie · 120 kg × 11 » au-dessus, sans explication).
   const modified = !useWarmup && (weight !== suggestion.weight || reps !== suggestion.reps);
   const weightChanged = !useWarmup && weight !== suggestion.weight;
-  const reason = suggestionReason(suggestion);
+  // « D'habitude » ne se dit que de ses séries réelles à la charge de la cible (`target-display.ts`).
+  const habit = useMemo(() => loadHabit(exercise, history, suggestion.weight, new Date()), [exercise, history, suggestion.weight]);
+  const reason = suggestionReason(suggestion, habit);
   const isCompletion = suggestion.reasonCodes.includes("logical_set_completion");
   const heading = useWarmup && warmup
     ? "Échauffement · à faire"
@@ -242,10 +246,9 @@ export function SetEntry({
               {variantCandidateName && <> · envisager <strong>{variantCandidateName}</strong> à la prochaine séance</>}
             </p>
             {weightChanged && (
-              <p className="mt-1 text-xs leading-snug text-(--color-fg)">
-                À <span className="tabular-nums">{formatLoad(weight)}</span>, le moteur prévoit{" "}
-                <span className="tabular-nums">{projectedSuggestion.reps}</span> rep{projectedSuggestion.reps > 1 ? "s" : ""} au même effort.
-              </p>
+              // La cible elle-même, ramenée à la charge choisie par la règle qui juge « battre » : jamais une autre
+              // source à côté d'elle (22/10/2026 : 80 × 12 proposé, « à 90 kg, le moteur prévoit 8 »).
+              <p className="mt-1 text-xs leading-snug text-(--color-fg)">{atLoadText(exercise, suggestion, weight)}</p>
             )}
           </div>
         )}
@@ -272,7 +275,8 @@ export function SetEntry({
             className={cn("pill", useWarmup && "ring-1 ring-amber-300/60")}
             style={{ color: "#fbbf24", background: "rgba(251,191,36,0.12)" }}
           >
-            W échauffement
+            {/* Un bouton facultatif, pas une étiquette de la série (22/10/2026 : « W ÉCHAUFFEMENT » sur la série 1). */}
+            {useWarmup ? "Sans échauffement" : `Échauffer d'abord · ${formatLoad(warmup.weight)}`}
           </button>
         )}
         {suggestion.sessionFatigueWarning && !useWarmup && (

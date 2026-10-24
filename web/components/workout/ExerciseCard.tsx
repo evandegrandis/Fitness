@@ -338,7 +338,9 @@ export function ExerciseCard({
                   >
                     {machineStatus.maxed
                       ? `Machine maxée · ${cleanWeight(machineStatus.maxLoad)} kg`
-                      : `Vers le max : ${cleanWeight(machineStatus.bestLoad)} / ${cleanWeight(machineStatus.maxLoad)} kg`}
+                      : // La charge validée (reps dans la fourchette), pas le record tout court affiché à côté :
+                        // 22/10/2026, « Vers le max : 72 / 150 » à côté de « Record 78 × 7 ».
+                        `Vers le max : ${cleanWeight(machineStatus.bestLoad)} / ${cleanWeight(machineStatus.maxLoad)} kg (${exercise.repTargetMin}+ reps)`}
                   </div>
                 )}
                 {allTimeRecord && (

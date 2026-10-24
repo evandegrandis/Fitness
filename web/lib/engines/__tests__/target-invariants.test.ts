@@ -33,6 +33,12 @@ const { useWorkoutStore } = await import("@/lib/store/workout");
 const { MuscleGroup } = await import("@/lib/models/muscles");
 const { orderedSets } = await import("@/lib/models/types");
 const { targetInvariantViolations, isNearMaxAttempt } = await import("@/lib/engines/target-invariants");
+const { atLoadViolations, habitViolations, rankViolations } = await import("@/lib/engines/display-invariants");
+const { atLoadText, loadHabit, targetRepsAtLoad } = await import("@/lib/engines/target-display");
+const { suggestionReason } = await import("@/lib/engines/suggestion-reason");
+const { sessionRankInput } = await import("@/lib/engines/session-rank");
+const { sessionStars } = await import("@/lib/engines/session-stars");
+const { buildCareer } = await import("@/lib/engines/career");
 type Exercise = import("@/lib/models/types").Exercise;
 type UserSettings = import("@/lib/models/types").UserSettings;
 type WorkoutSession = import("@/lib/models/types").WorkoutSession;
@@ -284,3 +290,119 @@ describe("propriété : aucune cible incohérente, quelle que soit la séance", 
     expect(failures.slice(0, 10)).toEqual([]);
   }, 300_000);
 });
+
+describe("propriété : l'écran ne se contredit pas (`display-invariants.ts`, séance du 22/10/2026)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("22/10 : 80 × 12 vaut 10 reps à 90 kg (et non « 8 »), 72 kg au tirage : « d'habitude 7 (au mieux 9) »", () => {
+    const abdo = exercise({ repTargetMin: 8, repTargetMax: 12, smallestIncrement: 2.5 });
+    expect(atLoadText(abdo, { weight: 80, reps: 12 }, 90)).toBe("À 90 kg, cette cible vaut 10 reps (7,5 % de charge = 1 rep).");
+    expect(atLoadViolations(abdo, { weight: 80, reps: 12 }, 90)).toEqual([]);
+    // Plus léger : le nombre qui TIENT la cible par la règle « battre » (15 à 60 kg serait « en dessous »).
+    expect(atLoadText(abdo, { weight: 80, reps: 12 }, 60)).toBe("À 60 kg, cette cible vaut 16 reps (7,5 % de charge = 1 rep).");
+    expect(atLoadViolations(abdo, { weight: 80, reps: 12 }, 60)).toEqual([]);
+    const tirage = exercise({ smallestIncrement: 6 });
+    const at = (day: string, reps: number[]) => {
+      const date = new Date(`${day}T16:00:00Z`);
+      return {
+        id: day, date, startTime: date, endTime: date, notes: "", isActive: false, templateName: null, supersetGroups: [], cardioEntries: [],
+        exercises: [{ id: `le-${day}`, orderIndex: 0, notes: "", exerciseId: tirage.id, exerciseName: tirage.name, supersetGroupId: null, plateauWeakPoint: null,
+          sets: reps.map((value, i) => ({ id: `${day}-${i}`, weight: 72, reps: value, setType: "work" as const, timestamp: new Date(date.getTime() + i * 200_000), setSlotIndex: i, completed: true, supersetRoundIndex: null, reportedRir: 0 })) }],
+      } satisfies WorkoutSession;
+    };
+    const history = [at("2026-10-15", [7]), at("2026-10-11", [7]), at("2026-10-09", [9]), at("2026-10-06", [7])];
+    const now = new Date("2026-10-22T17:47:00Z");
+    const habit = loadHabit(tirage, history, 72, now);
+    const text = suggestionReason({ reasonCodes: ["target_to_beat", "straight_ref_v2"], explanation: "" }, habit)!;
+    expect(text).toBe("Cible à battre. À 72 kg, tu fais d'habitude 7 reps (au mieux 9)");
+    expect(habitViolations(tirage, history, habit, text, now)).toEqual([]);
+    const none = loadHabit(tirage, history, 66, now);
+    expect(suggestionReason({ reasonCodes: ["target_to_beat", "target_lifted"], explanation: "" }, none)).toBe(
+      "Cible à battre : le bas de ta fourchette. Aucune série à 66 kg ces 8 dernières semaines"
+    );
+  });
+
+  it("le vérificateur reconnaît l'écran du 22/10 : B en direct et S au bilan, « 8 » à 90 kg, « d'habitude 8 à 9 »", () => {
+    expect(rankViolations({ sets: 16, records: 1, cut: false, recordsPossible: true }, { letter: "S", score: 86, sets: 17, records: 5 }).map((v) => v.code)).toEqual(["D1"]);
+    const tirage = exercise({ smallestIncrement: 6 });
+    const date = new Date("2026-10-15T16:00:00Z");
+    const history: WorkoutSession[] = [{
+      id: "s", date, startTime: date, endTime: date, notes: "", isActive: false, templateName: null, supersetGroups: [], cardioEntries: [],
+      exercises: [{ id: "le", orderIndex: 0, notes: "", exerciseId: tirage.id, exerciseName: tirage.name, supersetGroupId: null, plateauWeakPoint: null,
+        sets: [7, 9, 7, 7].map((reps, i) => ({ id: `x${i}`, weight: 72, reps, setType: "work" as const, timestamp: new Date(date.getTime() + i * 200_000), setSlotIndex: i, completed: true, supersetRoundIndex: null, reportedRir: 0 })) }],
+    }];
+    const now = new Date("2026-10-22T17:47:00Z");
+    const habit = loadHabit(tirage, history, 72, now);
+    expect(habitViolations(tirage, history, habit, "Cible à battre : tu fais d'habitude 8 à 9 ici", now).map((v) => v.detail)).toEqual([
+      "« Cible à battre : tu fais d'habitude 8 à 9 ici » cite 8, absent de ses séries à 72 kg",
+    ]);
+    // 80 × 12, et « À 90 kg, le moteur prévoit 8 reps » : 8 n'est pas ce que vaut la cible à 90 kg.
+    expect(targetRepsAtLoad(exercise({ smallestIncrement: 2.5 }), { weight: 80, reps: 12 }, 90)).not.toBe(8);
+  });
+
+  // `SEEDS=10000` pour un tirage plus large.
+  it("400 séances tirées au hasard, corrections et suppressions de séries comprises : zéro violation", () => {
+    const failures: string[] = [];
+    let checked = 0;
+    for (let seed = Number(process.env.FROM ?? 1); seed <= Number(process.env.SEEDS ?? 400); seed++) {
+      const { r, ex, sessions, start, step, typo, bodyWeightKg } = randomScenario(seed);
+      vi.setSystemTime(start);
+      const store = useWorkoutStore.getState();
+      useWorkoutStore.setState({ active: null, activeMode: "normal", justHitRecord: {}, recordsCache: {} });
+      store.hydrate({ catalog: [ex], history: sessions, goals: [], settings: { ...SETTINGS, bodyWeightKg }, templates: [], recoveryCheckins: [], bodyWeights: [] });
+      store.startEmpty("normal");
+      store.addExercise(ex.id);
+      const leId = useWorkoutStore.getState().active!.exercises[0].id;
+      const sets = r.int(1, 6);
+      const fail = (what: string, violations: { code: string; detail: string }[]) => {
+        if (violations.length > 0) failures.push(`graine ${seed} (${ex.setPatternMode}, cran ${ex.smallestIncrement}) ${what} : ${violations.map((v) => `${v.code} ${v.detail}`).join(" ; ")}`);
+      };
+      for (let k = 0; k <= sets; k++) {
+        const state = useWorkoutStore.getState();
+        const target = state.suggestion(leId);
+        // D2 : une autre charge de la grille, comme quand il change le poids dans la tuile.
+        if (ex.setPatternMode !== "bodyweight") {
+          const load = Math.max(0, target.weight + step * r.pick([-4, -2, -1, 1, 2, 4]));
+          fail(`cible ${target.weight} × ${target.reps}`, atLoadViolations(ex, target, load));
+        }
+        // D3 : la raison dite sous la cible.
+        const habit = loadHabit(ex, state.history, target.weight, new Date());
+        fail("raison", habitViolations(ex, state.history, habit, suggestionReason(target, habit) ?? "", new Date()));
+        // D1 : le rang en direct contre le bilan de la même séance, si elle s'arrêtait là.
+        const session = state.active!;
+        const live = sessionRankInput({ session, previous: state.history, catalog: state.catalog, bodyWeights: state.bodyWeights, settings: state.settings });
+        const finished = { ...session, isActive: false, endTime: new Date() };
+        const career = buildCareer({ history: [...state.history, finished], catalog: state.catalog, goals: [], bodyWeights: [], settings: state.settings, now: new Date() });
+        fail(`après ${k} séries`, rankViolations(live, career.bySession.get(session.id)?.rank ?? null));
+        const marks = Object.keys(state.justHitRecord).sort();
+        const stars = [...sessionStars(session, state.history, state.catalog).keys()].sort();
+        if (marks.join() !== stars.join()) failures.push(`graine ${seed} : marques du store ${marks.length} ≠ étoiles ${stars.length}`);
+        checked += 1;
+        if (k === sets) break;
+        const attempt = ex.setPatternMode !== "bodyweight" && r.next() < 0.12;
+        const weight =
+          ex.setPatternMode === "bodyweight" ? 0 : attempt ? target.weight + step * r.int(2, 6) : Math.max(0, target.weight + step * r.int(-2, 1) + typo());
+        const reps = attempt ? r.int(1, 3) : Math.max(1, target.reps + r.int(-4, 2));
+        vi.setSystemTime(Date.now() + r.int(60, 300) * 1000);
+        useWorkoutStore.getState().logSet(leId, { weight, reps, reportedRir: r.next() < 0.15 ? null : r.int(0, 4) });
+        // Une série corrigée ou supprimée après coup (le 22/10, deux corrections avaient effacé deux records).
+        const done = orderedSets(useWorkoutStore.getState().active!.exercises[0]);
+        if (done.length > 0 && r.next() < 0.2) {
+          const victim = r.pick(done);
+          useWorkoutStore.getState().editSet(victim.id, { weight: victim.weight, reps: Math.max(1, victim.reps + r.int(-2, 3)), reportedRir: victim.reportedRir });
+        } else if (done.length > 1 && r.next() < 0.05) {
+          useWorkoutStore.getState().deleteSet(leId, r.pick(done).id);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+    expect(failures.slice(0, 10)).toEqual([]);
+  }, 300_000);
+});
+

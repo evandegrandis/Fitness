@@ -35,7 +35,8 @@ import { estimated1RM } from "@/lib/engines/e1rm";
 import { coverageForWeek, currentWeekWindow, parentTotals } from "@/lib/engines/effective-sets";
 import { defaultEquivalent, equivalenceKey, familyHistory } from "@/lib/engines/equivalence";
 import { machineMaxStatus, type MachineMaxStatus } from "@/lib/engines/machine-max";
-import { displayedRecordSetIDs, normalRecordSets } from "@/lib/engines/records";
+import { normalRecordSets } from "@/lib/engines/records";
+import { sessionStarIds } from "@/lib/engines/session-stars";
 import { physiologicalSetUnits } from "@/lib/engines/set-structure";
 import { isGoalMuscleParent } from "@/lib/models/muscles";
 import {
@@ -123,25 +124,17 @@ export function recordEvents(history: readonly WorkoutSession[], catalog: readon
   const byId = new Map(catalog.map((exercise) => [exercise.id, exercise]));
   const chronological = sessionsNewestFirst(history.filter((session) => !session.isActive)).reverse();
   const setsSoFar = new Map<string, LoggedSet[]>();
-  const seen = new Set<string>();
   const events: RecordEvent[] = [];
+  const exerciseOfSet = new Map<string, string>();
 
   for (const session of chronological) {
-    const today = new Map<string, LoggedSet[]>();
-    for (const logged of session.exercises) {
-      today.set(logged.exerciseId, [...(today.get(logged.exerciseId) ?? []), ...orderedSets(logged)]);
+    for (const logged of session.exercises) for (const set of logged.sets) exerciseOfSet.set(set.id, logged.exerciseId);
+    // La définition unique des étoiles (`session-stars.ts`), sur tout ce qui précède la séance.
+    for (const setId of sessionStarIds(session, setsSoFar, byId)) {
+      events.push({ exerciseId: exerciseOfSet.get(setId)!, sessionId: session.id, date: session.date, setId });
     }
     for (const logged of session.exercises) {
-      const exercise = byId.get(logged.exerciseId);
-      if (!exercise || !seen.has(logged.exerciseId)) continue;
-      const among = [...(setsSoFar.get(logged.exerciseId) ?? []), ...(today.get(logged.exerciseId) ?? [])];
-      for (const setId of displayedRecordSetIDs(logged, among, exercise)) {
-        events.push({ exerciseId: logged.exerciseId, sessionId: session.id, date: session.date, setId });
-      }
-    }
-    for (const [exerciseId, sets] of today) {
-      setsSoFar.set(exerciseId, [...(setsSoFar.get(exerciseId) ?? []), ...sets]);
-      seen.add(exerciseId);
+      setsSoFar.set(logged.exerciseId, [...(setsSoFar.get(logged.exerciseId) ?? []), ...orderedSets(logged)]);
     }
   }
   return events;
