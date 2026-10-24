@@ -107,7 +107,7 @@ const REP_DROP_DRIVEN_CODES = new Set([
 ]);
 
 /** Persisted with suggestion/actual snapshots so later model tuning can segment engine eras. */
-export const SUGGESTION_ENGINE_VERSION = "web-v2.5-2026-10-15";
+export const SUGGESTION_ENGINE_VERSION = "web-v2.6-2026-10-24";
 
 // ---------------------------------------------------------------------------
 // SetSuggestion
@@ -2727,7 +2727,7 @@ export function suggest(params: SuggestParams): SetSuggestion {
       (result.mode === SuggestionMode.plateauBreak ||
         result.mode === SuggestionMode.transitionMode ||
         (lastToday !== undefined && eff(result.weight) > eff(lastToday.weight) + 1e-9));
-    const margin = ambitionMargin(sessionHistory, catalog, doneToday.length === 0, now);
+    const margin = ambitionMargin(sessionHistory, catalog, doneToday.length === 0, now, exercise.id);
     const projector = (base: { load: number; reps: number }) => {
       const from = eff(base.load);
       const kgPerRep = Math.max(increment, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));
@@ -2757,7 +2757,11 @@ export function suggest(params: SuggestParams): SetSuggestion {
         eff(result.weight) < eff(lastToday.weight) - 1e-9 &&
         isHeavySet(repsAtSuggestionRir(lastToday), lastToday.weight, usual, exercise, increment, bodyweightKg);
       const returnLoad = heavy ? heavyReturnLoad(result.weight, lastToday.weight, exercise, increment) : result.weight;
-      if (heavy ? Math.abs(returnLoad - result.weight) > 1e-9 : Math.abs(result.weight - lastToday.weight) > 1e-9) {
+      // Après une série lourde, la charge de retour n'est pas celle du moteur : la prévision y part de la série lourde.
+      // Ailleurs, la prévision du moteur (`suggest()`), celle que la marge apprend à battre une fois sur trois (jusqu'au
+      // 24/10/2026, la cible repartait de la dernière série moins la perte dès que le moteur changeait de charge : 0,5 rep
+      // plus bas que sa prévision, et ces cibles étaient battues 42 % du temps au lieu du tiers visé).
+      if (heavy && Math.abs(returnLoad - result.weight) > 1e-9) {
         predictedAt = projector({ load: lastToday.weight, reps: repsAtSuggestionRir(lastToday) - repDrop.drop });
       }
       startLoad = heavy ? returnLoad : push ? result.weight : lastToday.weight;

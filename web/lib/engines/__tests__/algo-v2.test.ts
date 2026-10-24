@@ -471,7 +471,7 @@ describe("reprojectSuggestionAtWeight", () => {
   });
 
   it("expose la version stable destinée aux snapshots suggestion/réel", () => {
-    expect(SUGGESTION_ENGINE_VERSION).toBe("web-v2.5-2026-10-15");
+    expect(SUGGESTION_ENGINE_VERSION).toBe("web-v2.6-2026-10-24");
   });
 });
 

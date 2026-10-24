@@ -18,17 +18,18 @@
  * une série LOURDE, retour à la charge de la prévision ou 11 % plus léger. Montées du moteur gardées si cohérentes.
  * Reps : prévision à cette charge + marge d'ambition. La marge est apprise sur les séries récentes
  * enregistrées par ce moteur (prévision stockée contre reps faites, « battre » au sens de
- * `setVersusSuggestion`), par contexte (1re série, séries suivantes), rétrécie vers le global puis vers
- * un a priori, bornée à [−1 ; 2], visant 40 % de cibles battues (légèrement optimiste, Evan 14/10/2026), et
- * corrigée par une boucle de long terme, par contexte, sur les cibles réellement battues (à plus de 5 points de
- * l'objectif). Pure, recalculée à chaque suggestion.
+ * `setVersusSuggestion`), par contexte (1re série, séries suivantes) et par exercice (24/10/2026), rétrécie vers le
+ * global puis vers un a priori, bornée à [−1 ; 1,5], visant une cible battue une fois sur trois (Evan, 24/10/2026 ;
+ * 40 % le 14/10, 35 % le 15/10), et corrigée par une boucle de long terme, par contexte, sur les cibles réellement
+ * battues. Quand il prend une autre charge, la cible est recalculée à cette charge (`targetAtLoad`) : l'écran n'en
+ * dit qu'une, et c'est elle qui le juge. Pure, recalculée à chaque suggestion.
  */
 
 import { ALGO_V2 } from "@/lib/engines/constants";
 import { effTotal, type LoadMode } from "@/lib/engines/predict";
 import { nextGridLoad, snapToGrid } from "@/lib/engines/load-grid";
 import { capacityLoad, lighterByARep, lighterTargetMinReps, maxRepsAfterLastSet } from "@/lib/engines/target-invariants";
-import { setVersusSuggestion } from "@/lib/engines/versus";
+import { effectiveEffort, setVersusSuggestion } from "@/lib/engines/versus";
 import { SetPatternMode as SPM, SetType } from "@/lib/models/enums";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
 import { orderedSets } from "@/lib/models/types";
@@ -52,17 +53,32 @@ export const TARGET = {
   PRIOR_BEAT_0: 0.45,
   PRIOR_BEAT_1: 0.25,
   PRIOR_BEAT_2: 0.11,
-  /** Probabilité visée de battre la cible. */
-  GOAL: 0.35,
-  /** Bornes de la marge, en reps. */
+  /**
+   * Probabilité visée de battre la cible : une fois sur trois (Evan, 24/10/2026 : « le moteur doit être réglé de sorte
+   * à ce que je puisse battre sa suggestion 33 % du temps »), au global et par exercice. Avant : 35 % (15/10), 50 % (11/10).
+   */
+  GOAL: 1 / 3,
+  /**
+   * Poids, en « séries équivalentes », de la courbe globale face à celle d'un exercice : l'écart de l'exercice au
+   * global (prévision qui le sous-estime, charges qu'il choisit) ne compte qu'à proportion de ses séries jugées.
+   */
+  EXERCISE_K: 5,
+  /**
+   * Bornes de la marge, en reps. Haut : 1,5 depuis le 24/10/2026 (2 avant) : réglé sur les séances jusqu'au 21/09, à
+   * égalité de critères le moins d'optimisme local ; au-delà, ses cibles étaient battues 15 % du temps et ratées de 3 reps
+   * ou plus 42 % du temps (rejeu simulé).
+   */
   MIN: -1,
-  MAX: 2,
+  MAX: 1.5,
   /**
    * Boucle de long terme : quand la part de cibles battues s'écarte de l'objectif de plus de cette demi-largeur, la
-   * marge bouge d'un pas (centrée sur `GOAL` ; avant le 15/10 elle visait 45-55 % quel que soit l'objectif).
+   * marge est corrigée en proportion (centrée sur `GOAL` ; avant le 15/10 elle visait 45-55 % quel que soit l'objectif ;
+   * jusqu'au 24/10, un pas fixe de 0,5 rep au-delà de ±5 points).
    */
-  LOOP_BAND: 0.05,
-  LOOP_STEP: 0.5,
+  LOOP_BAND: 0.03,
+  /** Correction de la boucle au plus, en reps, et pente minimale prise pour la convertir (part battue par rep). */
+  LOOP_MAX: 1,
+  LOOP_MIN_SLOPE: 0.08,
   /** Poids minimal de cibles jugées pour que la boucle agisse. */
   LOOP_MIN_WEIGHT: 8,
   /**
@@ -113,12 +129,16 @@ function versionAtLeast(version: string | null | undefined): boolean {
 
 interface TargetSample {
   at: number;
+  exerciseId: string;
   first: boolean;
   reps: number;
   predicted: number;
   beat: boolean | null;
-  /** Série faite à la charge de la cible : la seule où la marge (des reps) décide du verdict. */
-  atTargetLoad: boolean;
+  /**
+   * Série plus lourde que la cible : son verdict ne dépend pas des reps visées (battue si ses reps atteignent le bas de
+   * la fourchette, `versusReference`), la marge n'y change rien. `null` ailleurs.
+   */
+  heavierBeat: boolean | null;
 }
 
 const NORMAL = new Set<string>([SetType.work, SetType.topSet, SetType.backoff]);
@@ -150,13 +170,16 @@ function targetSamples(history: readonly WorkoutSession[], catalog: readonly Exe
       sets.forEach((set, index) => {
         if (!versionAtLeast(set.suggestionEngineVersion) || set.predictedRepsAtActualWeight == null) return;
         const verdict = setVersusSuggestion(exercise, set);
+        const heavier =
+          set.suggestedWeight != null && effectiveEffort(exercise, set.weight) > effectiveEffort(exercise, set.suggestedWeight) + 1e-9;
         samples.push({
           at: set.timestamp.getTime(),
+          exerciseId: exercise.id,
           first: index === 0,
           reps: set.reps,
           predicted: set.predictedRepsAtActualWeight,
           beat: verdict === null ? null : verdict === "beat",
-          atTargetLoad: set.suggestedWeight != null && Math.abs(set.suggestedWeight - set.weight) < 1e-9,
+          heavierBeat: heavier ? set.reps >= exercise.repTargetMin : null,
         });
       });
     }
@@ -175,12 +198,22 @@ export interface AmbitionMargin {
   weight: number;
 }
 
-/** Marge d'ambition pour une 1re série (`first`) ou une série suivante, à `now`. */
+/**
+ * Marge d'ambition pour une 1re série (`first`) ou une série suivante de l'exercice `exerciseId`, à `now`.
+ *
+ * Courbe : part des séries jugées qui auraient battu une cible = prévision + k reps (k = −1, 0, 1, 2), pondérée par
+ * l'âge. Une série plus légère ou à la charge de la cible la bat si ses reps dépassent prévision + k ; une série plus
+ * lourde se juge sur le bas de la fourchette (`versusReference`), quel que soit k (jusqu'au 24/10/2026 elle était
+ * comptée comme les autres : la courbe promettait 35 % et il en battait 41 %). Global rétréci vers un a priori, contexte
+ * (1re série, suivantes) rétréci vers le global, puis l'écart de l'exercice au global, rétréci (`EXERCISE_K`), s'ajoute :
+ * un exercice où il bat rarement la cible (prévision trop haute, charges qu'il choisit) reçoit une marge plus basse.
+ */
 export function ambitionMargin(
   history: readonly WorkoutSession[] | undefined,
   catalog: readonly Exercise[] | undefined,
   first: boolean,
-  now: Date
+  now: Date,
+  exerciseId?: string
 ): AmbitionMargin {
   // Marges candidates −1, 0, 1, 2 reps : part des séries qui auraient battu la prévision + marge.
   const margins = [-1, 0, 1, 2];
@@ -193,15 +226,23 @@ export function ambitionMargin(
       const w = Math.pow(0.5, Math.max(0, now.getTime() - s.at) / 86_400_000 / TARGET.HALF_LIFE_DAYS);
       total += w;
       margins.forEach((k, i) => {
-        if (s.reps >= s.predicted + k + 1) sums[i] += w;
+        if (s.heavierBeat !== null ? s.heavierBeat : s.reps >= s.predicted + k + 1) sums[i] += w;
       });
     }
     return { total, beat: sums.map((v) => (total > 0 ? v / total : 0)) };
   };
   const g = curve(all);
   const c = curve(all.filter((s) => s.first === first));
+  const e = exerciseId === undefined ? null : curve(all.filter((s) => s.exerciseId === exerciseId));
   const global = prior.map((p, k) => (g.total * g.beat[k] + TARGET.PRIOR_K * p) / (g.total + TARGET.PRIOR_K));
-  const context = global.map((p, k) => (c.total * c.beat[k] + TARGET.SHRINK_K * p) / (c.total + TARGET.SHRINK_K));
+  const context = global.map((p, k) => {
+    const inContext = (c.total * c.beat[k] + TARGET.SHRINK_K * p) / (c.total + TARGET.SHRINK_K);
+    // Écart de l'exercice à l'ensemble des séries, rétréci vers zéro selon son poids de séries jugées.
+    const own = e && e.total > 0 && g.total > 0 ? (e.total / (e.total + TARGET.EXERCISE_K)) * (e.beat[k] - g.beat[k]) : 0;
+    return Math.max(0, Math.min(1, inContext + own));
+  });
+  // La courbe reste décroissante (une marge plus haute n'est jamais plus souvent battue).
+  for (let k = 1; k < context.length; k++) context[k] = Math.min(context[k], context[k - 1]);
   // Plus petite marge (interpolée entre −1, 0, 1 et 2 reps) dont la probabilité d'être battue ne dépasse pas l'objectif.
   let margin = margins[margins.length - 1];
   if (context[0] <= TARGET.GOAL) margin = margins[0];
@@ -213,13 +254,14 @@ export function ambitionMargin(
       }
     }
   }
-  // Boucle de long terme sur les cibles réellement affichées et jugées, faites à la charge de la cible (ailleurs,
-  // le verdict dépend de la charge choisie, pas des reps visées), dans ce contexte (à défaut, tous contextes).
+  // Boucle de long terme sur les cibles réellement affichées et jugées, dans ce contexte (à défaut, tous contextes).
+  // Toutes charges : la courbe compte maintenant les séries plus lourdes comme la règle les juge (jusqu'au 24/10/2026,
+  // la boucle ne lisait que les séries faites à la charge de la cible).
   const realized = (samples: TargetSample[]) => {
     let judged = 0;
     let beaten = 0;
     for (const s of samples) {
-      if (s.beat === null || !s.atTargetLoad) continue;
+      if (s.beat === null) continue;
       const w = Math.pow(0.5, Math.max(0, now.getTime() - s.at) / 86_400_000 / TARGET.HALF_LIFE_DAYS);
       judged += w;
       if (s.beat) beaten += w;
@@ -227,8 +269,14 @@ export function ambitionMargin(
     return judged >= TARGET.LOOP_MIN_WEIGHT ? beaten / judged : null;
   };
   const beatRate = realized(all.filter((s) => s.first === first)) ?? realized(all);
-  if (beatRate !== null && beatRate > TARGET.GOAL + TARGET.LOOP_BAND) margin += TARGET.LOOP_STEP;
-  if (beatRate !== null && beatRate < TARGET.GOAL - TARGET.LOOP_BAND) margin -= TARGET.LOOP_STEP;
+  // Correction proportionnelle (24/10/2026 ; avant, un pas fixe de 0,5 rep hors de ±5 points) : l'écart de la part
+  // réellement battue à l'objectif, converti en reps par la pente locale de la courbe, borné à `LOOP_MAX` reps. Elle
+  // rattrape ce que la courbe ne voit pas : arrondi des reps, plafonds de cohérence, cibles relevées par la fourchette.
+  if (beatRate !== null && Math.abs(beatRate - TARGET.GOAL) > TARGET.LOOP_BAND) {
+    const i = Math.max(0, Math.min(margins.length - 2, Math.floor(margin - margins[0])));
+    const slope = Math.max(TARGET.LOOP_MIN_SLOPE, context[i] - context[i + 1]);
+    margin += Math.max(-TARGET.LOOP_MAX, Math.min(TARGET.LOOP_MAX, (beatRate - TARGET.GOAL) / slope));
+  }
   return { margin: Math.max(TARGET.MIN, Math.min(TARGET.MAX, margin)), beatRate, weight: c.total };
 }
 
@@ -480,4 +528,50 @@ export function completionTarget(
   const drop = (eff(short.weight) - eff(load)) / Math.max(EPS, eff(short.weight));
   if (reach < remainingReps - 0.5 || drop > TARGET.COMPLETION_MAX_DROP + EPS) return null;
   return { weight: load, reps: remainingReps };
+}
+
+/** Ce que `targetAtLoad` lit de la suggestion : la cible, la prévision et la marge qui l'ont faite. */
+export interface TargetAtLoadSource {
+  weight: number;
+  reps: number;
+  /** Prévision du moteur (sans biais), à sa charge (`SetSuggestion.prediction`) ; à défaut, la cible elle-même. */
+  prediction?: { weight: number; reps: number } | null;
+  /** Marge d'ambition de la cible (`SetSuggestion.ambition`), absente hors couche cible. */
+  ambition?: { margin: number } | null;
+}
+
+/**
+ * La cible quand Evan choisit une autre charge que celle proposée (24/10/2026). Evan : « Si je suis prévenu, intra-séance,
+ * que le moteur me propose X et qu'en réalité il sait que je suis censé être capable de faire Y (avec X > Y), ça va me
+ * démotiver ». L'écran ne dit donc qu'une cible, recalculée à la charge choisie par la même règle que celle du moteur :
+ * la prévision ramenée à cette charge par la règle de 7,5 % (`ALGO_V2.REP_SLOPE_PCT`, au moins un cran, celle de
+ * `versus.ts` et de `predictedRepsAtActualWeight`), plus la même marge d'ambition, apprise pour être battue environ une
+ * fois sur trois. Elle n'est pas relevée au bas de la fourchette (il a choisi la charge) ; à charge égale ou plus lourde
+ * après une série au RIR 0-1, elle ne demande pas plus que ses reps + RIR − 2, comme `chooseTarget` (I9). C'est cette
+ * cible qui est enregistrée avec la série (`suggestedWeight` / `suggestedReps`) : il est jugé à la charge qu'il a prise,
+ * contre ce que l'écran lui a dit.
+ */
+export function targetAtLoad(
+  suggestion: TargetAtLoadSource,
+  exercise: Exercise,
+  load: number,
+  today: readonly TodaySet[],
+  increment: number,
+  bodyweightKg: number | undefined
+): { weight: number; reps: number } {
+  const mode = loadModeOf(exercise);
+  const eff = (value: number) => effTotal(value, mode, bodyweightKg);
+  if (Math.abs(eff(load) - eff(suggestion.weight)) < 1e-9) return { weight: suggestion.weight, reps: suggestion.reps };
+  const prediction = suggestion.prediction ?? suggestion;
+  const margin = suggestion.ambition?.margin ?? 0;
+  const from = eff(prediction.weight);
+  const kgPerRep = Math.max(increment > 0 ? increment : exercise.smallestIncrement, ALGO_V2.REP_SLOPE_PCT * Math.max(1, from));
+  let reps = Math.round(prediction.reps + (from - eff(load)) / kgPerRep + margin);
+  const lastRegular = [...today].reverse().find((set) => !set.continuation) ?? null;
+  if (lastRegular) {
+    const capacity = capacityLoad(exercise.setPatternMode, load, bodyweightKg);
+    const proven = maxRepsAfterLastSet(lastRegular, capacityLoad(exercise.setPatternMode, lastRegular.weight, bodyweightKg), capacity, increment);
+    if (Number.isFinite(proven)) reps = Math.min(reps, proven - TARGET.SAME_LOAD_AFTER_FAILURE_GAP);
+  }
+  return { weight: load, reps: Math.max(1, reps) };
 }
