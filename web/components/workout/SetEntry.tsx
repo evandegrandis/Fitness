@@ -229,7 +229,8 @@ export function SetEntry({
                   <Zap size={14} className="shrink-0 self-center" style={{ color: "#ff8a3d" }} aria-hidden />
                 )}
                 {modified && !weightChanged && <span className="text-xs text-(--color-fg-muted)">Proposé</span>}
-                <span className="tnum whitespace-nowrap text-lg font-bold leading-tight">{panel.headline}</span>
+                {/* « Cible à 117,5 kg : 12 reps » peut passer à la ligne dans une carte de superset étroite. */}
+                <span className={cn("tnum text-lg font-bold leading-tight", !weightChanged && "whitespace-nowrap")}>{panel.headline}</span>
               </p>
               {modified && (
                 <button
