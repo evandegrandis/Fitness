@@ -556,7 +556,8 @@ function buildExerciseReview(
   // -- Records : les étoiles de la séance (`session-stars.ts`, la définition de l'Historique et du rang) ----
   // Une par série étoilée, avec son type ; avant le 24/10/2026, un seul record par type et `classify` contre
   // l'historique seul : 4 records listés au bilan du 22/10 pour 5 étoiles comptées par le rang.
-  const recordAchievements = workSetsToday
+  // Toutes les séries du jour : `workSetsToday` écarte une dernière série allégée (prédiction), pas l'Historique.
+  const recordAchievements = orderedSets(logged)
     .filter((set) => stars.has(set.id))
     .map((set) => ({ kind: stars.get(set.id)!, setId: set.id, weight: set.weight, reps: set.reps }));
   const recordKinds = recordAchievements.map((record) => record.kind);
