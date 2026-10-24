@@ -282,6 +282,41 @@ describe("face à la suggestion", () => {
   });
 });
 
+describe("face à sa capacité du jour et au tiers attendu (24/10/2026)", () => {
+  /** La séance, chaque série portant la cible et la prévision enregistrées par le moteur `version`. */
+  const withEngine = (session: WorkoutSession, predicted: number[], version: string) => {
+    let i = 0;
+    return {
+      ...session,
+      exercises: session.exercises.map((logged) => ({
+        ...logged,
+        sets: logged.sets.map((set) => ({ ...set, predictedRepsAtActualWeight: predicted[i++], suggestionEngineVersion: version })),
+      })),
+    };
+  };
+
+  it("« Tirage : 72 × 9, ta capacité du jour était 72 × 7, +2 reps », et l'écart sur toutes ses séries", () => {
+    const today = withEngine(makeSession("2026-09-30", [[ROW, 0, 72, 9, [72, 8]], [ROW, 4, 72, 7, [72, 7]]]), [7, 6], "web-v2.6-2026-10-24");
+    const history = [makeSession("2026-09-26", [[ROW, 0, 72, 8], [ROW, 4, 72, 7]])];
+    const debrief = debriefSession(today, history, CATALOG);
+    const capacity = debrief.insights.sections.find((section) => section.kind === "capacity")!.items[0];
+    expect(capacity.title).toBe("Rowing : 72 kg × 9, ta capacité du jour était 72 kg × 7, +2 reps");
+    expect(capacity.detail).toMatch(/^Sur tes 2 séries : \+3 reps au total\./);
+    // Le tiers attendu n'est dit que des cibles du moteur réglé ainsi.
+    expect(debrief.insights.sections.find((section) => section.kind === "suggestion")!.items[0].title).toBe(
+      "1 cible battue sur 2, le moteur en attend une sur trois"
+    );
+    const older = withEngine(makeSession("2026-09-30", [[ROW, 0, 72, 9, [72, 8]], [ROW, 4, 72, 7, [72, 7]]]), [7, 6], "web-v2.5-2026-10-15");
+    expect(debriefSession(older, history, CATALOG).insights.sections.find((section) => section.kind === "suggestion")!.items[0].title).toBe("1 cible battue sur 2");
+  });
+
+  it("sans prévision enregistrée comme telle (moteur d'avant la v2.3), pas de capacité du jour", () => {
+    const today = withEngine(makeSession("2026-09-30", [[ROW, 0, 72, 9, [72, 8]]]), [8], "web-v2.2-2026-08-30");
+    const history = [makeSession("2026-09-26", [[ROW, 0, 72, 8]])];
+    expect(debriefSession(today, history, CATALOG).insights.sections.some((section) => section.kind === "capacity")).toBe(false);
+  });
+});
+
 describe("prochaine fois et en-tête", () => {
   it("la série cible décroche vraiment une étoile (même règle que l'Historique)", () => {
     const sets = pressHistory().flatMap((session) => session.exercises.flatMap((logged) => logged.sets));

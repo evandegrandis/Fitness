@@ -120,11 +120,24 @@ export const TARGET = {
 /** Première version du moteur dont les séries portent une PRÉVISION (et non une cible) dans `predictedRepsAtActualWeight`. */
 const FIRST_TARGET_VERSION: [number, number] = [2, 3];
 
-function versionAtLeast(version: string | null | undefined): boolean {
+/** La série a été enregistrée par un moteur au moins de cette version (`suggestionEngineVersion`, « web-v2.6-… »). */
+export function engineVersionAtLeast(version: string | null | undefined, [wantMajor, wantMinor]: readonly [number, number]): boolean {
   const match = /web-v(\d+)\.(\d+)/.exec(version ?? "");
   if (!match) return false;
   const [major, minor] = [Number(match[1]), Number(match[2])];
-  return major > FIRST_TARGET_VERSION[0] || (major === FIRST_TARGET_VERSION[0] && minor >= FIRST_TARGET_VERSION[1]);
+  return major > wantMajor || (major === wantMajor && minor >= wantMinor);
+}
+
+/** Sa `predictedRepsAtActualWeight` est une prévision (sans biais), et non une cible : moteurs à deux couches. */
+export function storesPrediction(version: string | null | undefined): boolean {
+  return engineVersionAtLeast(version, FIRST_TARGET_VERSION);
+}
+
+/** Première version dont les cibles visent une fois sur trois et suivent la charge choisie (24/10/2026). */
+export const ONE_IN_THREE_VERSION: [number, number] = [2, 6];
+
+function versionAtLeast(version: string | null | undefined): boolean {
+  return storesPrediction(version);
 }
 
 interface TargetSample {
@@ -538,6 +551,7 @@ export interface TargetAtLoadSource {
   prediction?: { weight: number; reps: number } | null;
   /** Marge d'ambition de la cible (`SetSuggestion.ambition`), absente hors couche cible : la cible sert alors de base. */
   ambition?: { margin: number } | null;
+  reasonCodes?: readonly string[];
 }
 
 /**
@@ -562,6 +576,8 @@ export function targetAtLoad(
   const mode = loadModeOf(exercise);
   const eff = (value: number) => effTotal(value, mode, bodyweightKg);
   if (Math.abs(eff(load) - eff(suggestion.weight)) < 1e-9) return { weight: suggestion.weight, reps: suggestion.reps };
+  // Série à compléter : ce sont les reps qui manquent à la série d'avant, à n'importe quelle charge.
+  if (suggestion.reasonCodes?.includes("logical_set_completion")) return { weight: load, reps: suggestion.reps };
   // Sans marge (série à finir, point de départ d'une autre machine, couche cible absente), la cible est sa propre base.
   const prediction = suggestion.ambition ? suggestion.prediction ?? suggestion : suggestion;
   const margin = suggestion.ambition?.margin ?? 0;
