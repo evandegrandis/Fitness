@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { learnedRepDrop, pairsFromSets, REP_DROP, repDropAfter, repDropPairs } from "@/lib/engines/rep-drop";
 import { reprojectSuggestionAtWeight, suggest } from "@/lib/engines/progression";
-import { suggestionReason, learnedDropText } from "@/lib/engines/suggestion-reason";
+import { suggestionReason } from "@/lib/engines/suggestion-reason";
 import { SetType } from "@/lib/models/enums";
 import { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -191,9 +191,8 @@ describe("séries suivantes dans le moteur", () => {
     expect(result.repDrop!.drop).toBeLessThan(3);
     expect(result.reps).toBe(Math.round(12 - result.repDrop!.drop));
     expect(result.reasonCodes).toContain("learned_rep_drop");
-    expect(suggestionReason(result)).toBe(
-      `Même charge, la fatigue de la série d'avant retire des reps (${learnedDropText(result.repDrop!.drop)})`
-    );
+    // La perte apprise n'est plus dite en séance (24/10/2026 : une habitude chiffrée sous la cible).
+    expect(suggestionReason(result)).toBe("Même charge, la fatigue de la série d'avant retire des reps");
   });
 
   it("une série faite très en dessous de l'historique n'aboutit plus au « Point de départ 20 kg »", () => {
@@ -219,10 +218,6 @@ describe("séries suivantes dans le moteur", () => {
     expect(result.reps).toBe(7);
   });
 
-  it("le texte arrondit à la demi-rep, au singulier sous 1", () => {
-    expect(learnedDropText(2.37)).toBe("tu perds d'habitude 2,5 reps d'une série à l'autre ici");
-    expect(learnedDropText(0.6)).toBe("tu perds d'habitude 0,5 rep d'une série à l'autre ici");
-  });
 });
 
 describe("poids du corps : la 1re série suit les reps démontrées", () => {

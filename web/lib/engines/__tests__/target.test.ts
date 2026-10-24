@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ambitionMargin, chooseTarget, completionTarget, heavyReturnLoad, isHeavySet, TARGET, usualWorkingLoad, type TodaySet } from "@/lib/engines/target";
+import { ambitionMargin, chooseTarget, completionTarget, heavyReturnLoad, isHeavySet, TARGET, targetAtLoad, usualWorkingLoad, type TodaySet } from "@/lib/engines/target";
 import { suggest, SUGGESTION_ENGINE_VERSION } from "@/lib/engines/progression";
 import { suggestionReason } from "@/lib/engines/suggestion-reason";
-import { loadHabit } from "@/lib/engines/target-display";
 import { SetType } from "@/lib/models/enums";
 import { MuscleGroup } from "@/lib/models/muscles";
 import type { Exercise, LoggedSet, WorkoutSession } from "@/lib/models/types";
@@ -45,7 +44,7 @@ function session(daysAgo: number, specs: { reps: number; predicted: number; targ
 }
 
 describe("marge d'ambition", () => {
-  it("sans cible enregistrée par ce moteur : l'a priori, légèrement optimiste (prévision battue 45 % du temps, objectif 40 %)", () => {
+  it("sans cible enregistrée par ce moteur : l'a priori, légèrement optimiste (prévision battue 45 % du temps, objectif un tiers)", () => {
     const prior = (TARGET.PRIOR_BEAT_0 - TARGET.GOAL) / (TARGET.PRIOR_BEAT_0 - TARGET.PRIOR_BEAT_1);
     expect(ambitionMargin(undefined, undefined, true, NOW).margin).toBeCloseTo(prior, 5);
     expect(ambitionMargin([], [exercise()], false, NOW).margin).toBeCloseTo(prior, 5);
@@ -53,7 +52,7 @@ describe("marge d'ambition", () => {
     expect(prior).toBeLessThan(1);
   });
 
-  it("monte quand il dépasse souvent la prévision, sans dépasser 2 reps", () => {
+  it("monte quand il dépasse souvent la prévision, sans dépasser le maximum", () => {
     const history = [session(40, [{ reps: 10, predicted: 8, target: 8 }])];
     for (let i = 0; i < 30; i++) history.push(session(1 + i * 0.1, [{ reps: 11, predicted: 8, target: 9 }, { reps: 9, predicted: 7, target: 8 }]));
     const margin = ambitionMargin(history, [exercise()], false, NOW);
@@ -70,13 +69,70 @@ describe("marge d'ambition", () => {
     expect(margin.margin).toBeCloseTo(ambitionMargin(undefined, undefined, true, NOW).margin, 5);
   });
 
-  it("la boucle de long terme la baisse quand il bat moins de 40 % des cibles", () => {
+  it("la boucle de long terme la baisse quand il bat moins d'une cible sur trois", () => {
     const history = [session(40, [{ reps: 10, predicted: 8, target: 8 }])];
-    // Il fait 3 de plus que la prévision (marge brute au maximum) mais n'a battu aucune cible affichée.
+    // Il fait 3 de plus que la prévision (marge brute au maximum, 2 reps) mais n'a battu aucune cible affichée : la
+    // correction, proportionnelle à l'écart, est bornée à `LOOP_MAX`.
     for (let i = 0; i < 30; i++) history.push(session(1 + i * 0.1, [{ reps: 10, predicted: 7, target: 11 }]));
     const margin = ambitionMargin(history, [exercise()], true, NOW);
     expect(margin.beatRate).toBe(0);
-    expect(margin.margin).toBeCloseTo(TARGET.MAX - TARGET.LOOP_STEP, 5);
+    expect(margin.margin).toBeCloseTo(2 - TARGET.LOOP_MAX, 5);
+  });
+
+  it("vise une cible battue une fois sur trois", () => {
+    expect(TARGET.GOAL).toBeCloseTo(1 / 3, 5);
+  });
+
+  it("par exercice : celui où il bat rarement la prévision reçoit une marge plus basse que les autres", () => {
+    const row = exercise({ id: "row", name: "Isolateral row" });
+    const press = exercise();
+    const history: WorkoutSession[] = [];
+    for (let i = 0; i < 20; i++) {
+      const s = session(2 + i, [{ reps: 9, predicted: 8, target: 9 }]);
+      // Même séance : le row fait 2 de moins que prévu, le développé 1 de plus.
+      const rowLogged = { ...s.exercises[0], id: `row-${i}`, exerciseId: "row", exerciseName: "row",
+        sets: s.exercises[0].sets.map((x) => ({ ...x, id: `${x.id}-row`, reps: 6 })) };
+      history.push({ ...s, exercises: [s.exercises[0], rowLogged] });
+    }
+    const forPress = ambitionMargin(history, [press, row], true, NOW, "press").margin;
+    const forRow = ambitionMargin(history, [press, row], true, NOW, "row").margin;
+    expect(forRow).toBeLessThan(forPress - 0.5);
+  });
+
+  it("une série plus lourde que la cible compte comme la règle la juge : battue si ses reps atteignent la fourchette", () => {
+    // Séries plus lourdes (110 kg pour une cible à 100) à 8 reps, le bas de la fourchette : battues quelle que soit la marge.
+    const heavier = (daysAgo: number) => {
+      const s = session(daysAgo, [{ reps: 8, predicted: 8, target: 10 }]);
+      return { ...s, exercises: [{ ...s.exercises[0], sets: s.exercises[0].sets.map((x) => ({ ...x, weight: 110 })) }] };
+    };
+    const history = Array.from({ length: 30 }, (_, i) => heavier(1 + i * 0.1));
+    const margin = ambitionMargin(history, [exercise()], false, NOW);
+    // Toutes battues (courbe à 1 pour toute marge), et la boucle le confirme : la marge monte au maximum.
+    expect(margin.beatRate).toBe(1);
+    expect(margin.margin).toBe(TARGET.MAX);
+  });
+});
+
+describe("cible à la charge choisie (24/10/2026)", () => {
+  const ex = exercise({ id: "abdo", repTargetMin: 10, repTargetMax: 20, smallestIncrement: 2.5 });
+  it("à la charge de la cible : la cible elle-même", () => {
+    expect(targetAtLoad({ weight: 80, reps: 12, prediction: { weight: 80, reps: 11 }, ambition: { margin: 1.27 } }, ex, 80, [], 2.5, undefined)).toEqual({ weight: 80, reps: 12 });
+  });
+  it("plus lourd : la prévision ramenée à cette charge par la règle de 7,5 %, plus la même marge (80 × 12 → 90 × 10)", () => {
+    // Prévision 80 × 10,7 (6 kg par rep à 80 kg), marge 1,27 : à 90 kg, 10,7 − 1,67 + 1,27 = 10,3 → 10.
+    const t = targetAtLoad({ weight: 80, reps: 12, prediction: { weight: 80, reps: 10.7 }, ambition: { margin: 1.27 } }, ex, 90, [], 2.5, undefined);
+    expect(t).toEqual({ weight: 90, reps: 10 });
+  });
+  it("plus léger : plus de reps, par la même règle, sans relèvement au bas de la fourchette", () => {
+    const t = targetAtLoad({ weight: 80, reps: 12, prediction: { weight: 80, reps: 10.7 }, ambition: { margin: 1.27 } }, ex, 60, [], 2.5, undefined);
+    expect(t).toEqual({ weight: 60, reps: 15 });
+    const heavy = targetAtLoad({ weight: 80, reps: 12, prediction: { weight: 80, reps: 10.7 }, ambition: { margin: 1.27 } }, ex, 120, [], 2.5, undefined);
+    expect(heavy).toEqual({ weight: 120, reps: 5 });
+  });
+  it("jamais plus que ses reps + RIR − 2 à charge égale ou plus lourde, juste après une série au RIR 0-1 (I9)", () => {
+    const today: TodaySet[] = [{ weight: 77.5, reps: 14, rir: 0, continuation: false }];
+    const t = targetAtLoad({ weight: 72.5, reps: 13, prediction: { weight: 72.5, reps: 13 }, ambition: { margin: 1 } }, ex, 77.5, today, 2.5, undefined);
+    expect(t.reps).toBe(12);
   });
 });
 
@@ -206,11 +262,8 @@ describe("cible construite sur la prévision", () => {
     // 130 × 9 au RIR 0 : à 130 kg, au plus 9 − 2 = 7, sous la fourchette ; la cible prend plus léger, dans la fourchette.
     expect(shown.weight).toBeLessThan(130);
     expect(shown.reps).toBeGreaterThanOrEqual(8);
-    // « D'habitude » : ses séries réelles à la charge de la cible (24/10/2026), plus la prévision.
-    const habit = loadHabit(exercise(), history, shown.weight, NOW);
-    const done = history.flatMap((s) => s.exercises[0].sets).filter((x) => x.weight === shown.weight).map((x) => x.reps);
-    expect(habit.reps.sort()).toEqual(done.sort());
-    expect(suggestionReason(shown, habit)).toMatch(/^Cible à battre( : le bas de ta fourchette)?\. (À [\d,]+ kg, tu (fais d'habitude|as fait) \d+ reps?|Aucune série à [\d,]+ kg ces 8 dernières semaines)/);
+    // La raison assume la cible, sans prévision ni habitude (24/10/2026).
+    expect(suggestionReason(shown)).toMatch(/^Cible à battre( : le bas de ta fourchette)?$/);
   });
 });
 

@@ -15,9 +15,10 @@ import { cn } from "@/lib/utils";
 
 const KIND_LABEL: Record<InsightKind, string> = {
   progress: "Progression",
+  capacity: "Capacité du jour",
   fatigue: "Fatigue",
   superset: "Superset",
-  suggestion: "Suggestion",
+  suggestion: "Cibles",
   next: "Prochaine fois",
   week: "Semaine",
 };
@@ -276,8 +277,8 @@ function ExerciseByExercise({ exercises }: { exercises: ExerciseReview[] }) {
 function SuggestionBlock({ tally }: { tally: SuggestionTally }) {
   const total = tally.beat + tally.met + tally.below;
   const parts = [
-    { label: "au-dessus", value: tally.beat, color: "var(--color-success)" },
-    { label: "à la cible", value: tally.met, color: "var(--paper)" },
+    { label: "battues", value: tally.beat, color: "var(--color-success)" },
+    { label: "tenues", value: tally.met, color: "var(--paper)" },
     { label: "en dessous", value: tally.below, color: "var(--color-warning)" },
   ];
   const byExercise = new Map<string, { name: string; labels: string[] }>();
@@ -290,7 +291,7 @@ function SuggestionBlock({ tally }: { tally: SuggestionTally }) {
     <div className="mt-2">
       <div className="flex h-[6px] w-full gap-[2px] overflow-hidden rounded-full">
         {parts.filter((part) => part.value > 0).map((part) => (
-          <div key={part.label} style={{ flex: part.value, background: part.color, opacity: part.label === "à la cible" ? 0.55 : 0.9 }} />
+          <div key={part.label} style={{ flex: part.value, background: part.color, opacity: part.label === "tenues" ? 0.55 : 0.9 }} />
         ))}
       </div>
       <div className="mt-1.5 flex justify-between">
@@ -313,6 +314,11 @@ function SuggestionBlock({ tally }: { tally: SuggestionTally }) {
       {tally.below > 0 && (
         <p className="mt-2 text-[0.68rem] text-(--color-fg-faint)">
           {tally.belowInSecondHalf} des {tally.below} en dessous dans la seconde moitié de la séance, sur {total} séries comparées.
+        </p>
+      )}
+      {tally.oneInThree && (
+        <p className="mt-1 text-[0.68rem] text-(--color-fg-faint)">
+          {tally.beat} battue{tally.beat > 1 ? "s" : ""} sur {total} ; le moteur en attend une sur trois, soit {Math.round(total / 3)}.
         </p>
       )}
     </div>

@@ -46,6 +46,8 @@ import {
 } from "@/lib/models/types";
 import { cleanWeight } from "@/lib/format";
 import { versusReference } from "@/lib/engines/versus";
+import { engineVersionAtLeast, ONE_IN_THREE_VERSION, storesPrediction } from "@/lib/engines/target";
+import { isRated } from "@/lib/engines/session-game";
 
 export const SESSION_INSIGHTS = {
   /** Enseignements montrés en tête ; le reste est dans le détail repliable. */
@@ -75,7 +77,7 @@ export const SESSION_INSIGHTS = {
 // Types publics
 // ---------------------------------------------------------------------------
 
-export type InsightKind = "progress" | "fatigue" | "superset" | "suggestion" | "next" | "week";
+export type InsightKind = "progress" | "capacity" | "fatigue" | "superset" | "suggestion" | "next" | "week";
 
 export interface SessionInsight {
   id: string;
@@ -131,6 +133,8 @@ export interface SuggestionTally {
   belowDetails: { exerciseId: string; exerciseName: string; setNumber: number; label: string }[];
   /** Séries en dessous dans la seconde moitié de la séance (chronologique). */
   belowInSecondHalf: number;
+  /** Toutes les cibles jugées viennent d'un moteur qui vise une cible battue une fois sur trois (≥ web-v2.6). */
+  oneInThree: boolean;
 }
 
 export interface WeekTierStatus {
@@ -771,6 +775,63 @@ function fatigueInsights(facts: readonly ExerciseFacts[], tally: SuggestionTally
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Face à sa capacité du jour (24/10/2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce qu'il pouvait faire à la charge prise, à ce moment de la séance : la prévision du moteur enregistrée avec la série
+ * (`predictedRepsAtActualWeight`, sans marge, fatigue de la séance comprise), seulement pour les moteurs qui l'enregistrent
+ * comme prévision (≥ web-v2.3). Ramenée au haut de la fourchette par la reprojection : au-delà, elle ne dit rien.
+ */
+function capacityOfTheDay(set: LoggedSet, exercise: Exercise): number | null {
+  if (!storesPrediction(set.suggestionEngineVersion) || set.predictedRepsAtActualWeight == null) return null;
+  const capacity = Math.round(set.predictedRepsAtActualWeight);
+  if (exercise.setPatternMode !== "bodyweight" && capacity >= exercise.repTargetMax && set.reps > capacity) return null;
+  return capacity;
+}
+
+function signedReps(gap: number): string {
+  if (gap === 0) return "pile ta capacité";
+  return `${gap > 0 ? "+" : "−"}${Math.abs(gap)} rep${Math.abs(gap) > 1 ? "s" : ""}`;
+}
+
+/**
+ * Evan, 24/10 : « c'est dans le bilan que je sais à quel point je me suis dépassé ou pas car le bilan sait ma capacité
+ * réelle sur les exercices ». Par exercice : sa meilleure série face à sa capacité du jour à cette charge, et l'écart
+ * sur toutes ses séries. En séance, l'écran ne dit que la cible (`target-display.ts`).
+ */
+function capacityInsights(facts: readonly ExerciseFacts[]): SessionInsight[] {
+  const out: SessionInsight[] = [];
+  for (const fact of facts) {
+    if (fact.calibrating) continue;
+    const measured = fact.sets
+      .map((set) => ({ set, capacity: capacityOfTheDay(set, fact.exercise) }))
+      .filter((entry): entry is { set: LoggedSet; capacity: number } => entry.capacity !== null);
+    if (measured.length === 0) continue;
+    const best = measured.find((entry) => entry.set.id === fact.best.id) ?? [...measured].sort((a, b) => b.set.reps - b.capacity - (a.set.reps - a.capacity))[0];
+    const gap = best.set.reps - best.capacity;
+    const total = measured.reduce((sum, entry) => sum + entry.set.reps - entry.capacity, 0);
+    const name = shortExerciseName(fact.exercise.name);
+    out.push({
+      id: `capacity-${fact.exercise.id}`,
+      kind: "capacity",
+      title: `${name} : ${setLabel(best.set.weight, best.set.reps)}, ta capacité du jour était ${setLabel(best.set.weight, best.capacity)}, ${signedReps(gap)}`,
+      detail:
+        measured.length > 1
+          ? `Sur tes ${measured.length} séries : ${total === 0 ? "pile ta capacité au total" : `${signedReps(total)} au total`}.`
+          : "Une seule série mesurée.",
+      tone: gap > 0 ? "positive" : gap < 0 ? "warning" : "neutral",
+      exerciseIds: [fact.exercise.id],
+      weight: gap > 0 ? 62 + Math.min(16, 4 * gap) : gap < 0 ? 52 + Math.min(8, 2 * -gap) : 45,
+    });
+  }
+  // La définition, une fois, sous l'enseignement le plus fort (celui qui monte en tête).
+  const top = [...out].sort((a, b) => b.weight - a.weight)[0];
+  if (top) top.detail = `${top.detail} Ta capacité du jour : ce que tes séances disent que tu pouvais faire à cette charge, à ce moment de la séance, fatigue comprise.`;
+  return out;
+}
+
 function buildTally(
   session: WorkoutSession,
   facts: readonly ExerciseFacts[]
@@ -778,10 +839,15 @@ function buildTally(
   const judged: { fact: ExerciseFacts; set: LoggedSet; verdict: "beat" | "met" | "below"; setNumber: number }[] = [];
   for (const fact of facts) {
     if (fact.calibrating) continue;
-    fact.sets.forEach((set, index) => {
-      const verdict = setVersusSuggestion(fact.exercise, set);
-      if (verdict) judged.push({ fact, set, verdict, setNumber: index + 1 });
-    });
+    // Les séries que juge l'en-tête de séance (`sessionGame`), séries à compléter comprises : un seul compte.
+    session.exercises
+      .filter((logged) => logged.exerciseId === fact.exercise.id)
+      .flatMap((logged) => orderedSets(logged).filter(isRated))
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+      .forEach((set, index) => {
+        const verdict = setVersusSuggestion(fact.exercise, set);
+        if (verdict) judged.push({ fact, set, verdict, setNumber: index + 1 });
+      });
   }
   if (judged.length === 0) return null;
   const times = session.exercises.flatMap((logged) => logged.sets.filter((set) => set.completed).map((set) => set.timestamp.getTime()));
@@ -792,6 +858,7 @@ function buildTally(
     met: judged.filter((entry) => entry.verdict === "met").length,
     below: below.length,
     belowInSecondHalf: below.filter((entry) => entry.set.timestamp.getTime() > midpoint).length,
+    oneInThree: judged.every((entry) => engineVersionAtLeast(entry.set.suggestionEngineVersion, ONE_IN_THREE_VERSION)),
     belowDetails: below.map(({ fact, set, setNumber }) => {
       const sameLoad = Math.abs(set.weight - (set.suggestedWeight ?? 0)) < 0.01;
       const gap = sameLoad
@@ -824,17 +891,20 @@ function suggestionInsight(tally: SuggestionTally): SessionInsight {
     .sort((a, b) => b.labels.length - a.labels.length)
     .map((entry) => `${entry.name} (${entry.labels.join(", ")})`)
     .join(" ; ");
+  // « Une sur trois » n'est vrai que des cibles du moteur réglé ainsi (24/10/2026) ; avant, il en visait plus.
+  const expected = tally.oneInThree ? ", le moteur en attend une sur trois" : "";
   return {
     id: "suggestion",
     kind: "suggestion",
-    title: `${tally.beat} série${tally.beat > 1 ? "s" : ""} au-dessus de la suggestion, ${tally.met} à, ${tally.below} en dessous`,
+    title: `${tally.beat} cible${tally.beat > 1 ? "s" : ""} battue${tally.beat > 1 ? "s" : ""} sur ${total}${expected}`,
     detail:
       tally.below === 0
-        ? `Les ${plural(total, "série")} comparables tiennent toutes la cible de l'app.`
-        : `En dessous : ${where}.`,
+        ? `${tally.met > 0 ? `${tally.met} tenue${tally.met > 1 ? "s" : ""}, aucune en dessous.` : "Aucune en dessous."}`
+        : `${tally.met > 0 ? `${tally.met} tenue${tally.met > 1 ? "s" : ""}. ` : ""}En dessous : ${where}.`,
     tone: tally.below > tally.beat ? "warning" : "positive",
     exerciseIds: [...byExercise.values()].map((entry) => entry.id),
-    weight: tally.below >= Math.max(3, 0.4 * total) ? 55 : 42,
+    // Face au tiers attendu, le taux de la séance dit s'il s'est dépassé : il passe devant les supersets et la semaine.
+    weight: tally.oneInThree ? 61 : tally.below >= Math.max(3, 0.4 * total) ? 55 : 42,
   };
 }
 
@@ -1027,14 +1097,15 @@ function weekInsight(status: WeekTierStatus): SessionInsight {
 
 const SECTION_LABEL: Record<InsightKind, string> = {
   progress: "Progression",
+  capacity: "Face à ta capacité du jour",
   fatigue: "Fatigue de la séance",
   superset: "Supersets",
-  suggestion: "Face à la suggestion",
+  suggestion: "Face à la cible",
   next: "La prochaine fois",
   week: "Palier de la semaine",
 };
 
-const SECTION_ORDER: InsightKind[] = ["progress", "superset", "fatigue", "suggestion", "next", "week"];
+const SECTION_ORDER: InsightKind[] = ["capacity", "progress", "superset", "fatigue", "suggestion", "next", "week"];
 
 export function buildSessionInsights(
   session: WorkoutSession,
@@ -1089,6 +1160,7 @@ export function buildSessionInsights(
 
   const all: SessionInsight[] = [
     ...facts.filter((fact) => !fact.calibrating).map((fact) => progressInsight(fact, catalogById)).filter((insight): insight is SessionInsight => insight !== null),
+    ...capacityInsights(facts),
     ...supersets.map((summary, index) => supersetInsight(summary, index)),
     ...fatigueInsights(facts, tally),
     ...(tally ? [suggestionInsight(tally)] : []),

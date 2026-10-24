@@ -106,7 +106,10 @@ async function main() {
   const { collectExerciseHistory } = await import("@/lib/engines/patterns");
   const { recordCalibration, isCalibrating } = await import("@/lib/engines/records");
   const targetModule = (await import("@/lib/engines/target" as string).catch(() => null)) as
-    | { usualWorkingLoad?: (h: unknown) => number | null }
+    | {
+        usualWorkingLoad?: (h: unknown) => number | null;
+        targetAtLoad?: (s: unknown, e: unknown, load: number, today: unknown[], inc: number, bw: number | undefined) => { weight: number; reps: number };
+      }
     | null;
   type AllData = import("@/lib/db/queries").AllData;
   type LoggedSet = import("@/lib/models/types").LoggedSet;
@@ -212,7 +215,15 @@ async function main() {
       const predKgPerRep = Math.max(exercise.smallestIncrement, ALGO_V2.REP_SLOPE_PCT * Math.max(1, predFromEff));
       const predictionAtActual = reprojectSuggestionAtWeight({ ...suggestion, ...prediction }, exercise, s.weight, bodyweight).reps;
       const ambition = (suggestion as { ambition?: { margin: number; beatRate: number | null; lowered: number } }).ambition ?? null;
-      engineTargets.set(s.id, { weight: suggestion.weight, reps: suggestion.reps });
+      // La cible que l'écran montre à la charge réellement prise (moteurs qui recalculent la cible à la charge choisie,
+      // 24/10/2026) : c'est elle qui est enregistrée et qui juge la série. Ailleurs, la cible proposée.
+      const todaySets = prior
+        .filter((x) => x.setType === "work" || x.setType === "top_set" || x.setType === "backoff")
+        .map((x) => ({ weight: x.weight, reps: x.reps, rir: x.reportedRir ?? null, continuation: x.setTechnique != null || (x.logicalSetId != null && x.logicalSetId !== x.id) }));
+      const shown = !isWarmup && targetModule?.targetAtLoad && suggestion.setType !== "finisher"
+        ? targetModule.targetAtLoad(suggestion, exercise, s.weight, todaySets, exercise.smallestIncrement, bodyweight)
+        : { weight: suggestion.weight, reps: suggestion.reps };
+      engineTargets.set(s.id, shown);
       const line: Record<string, unknown> = {
         session_id: target.id, session_date: target.date.toISOString(), ts: at.toISOString(), synthetic_time: synthetic, idx,
         exercise_id: exercise.id, exercise: exercise.name, le_id: le.id, pattern_mode: exercise.setPatternMode,
@@ -232,6 +243,8 @@ async function main() {
           target_at_actual: suggestion.reps - (toEff - fromEff) / kgPerRep,
           eff_suggested: fromEff, eff_actual: toEff,
           verdict: isWarmup ? null : setVersusSuggestion(exercise, { ...s, suggestedWeight: suggestion.weight, suggestedReps: suggestion.reps }),
+          shown,
+          verdict_shown: isWarmup ? null : setVersusSuggestion(exercise, { ...s, suggestedWeight: shown.weight, suggestedReps: shown.reps }),
         },
         verdict_stored: isWarmup ? null : setVersusSuggestion(exercise, s),
         ctx: {
@@ -249,7 +262,7 @@ async function main() {
       setNow(at);
       // En simulation, la série porte ce que CE moteur aurait affiché et enregistré (comme `SetEntry`).
       const logged = simulate && !isWarmup
-        ? { suggestedWeight: suggestion.weight, suggestedReps: suggestion.reps, suggestedSetType: suggestion.setType,
+        ? { suggestedWeight: shown.weight, suggestedReps: shown.reps, suggestedSetType: suggestion.setType,
             predictedRepsAtActualWeight: predictionAtActual, suggestionMode: suggestion.mode, suggestionReasonCodes: suggestion.reasonCodes,
             suggestionEngineVersion: SUGGESTION_ENGINE_VERSION }
         : { suggestedWeight: s.suggestedWeight, suggestedReps: s.suggestedReps, suggestedSetType: s.suggestedSetType,

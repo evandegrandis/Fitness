@@ -36,7 +36,8 @@ export const SESSION_GAME = {
   MAX_BOSSES_PER_WEEK: 2,
 } as const;
 
-const isRated = (set: LoggedSet) => set.completed && RATED_SET_TYPES.has(set.setType);
+/** Séries jugées face à leur cible : celles de l'en-tête, et celles que compte le bilan (`session-insights.ts`). */
+export const isRated = (set: LoggedSet) => set.completed && RATED_SET_TYPES.has(set.setType);
 
 /** Exercices déjà pratiqués avant la séance : les autres sont en étalonnage, jamais jugés. */
 function knownExerciseIds(history: readonly WorkoutSession[], sessionId: string): Set<string> {

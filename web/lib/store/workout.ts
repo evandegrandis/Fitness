@@ -2499,8 +2499,11 @@ export const useWorkoutStore = create<WorkoutState>()(
               ...result,
               weight,
               reps,
-              explanation: `Étalonnage · départ d'après ${start.exercise.name} (${cleanWeight(start.set.weight)} kg × ${start.set.reps}), charge à recaler`,
+              // Sans la série de l'autre machine (24/10/2026) : en séance, le seul nombre de reps dit est celui de la cible.
+              explanation: `Étalonnage · départ d'après ${start.exercise.name}, charge à recaler`,
               reasonCodes: [...result.reasonCodes, "equivalent_starting_point"],
+              // Le point de départ remplace la cible du moteur : à une autre charge, la cible part de lui (`targetAtLoad`).
+              ambition: undefined,
             };
           }
         }
