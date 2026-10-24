@@ -5,6 +5,7 @@
  */
 
 import type { SetSuggestion } from "@/lib/engines/progression";
+import { loadHabitText, type LoadHabit } from "@/lib/engines/target-display";
 
 /** Code du moteur → raison affichée. Le premier code connu de la suggestion l'emporte. */
 const REASONS: Record<string, string> = {
@@ -63,22 +64,24 @@ const ADDENDA: Record<string, string> = {
  * qui nomme la machine de départ.
  */
 export function suggestionReason(
-  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation"> & Partial<Pick<SetSuggestion, "repDrop" | "ambition">>
+  suggestion: Pick<SetSuggestion, "reasonCodes" | "explanation"> & Partial<Pick<SetSuggestion, "repDrop" | "ambition">>,
+  /** Ses séries réelles à la charge de la cible (`target-display.ts`) : seules à pouvoir dire « d'habitude ». */
+  habit?: LoadHabit
 ): string | null {
   const codes = suggestion.reasonCodes;
   if (codes.includes("equivalent_starting_point") || codes.includes("equivalent_conversion")) return null;
   const addenda = codes.map((code) => ADDENDA[code]).filter(Boolean);
-  // Cible à battre (`target.ts`) : la raison l'assume, avec ce qu'il fait d'habitude à cette charge
-  // (prévision au RIR visé, et une rep de plus à l'échec).
-  if (codes.includes("target_to_beat") && suggestion.ambition) {
-    const usual = Math.max(1, Math.round(suggestion.ambition.predictedReps));
-    const habit = `tu fais d'habitude ${usual} à ${usual + 1} ici`;
-    const main = codes.includes("target_after_attempt")
-      ? `Cible à battre après ton essai lourd : retour à ta charge de travail, ${habit}`
+  // Cible à battre (`target.ts`) : la raison l'assume, puis dit ce qu'il a VRAIMENT fait à cette charge. Jusqu'au
+  // 24/10/2026, « tu fais d'habitude N à N + 1 ici » était la prévision du moteur (22/10 : « 8 à 9 » au tirage
+  // horizontal à 72 kg, où il avait fait 7, 9, 7, 7).
+  if (codes.includes("target_to_beat")) {
+    const base = codes.includes("target_after_attempt")
+      ? "Cible à battre après ton essai lourd : retour à ta charge de travail"
       : codes.includes("target_lifted")
-        ? `Cible à battre : le bas de ta fourchette, ${habit}`
-        : `Cible à battre : ${habit}`;
-    return addenda.length > 0 ? `${main} (${addenda.join(", ")})` : main;
+        ? "Cible à battre : le bas de ta fourchette"
+        : "Cible à battre";
+    const main = addenda.length > 0 ? `${base} (${addenda.join(", ")})` : base;
+    return habit ? `${main}. ${loadHabitText(habit)}` : main;
   }
   const main = codes.map((code) => REASONS[code]).find(Boolean);
   if (!main) return null;
