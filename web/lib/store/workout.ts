@@ -17,12 +17,12 @@ import {
   buildRecords,
   classify,
   classifyFinisher,
-  displayedRecordSetIDs,
   EMPTY_RECORDS,
   normalRecordSets,
   type ExerciseRecords,
   type RecordKind,
 } from "@/lib/engines/records";
+import { sessionStars } from "@/lib/engines/session-stars";
 import { weeklyPriorities } from "@/lib/engines/effective-sets";
 import { PriorLoad, SessionFatigueContext } from "@/lib/engines/session-fatigue";
 import { buildFatigueBaselines } from "@/lib/engines/session-fatigue-baselines";
@@ -810,60 +810,24 @@ function readBodyweightKg(settings: UserSettings): number | undefined {
   return !Number.isNaN(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/** Renvoie une copie de `record` sans la clé `key`. */
-function omitKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const result: Record<string, T> = {};
-  for (const [k, v] of Object.entries(record)) {
-    if (k !== key) result[k] = v;
-  }
-  return result;
-}
-
 /**
  * Retire les étoiles transitoires qui ne font plus partie des vrais records
  * all-time (par exemple un ancien 16 x 8 désormais dominé par 18 x 9). Ce
  * nettoyage protège aussi la détection de fatigue, qui utilise la date du
  * dernier PR de la séance.
  */
-function sanitizeActiveRecordMarks(
+/**
+ * Les marques de record de la séance active, DÉRIVÉES des faits : les étoiles que l'Historique et le bilan
+ * donneront (`session-stars.ts`). Recalculées à chaque série validée, corrigée ou supprimée et au rechargement ;
+ * jamais posées puis retirées à la main (le 22/10/2026, deux séries corrigées avaient perdu leur marque et
+ * l'en-tête disait « 1 record » quand le bilan en comptait 5).
+ */
+function activeRecordMarks(
   history: WorkoutSession[],
   session: WorkoutSession,
-  catalog: Exercise[],
-  marks: Record<string, RecordKind>
+  catalog: Exercise[]
 ): Record<string, RecordKind> {
-  const next = { ...marks };
-  const exerciseById = new Map(catalog.map((exercise) => [exercise.id, exercise]));
-  const historicalByExerciseId = new Map<string, LoggedSet[]>();
-  for (const historicalSession of history) {
-    if (historicalSession.isActive) continue;
-    for (const logged of historicalSession.exercises) {
-      const list = historicalByExerciseId.get(logged.exerciseId) ?? [];
-      list.push(...logged.sets);
-      historicalByExerciseId.set(logged.exerciseId, list);
-    }
-  }
-
-  for (const logged of session.exercises) {
-    const exercise = exerciseById.get(logged.exerciseId);
-    if (!exercise) continue;
-    const activeOccurrences = session.exercises.filter(
-      (candidate) => candidate.exerciseId === logged.exerciseId
-    );
-    const allSets = [
-      ...(historicalByExerciseId.get(logged.exerciseId) ?? []),
-      ...activeOccurrences.flatMap((candidate) => candidate.sets),
-    ];
-    const validIds = new Set<string>();
-    for (const occurrence of activeOccurrences) {
-      for (const setId of displayedRecordSetIDs(occurrence, allSets, exercise)) validIds.add(setId);
-    }
-    for (const occurrence of activeOccurrences) {
-      for (const set of occurrence.sets) {
-        if (next[set.id] !== undefined && !validIds.has(set.id)) delete next[set.id];
-      }
-    }
-  }
-  return next;
+  return Object.fromEntries(sessionStars(session, history, catalog));
 }
 
 /** Reconstitue les PR de la séance active depuis les faits, y compris après un reload. */
@@ -1415,9 +1379,7 @@ export const useWorkoutStore = create<WorkoutState>()(
           ...data,
           catalog,
           history,
-          justHitRecord: state.active
-            ? sanitizeActiveRecordMarks(history, state.active, catalog, state.justHitRecord)
-            : state.justHitRecord,
+          justHitRecord: state.active ? activeRecordMarks(history, state.active, catalog) : state.justHitRecord,
         };
       }),
 
@@ -1584,12 +1546,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (!state.active) return null;
         const normalized = pruneEmptyExercisesForFinish(state.active);
         const finishedSession: WorkoutSession = { ...normalized, isActive: false, endTime: new Date() };
-        const validatedRecordMarks = sanitizeActiveRecordMarks(
-          state.history,
-          normalized,
-          state.catalog,
-          state.justHitRecord
-        );
+        const validatedRecordMarks = activeRecordMarks(state.history, normalized, state.catalog);
         const snapshot = buildFinishedWorkoutSnapshot({
           session: finishedSession,
           exercises: state.catalog,
@@ -2019,7 +1976,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         const activeGroupId = findLoggedExercise(session, loggedExerciseId)?.supersetGroupId;
         if (activeGroupId) session = recomputeSupersetRoundIndices(session, activeGroupId);
 
-        let justHitRecord = state.justHitRecord;
+        // Étoiles de la séance, cette série comprise (`session-stars.ts`) : la définition de l'Historique et du bilan.
+        let justHitRecord = activeRecordMarks(state.history, session, state.catalog);
         // `get().records()` peut avoir rempli le cache après la capture de
         // `state` ci-dessus : repartir de la valeur fraîche évite de l'effacer.
         let recordsCache = get().recordsCache;
@@ -2047,25 +2005,11 @@ export const useWorkoutStore = create<WorkoutState>()(
             createdAchievement = true;
           }
         } else if (exercise && setType !== SetType.warmup && !continuesPreviousRound) {
-          const kind = classify(newSet, exercise, priorRecords);
+          const kind = justHitRecord[newSet.id] ?? null;
           if (kind) {
-            // Un seul record de CHAQUE type par exercice et par séance. En montant en charge
-            // (45×12 puis 52,5×10), chaque série battait la précédente et gardait son étoile :
-            // trois étoiles pour une seule vraie progression, et le signal perdait son sens.
-            // La dernière série à décrocher un type est la meilleure — elle reprend l'étoile.
-            const supersededIds = new Set(
-              state.active.exercises
-                .filter((candidate) => candidate.exerciseId === exercise.id)
-                .flatMap((candidate) => candidate.sets)
-                .filter((candidate) => justHitRecord[candidate.id] === kind)
-                .map((candidate) => candidate.id)
-            );
-            if (supersededIds.size > 0) {
-              justHitRecord = Object.fromEntries(
-                Object.entries(justHitRecord).filter(([setId]) => !supersededIds.has(setId))
-              );
-            }
-            justHitRecord = { ...justHitRecord, [newSet.id]: kind };
+            // Une série qui devient une étoile en domine parfois une plus ancienne de la séance (45 × 12 puis
+            // 52,5 × 12) : celle-ci perd son étoile, comme dans l'Historique. Deux compromis charge / reps
+            // légitimes (20 × 7 et 18 × 9) gardent chacun la leur.
             achievement = {
               setId: newSet.id,
               kind,
@@ -2112,13 +2056,6 @@ export const useWorkoutStore = create<WorkoutState>()(
             };
           }
         }
-
-        justHitRecord = sanitizeActiveRecordMarks(
-          state.history,
-          session,
-          state.catalog,
-          justHitRecord
-        );
 
         // Rest timer rules.
         const updatedLogged = findLoggedExercise(session, loggedExerciseId)!;
@@ -2222,7 +2159,6 @@ export const useWorkoutStore = create<WorkoutState>()(
             sets: normalizeLogicalSetLinks(editedSets, findExercise(state.catalog, e.exerciseId)),
           };
         });
-        const justHitRecord = omitKey(state.justHitRecord, setId);
         const recordsCache = { ...state.recordsCache };
         if (exerciseId) delete recordsCache[exerciseId];
         let session = { ...state.active, exercises };
@@ -2230,6 +2166,8 @@ export const useWorkoutStore = create<WorkoutState>()(
           ? findLoggedExercise(session, loggedExerciseId)?.supersetGroupId
           : null;
         if (groupId) session = recomputeSupersetRoundIndices(session, groupId);
+        // Une série corrigée garde, gagne ou perd son étoile selon ses nouvelles valeurs (avant : perdue).
+        const justHitRecord = activeRecordMarks(state.history, session, state.catalog);
         set({ active: session, justHitRecord, recordsCache });
       },
 
@@ -2252,7 +2190,6 @@ export const useWorkoutStore = create<WorkoutState>()(
               }
             : e
         );
-        const justHitRecord = omitKey(state.justHitRecord, setId);
         const recordsCache = { ...state.recordsCache };
         delete recordsCache[loggedExercise.exerciseId];
 
@@ -2264,6 +2201,8 @@ export const useWorkoutStore = create<WorkoutState>()(
         if (loggedExercise.supersetGroupId) {
           session = recomputeSupersetRoundIndices(session, loggedExercise.supersetGroupId);
         }
+        // Retirer une série peut rendre son étoile à une série qu'elle dominait.
+        const justHitRecord = activeRecordMarks(state.history, session, state.catalog);
 
         set({
           active: session,
@@ -2362,7 +2301,7 @@ export const useWorkoutStore = create<WorkoutState>()(
         // Une série requalifiée en finisher ne porte plus AUCUN record : elle quitte la piste
         // normale (son étoile disparaît, le cache se reconstruit depuis l'historique) et la piste
         // finisher n'en décerne pas — un record de finisher se battrait en baissant la charge.
-        const justHitRecord = omitKey(state.justHitRecord, prompt.setId);
+        const justHitRecord = activeRecordMarks(state.history, session, state.catalog);
         const recordsCache = { ...state.recordsCache };
         delete recordsCache[target.exerciseId];
         const achievement = state.achievement?.setId === prompt.setId ? null : state.achievement;
@@ -2742,7 +2681,7 @@ export const useWorkoutStore = create<WorkoutState>()(
       // réhydratation, sinon `session.startTime.getTime()` casse (string).
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<WorkoutState>;
-        return {
+        const merged: WorkoutState = {
           ...current,
           ...p,
           // Un mode superset armé et persisté par une version d'avant le 15/10/2026 ne se réarme pas.
@@ -2761,6 +2700,12 @@ export const useWorkoutStore = create<WorkoutState>()(
           settings: p.settings
             ? { ...p.settings, trainingPhaseStartedAt: p.settings.trainingPhaseStartedAt ? toDate(p.settings.trainingPhaseStartedAt) : null }
             : current.settings,
+        };
+        // Les marques de record se dérivent des faits (`activeRecordMarks`) : celles d'un ancien stockage ne
+        // valent rien tant qu'elles ne sont pas recalculées.
+        return {
+          ...merged,
+          justHitRecord: merged.active ? activeRecordMarks(merged.history, merged.active, merged.catalog) : {},
         };
       },
       onRehydrateStorage: () => (state) => {

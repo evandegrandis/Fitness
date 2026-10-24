@@ -14,8 +14,7 @@ import { SECRETS, type SecretContext } from "@/lib/engines/career-secrets";
 import { currentWeekWindow } from "@/lib/engines/effective-sets";
 import { recordEvents, weekStats, weekStreak } from "@/lib/engines/progress-stats";
 import { ghostDelta, ghostFor } from "@/lib/engines/session-game";
-import { cutAt, rankSession, type SessionRank } from "@/lib/engines/session-rank";
-import { physiologicalSetUnits } from "@/lib/engines/set-structure";
+import { rankSession, sessionRankInput, type SessionRank } from "@/lib/engines/session-rank";
 import type { BodyWeightEntry, Exercise, LoggedSet, MuscleGoal, UserSettings, WorkoutSession } from "@/lib/models/types";
 
 const DAY_MS = 86_400_000;
@@ -208,17 +207,11 @@ export function buildCareer({ history, catalog, goals, bodyWeights, settings, no
     });
     const starred = starredBySession.get(session.id);
 
-    const sessionSets = session.exercises.reduce(
-      (sum, logged) => sum + physiologicalSetUnits(logged.sets, { increment: byId.get(logged.exerciseId)?.smallestIncrement }),
-      0
-    );
-    const rank = rankSession({
-      review,
-      catalog: byId,
-      sets: sessionSets,
-      records: starred?.sets ?? 0,
-      cut: cutAt(session.date, bodyWeights, settings),
-    });
+    // Même lecture que l'en-tête de séance (`sessionRankInput`) ; les étoiles viennent de `recordEvents`,
+    // qui passe par la même définition (`session-stars.ts`).
+    const input = sessionRankInput({ session, previous, catalog, bodyWeights, settings, records: starred?.sets ?? 0 });
+    const sessionSets = input.sets;
+    const rank = rankSession({ review, catalog: byId, input });
 
     // Niveaux de force et fantôme, exercice par exercice.
     let levelUps = 0;
